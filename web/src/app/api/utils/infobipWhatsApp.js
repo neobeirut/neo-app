@@ -57,9 +57,9 @@ export function getInfobipConfig() {
   }
 
   let normalizedSender = sender.trim();
-  // CRITICAL FIX: Ensure sender starts with '+' to satisfy remote sandbox's hard assertion check
-  if (!normalizedSender.startsWith("+")) {
-    normalizedSender = "+" + normalizedSender;
+  // Strip '+' prefix if present because Infobip requires sender without '+'
+  if (normalizedSender.startsWith("+")) {
+    normalizedSender = normalizedSender.slice(1);
   }
 
   return {
