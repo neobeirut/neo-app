@@ -1,0 +1,6 @@
+"id","user_id","transaction_type","points","description","related_order_id","created_at"
+"8","1","earned","22","Earned from order #22","22","2026-04-19T04:32:53.091Z"
+"9","3","earned","11","Earned from order #23","23","2026-04-19T08:45:18.759Z"
+"10","3","earned","18","Earned from order #25","25","2026-04-19T12:17:12.006Z"
+"11","3","earned","4","Earned from order #24","24","2026-04-19T19:02:19.297Z"
+"12","3","earned","18","Earned from order #26","26","2026-04-21T17:41:07.475Z"

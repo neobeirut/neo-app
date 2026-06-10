@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+bun.lockb
+
+# Local environment files
+.env
+.env*.local
+.env.production
+.env.development
+.env.staging
+
+# Build outputs
+/web/.react-router/
+/web/build/
+/mobile/.expo/
+/mobile/dist/
+/mobile/web-build/
+
+# Native build and key files
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.apk
+
+# System files
+.DS_Store
+Thumbs.db

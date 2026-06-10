@@ -1,0 +1,91 @@
+{
+  "expo": {
+    "name": "Neo Beirut",
+    "slug": "neo-beirut",
+    "version": "2.1.1",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "neobeirut",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.neobeirut.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "This app does not use your camera.",
+        "NSContactsUsageDescription": "We need access to your contacts to use contacts.",
+        "NSCalendarsUsageDescription": "We need access to your notifications to help you stay updated.",
+        "NSRemindersUsageDescription": "We need access to your reminders to help you stay updated.",
+        "NSMicrophoneUsageDescription": "This app does not use your microphone.",
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSPhotoLibraryUsageDescription": "This app does not use your photo library.",
+        "NSLocationAlwaysUsageDescription": "We need access to your location to help you find your way.",
+        "NSPhotoLibraryAddUsageDescription": "This app does not use your photo library.",
+        "NSLocationWhenInUseUsageDescription": "We need access to your location to help you find your way.",
+        "NSSpeechRecognitionUsageDescription": "This app does not use your speech recognition.",
+        "NSCalendarsFullAccessUsageDescription": "We need access to your calendar to help you stay updated.",
+        "NSRemindersFullAccessUsageDescription": "We need access to your reminders to help you stay updated.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "We need access to your location to help you find your way."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.neobeirut.app",
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+      ]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff"
+        }
+      ],
+      "expo-asset",
+      "expo-audio",
+      "expo-build-properties",
+      "expo-font",
+      "expo-image",
+      "expo-secure-store",
+      "expo-status-bar",
+      "expo-video",
+      "expo-web-browser",
+      [
+        "react-native-google-mobile-ads",
+        {
+          "androidAppId": "ca-app-pub-3940256099942544~3347511713",
+          "iosAppId": "ca-app-pub-3940256099942544~1458002511"
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "3116d5e0-932d-4e7f-bfd6-3c5b027341c8"
+      }
+    },
+    "owner": "neo-beirut"
+  },
+  "react-native-google-mobile-ads": {
+    "android_app_id": "ca-app-pub-3940256099942544~3347511713",
+    "ios_app_id": "ca-app-pub-3940256099942544~1458002511"
+  }
+}

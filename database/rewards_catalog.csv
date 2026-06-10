@@ -1,0 +1,8 @@
+"id","code","title","description","tier_required","frequency","expires_days","is_active","created_at","updated_at"
+"1","WELCOME_SILVER","Free Coffee Upgrade Today","Welcome to Silver! Enjoy a free coffee size upgrade today.","Silver","welcome","7","true","2026-01-17T14:32:45.779Z","2026-01-17T14:32:45.779Z"
+"2","WELCOME_PLATINUM","Platinum Treat","Welcome to Platinum! Enjoy a chef's choice mini dessert.","Platinum","welcome","7","true","2026-01-17T14:32:45.779Z","2026-01-17T14:32:45.779Z"
+"3","BIRTHDAY_BRONZE","Birthday Reward","Happy Birthday! Enjoy a free mini pastry.","Bronze","yearly_birthday","7","true","2026-01-17T14:32:45.779Z","2026-02-16T04:08:46.772Z"
+"4","BIRTHDAY_SILVER","Birthday Reward (Silver)","Happy Birthday! Enjoy a free dessert.","Silver","yearly_birthday","7","true","2026-01-17T14:32:45.779Z","2026-01-17T14:32:45.779Z"
+"5","MONTHLY_SILVER","Monthly Perk","Enjoy a free coffee size upgrade or free add-on.","Silver","monthly","30","true","2026-01-17T14:32:45.779Z","2026-01-17T14:32:45.779Z"
+"6","MONTHLY_PLATINUM","Monthly Perk (Platinum)","Platinum treat (chef's choice mini dessert).","Platinum","monthly","30","true","2026-01-17T14:32:45.779Z","2026-01-17T14:32:45.779Z"
+"7","QUARTERLY_PLATINUM","Quarterly Perk (Platinum)","Complimentary tasting plate.","Platinum","quarterly","90","true","2026-01-17T14:32:45.779Z","2026-01-17T14:32:45.779Z"
