@@ -99,13 +99,13 @@ export async function infobipFetch(endpoint, options = {}) {
   let body = options.body;
 
   if (body && typeof body === "object") {
-    // CRITICAL: Intercept and ensure the 'from' field of any message starts with '+'
+    // Intercept and ensure the 'from' field of any message does NOT start with '+'
     if (body.messages && Array.isArray(body.messages)) {
       body.messages.forEach(msg => {
         if (msg.from) {
           let from = String(msg.from).trim();
-          if (!from.startsWith("+")) {
-            msg.from = "+" + from;
+          if (from.startsWith("+")) {
+            msg.from = from.slice(1);
           }
         }
       });
