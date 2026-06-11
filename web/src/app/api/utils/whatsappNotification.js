@@ -8,6 +8,20 @@ import {
   logWhatsAppMessage,
 } from "./customerWhatsApp";
 import { buildTemplatePayloadFromStatus } from "./whatsappTemplateRegistry";
+import { sendPushNotificationToUser } from "./pushNotification";
+
+function getPushTitle(status) {
+  const titles = {
+    pending: "Order Placed",
+    preparing: "Preparing Order",
+    ready: "Order Ready for Pickup",
+    out_for_delivery: "Order Out for Delivery",
+    delivered: "Order Delivered",
+    completed: "Order Completed",
+    cancelled: "Order Cancelled",
+  };
+  return titles[status] || "Order Update";
+}
 
 /**
  * 🔒 CRITICAL CONSTANT - FORCED WHATSAPP SENDER
@@ -109,20 +123,54 @@ export async function sendWhatsAppNotification(orderId, newStatus) {
 
     // Guardrails - Check if customer has phone
     if (!customer.phone) {
+      console.log(`[whatsapp-notification] Customer ${customer.id} has no phone. Falling back to push notification.`);
+      let pushResult = { success: false, sentCount: 0, error: "No push token" };
+      try {
+        const pushTitle = getPushTitle(newStatus);
+        const pushBody = getStatusMessageFreeForm(newStatus, order.order_type, order.branch_name);
+        pushResult = await sendPushNotificationToUser(customer.id, {
+          title: pushTitle,
+          body: pushBody,
+          data: { orderId: String(order.id), status: newStatus, type: "order_update" }
+        });
+      } catch (pushErr) {
+        console.error(`[whatsapp-notification] Push fallback error for user ${customer.id}:`, pushErr);
+        pushResult.error = pushErr.message;
+      }
       return {
         ok: false,
         error: "Customer has no phone number",
         skipped: true,
+        pushFallbackSent: pushResult.success,
+        pushFallbackCount: pushResult.sentCount,
+        pushFallbackError: pushResult.error
       };
     }
 
     // Guardrails - Check WhatsApp opt-in
     if (customer.whatsapp_opt_in === false) {
+      console.log(`[whatsapp-notification] Customer ${customer.id} opted out of WhatsApp. Falling back to push notification.`);
+      let pushResult = { success: false, sentCount: 0, error: "No push token" };
+      try {
+        const pushTitle = getPushTitle(newStatus);
+        const pushBody = getStatusMessageFreeForm(newStatus, order.order_type, order.branch_name);
+        pushResult = await sendPushNotificationToUser(customer.id, {
+          title: pushTitle,
+          body: pushBody,
+          data: { orderId: String(order.id), status: newStatus, type: "order_update" }
+        });
+      } catch (pushErr) {
+        console.error(`[whatsapp-notification] Push fallback error for user ${customer.id}:`, pushErr);
+        pushResult.error = pushErr.message;
+      }
       return {
         ok: false,
         error: "Customer opted out of WhatsApp",
         skipped: true,
         shouldUsePush: !!customer.push_token,
+        pushFallbackSent: pushResult.success,
+        pushFallbackCount: pushResult.sentCount,
+        pushFallbackError: pushResult.error
       };
     }
 
@@ -134,9 +182,26 @@ export async function sendWhatsAppNotification(orderId, newStatus) {
         `[whatsapp-notification] Phone normalized to: ${customerPhone}`,
       );
     } catch (error) {
+      console.log(`[whatsapp-notification] Customer ${customer.id} has invalid phone: ${customer.phone}. Falling back to push notification.`);
+      let pushResult = { success: false, sentCount: 0, error: "No push token" };
+      try {
+        const pushTitle = getPushTitle(newStatus);
+        const pushBody = getStatusMessageFreeForm(newStatus, order.order_type, order.branch_name);
+        pushResult = await sendPushNotificationToUser(customer.id, {
+          title: pushTitle,
+          body: pushBody,
+          data: { orderId: String(order.id), status: newStatus, type: "order_update" }
+        });
+      } catch (pushErr) {
+        console.error(`[whatsapp-notification] Push fallback error for user ${customer.id}:`, pushErr);
+        pushResult.error = pushErr.message;
+      }
       return {
         ok: false,
         error: `Invalid phone number: ${error.message}`,
+        pushFallbackSent: pushResult.success,
+        pushFallbackCount: pushResult.sentCount,
+        pushFallbackError: pushResult.error
       };
     }
 
@@ -231,7 +296,7 @@ export async function sendWhatsAppNotification(orderId, newStatus) {
           );
         } catch (buildError) {
           const errorMsg = `Failed to build template payload: ${buildError.message}`;
-          console.error(`[whatsapp-notification] ${errorMsg}`);
+          console.error(`[whatsapp-notification] ${errorMsg}. Falling back to push notification.`);
 
           await logWhatsAppMessage({
             userId: customer.id,
@@ -246,12 +311,29 @@ export async function sendWhatsAppNotification(orderId, newStatus) {
             error: errorMsg,
           });
 
+          let pushResult = { success: false, sentCount: 0, error: "No push token" };
+          try {
+            const pushTitle = getPushTitle(newStatus);
+            const pushBody = getStatusMessageFreeForm(newStatus, order.order_type, order.branch_name);
+            pushResult = await sendPushNotificationToUser(customer.id, {
+              title: pushTitle,
+              body: pushBody,
+              data: { orderId: String(order.id), status: newStatus, type: "order_update" }
+            });
+          } catch (pushErr) {
+            console.error(`[whatsapp-notification] Push fallback error for user ${customer.id}:`, pushErr);
+            pushResult.error = pushErr.message;
+          }
+
           return {
             ok: false,
             error: errorMsg,
             hint: "Configure WhatsApp templates in Admin Settings",
             shouldUsePush: !!customer.push_token,
             sender: fromPhone, // ← Return sender in response
+            pushFallbackSent: pushResult.success,
+            pushFallbackCount: pushResult.sentCount,
+            pushFallbackError: pushResult.error
           };
         }
 
@@ -388,11 +470,29 @@ export async function sendWhatsAppNotification(orderId, newStatus) {
         `[whatsapp-notification] ==================== FAILED ====================`,
       );
 
+      console.log(`[whatsapp-notification] WhatsApp send failed. Falling back to push notification.`);
+      let pushResult = { success: false, sentCount: 0, error: "No push token" };
+      try {
+        const pushTitle = getPushTitle(newStatus);
+        const pushBody = messageText || getStatusMessageFreeForm(newStatus, order.order_type, order.branch_name);
+        pushResult = await sendPushNotificationToUser(customer.id, {
+          title: pushTitle,
+          body: pushBody,
+          data: { orderId: String(order.id), status: newStatus, type: "order_update" }
+        });
+      } catch (pushErr) {
+        console.error(`[whatsapp-notification] Push fallback error for user ${customer.id}:`, pushErr);
+        pushResult.error = pushErr.message;
+      }
+
       return {
         ok: false,
         error: `WhatsApp send failed: ${error}`,
         shouldUsePush: !!customer.push_token,
         sender: fromPhone, // ← Return sender even on failure
+        pushFallbackSent: pushResult.success,
+        pushFallbackCount: pushResult.sentCount,
+        pushFallbackError: pushResult.error
       };
     }
   } catch (error) {
