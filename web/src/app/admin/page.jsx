@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { PlusCircle, Upload, LogOut } from "lucide-react";
+import { PlusCircle, Upload, LogOut, Menu, ChevronRight } from "lucide-react";
 import { useAdminData } from "@/hooks/useAdminData";
 import { useAdminActions } from "@/hooks/useAdminActions";
-import { TabNavigation } from "@/components/Admin/TabNavigation";
+import { SidebarNavigation } from "@/components/Admin/SidebarNavigation";
 import { DashboardView } from "@/components/Admin/DashboardView";
 import { CategoryForm } from "@/components/Admin/CategoryForm";
 import { BranchForm } from "@/components/Admin/BranchForm";
@@ -33,6 +33,7 @@ import DeliveryPricingView from "@/components/Admin/DeliveryPricingView";
 import WebsiteView from "@/components/Admin/WebsiteView";
 
 export default function AdminPage() {
+  const [mobileOpen, setMobileOpen] = useState(false);
   const allTabs = useMemo(
     () => [
       "dashboard",
@@ -418,45 +419,68 @@ export default function AdminPage() {
     : false;
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        <div className="flex justify-between items-center mb-8">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">
-              Neo Beirut Admin
-            </h1>
-            <p className="text-gray-600 mt-1">
-              Logged in as:{" "}
-              <span className="font-medium">{adminUser.name}</span>
-            </p>
+    <div className="min-h-screen bg-slate-50 flex">
+      {/* Sidebar Navigation */}
+      <SidebarNavigation
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        tabs={allowedTabs}
+        adminUser={adminUser}
+        onLogout={handleLogout}
+        mobileOpen={mobileOpen}
+        setMobileOpen={setMobileOpen}
+      />
+
+      {/* Main Content Pane */}
+      <div className="flex-1 flex flex-col min-h-screen overflow-x-hidden">
+        {/* Sticky Header Top-Bar */}
+        <header className="bg-white border-b border-slate-200 px-6 py-4 flex justify-between items-center sticky top-0 z-10 shadow-sm">
+          <div className="flex items-center gap-3">
+            {/* Mobile Sidebar Trigger */}
+            <button
+              onClick={() => setMobileOpen(true)}
+              className="md:hidden p-1.5 rounded-lg hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition-colors"
+            >
+              <Menu size={22} />
+            </button>
+            <div>
+              <h1 className="text-lg font-bold text-slate-800 capitalize leading-tight">
+                {activeTab.replace("-", " ")}
+              </h1>
+              <p className="text-xs text-slate-500 mt-0.5 font-medium">
+                Admin Panel <ChevronRight size={10} className="inline mx-0.5 align-middle" />{" "}
+                <span className="capitalize">{activeTab.replace("-", " ")}</span>
+              </p>
+            </div>
           </div>
-          <div className="flex gap-3">
-            {isBackendAdmin ? (
-              <>
-                <a
-                  href="/admin/logo"
-                  className="bg-green-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-green-600 transition-colors"
-                >
-                  <Upload size={20} />
-                  Upload Logo
-                </a>
-              </>
-            ) : null}
+
+          <div className="flex items-center gap-3">
+            {adminUser.branch_name && (
+              <span className="bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-full text-xs font-semibold border border-indigo-100/60 shadow-sm">
+                Branch: {adminUser.branch_name}
+              </span>
+            )}
+            {isBackendAdmin && (
+              <a
+                href="/admin/logo"
+                className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all text-xs font-semibold border border-indigo-100/60 shadow-sm"
+              >
+                <Upload size={14} />
+                Upload Logo
+              </a>
+            )}
             <button
               onClick={handleLogout}
-              className="bg-red-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-red-600 transition-colors"
+              className="bg-rose-50 hover:bg-rose-100 text-rose-700 px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all text-xs font-semibold border border-rose-100/60 shadow-sm"
             >
-              <LogOut size={20} />
+              <LogOut size={14} />
               Logout
             </button>
           </div>
-        </div>
+        </header>
 
-        <TabNavigation
-          activeTab={activeTab}
-          onTabChange={setActiveTab}
-          tabs={allowedTabs}
-        />
+        {/* Content Body Container */}
+        <main className="flex-1 p-6 md:p-8 max-w-6xl w-full mx-auto">
 
         {/* Dashboard View */}
         {activeTab === "dashboard" && allowedTabs.includes("dashboard") && (
@@ -696,6 +720,7 @@ export default function AdminPage() {
               )}
             </div>
           ))}
+        </main>
       </div>
     </div>
   );
