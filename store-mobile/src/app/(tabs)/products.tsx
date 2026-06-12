@@ -197,9 +197,7 @@ export default function ProductsScreen() {
               thumbColor={isAvailable ? '#ffffff' : '#94a3b8'}
               disabled={toggleStatusMutation.isPending}
             />
-            <Text style={[styles.toggleLabel, { color: statusColor }]}>
-              {isAvailable ? 'In Stock' : 'Out'}
-            </Text>
+
           </View>
         </View>
 
