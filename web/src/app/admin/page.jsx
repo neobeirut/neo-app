@@ -484,7 +484,15 @@ export default function AdminPage() {
 
         {/* Dashboard View */}
         {activeTab === "dashboard" && allowedTabs.includes("dashboard") && (
-          <DashboardView onNavigate={setActiveTab} adminUser={adminUser} />
+          <DashboardView
+            onNavigate={setActiveTab}
+            adminUser={adminUser}
+            orders={orders}
+            users={users}
+            products={products}
+            branches={branches}
+            loading={loading}
+          />
         )}
 
         {/* WhatsApp Inbox View */}

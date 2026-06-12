@@ -16,8 +16,22 @@ export function useAdminData(activeTab) {
 
   useEffect(() => {
     if (activeTab === "dashboard") {
-      // Dashboard doesn't need any data
-      return;
+      const fetchDashboardData = async () => {
+        setLoading(true);
+        try {
+          await Promise.all([
+            fetchOrders(true),
+            fetchUsers(true),
+            fetchProducts(true),
+            fetchBranches(true),
+          ]);
+        } catch (error) {
+          console.error("Error fetching dashboard data:", error);
+        } finally {
+          setLoading(false);
+        }
+      };
+      fetchDashboardData();
     } else if (activeTab === "categories") {
       fetchCategories();
     } else if (activeTab === "products") {
@@ -93,9 +107,9 @@ export function useAdminData(activeTab) {
     setLoading(false);
   };
 
-  const fetchProducts = async () => {
+  const fetchProducts = async (silent = false) => {
     console.log("fetchProducts called - setting loading to true");
-    setLoading(true);
+    if (!silent) setLoading(true);
     try {
       console.log("Fetching products from /api/products");
       const response = await fetch("/api/products");
@@ -122,11 +136,11 @@ export function useAdminData(activeTab) {
       setProducts([]);
     }
     console.log("fetchProducts finished - setting loading to false");
-    setLoading(false);
+    if (!silent) setLoading(false);
   };
 
-  const fetchBranches = async () => {
-    setLoading(true);
+  const fetchBranches = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const response = await fetch("/api/branches");
       if (!response.ok) {
@@ -147,7 +161,7 @@ export function useAdminData(activeTab) {
       console.error("Error fetching branches:", error);
       setBranches([]);
     }
-    setLoading(false);
+    if (!silent) setLoading(false);
   };
 
   const fetchRewards = async () => {
@@ -162,8 +176,8 @@ export function useAdminData(activeTab) {
     setLoading(false);
   };
 
-  const fetchUsers = async () => {
-    setLoading(true);
+  const fetchUsers = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const response = await fetch("/api/users");
       if (response.ok) {
@@ -174,7 +188,7 @@ export function useAdminData(activeTab) {
       console.error("Error fetching users:", error);
       setUsers([]);
     }
-    setLoading(false);
+    if (!silent) setLoading(false);
   };
 
   const fetchLoyaltyTransactions = async () => {
@@ -240,8 +254,8 @@ export function useAdminData(activeTab) {
     }
   };
 
-  const fetchOrders = async () => {
-    setLoading(true);
+  const fetchOrders = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const adminToken =
         typeof window !== "undefined"
@@ -252,7 +266,7 @@ export function useAdminData(activeTab) {
 
       if (!adminToken || !adminId) {
         setOrders([]);
-        setLoading(false);
+        if (!silent) setLoading(false);
         // If we are in the browser, redirect to admin login.
         if (typeof window !== "undefined") {
           window.location.href = "/admin/login";
@@ -287,7 +301,7 @@ export function useAdminData(activeTab) {
       console.error("Error fetching orders:", error);
       setOrders([]);
     }
-    setLoading(false);
+    if (!silent) setLoading(false);
   };
 
   const fetchCustomizationItems = async () => {
