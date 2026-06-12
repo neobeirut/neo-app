@@ -298,7 +298,7 @@ export async function POST(request) {
         String(order.id),
         clientName,
         clientPhone,
-        addressText + (mapsLink ? `\n🔗 Location: ${mapsLink}` : ""),
+        addressText + (mapsLink ? `\n🗺 Location: ${mapsLink}` : ""),
         formatMoney(orderAmountRaw),
         formatMoney(deliveryFeeRaw),
         formatBeirutDateTime(order.created_at) + (order.special_instructions ? `\n📝 Notes: ${String(order.special_instructions).trim()}` : "")
