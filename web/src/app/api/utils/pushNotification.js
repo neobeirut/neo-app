@@ -150,6 +150,8 @@ export async function sendPushNotificationToBranchAdmins(branchId, { title, body
       data: data || {},
       priority: "high",
       channelId: "orders-channel",
+      badge: 1,
+      _contentAvailable: true,
     }));
 
     // 4. Send to Expo

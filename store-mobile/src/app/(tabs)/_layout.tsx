@@ -1,9 +1,25 @@
 import { Tabs } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useOrdersStore } from '@/store/ordersStore';
+import { View, Text, StyleSheet } from 'react-native';
+
+function IconWithBadge({ icon, color, badgeCount }: { icon: any, color: string, badgeCount: number }) {
+  return (
+    <View style={{ width: 24, height: 24, margin: 5 }}>
+      <Ionicons name={icon} size={24} color={color} />
+      {badgeCount > 0 && (
+        <View style={styles.badgeContainer}>
+          <Text style={styles.badgeText}>{badgeCount}</Text>
+        </View>
+      )}
+    </View>
+  );
+}
 
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
+  const pendingCount = useOrdersStore((state) => state.pendingCount);
 
   return (
     <Tabs
@@ -41,7 +57,7 @@ export default function TabLayout() {
           title: 'Orders',
           headerTitle: 'Orders Dashboard',
           tabBarIcon: ({ color }) => (
-            <Ionicons name="receipt-outline" size={24} color={color} />
+            <IconWithBadge icon="receipt-outline" color={color} badgeCount={pendingCount} />
           ),
         }}
       />
@@ -78,3 +94,22 @@ export default function TabLayout() {
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  badgeContainer: {
+    position: 'absolute',
+    right: -6,
+    top: -3,
+    backgroundColor: '#ef4444',
+    borderRadius: 8,
+    width: 16,
+    height: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  badgeText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+});

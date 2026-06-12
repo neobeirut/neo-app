@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import * as Notifications from 'expo-notifications';
+
 import Constants from 'expo-constants';
 
 import { ThemedText } from '@/components/themed-text';
@@ -91,6 +91,15 @@ export default function LoginScreen() {
   const registerPush = async (token: string) => {
     try {
       if (Platform.OS === 'web') return;
+
+      // Guard against Expo Go crashing on SDK 53+
+      const isExpoGo = Constants.appOwnership === 'expo';
+      if (isExpoGo) {
+        console.warn('Push notifications are disabled in Expo Go. Please use a development build to test notifications.');
+        return;
+      }
+
+      const Notifications = require('expo-notifications');
 
       // Request permissions
       const { status: existingStatus } = await Notifications.getPermissionsAsync();

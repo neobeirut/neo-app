@@ -1,7 +1,7 @@
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 
-const DEFAULT_BASE_URL = 'https://app.neobeirut.com';
+const DEFAULT_BASE_URL = 'https://gregarious-curiosity-production-653f.up.railway.app';
 
 export function getBaseUrl() {
   const envUrl = process.env.EXPO_PUBLIC_BASE_URL;
