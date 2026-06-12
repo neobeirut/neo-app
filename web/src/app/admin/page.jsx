@@ -548,7 +548,8 @@ export default function AdminPage() {
           activeTab !== "dashboard" &&
           activeTab !== "events" &&
           activeTab !== "notifications" &&
-          activeTab !== "promo-codes" && (
+          activeTab !== "promo-codes" &&
+          activeTab !== "whatsapp-inbox" && (
             <button
               onClick={() => {
                 if (activeTab === "products") {
