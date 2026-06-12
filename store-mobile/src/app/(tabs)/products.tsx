@@ -19,6 +19,7 @@ import { getJson, postJson, getStoredAdminUser } from '@/utils/api';
 export default function ProductsScreen() {
   const queryClient = useQueryClient();
   const [adminUser, setAdminUser] = useState<any>(null);
+  const [userLoading, setUserLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
 
@@ -27,6 +28,7 @@ export default function ProductsScreen() {
     async function loadUser() {
       const user = await getStoredAdminUser();
       setAdminUser(user);
+      setUserLoading(false);
     }
     loadUser();
   }, []);
@@ -41,16 +43,7 @@ export default function ProductsScreen() {
     enabled: !!adminUser?.branch_id,
   });
 
-  // Fetch categories (to show category filters)
-  const { data: categoriesData } = useQuery({
-    queryKey: ['admin-categories'],
-    queryFn: () => getJson('/api/branches/route').catch(() => getJson('/api/orders/admin').then(() => ({ categories: [] }))), // fallback
-    // Wait, let's check how to fetch categories. In customer app we used `/api/categories?branch_id=...`
-    // Let's fetch categories for this branch
-    enabled: !!adminUser?.branch_id,
-  });
-
-  // Fallback to fetch categories dynamically
+  // Fetch categories for this branch
   const { data: fallbackCategories } = useQuery({
     queryKey: ['branch-categories', adminUser?.branch_id],
     queryFn: () => {
@@ -60,7 +53,7 @@ export default function ProductsScreen() {
     enabled: !!adminUser?.branch_id,
   });
 
-  const categories = fallbackCategories?.categories || categoriesData?.categories || [];
+  const categories = fallbackCategories?.categories || [];
 
   // Mutation to toggle product availability
   const toggleStatusMutation = useMutation({
@@ -137,6 +130,26 @@ export default function ProductsScreen() {
   };
 
   const filteredProducts = getFilteredProducts();
+
+  // Show loading while user data is being retrieved
+  if (userLoading) {
+    return (
+      <View style={styles.centered}>
+        <ActivityIndicator size="large" color="#3b82f6" />
+      </View>
+    );
+  }
+
+  // Show message if user has no branch assigned
+  if (!adminUser?.branch_id) {
+    return (
+      <View style={styles.centered}>
+        <Ionicons name="alert-circle-outline" size={64} color="#f59e0b" />
+        <Text style={styles.emptyText}>No branch assigned to your account.</Text>
+        <Text style={[styles.emptyText, { fontSize: 13, marginTop: 4 }]}>Please contact your administrator.</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -277,6 +290,7 @@ const styles = StyleSheet.create({
     color: '#94a3b8',
     fontSize: 16,
     marginTop: 16,
+    textAlign: 'center',
   },
   listContainer: {
     padding: 16,

@@ -1,16 +1,18 @@
 import { Tabs } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function TabLayout() {
+  const insets = useSafeAreaInsets();
+
   return (
     <Tabs
       screenOptions={{
         headerShown: true,
         headerStyle: {
-          backgroundColor: '#0f172a', // Slate 900
+          backgroundColor: '#0f172a',
           borderBottomWidth: 1,
-          borderBottomColor: '#1e293b', // Slate 800
+          borderBottomColor: '#1e293b',
         },
         headerTitleStyle: {
           color: '#ffffff',
@@ -21,12 +23,12 @@ export default function TabLayout() {
           backgroundColor: '#0f172a',
           borderTopWidth: 1,
           borderTopColor: '#1e293b',
-          height: Platform.OS === 'ios' ? 88 : 60,
-          paddingBottom: Platform.OS === 'ios' ? 28 : 8,
+          height: 56 + insets.bottom,
+          paddingBottom: insets.bottom,
           paddingTop: 8,
         },
-        tabBarActiveTintColor: '#3b82f6', // Blue 500
-        tabBarInactiveTintColor: '#64748b', // Slate 500
+        tabBarActiveTintColor: '#3b82f6',
+        tabBarInactiveTintColor: '#64748b',
         tabBarLabelStyle: {
           fontSize: 12,
           fontWeight: '600',
@@ -38,7 +40,7 @@ export default function TabLayout() {
         options={{
           title: 'Orders',
           headerTitle: 'Orders Dashboard',
-          tabBarIcon: ({ color, size }) => (
+          tabBarIcon: ({ color }) => (
             <Ionicons name="receipt-outline" size={24} color={color} />
           ),
         }}
@@ -48,7 +50,7 @@ export default function TabLayout() {
         options={{
           title: 'Products',
           headerTitle: 'Product Stock Toggling',
-          tabBarIcon: ({ color, size }) => (
+          tabBarIcon: ({ color }) => (
             <Ionicons name="fast-food-outline" size={24} color={color} />
           ),
         }}
@@ -58,7 +60,7 @@ export default function TabLayout() {
         options={{
           title: 'Chat',
           headerTitle: 'WhatsApp Inbox',
-          tabBarIcon: ({ color, size }) => (
+          tabBarIcon: ({ color }) => (
             <Ionicons name="chatbubbles-outline" size={24} color={color} />
           ),
         }}
@@ -68,7 +70,7 @@ export default function TabLayout() {
         options={{
           title: 'Settings',
           headerTitle: 'Terminal Settings',
-          tabBarIcon: ({ color, size }) => (
+          tabBarIcon: ({ color }) => (
             <Ionicons name="settings-outline" size={24} color={color} />
           ),
         }}

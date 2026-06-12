@@ -24,7 +24,7 @@ export default function ChatScreen() {
   const scrollViewRef = useRef<ScrollView>(null);
 
   // 1. Fetch conversations
-  const { data: convsData, isLoading: loadingConvs, refetch: refetchConvs } = useQuery({
+  const { data: convsData, isLoading: loadingConvs, isError: convsError, refetch: refetchConvs } = useQuery({
     queryKey: ['admin-conversations'],
     queryFn: () => getJson('/api/admin/whatsapp-inbox/conversations'),
     refetchInterval: 10000, // Poll every 10 seconds
