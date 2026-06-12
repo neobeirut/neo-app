@@ -14,57 +14,10 @@ export function ProductsTable({
   const [draggedItem, setDraggedItem] = useState(null);
   const [dragOverItem, setDragOverItem] = useState(null);
   const [isUpdating, setIsUpdating] = useState(false);
-  const [isResetting, setIsResetting] = useState(false);
   // Remove local filter state - now controlled by parent
   // const [selectedCategory, setSelectedCategory] = useState("all");
   // const [selectedStatus, setSelectedStatus] = useState("all");
   const [updatingStatus, setUpdatingStatus] = useState({});
-
-  const handleResetAllProducts = async () => {
-    const confirmed = window.confirm(
-      "⚠️ WARNING: This will permanently delete ALL products and their related data (addons, reviews, etc.). This action cannot be undone. Are you absolutely sure?",
-    );
-
-    if (!confirmed) return;
-
-    const doubleConfirm = window.confirm(
-      "Final confirmation: Type 'DELETE' in the next prompt to proceed",
-    );
-
-    if (!doubleConfirm) return;
-
-    const finalConfirm = prompt(
-      "Type DELETE in all caps to confirm deletion of all products:",
-    );
-
-    if (finalConfirm !== "DELETE") {
-      alert("Reset cancelled - confirmation text did not match");
-      return;
-    }
-
-    setIsResetting(true);
-
-    try {
-      const response = await fetch("/api/products", {
-        method: "DELETE",
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to reset products");
-      }
-
-      alert("All products have been deleted successfully");
-
-      if (onRefresh) {
-        await onRefresh();
-      }
-    } catch (error) {
-      console.error("Error resetting products:", error);
-      alert("Failed to reset products. Please try again.");
-    } finally {
-      setIsResetting(false);
-    }
-  };
 
   const handleStatusChange = async (productId, newStatus) => {
     setUpdatingStatus((prev) => ({ ...prev, [productId]: true }));
@@ -328,15 +281,6 @@ export function ProductsTable({
             </span>
           </div>
 
-          {/* Right side: Reset All Button */}
-          <button
-            onClick={handleResetAllProducts}
-            disabled={isResetting || products.length === 0}
-            className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 whitespace-nowrap"
-          >
-            <Trash2 size={16} />
-            {isResetting ? "Deleting..." : "Reset All Products"}
-          </button>
         </div>
 
         {/* Active Filters Indicator */}
