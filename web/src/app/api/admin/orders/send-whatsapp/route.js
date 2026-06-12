@@ -291,9 +291,24 @@ export async function POST(request) {
     }
 
     // ── Build payload (same pattern as new_order_to_branch) ───────────────
-    // delivery_to_branch schema: 1 placeholder = Order ID
-    const placeholders =
-      schema.bodyPlaceholderCount > 0 ? [String(order.id)] : [];
+    // Build placeholders dynamically based on what the template expects
+    let placeholders = [];
+    if (schema.bodyPlaceholderCount === 7) {
+      placeholders = [
+        String(order.id),
+        clientName,
+        clientPhone,
+        addressText + (mapsLink ? `\n🔗 Location: ${mapsLink}` : ""),
+        formatMoney(orderAmountRaw),
+        formatMoney(deliveryFeeRaw),
+        formatBeirutDateTime(order.created_at) + (order.special_instructions ? `\n📝 Notes: ${String(order.special_instructions).trim()}` : "")
+      ];
+    } else if (schema.bodyPlaceholderCount === 1) {
+      // Fallback: send the entire message text as a single placeholder
+      placeholders = [messageText];
+    } else if (schema.bodyPlaceholderCount > 0) {
+      placeholders = [String(order.id)]; // Default legacy behavior
+    }
 
     console.log(
       `[send-whatsapp] Building payload for template: ${templateName}`,
