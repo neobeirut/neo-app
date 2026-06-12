@@ -66,7 +66,7 @@ export async function GET(request) {
       FROM customer_whatsapp_messages
       WHERE REPLACE(phone, ' ', '') = ${normalizedPhone}
          OR phone = ${phone}
-      ORDER BY created_at ASC
+      ORDER BY created_at ASC, id ASC
     `;
 
     // Mark conversation as read (also needs normalization)

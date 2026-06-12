@@ -229,11 +229,11 @@ async function processInboundMessage(result) {
     await sql`
       INSERT INTO customer_whatsapp_messages (
         user_id, order_id, phone, direction, message_type,
-        message_text, bird_message_id, status
+        message_text, bird_message_id, status, created_at
       )
       VALUES (
         NULL, NULL, ${fromPhone}, 'inbound', 'customer_reply',
-        ${messageText}, ${infobipMessageId}, 'received'
+        ${messageText}, ${infobipMessageId}, 'received', now()
       )
     `;
 
@@ -364,11 +364,11 @@ async function processInboundMessage(result) {
       await sql`
         INSERT INTO customer_whatsapp_messages (
           user_id, order_id, phone, direction, message_type,
-          message_text, bird_message_id, status
+          message_text, bird_message_id, status, created_at
         )
         VALUES (
           ${customer.id}, ${orderId}, ${fromPhone}, 'inbound', 'customer_reply',
-          ${`⚠️ LOW RATING (${rating}/5): ${messageText}`}, ${infobipMessageId}, 'received'
+          ${`⚠️ LOW RATING (${rating}/5): ${messageText}`}, ${infobipMessageId}, 'received', now()
         )
       `;
 

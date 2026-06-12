@@ -245,11 +245,11 @@ export const logWhatsAppMessage = async ({
   await sql`
     INSERT INTO customer_whatsapp_messages (
       user_id, order_id, phone, direction, message_type, 
-      message_text, template_name, bird_message_id, status, error
+      message_text, template_name, bird_message_id, status, error, created_at
     )
     VALUES (
       ${userId}, ${orderId}, ${phone}, ${direction}, ${messageType},
-      ${messageText}, ${templateName}, ${birdMessageId}, ${status}, ${error}
+      ${messageText}, ${templateName}, ${birdMessageId}, ${status}, ${error}, now()
     )
   `;
 };
