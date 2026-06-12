@@ -205,19 +205,20 @@ export async function POST(request) {
     const baseStatus = status || currentStatus;
     const nextQty = parsedQty === undefined ? currentQty : parsedQty;
 
-    // Only apply the automatic inventory rule when the request is a quantity
-    // update (not when the admin is explicitly setting a status). This lets
-    // store managers manually override the status for inventory-tracked
-    // products (e.g. mark as Available even when qty = 0 for end-of-day use).
+    // Determine the final status:
+    // - If the admin explicitly sent a status, always respect it (manual override wins).
+    //   This allows store managers to mark inventory-tracked products as Available
+    //   even when qty = 0 (e.g. for end-of-day, or when qty tracking is ignored).
+    // - If only quantity_on_hand is being updated (no explicit status sent), apply
+    //   the automatic inventory rule to derive the status from the new qty.
     const adminExplicitlySetStatus = status !== undefined && status !== null;
-    const quantityIsBeingUpdated = parsedQty !== undefined;
 
     let nextStatus;
-    if (adminExplicitlySetStatus && !quantityIsBeingUpdated) {
-      // Admin explicitly toggled the status — respect their choice directly.
+    if (adminExplicitlySetStatus) {
+      // Admin deliberately chose this status — honour it directly.
       nextStatus = baseStatus;
     } else {
-      // Quantity was updated (or nothing changed) — let inventory rule decide.
+      // No status provided — only qty changed; let inventory rule derive status.
       nextStatus = applyInventoryStatusRule(baseStatus, inventoryApplies, nextQty);
     }
 
