@@ -18,6 +18,9 @@ export default function NotificationsView() {
   const [targetPage, setTargetPage] = useState("");
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [eventMessage, setEventMessage] = useState("");
+  const [users, setUsers] = useState([]);
+  const [selectedUser, setSelectedUser] = useState("");
+  const [targetAudience, setTargetAudience] = useState("branch"); // 'branch' or 'client'
 
   const getAdminHeaders = useCallback(() => {
     try {
@@ -41,6 +44,17 @@ export default function NotificationsView() {
       setBranches(data.branches || []);
     } catch (err) {
       console.error("Error fetching branches:", err);
+    }
+  }, []);
+
+  const fetchUsers = useCallback(async () => {
+    try {
+      const response = await fetch("/api/users");
+      if (!response.ok) throw new Error("Failed to fetch users");
+      const data = await response.json();
+      setUsers(data.users || []);
+    } catch (err) {
+      console.error("Error fetching users:", err);
     }
   }, []);
 
@@ -79,12 +93,12 @@ export default function NotificationsView() {
 
   useEffect(() => {
     setLoading(true);
-    Promise.all([fetchBranches(), fetchEvents(), fetchHistory()]).finally(
+    Promise.all([fetchBranches(), fetchEvents(), fetchHistory(), fetchUsers()]).finally(
       () => {
         setLoading(false);
       },
     );
-  }, [fetchBranches, fetchEvents, fetchHistory]);
+  }, [fetchBranches, fetchEvents, fetchHistory, fetchUsers]);
 
   const handleBranchChange = (branchId) => {
     if (branchId === "all") {
@@ -164,6 +178,12 @@ export default function NotificationsView() {
       }
     }
 
+    if (targetAudience === "client" && !selectedUser) {
+      console.error("[FRONTEND] Validation failed: No client selected");
+      setError("Please select a target client");
+      return;
+    }
+
     console.log("[FRONTEND] Final notification details:", {
       finalTitle,
       finalMessage: finalMessage.substring(0, 100),
@@ -190,10 +210,15 @@ export default function NotificationsView() {
       const requestBody = {
         title: finalTitle,
         message: finalMessage,
-        branchIds: selectedBranches,
         targetPage: targetPage || null,
         eventId: finalEventId,
       };
+
+      if (targetAudience === "client") {
+        requestBody.userId = selectedUser ? Number(selectedUser) : null;
+      } else {
+        requestBody.branchIds = selectedBranches;
+      }
 
       console.log(
         "[NOTIFICATIONS] Request body:",
@@ -281,6 +306,7 @@ export default function NotificationsView() {
       setSelectedBranches(["all"]);
       setTargetPage("");
       setSelectedEvent(null);
+      setSelectedUser("");
 
       // Refresh history
       fetchHistory();
@@ -316,6 +342,37 @@ export default function NotificationsView() {
     const branchNames = branchIds
       .map((id) => {
         const branch = branches.find((b) => b.id === id);
+        return branch?.name || `Branch ${id}`;
+      })
+      .join(", ");
+
+    return branchNames;
+  };
+
+  const formatTarget = (notif) => {
+    if (notif.user_id) {
+      return `Client: ${notif.target_user_name || notif.target_user_email || `User #${notif.user_id}`}`;
+    }
+
+    const branchIds = notif.branch_ids;
+    if (!branchIds) return "All Branches";
+
+    let parsedBranches = branchIds;
+    if (typeof branchIds === "string") {
+      try {
+        parsedBranches = JSON.parse(branchIds);
+      } catch (e) {
+        parsedBranches = branchIds.split(",").map(x => x.trim()).filter(Boolean);
+      }
+    }
+
+    if (!Array.isArray(parsedBranches) || parsedBranches.length === 0 || parsedBranches.includes("all")) {
+      return "All Branches";
+    }
+
+    const branchNames = parsedBranches
+      .map((id) => {
+        const branch = branches.find((b) => b.id === Number(id));
         return branch?.name || `Branch ${id}`;
       })
       .join(", ");
@@ -481,35 +538,88 @@ export default function NotificationsView() {
             </>
           )}
 
-          {/* Branch Selection */}
+          {/* Target Audience */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Target Branches
+              Target Audience
             </label>
-            <div className="space-y-2">
+            <div className="flex gap-4">
               <label className="flex items-center gap-2">
                 <input
-                  type="checkbox"
-                  checked={selectedBranches.includes("all")}
-                  onChange={() => handleBranchChange("all")}
+                  type="radio"
+                  value="branch"
+                  checked={targetAudience === "branch"}
+                  onChange={(e) => setTargetAudience(e.target.value)}
                   className="w-4 h-4"
                 />
-                <span className="text-sm font-medium">All Branches</span>
+                <span className="text-sm">By Branch</span>
               </label>
-              {branches.map((branch) => (
-                <label key={branch.id} className="flex items-center gap-2 ml-4">
-                  <input
-                    type="checkbox"
-                    checked={selectedBranches.includes(branch.id)}
-                    onChange={() => handleBranchChange(branch.id)}
-                    disabled={selectedBranches.includes("all")}
-                    className="w-4 h-4"
-                  />
-                  <span className="text-sm">{branch.name}</span>
-                </label>
-              ))}
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  value="client"
+                  checked={targetAudience === "client"}
+                  onChange={(e) => setTargetAudience(e.target.value)}
+                  className="w-4 h-4"
+                />
+                <span className="text-sm">Specific Client</span>
+              </label>
             </div>
           </div>
+
+          {targetAudience === "branch" ? (
+            /* Branch Selection */
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Target Branches
+              </label>
+              <div className="space-y-2">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={selectedBranches.includes("all")}
+                    onChange={() => handleBranchChange("all")}
+                    className="w-4 h-4"
+                  />
+                  <span className="text-sm font-medium">All Branches</span>
+                </label>
+                {branches.map((branch) => (
+                  <label key={branch.id} className="flex items-center gap-2 ml-4">
+                    <input
+                      type="checkbox"
+                      checked={selectedBranches.includes(branch.id)}
+                      onChange={() => handleBranchChange(branch.id)}
+                      disabled={selectedBranches.includes("all")}
+                      className="w-4 h-4"
+                    />
+                    <span className="text-sm">{branch.name}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          ) : (
+            /* Client Selection */
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Target Client *
+              </label>
+              <select
+                value={selectedUser}
+                onChange={(e) => setSelectedUser(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg"
+                required
+              >
+                <option value="">-- Select a client --</option>
+                {users
+                  .filter((u) => u.name || u.email || u.phone)
+                  .map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name || "Unnamed"} ({u.email || u.phone || `User #${u.id}`})
+                    </option>
+                  ))}
+              </select>
+            </div>
+          )}
 
           {/* Target Page */}
           <div>
@@ -570,7 +680,7 @@ export default function NotificationsView() {
                   <th className="text-left px-4 py-3">Date</th>
                   <th className="text-left px-4 py-3">Title</th>
                   <th className="text-left px-4 py-3">Message</th>
-                  <th className="text-left px-4 py-3">Branches</th>
+                  <th className="text-left px-4 py-3">Target</th>
                   <th className="text-left px-4 py-3">Recipients</th>
                   <th className="text-left px-4 py-3">Success Rate</th>
                   <th className="text-left px-4 py-3">Sent By</th>
@@ -605,7 +715,7 @@ export default function NotificationsView() {
                         {notif.message}
                       </td>
                       <td className="px-4 py-3 text-gray-700">
-                        {formatBranches(notif.branch_ids)}
+                        {formatTarget(notif)}
                       </td>
                       <td className="px-4 py-3 text-gray-700">
                         {notif.recipients_count || 0}

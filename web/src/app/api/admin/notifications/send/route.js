@@ -33,7 +33,7 @@ export async function POST(request) {
     const body = await request.json();
     console.log("[PUSH] Request body:", JSON.stringify(body, null, 2));
 
-    const { title, message, branchIds, targetPage, eventId } = body;
+    const { title, message, branchIds, targetPage, eventId, userId } = body;
 
     if (!title || !message) {
       console.error("[PUSH] ❌ Validation failed - missing title or message");
@@ -49,39 +49,50 @@ export async function POST(request) {
 
     // Determine which users to send to based on branches
     let users;
-
-    // Convert branchIds to proper format for database storage
     const shouldSendToAll =
       !branchIds || branchIds.length === 0 || branchIds.includes("all");
-    const dbBranchIds = shouldSendToAll
+    const dbBranchIds = userId || shouldSendToAll
       ? null
       : branchIds.filter((id) => id !== "all").map((id) => parseInt(id, 10));
 
-    console.log("[PUSH] Branch selection:", {
-      shouldSendToAll,
-      dbBranchIds,
-      originalBranchIds: branchIds,
-    });
-
-    console.log("[PUSH] Step 4: Fetching target users from database...");
-
-    if (shouldSendToAll) {
+    if (userId) {
+      console.log("[PUSH] Step 3: Fetching specific target user...");
       users = await sql`
         SELECT DISTINCT u.id, u.name, u.email, b.name as branch_name
         FROM auth_users u
         LEFT JOIN branches b ON u.branch_id = b.id
-        WHERE u.is_active = true
-      `;
-      console.log("[PUSH] Fetched all active users:", users.length);
-    } else {
-      users = await sql`
-        SELECT DISTINCT u.id, u.name, u.email, b.name as branch_name
-        FROM auth_users u
-        LEFT JOIN branches b ON u.branch_id = b.id
-        WHERE u.branch_id = ANY(${dbBranchIds}::integer[])
+        WHERE u.id = ${Number(userId)}
           AND u.is_active = true
       `;
-      console.log("[PUSH] Fetched users for branches:", users.length);
+      console.log("[PUSH] Fetched specific user:", users.length);
+    } else {
+      console.log("[PUSH] Step 3: Processing branch selection...");
+      console.log("[PUSH] Branch selection:", {
+        shouldSendToAll,
+        dbBranchIds,
+        originalBranchIds: branchIds,
+      });
+
+      console.log("[PUSH] Step 4: Fetching target users from database...");
+
+      if (shouldSendToAll) {
+        users = await sql`
+          SELECT DISTINCT u.id, u.name, u.email, b.name as branch_name
+          FROM auth_users u
+          LEFT JOIN branches b ON u.branch_id = b.id
+          WHERE u.is_active = true
+        `;
+        console.log("[PUSH] Fetched all active users:", users.length);
+      } else {
+        users = await sql`
+          SELECT DISTINCT u.id, u.name, u.email, b.name as branch_name
+          FROM auth_users u
+          LEFT JOIN branches b ON u.branch_id = b.id
+          WHERE u.branch_id = ANY(${dbBranchIds}::integer[])
+            AND u.is_active = true
+        `;
+        console.log("[PUSH] Fetched users for branches:", users.length);
+      }
     }
 
     if (users.length === 0) {
@@ -522,7 +533,7 @@ export async function POST(request) {
     console.log("[PUSH] Step 11: Storing notification in history...");
     const [notification] = await sql`
       INSERT INTO admin_push_notifications (
-        title, message, branch_ids, target_page, event_id, sent_by, recipients_count, successful_sends
+        title, message, branch_ids, target_page, event_id, sent_by, recipients_count, successful_sends, user_id
       )
       VALUES (
         ${title}, 
@@ -532,7 +543,8 @@ export async function POST(request) {
         ${eventId || null}, 
         ${adminUser.id}, 
         ${users.length},
-        ${successCount}
+        ${successCount},
+        ${userId ? Number(userId) : null}
       )
       RETURNING *
     `;

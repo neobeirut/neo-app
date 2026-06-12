@@ -27,10 +27,13 @@ export async function GET(request) {
         apn.*,
         au.name as sent_by_name,
         au.email as sent_by_email,
-        e.name as event_name
+        e.name as event_name,
+        target_u.name as target_user_name,
+        target_u.email as target_user_email
       FROM admin_push_notifications apn
       LEFT JOIN admin_users au ON apn.sent_by = au.id
       LEFT JOIN events e ON apn.event_id = e.id
+      LEFT JOIN auth_users target_u ON apn.user_id = target_u.id
       ORDER BY apn.created_at DESC
       LIMIT ${limit}
       OFFSET ${offset}
