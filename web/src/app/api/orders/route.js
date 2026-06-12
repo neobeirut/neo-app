@@ -1,4 +1,5 @@
 import sql from "@/app/api/utils/sql";
+import { sendPushNotificationToBranchAdmins } from "@/app/api/utils/pushNotification";
 import { corsJson, corsOptions } from "@/app/api/utils/cors";
 import { reserveUserRewardForOrder } from "@/app/api/utils/loyalty";
 import { resolveUserId } from "./utils/authHelpers";
@@ -554,6 +555,15 @@ export async function POST(request) {
       branchId: effectiveBranchId,
     }).catch((err) => {
       console.error("[new_order_whatsapp] Async error:", err);
+    });
+
+    // Send push notification to branch admins (non-blocking)
+    sendPushNotificationToBranchAdmins(effectiveBranchId, {
+      title: "New Order Alert!",
+      body: `New order #${createdOrderId} has been received.`,
+      data: { orderId: String(createdOrderId), status: "pending" },
+    }).catch((err) => {
+      console.error("[new_order_push] Async error:", err);
     });
 
     return corsJson(request, {
