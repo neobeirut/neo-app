@@ -518,9 +518,10 @@ export async function DELETE(request, { params }) {
 
     const { id } = params;
 
-    await sql`
-      DELETE FROM orders WHERE id = ${id}
-    `;
+    // Start transaction (Neon allows multiple statements in a single template string, but doing them sequentially is safe)
+    await sql`DELETE FROM order_item_customizations WHERE order_item_id IN (SELECT id FROM order_items WHERE order_id = ${id})`;
+    await sql`DELETE FROM order_items WHERE order_id = ${id}`;
+    await sql`DELETE FROM orders WHERE id = ${id}`;
 
     return Response.json({ message: "Order deleted successfully" });
   } catch (error) {

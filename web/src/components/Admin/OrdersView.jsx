@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Eye, CheckCircle, MessageCircle } from "lucide-react";
+import { Eye, CheckCircle, MessageCircle, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import OrderDetailsModal from "@/components/Admin/OrderDetailsModal";
 
@@ -22,6 +22,14 @@ export default function OrdersView({
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [filterStatus, setFilterStatus] = useState("");
   const [filterType, setFilterType] = useState("");
+
+  const handleDeleteClick = (e, orderId) => {
+    e.stopPropagation();
+    if (window.confirm("Are you sure you want to delete this order? This will permanently delete the order and its products.")) {
+      onDelete(orderId);
+    }
+  };
+
 
   const [openWhatsAppOnMount, setOpenWhatsAppOnMount] = useState(false);
 
@@ -266,6 +274,14 @@ export default function OrdersView({
                           }
                         >
                           <Eye size={18} />
+                        </button>
+
+                        <button
+                          onClick={(e) => handleDeleteClick(e, order.id)}
+                          className="text-red-600 hover:text-red-900 ml-2"
+                          title="Delete Order"
+                        >
+                          <Trash2 size={18} />
                         </button>
 
                         {isOrderLocked(order.status) ? (
