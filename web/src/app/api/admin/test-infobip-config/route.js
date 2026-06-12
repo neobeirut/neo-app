@@ -16,7 +16,10 @@ export async function GET(request) {
     }
 
     const roles = Array.isArray(admin?.roles) ? admin.roles : [];
-    const hasAccess = roles.includes("backend") || roles.includes("settings");
+    const hasAccess =
+      roles.includes("backend") ||
+      roles.includes("settings") ||
+      roles.includes("orders");
 
     if (!hasAccess) {
       return Response.json(

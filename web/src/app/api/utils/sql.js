@@ -34,6 +34,19 @@ class LazyQuery {
       throw err;
     }
   }
+
+  async catch(onrejected) {
+    return this.then(null, onrejected);
+  }
+
+  async finally(onfinally) {
+    try {
+      const res = await this;
+      return res;
+    } finally {
+      if (onfinally) onfinally();
+    }
+  }
 }
 
 let sql;
