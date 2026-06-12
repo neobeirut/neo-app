@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   MessageSquare,
   Send,
@@ -23,6 +23,16 @@ export default function WhatsAppInboxView({ adminToken }) {
   const [error, setError] = useState(null);
   const [adminBranchName, setAdminBranchName] = useState(null);
   const [infobipConfig, setInfobipConfig] = useState(null);
+
+  const messagesEndRef = useRef(null);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
 
   // Fetch conversations on mount
   useEffect(() => {
@@ -421,6 +431,7 @@ export default function WhatsAppInboxView({ adminToken }) {
                         </div>
                       </div>
                     ))}
+                  <div ref={messagesEndRef} />
                   </div>
                 )}
               </div>
