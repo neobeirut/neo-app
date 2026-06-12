@@ -2,6 +2,7 @@ import {
   getInfobipConfig,
   infobipFetch,
   toE164,
+  sendInfobipWhatsAppFreeForm,
 } from "@/app/api/utils/infobipWhatsApp";
 import { getAdminFromRequest } from "@/app/api/utils/adminAuth";
 
@@ -107,31 +108,15 @@ export async function POST(request) {
           `[test-whatsapp] Sending test message to ${normalizedPhone}`,
         );
 
-        const payload = {
-          messages: [
-            {
-              from: config.sender,
-              to: normalizedPhone,
-              messageId: `test-${Date.now()}`,
-              content: {
-                text: `✅ WhatsApp Test Message\n\nThis is a test message from Néo Beirut admin panel.\n\nTimestamp: ${new Date().toISOString()}\n\nIf you received this, Infobip integration is working correctly!`,
-              },
-            },
-          ],
-        };
-
-        const result = await infobipFetch("/whatsapp/1/message/text", {
-          method: "POST",
-          body: payload,
-        });
-
-        const message = result?.messages?.[0] || null;
+        const result = await sendInfobipWhatsAppFreeForm(
+          normalizedPhone,
+          `✅ WhatsApp Test Message\n\nThis is a test message from NAco Beirut admin panel.\n\nTimestamp: ${new Date().toISOString()}\n\nIf you received this, Infobip integration is working correctly!`
+        );
 
         testMessageResult = {
           success: true,
-          messageId: message?.messageId || null,
-          status:
-            message?.status?.groupName || message?.status?.name || "unknown",
+          messageId: result.id || null,
+          status: result.status || "unknown",
           to: normalizedPhone,
           from: config.sender,
           sentAt: new Date().toISOString(),

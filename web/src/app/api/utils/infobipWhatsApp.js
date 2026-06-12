@@ -109,6 +109,11 @@ export async function infobipFetch(endpoint, options = {}) {
           }
         }
       });
+    } else if (body.from) {
+      let from = String(body.from).trim();
+      if (from.startsWith("+")) {
+        body.from = from.slice(1);
+      }
     }
     body = JSON.stringify(body);
   }
@@ -323,16 +328,12 @@ export async function sendInfobipWhatsAppFreeForm(toPhone, messageText) {
   const to = toInfobipRecipient(toPhone);
 
   const payload = {
-    messages: [
-      {
-        from: cfg.sender,
-        to,
-        messageId: `freeform-${Date.now()}`,
-        content: {
-          text: messageText,
-        },
-      },
-    ],
+    from: cfg.sender,
+    to,
+    messageId: `freeform-${Date.now()}`,
+    content: {
+      text: messageText,
+    },
   };
 
   const result = await infobipFetch("/whatsapp/1/message/text", {
@@ -340,10 +341,9 @@ export async function sendInfobipWhatsAppFreeForm(toPhone, messageText) {
     body: payload,
   });
 
-  const msgResult = result?.messages?.[0];
   return {
-    id: msgResult?.messageId || null,
-    status: msgResult?.status?.name || "PENDING",
+    id: result?.messageId || null,
+    status: result?.status?.name || "PENDING",
     raw: result,
   };
 }
