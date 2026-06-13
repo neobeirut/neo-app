@@ -136,7 +136,7 @@ const DEFAULT_SCHEMAS = {
   },
   delivery_to_branch: {
     category: "UTILITY",
-    bodyPlaceholderCount: 7, // 7-placeholder template details
+    bodyPlaceholderCount: 1, // 1-placeholder consolidated details
     hasHeader: false,
     headerType: null,
     hasButtons: false,

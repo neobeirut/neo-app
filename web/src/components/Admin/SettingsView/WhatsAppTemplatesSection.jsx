@@ -204,18 +204,13 @@ export function WhatsAppTemplatesSection({
 
             <div className="mt-3 bg-orange-100 rounded p-3 text-xs text-orange-900 space-y-1">
               <p className="font-semibold">
-                Template body example (7 placeholders):
+                Template body example (1 placeholder):
               </p>
-              <p className="font-mono whitespace-pre-line">
-                {`🛵 New Delivery Order #{{1}}
-👤 Client: {{2}}
-📞 Phone: {{3}}
-📍 Address: {{4}}
-💰 Order: {{5}} | 🚚 Delivery: {{6}}
-🕐 Placed: {{7}}`}
+              <p className="font-mono">
+                New delivery order details: #{"{{"}"1{"}}"}
               </p>
               <p className="mt-2 font-semibold">
-                Schema: 7 body placeholders, no header, no buttons.
+                Schema: 1 body placeholder (contains consolidated order details on a single line), no header, no buttons.
               </p>
             </div>
           </div>

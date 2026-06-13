@@ -304,8 +304,25 @@ export async function POST(request) {
         formatBeirutDateTime(order.created_at) + (order.special_instructions ? ` | 📝 Notes: ${String(order.special_instructions).trim()}` : "")
       ];
     } else if (schema.bodyPlaceholderCount === 1) {
-      // For a 1-placeholder template, the placeholder is the Order ID (newlines are rejected by Infobip)
-      placeholders = [String(order.id)];
+      // Build a consolidated single-line details text for a 1-placeholder template (newlines are rejected by Infobip)
+      const rawText = [
+        `🛵 New Delivery Order #${order.id}`,
+        `👤 Client: ${clientName}`,
+        `📞 Phone: ${clientPhone}`,
+        `📍 Address: ${addressText}`,
+        mapsLink ? `🗺 Location: ${mapsLink}` : null,
+        `💰 Order: ${formatMoney(orderAmountRaw)} | 🚚 Delivery: ${formatMoney(deliveryFeeRaw)}`,
+        `🕐 Placed: ${formatBeirutDateTime(order.created_at)}`,
+        order.special_instructions ? `📝 Notes: ${String(order.special_instructions).trim()}` : null
+      ]
+        .filter(Boolean)
+        .join(" | ");
+
+      const sanitizedText = rawText
+        .replace(/[\r\n\t]+/g, " ")       // replace newlines/tabs with space
+        .replace(/\s{4,}/g, " ");        // replace 4+ consecutive spaces with a single space
+
+      placeholders = [sanitizedText];
     } else if (schema.bodyPlaceholderCount > 0) {
       placeholders = [String(order.id)]; // Default legacy behavior
     }
