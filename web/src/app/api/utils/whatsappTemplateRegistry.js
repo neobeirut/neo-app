@@ -136,7 +136,7 @@ const DEFAULT_SCHEMAS = {
   },
   delivery_to_branch: {
     category: "UTILITY",
-    bodyPlaceholderCount: 1, // Order ID
+    bodyPlaceholderCount: 7, // 7-placeholder template details
     hasHeader: false,
     headerType: null,
     hasButtons: false,
