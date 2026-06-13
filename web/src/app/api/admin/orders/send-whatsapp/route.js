@@ -298,14 +298,14 @@ export async function POST(request) {
         String(order.id),
         clientName,
         clientPhone,
-        addressText + (mapsLink ? `\n🗺 Location: ${mapsLink}` : ""),
+        addressText + (mapsLink ? ` | 🗺 Location: ${mapsLink}` : ""),
         formatMoney(orderAmountRaw),
         formatMoney(deliveryFeeRaw),
-        formatBeirutDateTime(order.created_at) + (order.special_instructions ? `\n📝 Notes: ${String(order.special_instructions).trim()}` : "")
+        formatBeirutDateTime(order.created_at) + (order.special_instructions ? ` | 📝 Notes: ${String(order.special_instructions).trim()}` : "")
       ];
     } else if (schema.bodyPlaceholderCount === 1) {
-      // Fallback: send the entire message text as a single placeholder
-      placeholders = [messageText];
+      // For a 1-placeholder template, the placeholder is the Order ID (newlines are rejected by Infobip)
+      placeholders = [String(order.id)];
     } else if (schema.bodyPlaceholderCount > 0) {
       placeholders = [String(order.id)]; // Default legacy behavior
     }
