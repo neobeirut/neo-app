@@ -18,7 +18,8 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.neobeirut.storemobile"
+      "package": "com.neobeirut.storemobile",
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "output": "static",

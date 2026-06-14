@@ -14,6 +14,7 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import Constants from 'expo-constants';
+import Notifications from '@/utils/notifications';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -38,6 +39,10 @@ export default function LoginScreen() {
       try {
         const token = await getAdminToken();
         if (token) {
+          // Register push notification token on startup (async, non-blocking)
+          registerPush(token).catch(err => {
+            console.error('Push token registration failed on startup:', err);
+          });
           router.replace('/(tabs)/orders');
         }
       } catch (err) {
@@ -88,18 +93,18 @@ export default function LoginScreen() {
     }
   };
 
-  const registerPush = async (token: string) => {
+  async function registerPush(token: string) {
     try {
       if (Platform.OS === 'web') return;
 
+
+
       // Guard against Expo Go crashing on SDK 53+
       const isExpoGo = Constants.appOwnership === 'expo';
-      if (isExpoGo) {
+      if (isExpoGo && process.env.EXPO_PUBLIC_USE_REAL_NOTIFICATIONS !== 'true') {
         console.warn('Push notifications are disabled in Expo Go. Please use a development build to test notifications.');
         return;
       }
-
-      const Notifications = require('expo-notifications');
 
       // Request permissions
       const { status: existingStatus } = await Notifications.getPermissionsAsync();

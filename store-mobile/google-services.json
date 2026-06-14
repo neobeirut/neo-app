@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "320998820597",
+    "project_id": "neo-flow",
+    "storage_bucket": "neo-flow.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:320998820597:android:a74371f21f57e9422413bc",
+        "android_client_info": {
+          "package_name": "com.neobeirut.storemobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA2MWxtLdyGBeIoh6wcGGkl-sD4-3jpoMQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
