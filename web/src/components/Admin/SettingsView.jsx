@@ -1,15 +1,11 @@
 import { useWhatsAppTemplates } from "./SettingsView/useWhatsAppTemplates";
 import { usePromoPopup } from "./SettingsView/usePromoPopup";
-import { WhatsAppProviderSection } from "./SettingsView/WhatsAppProviderSection";
 import { WhatsAppTemplatesSection } from "./SettingsView/WhatsAppTemplatesSection";
 import { PromoPopupSection } from "./SettingsView/PromoPopupSection";
-import { DeliveryCostSection } from "./SettingsView/DeliveryCostSection";
 import { BranchBackgroundSection } from "./SettingsView/BranchBackgroundSection";
 import { WebsiteIconSection } from "./SettingsView/WebsiteIconSection";
 
 export default function SettingsView({
-  deliveryCost,
-  onUpdateDeliveryCost,
   branchBackgroundUrl,
   onUpdateBranchBackground,
   websiteIconUrl,
@@ -21,9 +17,7 @@ export default function SettingsView({
     waTemplateLoading,
     waTemplateSaving,
     waTemplateUpdatedAt,
-    waTestLoading,
     handleSaveWhatsAppTemplates,
-    handleTestBirdConfig,
   } = useWhatsAppTemplates();
 
   const {
@@ -51,17 +45,13 @@ export default function SettingsView({
           onUpdateWebsiteIcon={onUpdateWebsiteIcon}
         />
 
-        <WhatsAppProviderSection />
-
         <WhatsAppTemplatesSection
           waTemplates={waTemplates}
           setWaTemplates={setWaTemplates}
           waTemplateLoading={waTemplateLoading}
           waTemplateSaving={waTemplateSaving}
           waTemplateUpdatedAt={waTemplateUpdatedAt}
-          waTestLoading={waTestLoading}
           handleSaveWhatsAppTemplates={handleSaveWhatsAppTemplates}
-          handleTestBirdConfig={handleTestBirdConfig}
         />
 
         <PromoPopupSection
@@ -75,11 +65,6 @@ export default function SettingsView({
           products={products}
           events={events}
           handleSavePromo={handleSavePromo}
-        />
-
-        <DeliveryCostSection
-          deliveryCost={deliveryCost}
-          onUpdateDeliveryCost={onUpdateDeliveryCost}
         />
 
         <BranchBackgroundSection

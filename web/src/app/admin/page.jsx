@@ -238,7 +238,6 @@ export default function AdminPage() {
     rewards,
     users,
     loyaltyTransactions,
-    deliveryCost,
     branchBackgroundUrl,
     websiteIconUrl,
     orders,
@@ -270,7 +269,6 @@ export default function AdminPage() {
     handleSaveBranch,
     handleSaveReward,
     handleDelete,
-    handleUpdateDeliveryCost,
     handleUpdateBranchBackground,
     handleOrderStatusChange,
     handleOrderItemsUpdate,
@@ -638,10 +636,8 @@ export default function AdminPage() {
         {/* Settings View */}
         {activeTab === "settings" && (
           <SettingsView
-            deliveryCost={deliveryCost}
             branchBackgroundUrl={branchBackgroundUrl}
             websiteIconUrl={websiteIconUrl}
-            onUpdateDeliveryCost={handleUpdateDeliveryCost}
             onUpdateBranchBackground={handleUpdateBranchBackground}
             onUpdateWebsiteIcon={handleUpdateWebsiteIcon}
           />

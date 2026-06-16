@@ -217,40 +217,7 @@ export function useAdminActions(fetchCallbacks) {
     }
   };
 
-  const handleUpdateDeliveryCost = async (cost) => {
-    try {
-      const response = await fetch("/api/settings/delivery-cost", {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          ...getAdminHeaders(),
-        },
-        body: JSON.stringify({ delivery_cost: cost }),
-      });
 
-      if (!response.ok) {
-        // prefer server-provided message if available
-        let errorMessage = `Failed to update delivery cost (status ${response.status})`;
-        try {
-          const error = await response.json();
-          if (error?.error) {
-            errorMessage = `Failed to update delivery cost: ${error.error}`;
-          }
-        } catch (e) {
-          // ignore
-        }
-        throw new Error(errorMessage);
-      }
-
-      if (fetchCallbacks.fetchDeliveryCost) {
-        fetchCallbacks.fetchDeliveryCost();
-      }
-      return true;
-    } catch (error) {
-      console.error("Error updating delivery cost:", error);
-      throw error;
-    }
-  };
 
   const handleOrderStatusChange = async (orderId, status) => {
     try {
@@ -375,7 +342,6 @@ export function useAdminActions(fetchCallbacks) {
     handleSaveBranch,
     handleSaveReward,
     handleDelete,
-    handleUpdateDeliveryCost,
     handleUpdateBranchBackground,
     handleOrderStatusChange,
     handleOrderItemsUpdate,

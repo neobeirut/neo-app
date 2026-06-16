@@ -6,9 +6,7 @@ export function WhatsAppTemplatesSection({
   waTemplateLoading,
   waTemplateSaving,
   waTemplateUpdatedAt,
-  waTestLoading,
   handleSaveWhatsAppTemplates,
-  handleTestBirdConfig,
 }) {
   return (
     <div className="bg-white rounded-lg shadow p-6 max-w-4xl mb-6">
@@ -16,12 +14,11 @@ export function WhatsAppTemplatesSection({
         WhatsApp Order Templates
       </h3>
       <p className="text-sm text-gray-600 mb-4">
-        Configure WhatsApp templates for each order status. Template
-        configuration works with both Bird and Infobip providers.
+        Configure WhatsApp templates for each order status. Infobip templates require a valid template name and language/locale.
       </p>
 
       {waTemplateLoading ? (
-        <div className="text-gray-600">Loading WhatsApp templates…</div>
+        <div className="text-gray-600">Loading WhatsApp templates...</div>
       ) : (
         <form onSubmit={handleSaveWhatsAppTemplates} className="space-y-6">
           {/* New Order to Branch Template - Special Section */}
@@ -60,80 +57,21 @@ export function WhatsAppTemplatesSection({
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Project ID
+                  Language / Locale
                 </label>
                 <input
-                  value={waTemplates.new_order_to_branch?.projectId || ""}
+                  value={waTemplates.new_order_to_branch?.language || waTemplates.new_order_to_branch?.locale || "en_US"}
                   onChange={(e) =>
                     setWaTemplates((prev) => ({
                       ...prev,
                       new_order_to_branch: {
                         ...prev.new_order_to_branch,
-                        projectId: e.target.value,
+                        language: e.target.value,
+                        locale: e.target.value, // keep for backward compatibility
                       },
                     }))
                   }
-                  placeholder="97fd54f9-19c0-42ca-a0eb-c78839fd9133"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono"
-                />
-              </div>
-
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Published Version ID
-                </label>
-                <input
-                  value={waTemplates.new_order_to_branch?.version_id || ""}
-                  onChange={(e) =>
-                    setWaTemplates((prev) => ({
-                      ...prev,
-                      new_order_to_branch: {
-                        ...prev.new_order_to_branch,
-                        version_id: e.target.value,
-                      },
-                    }))
-                  }
-                  placeholder="43ca1194-c886-4aa0-af0b-7219fb139436"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono"
-                />
-              </div>
-
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Version (optional)
-                </label>
-                <input
-                  value={waTemplates.new_order_to_branch?.version || "latest"}
-                  onChange={(e) =>
-                    setWaTemplates((prev) => ({
-                      ...prev,
-                      new_order_to_branch: {
-                        ...prev.new_order_to_branch,
-                        version: e.target.value,
-                      },
-                    }))
-                  }
-                  placeholder="latest"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                />
-              </div>
-
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Locale (optional)
-                </label>
-                <input
-                  value={waTemplates.new_order_to_branch?.locale || "en"}
-                  onChange={(e) =>
-                    setWaTemplates((prev) => ({
-                      ...prev,
-                      new_order_to_branch: {
-                        ...prev.new_order_to_branch,
-                        locale: e.target.value,
-                      },
-                    }))
-                  }
-                  placeholder="en"
+                  placeholder="en_US"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
                 />
               </div>
@@ -207,7 +145,7 @@ export function WhatsAppTemplatesSection({
                 Template body example (1 placeholder):
               </p>
               <p className="font-mono">
-                New delivery order details: #{"{{"}"1{"}}"}
+                New delivery order details: #{"{"}1{"}"}
               </p>
               <p className="mt-2 font-semibold">
                 Schema: 1 body placeholder (contains consolidated order details on a single line), no header, no buttons.
@@ -256,41 +194,22 @@ export function WhatsAppTemplatesSection({
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Project ID
+                    Language
                   </label>
                   <input
-                    value={waTemplates[status.key]?.project_id || ""}
+                    value={waTemplates[status.key]?.language || waTemplates[status.key]?.locale || "en_US"}
                     onChange={(e) =>
                       setWaTemplates((prev) => ({
                         ...prev,
                         [status.key]: {
                           ...prev[status.key],
-                          project_id: e.target.value,
+                          language: e.target.value,
+                          locale: e.target.value, // keep for backward compatibility
                         },
                       }))
                     }
-                    placeholder="97fd54f9-19c0-42ca-a0eb-c78839fd9133"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono"
-                  />
-                </div>
-
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Published Version ID
-                  </label>
-                  <input
-                    value={waTemplates[status.key]?.version_id || ""}
-                    onChange={(e) =>
-                      setWaTemplates((prev) => ({
-                        ...prev,
-                        [status.key]: {
-                          ...prev[status.key],
-                          version_id: e.target.value,
-                        },
-                      }))
-                    }
-                    placeholder="43ca1194-c886-4aa0-af0b-7219fb139436"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono"
+                    placeholder="en_US"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
                   />
                 </div>
               </div>
@@ -303,40 +222,13 @@ export function WhatsAppTemplatesSection({
             </p>
           ) : null}
 
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <p className="text-sm text-blue-900 font-medium mb-2">
-              How to find these values in Bird:
-            </p>
-            <ol className="text-xs text-blue-800 space-y-1 list-decimal list-inside">
-              <li>Go to Bird → Message Templates</li>
-              <li>Click on your template (e.g., "order_completed")</li>
-              <li>
-                Copy the <strong>Project ID</strong> from the Overview tab
-              </li>
-              <li>
-                Copy the <strong>Published version ID</strong> from the Overview
-                tab
-              </li>
-              <li>Paste them here for each status template</li>
-            </ol>
-          </div>
-
           <div className="flex gap-2">
             <button
               type="submit"
               disabled={waTemplateSaving}
               className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {waTemplateSaving ? "Saving…" : "Save All Templates"}
-            </button>
-
-            <button
-              type="button"
-              onClick={handleTestBirdConfig}
-              disabled={waTestLoading}
-              className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {waTestLoading ? "Testing…" : "Test Connection"}
+              {waTemplateSaving ? "Saving..." : "Save All Templates"}
             </button>
           </div>
         </form>

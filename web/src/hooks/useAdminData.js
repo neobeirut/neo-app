@@ -7,7 +7,6 @@ export function useAdminData(activeTab) {
   const [rewards, setRewards] = useState([]);
   const [users, setUsers] = useState([]);
   const [loyaltyTransactions, setLoyaltyTransactions] = useState([]);
-  const [deliveryCost, setDeliveryCost] = useState(3.99);
   const [branchBackgroundUrl, setBranchBackgroundUrl] = useState(null);
   const [websiteIconUrl, setWebsiteIconUrl] = useState(null);
   const [orders, setOrders] = useState([]);
@@ -51,7 +50,6 @@ export function useAdminData(activeTab) {
       fetchUsers();
       fetchLoyaltyTransactions();
     } else if (activeTab === "settings") {
-      fetchDeliveryCost();
       fetchBranchBackground();
       fetchWebsiteIcon();
     } else if (activeTab === "orders") {
@@ -218,17 +216,7 @@ export function useAdminData(activeTab) {
     }
   };
 
-  const fetchDeliveryCost = async () => {
-    try {
-      const response = await fetch("/api/settings/delivery-cost");
-      if (response.ok) {
-        const data = await response.json();
-        setDeliveryCost(data.delivery_cost);
-      }
-    } catch (error) {
-      console.error("Error fetching delivery cost:", error);
-    }
-  };
+
 
   const fetchBranchBackground = async () => {
     try {
@@ -336,7 +324,6 @@ export function useAdminData(activeTab) {
     rewards,
     users,
     loyaltyTransactions,
-    deliveryCost,
     branchBackgroundUrl,
     websiteIconUrl,
     orders,
@@ -348,7 +335,6 @@ export function useAdminData(activeTab) {
     fetchRewards,
     fetchUsers,
     fetchLoyaltyTransactions,
-    fetchDeliveryCost,
     fetchBranchBackground,
     fetchWebsiteIcon,
     fetchOrders,

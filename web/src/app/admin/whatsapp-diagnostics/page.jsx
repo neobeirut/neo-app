@@ -23,11 +23,11 @@ export default function WhatsAppDiagnosticsPage() {
   const runDiagnostics = async (token) => {
     setLoading(true);
     try {
-      // Check Bird configuration
-      const birdRes = await fetch("/api/admin/test-bird-config", {
+      // Check Infobip configuration
+      const infobipRes = await fetch("/api/admin/test-infobip-config", {
         headers: { "x-admin-token": token },
       });
-      const birdData = await birdRes.json();
+      const infobipData = await infobipRes.json();
 
       // Check WhatsApp templates
       const templatesRes = await fetch("/api/settings/whatsapp-templates");
@@ -40,7 +40,7 @@ export default function WhatsAppDiagnosticsPage() {
       const branchesData = await branchesRes.json();
 
       setDiagnostics({
-        bird: birdData,
+        infobip: infobipData,
         templates: templatesData.templates || {},
         branches: branchesData.branches || [],
       });
@@ -53,22 +53,7 @@ export default function WhatsAppDiagnosticsPage() {
 
   const fetchLogs = async (token) => {
     try {
-      // Fetch whatsapp_logs directly for branch notifications
-      const res = await fetch("/api/admin/whatsapp-inbox/conversations", {
-        headers: { "x-admin-token": token },
-      });
-
-      // Get logs via a custom query
-      const logsRes = await fetch("/api/admin-users/session", {
-        method: "POST",
-        headers: {
-          "x-admin-token": token,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ action: "get_whatsapp_logs" }),
-      });
-
-      // For now, use empty logs - we'll add proper endpoint later
+      // For now, use empty logs - we'll add proper endpoint later if needed
       setLogs([]);
     } catch (err) {
       console.error("Failed to fetch logs:", err);
@@ -88,8 +73,7 @@ export default function WhatsAppDiagnosticsPage() {
   }
 
   const hasNewOrderTemplate = !!(
-    diagnostics?.templates?.new_order_to_branch?.projectId ||
-    process.env.BIRD_WHATSAPP_TEMPLATE_PROJECT_ID
+    diagnostics?.templates?.new_order_to_branch?.template_name
   );
 
   const branchesWithPhone =
@@ -132,34 +116,34 @@ export default function WhatsAppDiagnosticsPage() {
           </div>
         </div>
 
-        {/* Bird API Configuration */}
+        {/* Infobip API Configuration */}
         <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
           <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-            {diagnostics?.bird?.configured ? (
+            {diagnostics?.infobip?.configured ? (
               <CheckCircle className="text-green-600" size={24} />
             ) : (
               <XCircle className="text-red-600" size={24} />
             )}
-            Bird API Configuration
+            Infobip API Configuration
           </h2>
 
-          {diagnostics?.bird?.configured ? (
+          {diagnostics?.infobip?.configured ? (
             <div className="space-y-2">
               <div className="flex items-center gap-2 text-green-700 bg-green-50 p-3 rounded">
                 <CheckCircle size={20} />
-                <span>Bird API is configured correctly</span>
+                <span>Infobip API is configured correctly</span>
               </div>
               <div className="grid grid-cols-2 gap-4 mt-4 text-sm">
                 <div className="bg-gray-50 p-3 rounded">
-                  <div className="text-gray-600 mb-1">Workspace ID</div>
+                  <div className="text-gray-600 mb-1">Base URL</div>
                   <div className="font-mono text-xs">
-                    {diagnostics.bird.workspaceId}
+                    {diagnostics.infobip.baseUrl}
                   </div>
                 </div>
                 <div className="bg-gray-50 p-3 rounded">
-                  <div className="text-gray-600 mb-1">Channel ID</div>
+                  <div className="text-gray-600 mb-1">Sender Phone / ID</div>
                   <div className="font-mono text-xs">
-                    {diagnostics.bird.channelId}
+                    {diagnostics.infobip.sender}
                   </div>
                 </div>
               </div>
@@ -167,17 +151,11 @@ export default function WhatsAppDiagnosticsPage() {
           ) : (
             <div className="bg-red-50 border border-red-200 p-4 rounded">
               <p className="text-red-800 font-medium mb-2">
-                ⚠️ Bird API Not Configured
+                ⚠️ Infobip API Not Configured
               </p>
               <p className="text-red-700 text-sm mb-3">
-                {diagnostics?.bird?.error}
+                {diagnostics?.infobip?.error}
               </p>
-              <a
-                href="/admin/whatsapp-setup"
-                className="inline-block px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
-              >
-                View Setup Guide
-              </a>
             </div>
           )}
         </div>
@@ -215,21 +193,18 @@ export default function WhatsAppDiagnosticsPage() {
               {hasNewOrderTemplate ? (
                 <div className="text-sm space-y-1">
                   <div>
-                    <span className="text-gray-600">Project ID:</span>{" "}
+                    <span className="text-gray-600">Template Name:</span>{" "}
                     <code className="bg-white px-2 py-1 rounded text-xs">
-                      {diagnostics?.templates?.new_order_to_branch?.projectId ||
-                        process.env.BIRD_WHATSAPP_TEMPLATE_PROJECT_ID}
+                      {diagnostics?.templates?.new_order_to_branch?.template_name}
                     </code>
                   </div>
                   <div>
-                    <span className="text-gray-600">Version:</span>{" "}
-                    {diagnostics?.templates?.new_order_to_branch?.version ||
-                      "latest"}
-                  </div>
-                  <div>
-                    <span className="text-gray-600">Locale:</span>{" "}
-                    {diagnostics?.templates?.new_order_to_branch?.locale ||
-                      "en"}
+                    <span className="text-gray-600">Language:</span>{" "}
+                    <code className="bg-white px-2 py-1 rounded text-xs">
+                      {diagnostics?.templates?.new_order_to_branch?.language ||
+                        diagnostics?.templates?.new_order_to_branch?.locale ||
+                        "en_US"}
+                    </code>
                   </div>
                 </div>
               ) : (
@@ -262,8 +237,15 @@ export default function WhatsAppDiagnosticsPage() {
                         <div className="font-medium text-sm mb-1">
                           {key.replace(/_/g, " ")}
                         </div>
-                        <div className="text-xs text-gray-600">
-                          {config.templateName || "Not configured"}
+                        <div className="text-xs text-gray-600 space-y-1">
+                          <div>
+                            <span className="text-gray-500">Name:</span>{" "}
+                            {config.template_name || config.templateName || "Not configured"}
+                          </div>
+                          <div>
+                            <span className="text-gray-500">Language:</span>{" "}
+                            {config.language || config.locale || "en_US"}
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -287,7 +269,7 @@ export default function WhatsAppDiagnosticsPage() {
           {branchesWithPhone.length > 0 && (
             <div className="mb-4">
               <h3 className="font-semibold text-green-700 mb-2">
-                ✓ Configured Branches ({branchesWithPhone.length})
+                Configured Branches ({branchesWithPhone.length})
               </h3>
               <div className="space-y-2">
                 {branchesWithPhone.map((branch) => (
@@ -308,7 +290,7 @@ export default function WhatsAppDiagnosticsPage() {
           {branchesWithoutPhone.length > 0 && (
             <div>
               <h3 className="font-semibold text-yellow-700 mb-2">
-                ⚠ Missing Phone Numbers ({branchesWithoutPhone.length})
+                Missing Phone Numbers ({branchesWithoutPhone.length})
               </h3>
               <div className="space-y-2">
                 {branchesWithoutPhone.map((branch) => (
@@ -329,54 +311,6 @@ export default function WhatsAppDiagnosticsPage() {
                   Admin → Branches
                 </a>
               </div>
-            </div>
-          )}
-        </div>
-
-        {/* Recent Logs */}
-        <div className="bg-white rounded-lg shadow-lg p-6">
-          <h2 className="text-xl font-bold mb-4">Recent WhatsApp Logs</h2>
-
-          {logs.length === 0 ? (
-            <div className="text-center text-gray-500 py-8">No logs yet</div>
-          ) : (
-            <div className="space-y-2 max-h-96 overflow-y-auto">
-              {logs.slice(0, 20).map((log) => (
-                <div
-                  key={log.id}
-                  className={`p-3 rounded border text-sm ${
-                    log.status === "sent"
-                      ? "bg-green-50 border-green-200"
-                      : "bg-red-50 border-red-200"
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="font-medium">
-                      Order #{log.order_id} → {log.to_phone}
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      {new Date(log.created_at).toLocaleString()}
-                    </div>
-                  </div>
-                  <div className="text-xs">
-                    <span className="text-gray-600">Status:</span>{" "}
-                    <span
-                      className={
-                        log.status === "sent"
-                          ? "text-green-700 font-medium"
-                          : "text-red-700 font-medium"
-                      }
-                    >
-                      {log.status}
-                    </span>
-                  </div>
-                  {log.error && (
-                    <div className="mt-2 text-xs text-red-700 bg-red-100 p-2 rounded">
-                      {log.error}
-                    </div>
-                  )}
-                </div>
-              ))}
             </div>
           )}
         </div>
