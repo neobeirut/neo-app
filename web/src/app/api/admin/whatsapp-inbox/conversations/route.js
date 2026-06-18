@@ -1,4 +1,4 @@
-import sql from "@/app/api/utils/sql";
+﻿import sql from "@/app/api/utils/sql";
 import { getAdminFromRequest } from "@/app/api/utils/adminAuth";
 
 /**
@@ -38,8 +38,12 @@ export async function GET(request) {
         FROM whatsapp_conversations wc
         LEFT JOIN auth_users u ON u.id = wc.customer_id
         LEFT JOIN branches b ON b.id = wc.branch_id
-        WHERE ${adminUser.branch_id} = ANY(wc.branch_ids)
-           OR wc.branch_id = ${adminUser.branch_id}
+        WHERE (
+          ${adminUser.branch_id} = ANY(wc.branch_ids)
+          OR wc.branch_id = ${adminUser.branch_id}
+          OR wc.branch_ids IS NULL
+          OR array_length(wc.branch_ids, 1) IS NULL
+        )
         ORDER BY wc.last_message_at DESC
         LIMIT 100
       `;
