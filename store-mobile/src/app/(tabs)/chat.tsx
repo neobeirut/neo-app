@@ -33,7 +33,7 @@ export default function ChatScreen() {
   const conversations = convsData?.conversations || [];
 
   // 2. Fetch messages for selected conversation
-  const { data: msgsData, refetch: refetchMsgs } = useQuery({
+  const { data: msgsData, refetch: refetchMsgs, isLoading: loadingMsgs, isError: msgsError, error: msgsFetchError } = useQuery({
     queryKey: ['admin-messages', selectedConv?.phone],
     queryFn: () => {
       if (!selectedConv?.phone) return { messages: [] };
@@ -197,7 +197,25 @@ export default function ChatScreen() {
           style={styles.threadScroll}
           contentContainerStyle={styles.threadContent}
         >
-          {messages.length === 0 ? (
+          {loadingMsgs && messages.length === 0 ? (
+            <View style={styles.noMessagesContainer}>
+              <ActivityIndicator size="small" color="#3b82f6" style={{ marginBottom: 8 }} />
+              <Text style={styles.noMessagesText}>Loading messages...</Text>
+            </View>
+          ) : msgsError ? (
+            <View style={styles.noMessagesContainer}>
+              <Ionicons name="alert-circle-outline" size={32} color="#ef4444" style={{ marginBottom: 8 }} />
+              <Text style={[styles.noMessagesText, { color: '#ef4444' }]}>
+                {msgsFetchError instanceof Error ? msgsFetchError.message : 'Failed to load messages'}
+              </Text>
+              <TouchableOpacity
+                style={{ marginTop: 8, paddingHorizontal: 12, paddingVertical: 6, backgroundColor: '#1e293b', borderRadius: 4 }}
+                onPress={() => refetchMsgs()}
+              >
+                <Text style={{ color: '#ffffff', fontSize: 12 }}>Retry</Text>
+              </TouchableOpacity>
+            </View>
+          ) : messages.length === 0 ? (
             <View style={styles.noMessagesContainer}>
               <Text style={styles.noMessagesText}>No messages in this chat yet</Text>
             </View>

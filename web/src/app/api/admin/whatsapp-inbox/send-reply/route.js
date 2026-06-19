@@ -38,22 +38,23 @@ export async function POST(request) {
       );
     }
 
-    const normalizedPhone = normalizePhone(phone);
-    console.log("📞 Normalized phone:", normalizedPhone);
+    const cleanPhone = phone.replace("+", "").replace(/\s+/g, "");
+    console.log("Normalized phone:", cleanPhone);
 
     const [conversation] = await sql`
       SELECT 
         customer_id,
         order_id,
         branch_id,
+        branch_ids,
         session_active
       FROM whatsapp_conversations
-      WHERE REPLACE(phone, ' ', '') = ${normalizedPhone}
+      WHERE REPLACE(REPLACE(phone, ' ', ''), '+', '') = ${cleanPhone}
          OR phone = ${phone}
       LIMIT 1
     `;
 
-    console.log("📊 Conversation found:", conversation);
+    console.log("Conversation found:", conversation);
 
     if (!conversation) {
       return Response.json(
@@ -62,16 +63,24 @@ export async function POST(request) {
       );
     }
 
-    if (adminUser.branch_id && conversation.branch_id !== adminUser.branch_id) {
-      console.log("❌ Branch access denied");
-      return Response.json(
-        {
-          ok: false,
-          error:
-            "Access denied: This conversation belongs to a different branch",
-        },
-        { status: 403 }
-      );
+    if (adminUser.branch_id) {
+      const isAllowed = 
+        conversation.branch_id === adminUser.branch_id ||
+        (conversation.branch_ids && conversation.branch_ids.includes(adminUser.branch_id)) ||
+        !conversation.branch_ids ||
+        conversation.branch_ids.length === 0;
+
+      if (!isAllowed) {
+        console.log("? Branch access denied");
+        return Response.json(
+          {
+            ok: false,
+            error:
+              "Access denied: This conversation belongs to a different branch",
+          },
+          { status: 403 }
+        );
+      }
     }
 
     if (!conversation.session_active) {
@@ -145,7 +154,7 @@ export async function POST(request) {
         last_message_at = now(),
         unread_count = 0,
         updated_at = now()
-      WHERE REPLACE(phone, ' ', '') = ${normalizedPhone}
+      WHERE REPLACE(REPLACE(phone, ' ', ''), '+', '') = ${cleanPhone}
          OR phone = ${phone}
     `;
 

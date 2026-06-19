@@ -23,32 +23,42 @@ export async function GET(request) {
       );
     }
 
-    // Normalize phone for matching
-    const normalizedPhone = normalizePhone(phone);
+    // Normalize phone by removing spaces and plus signs for robust matching
+    const cleanPhone = phone.replace("+", "").replace(/\s+/g, "");
 
     // Verify branch access if admin is branch-specific
     if (adminUser.branch_id) {
       const [conversation] = await sql`
-        SELECT branch_id
+        SELECT branch_id, branch_ids
         FROM whatsapp_conversations
-        WHERE REPLACE(phone, ' ', '') = ${normalizedPhone}
+        WHERE REPLACE(REPLACE(phone, ' ', ''), '+', '') = ${cleanPhone}
            OR phone = ${phone}
         LIMIT 1
       `;
 
-      if (conversation && conversation.branch_id !== adminUser.branch_id) {
-        return Response.json(
-          {
-            ok: false,
-            error:
-              "Access denied: This conversation belongs to a different branch",
-          },
-          { status: 403 },
-        );
+      if (conversation) {
+        // If a specific branch_id matches OR the admin's branch is in branch_ids list,
+        // OR the conversation is unattributed (both branch_id and branch_ids empty), they have access.
+        const isAllowed = 
+          conversation.branch_id === adminUser.branch_id ||
+          (conversation.branch_ids && conversation.branch_ids.includes(adminUser.branch_id)) ||
+          !conversation.branch_ids ||
+          conversation.branch_ids.length === 0;
+
+        if (!isAllowed) {
+          return Response.json(
+            {
+              ok: false,
+              error:
+                "Access denied: This conversation belongs to a different branch",
+            },
+            { status: 403 },
+          );
+        }
       }
     }
 
-    // Fetch all messages for this phone (match with or without spaces)
+    // Fetch all messages for this phone (match with or without spaces or plus signs)
     const messages = await sql`
       SELECT 
         id,
@@ -64,7 +74,7 @@ export async function GET(request) {
         error,
         created_at
       FROM customer_whatsapp_messages
-      WHERE REPLACE(phone, ' ', '') = ${normalizedPhone}
+      WHERE REPLACE(REPLACE(phone, ' ', ''), '+', '') = ${cleanPhone}
          OR phone = ${phone}
       ORDER BY created_at ASC, id ASC
     `;
@@ -73,7 +83,7 @@ export async function GET(request) {
     await sql`
       UPDATE whatsapp_conversations
       SET unread_count = 0
-      WHERE REPLACE(phone, ' ', '') = ${normalizedPhone}
+      WHERE REPLACE(REPLACE(phone, ' ', ''), '+', '') = ${cleanPhone}
          OR phone = ${phone}
     `;
 
