@@ -254,43 +254,63 @@ export default function ChatScreen() {
           )}
         </ScrollView>
 
-        {/* Quick Replies */}
-        <View style={styles.quickRepliesContainer}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickRepliesScroll}>
-            <TouchableOpacity
-              style={styles.quickReplyBtn}
-              onPress={() => handleQuickReply('Your order is being prepared.')}
-            >
-              <Text style={styles.quickReplyText}>Preparing</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.quickReplyBtn}
-              onPress={() => handleQuickReply('Your order is out for delivery.')}
-            >
-              <Text style={styles.quickReplyText}>Out for delivery</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.quickReplyBtn}
-              onPress={() => handleQuickReply('We are checking this for you. Will get back to you shortly.')}
-            >
-              <Text style={styles.quickReplyText}>Checking...</Text>
-            </TouchableOpacity>
-          </ScrollView>
-        </View>
+        {/* Session Expired Warning Banner */}
+        {!selectedConv.session_active && (
+          <View style={{ backgroundColor: '#78350f', padding: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+            <Ionicons name="warning-outline" size={16} color="#fef3c7" />
+            <Text style={{ color: '#fef3c7', fontSize: 13, fontWeight: '600' }}>
+              24h session expired. Customer must message first.
+            </Text>
+          </View>
+        )}
+
+        {/* Quick Replies - Only show if session is active */}
+        {selectedConv.session_active && (
+          <View style={styles.quickRepliesContainer}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickRepliesScroll}>
+              <TouchableOpacity
+                style={styles.quickReplyBtn}
+                onPress={() => handleQuickReply('Your order is being prepared.')}
+              >
+                <Text style={styles.quickReplyText}>Preparing</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.quickReplyBtn}
+                onPress={() => handleQuickReply('Your order is out for delivery.')}
+              >
+                <Text style={styles.quickReplyText}>Out for delivery</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.quickReplyBtn}
+                onPress={() => handleQuickReply('We are checking this for you. Will get back to you shortly.')}
+              >
+                <Text style={styles.quickReplyText}>Checking...</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        )}
 
         {/* Reply Input Bar */}
         <View style={styles.inputBar}>
           <TextInput
             value={replyText}
             onChangeText={setReplyText}
-            placeholder="Type a message..."
+            placeholder={selectedConv.session_active ? "Type a message..." : "Session expired - cannot send"}
             placeholderTextColor="#64748b"
             multiline
-            style={[styles.chatInput, { maxHeight: 100 }]}
+            editable={selectedConv.session_active}
+            style={[
+              styles.chatInput, 
+              { maxHeight: 100 }, 
+              !selectedConv.session_active && { backgroundColor: '#1e293b', color: '#64748b' }
+            ]}
           />
           <TouchableOpacity
-            style={[styles.sendBtn, !replyText.trim() && styles.sendBtnDisabled]}
-            disabled={!replyText.trim() || sendReplyMutation.isPending}
+            style={[
+              styles.sendBtn, 
+              (!replyText.trim() || !selectedConv.session_active) && styles.sendBtnDisabled
+            ]}
+            disabled={!replyText.trim() || !selectedConv.session_active || sendReplyMutation.isPending}
             onPress={handleSend}
           >
             {sendReplyMutation.isPending ? (
@@ -300,7 +320,7 @@ export default function ChatScreen() {
             )}
           </TouchableOpacity>
         </View>
-      </KeyboardAvoidingView>
+            </KeyboardAvoidingView>
     </SafeAreaViewContainer>
   );
 }

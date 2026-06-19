@@ -83,8 +83,36 @@ export async function POST(request) {
       }
     }
 
-    if (!conversation.session_active) {
-      console.log("❌ WhatsApp session expired");
+    // Verify session active status dynamically (Meta 24-hour customer care window)
+    const [user] = conversation.customer_id ? await sql`
+      SELECT last_whatsapp_inbound_at
+      FROM auth_users
+      WHERE id = ${conversation.customer_id}
+      LIMIT 1
+    ` : [null];
+
+    const [lastMsg] = await sql`
+      SELECT created_at
+      FROM customer_whatsapp_messages
+      WHERE (REPLACE(REPLACE(phone, ' ', ''), '+', '') = ${cleanPhone} OR phone = ${phone})
+        AND direction = 'inbound'
+        AND message_type != 'debug_raw_payload'
+      ORDER BY created_at DESC
+      LIMIT 1
+    `;
+
+    const lastInboundTime = user?.last_whatsapp_inbound_at 
+      ? new Date(user.last_whatsapp_inbound_at) 
+      : lastMsg?.created_at 
+        ? new Date(lastMsg.created_at) 
+        : null;
+
+    const isSessionActive = lastInboundTime 
+      ? (Date.now() - lastInboundTime.getTime()) / (1000 * 60 * 60) < 24 
+      : false;
+
+    if (!isSessionActive) {
+      console.log("? WhatsApp session expired");
       return Response.json(
         {
           ok: false,

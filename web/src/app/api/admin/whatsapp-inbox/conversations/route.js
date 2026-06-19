@@ -30,7 +30,17 @@ export async function GET(request) {
           wc.branch_id,
           wc.branch_ids,
           wc.unread_count,
-          wc.session_active,
+          COALESCE(
+            u.last_whatsapp_inbound_at > now() - interval '24 hours',
+            (
+              SELECT MAX(created_at) 
+              FROM customer_whatsapp_messages 
+              WHERE (REPLACE(REPLACE(phone, ' ', ''), '+', '') = REPLACE(REPLACE(wc.phone, ' ', ''), '+', '') OR phone = wc.phone)
+                AND direction = 'inbound'
+                AND message_type != 'debug_raw_payload'
+            ) > now() - interval '24 hours',
+            false
+          ) as session_active,
           wc.created_at,
           u.name as customer_name,
           u.email as customer_email,
@@ -60,7 +70,17 @@ export async function GET(request) {
           wc.branch_id,
           wc.branch_ids,
           wc.unread_count,
-          wc.session_active,
+          COALESCE(
+            u.last_whatsapp_inbound_at > now() - interval '24 hours',
+            (
+              SELECT MAX(created_at) 
+              FROM customer_whatsapp_messages 
+              WHERE (REPLACE(REPLACE(phone, ' ', ''), '+', '') = REPLACE(REPLACE(wc.phone, ' ', ''), '+', '') OR phone = wc.phone)
+                AND direction = 'inbound'
+                AND message_type != 'debug_raw_payload'
+            ) > now() - interval '24 hours',
+            false
+          ) as session_active,
           wc.created_at,
           u.name as customer_name,
           u.email as customer_email,
