@@ -16,23 +16,25 @@ export async function POST(request) {
 
     if (!apiKey) {
       console.warn("[nutrition-analyze] GEMINI_API_KEY not configured. Returning mock fallback data.");
-      // Return a structured mock result so the user can test the UI immediately
+      // Return a structured mock result matching the user's example
       const mockResult = {
-        food_name: "Grilled Chicken Salad (Mock)",
-        calories: 350,
-        protein_g: 28,
-        carbs_g: 12,
+        food_name: "Salmon with Quinoa & Salad",
+        calories: 620,
+        protein_g: 42,
+        carbs_g: 48,
         fat_g: 18,
+        fiber_g: 12,
+        wellness_score: 92,
         ingredients: [
-          "Grilled chicken breast",
-          "Romaine lettuce",
-          "Cherry tomatoes",
-          "Cucumber slices",
-          "Olive oil dressing",
-          "Parmesan cheese"
+          "Salmon",
+          "Quinoa",
+          "Kale",
+          "Avocado",
+          "Cherry Tomatoes",
+          "Lemon Dressing"
         ],
-        confidence: 0.92,
-        description: "Mock Result: A fresh green salad topped with grilled chicken breast, cherry tomatoes, and shaved parmesan cheese, dressed in olive oil."
+        confidence: 0.95,
+        description: "Excellent source of protein and omega-3."
       };
       return corsJson(request, mockResult);
     }
@@ -52,14 +54,16 @@ export async function POST(request) {
               parts: [
                 {
                   text: "Identify the food item(s) in this plate and estimate their nutrition facts. Return a JSON object with the following fields:\n" +
-                    "- food_name (string: e.g., 'Chicken Caesar Salad' or a list of multiple items if there are many)\n" +
+                    "- food_name (string: e.g., 'Salmon with Quinoa & Salad' or list of multiple items if many)\n" +
                     "- calories (number: kcal)\n" +
-                    "- protein_g (number: grams)\n" +
-                    "- carbs_g (number: grams)\n" +
-                    "- fat_g (number: grams)\n" +
+                    "- protein_g (number: grams of protein)\n" +
+                    "- carbs_g (number: grams of total carbohydrates)\n" +
+                    "- fat_g (number: grams of fat)\n" +
+                    "- fiber_g (number: grams of dietary fiber)\n" +
+                    "- wellness_score (number: a healthiness/wellness score from 0 to 100 based on nutrient density)\n" +
                     "- ingredients (array of strings: detected ingredients)\n" +
                     "- confidence (number: confidence score between 0 and 1)\n" +
-                    "- description (string: brief summary of the meal and what was detected)\n\n" +
+                    "- description (string: a brief 1-sentence highlight of the meal's key nutritional benefit, e.g., 'Excellent source of protein and omega-3.')\n\n" +
                     "Return ONLY raw JSON, do not wrap in markdown or code blocks. Ensure all numbers are integers."
                 },
                 {

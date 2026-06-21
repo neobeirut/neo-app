@@ -162,85 +162,69 @@ export default function ScannerScreen() {
         // Results View
         <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 20 }]}>
           <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.separator }]}>
-            <Text style={[styles.foodName, { color: colors.text }]}>{analysisResult.food_name}</Text>
-            {analysisResult.description && (
-              <Text style={[styles.foodDesc, { color: colors.textSecondary }]}>{analysisResult.description}</Text>
-            )}
+            <Text style={[styles.wellnessTitle, { color: colors.text }]}>Your Wellness Plate</Text>
+            <View style={styles.wellnessDivider} />
             
-            {/* FDA Style Nutrition Facts Label */}
-            <View style={styles.fdaLabel}>
-              <Text style={styles.fdaTitle}>Nutrition Facts</Text>
-              <View style={styles.fdaDividerThick} />
+            {/* Stats block */}
+            <View style={styles.statsContainer}>
+              <View style={styles.statRow}>
+                <Text style={styles.statEmoji}>🔥</Text>
+                <Text style={[styles.statText, { color: colors.text }]}>{analysisResult.calories} kcal</Text>
+              </View>
               
-              <View style={styles.fdaRow}>
-                <Text style={styles.fdaLabelText}>Serving Size</Text>
-                <Text style={styles.fdaValueText}>1 Plate (Estimated)</Text>
+              <View style={styles.statRow}>
+                <Text style={styles.statEmoji}>💪</Text>
+                <Text style={[styles.statText, { color: colors.text }]}>Protein: {analysisResult.protein_g}g</Text>
               </View>
-              <View style={styles.fdaDividerMedium} />
-              
-              <Text style={styles.fdaSectionTitle}>Amount Per Serving</Text>
-              <View style={styles.fdaCaloriesRow}>
-                <Text style={styles.fdaCaloriesTitle}>Calories</Text>
-                <Text style={styles.fdaCaloriesValue}>{analysisResult.calories}</Text>
-              </View>
-              <View style={styles.fdaDividerThick} />
 
-              {/* Protein */}
-              <View style={styles.macroRow}>
-                <View style={styles.macroHeader}>
-                  <Text style={styles.macroLabel}>Protein</Text>
-                  <Text style={styles.macroValue}>{analysisResult.protein_g}g</Text>
-                </View>
-                <View style={styles.progressBarBg}>
-                  <View style={[styles.progressBarFill, { width: `${Math.min(100, (analysisResult.protein_g / 50) * 100)}%`, backgroundColor: '#3b82f6' }]} />
-                </View>
+              <View style={styles.statRow}>
+                <Text style={styles.statEmoji}>🌾</Text>
+                <Text style={[styles.statText, { color: colors.text }]}>Carbs: {analysisResult.carbs_g}g</Text>
               </View>
-              <View style={styles.fdaDividerThin} />
 
-              {/* Carbs */}
-              <View style={styles.macroRow}>
-                <View style={styles.macroHeader}>
-                  <Text style={styles.macroLabel}>Carbohydrates</Text>
-                  <Text style={styles.macroValue}>{analysisResult.carbs_g}g</Text>
-                </View>
-                <View style={styles.progressBarBg}>
-                  <View style={[styles.progressBarFill, { width: `${Math.min(100, (analysisResult.carbs_g / 100) * 100)}%`, backgroundColor: '#f59e0b' }]} />
-                </View>
+              <View style={styles.statRow}>
+                <Text style={styles.statEmoji}>🥑</Text>
+                <Text style={[styles.statText, { color: colors.text }]}>Fat: {analysisResult.fat_g}g</Text>
               </View>
-              <View style={styles.fdaDividerThin} />
 
-              {/* Fats */}
-              <View style={styles.macroRow}>
-                <View style={styles.macroHeader}>
-                  <Text style={styles.macroLabel}>Total Fat</Text>
-                  <Text style={styles.macroValue}>{analysisResult.fat_g}g</Text>
-                </View>
-                <View style={styles.progressBarBg}>
-                  <View style={[styles.progressBarFill, { width: `${Math.min(100, (analysisResult.fat_g / 65) * 100)}%`, backgroundColor: '#ef4444' }]} />
-                </View>
+              <View style={styles.statRow}>
+                <Text style={styles.statEmoji}>🌱</Text>
+                <Text style={[styles.statText, { color: colors.text }]}>Fiber: {analysisResult.fiber_g || 0}g</Text>
               </View>
-              <View style={styles.fdaDividerThick} />
+
+              <View style={styles.statRow}>
+                <Text style={styles.statEmoji}>⭐</Text>
+                <Text style={[styles.statText, { color: colors.text }]}>Wellness Score: {analysisResult.wellness_score || 0}/100</Text>
+              </View>
             </View>
 
-            {/* Ingredients */}
+            {/* Ingredients Section */}
             {analysisResult.ingredients && analysisResult.ingredients.length > 0 && (
               <View style={styles.sectionContainer}>
-                <Text style={[styles.sectionTitle, { color: colors.text }]}>Detected Ingredients</Text>
-                <View style={styles.ingredientsList}>
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>Ingredients Detected</Text>
+                <View style={styles.ingredientsListVertical}>
                   {analysisResult.ingredients.map((ing, idx) => (
-                    <View key={idx} style={[styles.ingBadge, { backgroundColor: colors.background, borderColor: colors.separator }]}>
-                      <Text style={[styles.ingText, { color: colors.text }]}>{ing}</Text>
+                    <View key={idx} style={styles.ingredientRow}>
+                      <View style={styles.ingredientBullet} />
+                      <Text style={[styles.ingredientText, { color: colors.text }]}>{ing}</Text>
                     </View>
                   ))}
                 </View>
               </View>
             )}
 
+            {/* Description Summary Callout Box */}
+            {analysisResult.description && (
+              <View style={[styles.descriptionBox, { backgroundColor: colors.background }]}>
+                <Text style={[styles.descriptionText, { color: colors.text }]}>{analysisResult.description}</Text>
+              </View>
+            )}
+
             {/* Confidence indicator */}
             <View style={styles.confidenceRow}>
               <Text style={[styles.confidenceLabel, { color: colors.textSecondary }]}>AI Estimate Confidence:</Text>
-              <Text style={[styles.confidenceVal, { color: analysisResult.confidence > 0.8 ? '#10b981' : '#f59e0b' }]}>
-                {Math.round(analysisResult.confidence * 100)}%
+              <Text style={[styles.confidenceVal, { color: (analysisResult.confidence || 0.95) > 0.8 ? '#10b981' : '#f59e0b' }]}>
+                {Math.round((analysisResult.confidence || 0.95) * 100)}%
               </Text>
             </View>
 
@@ -299,6 +283,69 @@ export default function ScannerScreen() {
 }
 
 const styles = StyleSheet.create({
+  wellnessTitle: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 22,
+    marginBottom: 6,
+  },
+  wellnessDivider: {
+    height: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.08)",
+    marginBottom: 20,
+  },
+  statsContainer: {
+    marginBottom: 20,
+  },
+  statRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  statEmoji: {
+    fontSize: 20,
+    marginRight: 12,
+    width: 24,
+    textAlign: "center",
+  },
+  statText: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 16,
+  },
+  ingredientsListVertical: {
+    marginTop: 8,
+    gap: 8,
+  },
+  ingredientRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingLeft: 4,
+  },
+  ingredientBullet: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#2D5F3F",
+    marginRight: 12,
+  },
+  ingredientText: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 15,
+  },
+  descriptionBox: {
+    borderRadius: 8,
+    padding: 14,
+    marginTop: 10,
+    marginBottom: 20,
+    borderLeftWidth: 4,
+    borderLeftColor: "#2D5F3F",
+  },
+  descriptionText: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 14,
+    lineHeight: 20,
+    fontStyle: "italic",
+  },
+
   container: {
     flex: 1,
   },
