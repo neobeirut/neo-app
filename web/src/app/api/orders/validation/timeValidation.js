@@ -13,18 +13,48 @@ function timeToMinutes(timeStr) {
 }
 
 /**
- * Get current time in minutes since midnight (server timezone)
+ * Get current date, hours, and minutes in Beirut timezone
  */
-function getCurrentTimeInMinutes() {
-  const now = new Date();
-  return now.getHours() * 60 + now.getMinutes();
+function getBeirutDateTime() {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Beirut",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+
+  const parts = formatter.formatToParts(new Date());
+  const partMap = {};
+  for (const p of parts) {
+    partMap[p.type] = p.value;
+  }
+
+  // YYYY-MM-DD
+  const dateString = `${partMap.year}-${partMap.month}-${partMap.day}`;
+  const hour = parseInt(partMap.hour, 10);
+  const minute = parseInt(partMap.minute, 10);
+
+  return { dateString, hour, minute };
 }
 
 /**
- * Get today's date in YYYY-MM-DD format (server timezone)
+ * Get current time in minutes since midnight (Beirut timezone)
+ */
+function getCurrentTimeInMinutes() {
+  const beirut = getBeirutDateTime();
+  return beirut.hour * 60 + beirut.minute;
+}
+
+/**
+ * Get today's date in YYYY-MM-DD format (Beirut timezone)
  */
 function getTodayDateString() {
-  return new Date().toISOString().split("T")[0];
+  const beirut = getBeirutDateTime();
+  return beirut.dateString;
 }
 
 /**

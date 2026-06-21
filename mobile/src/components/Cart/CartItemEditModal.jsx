@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+﻿import React, { useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -770,16 +770,7 @@ export default function CartItemEditModal({
                     textAlignVertical: "top",
                   }}
                 />
-                <Text
-                  style={{
-                    fontFamily: "Inter_400Regular",
-                    fontSize: 12,
-                    color: colors.textSecondary,
-                    marginTop: 6,
-                  }}
-                >
-                  {comment.length}/200
-                </Text>
+
               </View>
 
               {allCustomizations.length === 0 &&

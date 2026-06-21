@@ -8,7 +8,6 @@ export default function MenuLayout() {
         gestureEnabled: true,
         fullScreenGestureEnabled: true,
         gestureDirection: "horizontal",
-        gestureResponseDistance: 50,
         animation: "default",
       }}
     >

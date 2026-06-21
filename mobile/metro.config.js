@@ -67,10 +67,14 @@ const DEV_ONLY_NATIVE_ALIASES = {
     __dirname,
     './polyfills/native/react-native-purchases.native.tsx'
   ),
-  'expo-notifications': path.resolve(
-    __dirname,
-    './polyfills/native/notifications.native.tsx'
-  ),
+  ...(process.env.EXPO_PUBLIC_USE_REAL_NOTIFICATIONS === 'true'
+    ? {}
+    : {
+        'expo-notifications': path.resolve(
+          __dirname,
+          './polyfills/native/notifications.native.tsx'
+        ),
+      }),
 };
 const SHARED_ALIASES = {
   'expo-image': path.resolve(__dirname, './polyfills/shared/expo-image.tsx'),
@@ -122,6 +126,7 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
     if (NATIVE_ALIASES[moduleName] && !moduleName.startsWith('./polyfills/')) {
       return context.resolveRequest(context, NATIVE_ALIASES[moduleName], platform);
     }
+    if (moduleName === 'expo-notifications') { console.log('RESOLVING METRO ALIAS FOR expo-notifications:', { platform, NODE_ENV: process.env.NODE_ENV, USE_REAL: process.env.EXPO_PUBLIC_USE_REAL_NOTIFICATIONS, targetPath: DEV_ONLY_NATIVE_ALIASES[moduleName] }); }
     if (moduleName === 'react-native-purchases') {
       console.log('RESOLVING METRO ALIAS FOR react-native-purchases:', {
         platform,

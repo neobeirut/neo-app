@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { View, Text, TouchableOpacity, Platform } from "react-native";
 import { Image } from "expo-image";
 import { Menu, ShoppingCart } from "lucide-react-native";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import { getImageSource } from "@/utils/apiFetch";
@@ -14,6 +15,9 @@ export function HomeHeader({
   cartItemCount,
   selectedBranch,
   onBranchPress,
+  headerHeight = 80,
+  showBackButton = false,
+  onBackPress,
 }) {
   const router = useRouter();
   const [logoSrcOverride, setLogoSrcOverride] = useState(null);
@@ -95,6 +99,7 @@ export function HomeHeader({
         top: 0,
         left: 0,
         right: 0,
+        height: insets.top + headerHeight,
         zIndex: 1000,
         backgroundColor: colors.background,
         paddingTop: insets.top,
@@ -104,23 +109,33 @@ export function HomeHeader({
     >
       <View
         style={{
-          position: "relative",
+          flex: 1,
           flexDirection: "row",
           alignItems: "center",
           justifyContent: "space-between",
           paddingHorizontal: 24,
-          paddingVertical: 16,
         }}
       >
-        {/* Left: Hamburger Menu */}
-        <TouchableOpacity
-          onPress={onMenuPress}
-          style={{
-            padding: 8,
-          }}
-        >
-          <Menu size={24} color={colors.text} />
-        </TouchableOpacity>
+        {/* Left: Hamburger Menu or Back Button */}
+        {showBackButton ? (
+          <TouchableOpacity
+            onPress={onBackPress}
+            style={{
+              padding: 8,
+            }}
+          >
+            <Ionicons name="chevron-back" size={24} color={colors.text} />
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            onPress={onMenuPress}
+            style={{
+              padding: 8,
+            }}
+          >
+            <Menu size={24} color={colors.text} />
+          </TouchableOpacity>
+        )}
 
         {/* Center: Logo (always centered) */}
         <View

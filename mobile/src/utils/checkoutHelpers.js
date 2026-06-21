@@ -35,9 +35,20 @@ export const timeOptions = [
   "6:00 PM",
 ];
 
-// Convert 12-hour time to 24-hour format
-export const convertTo24Hour = (time12h) => {
-  const [time, modifier] = time12h.split(" ");
+// Convert time format to 24-hour format (handles both 12-hour and 24-hour inputs)
+export const convertTo24Hour = (timeStr) => {
+  if (!timeStr) return "00:00:00";
+
+  // If it's already in 24-hour format (e.g., "13:30" or "13:30:00")
+  if (!timeStr.includes("AM") && !timeStr.includes("PM")) {
+    const parts = timeStr.split(":");
+    const hours = parts[0].padStart(2, "0");
+    const minutes = (parts[1] || "00").padStart(2, "0");
+    return `${hours}:${minutes}:00`;
+  }
+
+  // Otherwise, parse 12-hour format (e.g. "10:00 AM")
+  const [time, modifier] = timeStr.split(" ");
   let [hours, minutes] = time.split(":");
   if (hours === "12") {
     hours = "00";
@@ -45,7 +56,7 @@ export const convertTo24Hour = (time12h) => {
   if (modifier === "PM") {
     hours = parseInt(hours, 10) + 12;
   }
-  return `${hours}:${minutes}:00`;
+  return `${String(hours).padStart(2, "0")}:${minutes.padStart(2, "0")}:00`;
 };
 
 // Format address for display

@@ -43,12 +43,12 @@ export function CartHeader({
       >
         <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
           <TouchableOpacity
-            onPress={onMenuPress}
+            onPress={onClose}
             style={{
               padding: 8,
             }}
           >
-            <Menu size={24} color={colors.text} />
+            <Ionicons name="chevron-back" size={24} color={colors.text} />
           </TouchableOpacity>
 
           {/* Long-press "Cart" title to toggle debug (optional) */}
@@ -83,17 +83,7 @@ export function CartHeader({
             </View>
           </TouchableOpacity>
         </View>
-        <TouchableOpacity
-          style={{
-            width: 36,
-            height: 36,
-            justifyContent: "center",
-            alignItems: "center",
-          }}
-          onPress={onClose}
-        >
-          <Ionicons name="close" size={20} color={colors.text} />
-        </TouchableOpacity>
+        <View style={{ width: 36 }} />
       </View>
     </Animated.View>
   );

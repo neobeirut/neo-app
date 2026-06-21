@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from "react";
+﻿import React, { useState, useRef, useEffect, useMemo } from "react";
 import {
   View,
   Text,
@@ -636,9 +636,7 @@ export default function ProductDetailScreen() {
     }
   };
 
-  const onAddToCart = () => {
-    // ✅ iOS FIX: Navigate back IMMEDIATELY for instant responsiveness
-    // The mutation will complete in the background with optimistic updates
+    const onAddToCart = () => {
     const canGoBack = router.canGoBack();
 
     handleAddToCart({
@@ -657,15 +655,16 @@ export default function ProductDetailScreen() {
       router,
       comment: itemComment,
       onWillAdd: triggerFlyToCart,
+      onSuccess: () => {
+        // Navigate back immediately (optimistic navigation)
+        // The mutation has already applied optimistic updates to the cart
+        if (canGoBack) {
+          router.back();
+        } else {
+          router.replace("/(tabs)/cart");
+        }
+      },
     });
-
-    // Navigate back immediately (optimistic navigation)
-    // The mutation has already applied optimistic updates to the cart
-    if (canGoBack) {
-      router.back();
-    } else {
-      router.replace("/(tabs)/cart");
-    }
 
     // Reset state
     setItemComment("");
@@ -880,16 +879,7 @@ export default function ProductDetailScreen() {
                   textAlignVertical: "top",
                 }}
               />
-              <Text
-                style={{
-                  fontFamily: "Inter_400Regular",
-                  fontSize: 12,
-                  color: colors.textSecondary,
-                  marginTop: 6,
-                }}
-              >
-                {itemComment.length}/200
-              </Text>
+
             </View>
           )}
 

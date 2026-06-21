@@ -72,6 +72,20 @@ export async function sendWhatsAppNotification(orderId, newStatus) {
   );
   console.log(`[whatsapp-notification] Order ${orderId}, Status: ${newStatus}`);
 
+  // Status-based Routing Rules
+  // Preparing (preparing) -> WhatsApp (with push fallback)
+  // Ready (ready) -> Push notification ONLY
+  // Order placed (pending) / Out for delivery / Delivered -> Let the user check the app (silent)
+  const skippedStatuses = ["pending", "accepted", "out_for_delivery", "completed", "delivered"];
+  if (skippedStatuses.includes(newStatus)) {
+    console.log(`[whatsapp-notification] Status ${newStatus} is skipped for customer notification (let user check the app).`);
+    return {
+      ok: true,
+      skipped: true,
+      reason: `Let user check the app for status: ${newStatus}`
+    };
+  }
+
   try {
     // Load order
     const [order] = await sql`
@@ -118,6 +132,32 @@ export async function sendWhatsAppNotification(orderId, newStatus) {
         ok: false,
         error: "Customer not found",
         skipped: true,
+      };
+    }
+
+    // Handle statuses that require Push Notification ONLY
+    if (newStatus === "ready" || newStatus === "cancelled") {
+      console.log(`[whatsapp-notification] Sending push notification only for status ${newStatus}`);
+      let pushResult = { success: false, sentCount: 0, error: "No push token" };
+      try {
+        const pushTitle = getPushTitle(newStatus);
+        const pushBody = getStatusMessageFreeForm(newStatus, order.order_type, order.branch_name);
+        pushResult = await sendPushNotificationToUser(customer.id, {
+          title: pushTitle,
+          body: pushBody,
+          data: { orderId: String(order.id), status: newStatus, type: "order_update" }
+        });
+      } catch (pushErr) {
+        console.error(`[whatsapp-notification] Push error for user ${customer.id}:`, pushErr);
+        pushResult.error = pushErr.message;
+      }
+      return {
+        ok: true,
+        method: "push",
+        sent: pushResult.success,
+        pushSent: pushResult.success,
+        pushCount: pushResult.sentCount,
+        error: null
       };
     }
 

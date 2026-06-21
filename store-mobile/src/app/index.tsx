@@ -101,9 +101,8 @@ export default function LoginScreen() {
 
       // Guard against Expo Go crashing on SDK 53+
       const isExpoGo = Constants.appOwnership === 'expo';
-      if (isExpoGo && process.env.EXPO_PUBLIC_USE_REAL_NOTIFICATIONS !== 'true') {
-        console.warn('Push notifications are disabled in Expo Go. Please use a development build to test notifications.');
-        return;
+      if (isExpoGo) {
+        console.log('Attempting push notification registration in Expo Go...');
       }
 
       // Request permissions

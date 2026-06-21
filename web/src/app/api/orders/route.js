@@ -1,4 +1,5 @@
 import sql from "@/app/api/utils/sql";
+import { sendWhatsAppNotification } from "@/app/api/utils/whatsappNotification";
 import { sendPushNotificationToBranchAdmins } from "@/app/api/utils/pushNotification";
 import { corsJson, corsOptions } from "@/app/api/utils/cors";
 import { reserveUserRewardForOrder } from "@/app/api/utils/loyalty";
@@ -565,6 +566,8 @@ export async function POST(request) {
     }).catch((err) => {
       console.error("[new_order_push] Async error:", err);
     });
+
+
 
     return corsJson(request, {
       message: "Order created successfully",

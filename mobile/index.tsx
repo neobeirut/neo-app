@@ -2,7 +2,7 @@ import ExceptionsManager from 'react-native/Libraries/Core/ExceptionsManager';
 
 if (__DEV__) {
   ExceptionsManager.handleException = (error, isFatal) => {
-    // no-op
+    console.error('ExceptionsManager caught:', error);
   };
 }
 

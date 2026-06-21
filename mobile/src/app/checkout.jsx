@@ -1,4 +1,4 @@
-import React from "react";
+﻿import React from "react";
 import { View, ScrollView, Alert } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
@@ -24,6 +24,7 @@ import { OrderTypeSelector } from "../components/Checkout/OrderTypeSelector";
 import { DeliveryAddressSelector } from "../components/Checkout/DeliveryAddressSelector";
 import { ScheduleSelector } from "../components/Checkout/ScheduleSelector";
 import { SpecialInstructions } from "../components/Checkout/SpecialInstructions";
+import { CutlerySelector } from "../components/Checkout/CutlerySelector";
 import { OrderSummary } from "../components/Checkout/OrderSummary";
 import { PlaceOrderButton } from "../components/Checkout/PlaceOrderButton";
 import { DatePickerModal } from "../components/Checkout/DatePickerModal";
@@ -61,6 +62,7 @@ export default function CheckoutScreen() {
   // Track if user is trying to switch to delivery after selecting address
   const [pendingDeliverySwitch, setPendingDeliverySwitch] =
     React.useState(false);
+  const [needCutlery, setNeedCutlery] = React.useState(false);
 
   // Initialize checkout state first to get selectedAddress and orderType
   const checkoutState = useCheckoutState(null, isAuthenticated);
@@ -97,6 +99,8 @@ export default function CheckoutScreen() {
     promoError,
     setPromoError,
     selectedAddress: _unusedSelectedAddress,
+    isScheduled,
+    setIsScheduled,
     params,
   } = checkoutState;
 
@@ -203,6 +207,17 @@ export default function CheckoutScreen() {
     }
   }, [timeOptions, selectedTime, setSelectedTime]);
 
+  // When schedule toggle is OFF, lock date/time to first available slot
+  React.useEffect(() => {
+    if (!isScheduled) {
+      const today = dateOptions[0]?.value || new Date().toISOString().split("T")[0];
+      setSelectedDate(today);
+      if (timeOptions.length > 0) {
+        setSelectedTime(timeOptions[0].value);
+      }
+    }
+  }, [isScheduled, timeOptions, dateOptions, setSelectedDate, setSelectedTime]);
+
   const [loaded] = useFonts({
     Inter_400Regular,
     Inter_500Medium,
@@ -216,10 +231,17 @@ export default function CheckoutScreen() {
 
   const handleGoBack = async () => {
     await Haptics.selectionAsync();
-    router.back();
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace("/(tabs)/cart");
+    }
   };
 
   const formatDateTime = () => {
+    if (!isScheduled) {
+      return "As soon as possible";
+    }
     const dateOption = dateOptions.find((d) => d.value === selectedDate);
     return `${dateOption?.label || selectedDate} at ${selectedTime}`;
   };
@@ -403,11 +425,19 @@ export default function CheckoutScreen() {
             colors={colors}
             onShowDatePicker={() => setShowDatePicker(true)}
             onShowTimePicker={() => setShowTimePicker(true)}
+            isScheduled={isScheduled}
+            onToggleScheduled={setIsScheduled}
           />
 
           <SpecialInstructions
             specialInstructions={specialInstructions}
             setSpecialInstructions={setSpecialInstructions}
+            colors={colors}
+          />
+
+          <CutlerySelector
+            needCutlery={needCutlery}
+            setNeedCutlery={setNeedCutlery}
             colors={colors}
           />
 

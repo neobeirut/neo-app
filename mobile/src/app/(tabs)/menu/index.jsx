@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { View, Text, Animated, TouchableOpacity } from "react-native";
-import { ScrollView } from "react-native-gesture-handler";
+import { View, Text, Animated, TouchableOpacity, ScrollView } from "react-native";
 import { Image } from "expo-image";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";

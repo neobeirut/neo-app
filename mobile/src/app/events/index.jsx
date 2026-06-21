@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+﻿import React, { useCallback, useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -12,7 +12,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { useRouter } from "expo-router";
 import { Image } from "expo-image";
-import { Menu, Star, CalendarDays } from "lucide-react-native";
+import { Menu, Star, CalendarDays, X, Search } from "lucide-react-native";
 import { format } from "date-fns";
 import * as Haptics from "expo-haptics";
 import {
@@ -291,23 +291,41 @@ export default function EventsIndex() {
 
       {/* Filters */}
       <View style={{ marginTop: 12 }}>
-        <TextInput
-          value={search}
-          onChangeText={setSearch}
-          placeholder="Search events"
-          placeholderTextColor={colors.textSecondary}
+        <View
           style={{
+            flexDirection: "row",
+            alignItems: "center",
             backgroundColor: colors.surface,
             borderWidth: 1,
             borderColor: colors.separator,
             borderRadius: 14,
             paddingHorizontal: 14,
             paddingVertical: 12,
-            fontFamily: "Inter_400Regular",
-            fontSize: 14,
-            color: colors.text,
+            gap: 8,
           }}
-        />
+        >
+          <Search size={16} color={colors.textSecondary} />
+          <TextInput
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Search events"
+            placeholderTextColor={colors.textSecondary}
+            style={{
+              flex: 1,
+              fontFamily: "Inter_400Regular",
+              fontSize: 14,
+              color: colors.text,
+              paddingVertical: 0,
+            }}
+          />
+          <TouchableOpacity
+            onPress={() => setSearch("")}
+            disabled={!search}
+            style={{ padding: 4, opacity: search ? 1 : 0 }}
+          >
+            <X size={16} color={colors.textSecondary} />
+          </TouchableOpacity>
+        </View>
 
         <View
           style={{

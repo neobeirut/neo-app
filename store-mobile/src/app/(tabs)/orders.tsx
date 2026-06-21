@@ -26,62 +26,68 @@ export default function OrdersScreen() {
   const [adminUser, setAdminUser] = useState<any>(null);
   const [knownOrderIds, setKnownOrderIds] = useState<string[]>([]);
 
-  // Setup sound alert player
-  let player: any = null;
-  try {
-    player = useAudioPlayer('https://assets.mixkit.co/active_storage/sfx/2869/2869-600.wav');
-  } catch (e) {
-    console.warn('Failed to initialize audio player:', e);
-  }
-
-  const triggerAlert = () => {
-    try {
-      Vibration.vibrate([0, 500, 250, 500, 250, 500]);
-      if (player) {
-        player.play();
-      }
-    } catch (e) {
-      console.warn('Failed to trigger alert:', e);
-    }
-  };
-
-  // Load admin user profile
-  useEffect(() => {
-    async function loadUser() {
-      const user = await getStoredAdminUser();
-      setAdminUser(user);
-    }
-    loadUser();
-  }, []);
-
-  // Fetch branch orders (automatically filters by branch_id on backend if not HQ admin)
-  const { data, isLoading, refetch, isFetching } = useQuery({
-    queryKey: ['admin-orders'],
-    queryFn: () => getJson('/api/orders/admin'),
-    refetchInterval: 8000, // Poll every 8 seconds
-  });
-
-  // Detect new orders and trigger sound/vibration
-  useEffect(() => {
-    if (data?.orders) {
-      const allOrders = data.orders;
-      const currentIds = allOrders.map((o: any) => String(o.id));
-
-      // Filter to pending (new) orders
-      const pendingOrders = allOrders.filter((o: any) => o.status === 'pending');
-      const pendingIds = pendingOrders.map((o: any) => String(o.id));
-
-      // Trigger alert if there is a new pending order we haven't seen yet
-      const hasNewPending = pendingIds.some((id: string) => !knownOrderIds.includes(id));
-      if (knownOrderIds.length > 0 && hasNewPending) {
-        console.log('[Orders] New order detected, triggering alert!');
-        triggerAlert();
-      }
-
-      // Update known order IDs
-      setKnownOrderIds(currentIds);
-    }
-  }, [data]);
+  // Setup sound alert player
+  let player: any = null;
+  try {
+    player = useAudioPlayer('https://assets.mixkit.co/active_storage/sfx/2869/2869-600.wav');
+    if (player) {
+      player.loop = true;
+    }
+  } catch (e) {
+    console.warn('Failed to initialize audio player:', e);
+  }
+
+  // Load admin user profile
+  useEffect(() => {
+    async function loadUser() {
+      const user = await getStoredAdminUser();
+      setAdminUser(user);
+    }
+    loadUser();
+  }, []);
+
+  // Fetch branch orders (automatically filters by branch_id on backend if not HQ admin)
+  const { data, isLoading, refetch, isFetching } = useQuery({
+    queryKey: ['admin-orders'],
+    queryFn: () => getJson('/api/orders/admin'),
+    refetchInterval: 8000, // Poll every 8 seconds
+  });
+
+  // Handle continuous alarm/ringing and repeated vibration for pending orders
+  useEffect(() => {
+    if (data?.orders) {
+      const pendingOrders = data.orders.filter((o: any) => o.status === 'pending');
+
+      if (pendingOrders.length > 0) {
+        console.log(`[Orders] ${pendingOrders.length} pending orders detected. Alarm ringing...`);
+        try {
+          if (player) {
+            player.play();
+          }
+        } catch (e) {
+          console.warn('Failed to play alarm sound:', e);
+        }
+        // Vibrate repeatedly with pattern: wait 0ms, vibrate 500ms, wait 250ms, vibrate 500ms, and repeat (loop = true)
+        Vibration.vibrate([0, 500, 250, 500], true);
+      } else {
+        console.log('[Orders] No pending orders. Alarm stopped.');
+        try {
+          if (player) {
+            player.pause();
+            player.seekTo(0);
+          }
+        } catch (e) {
+          console.warn('Failed to stop/reset audio player:', e);
+        }
+        Vibration.cancel();
+      }
+    }
+
+    return () => {
+      // Clean up vibration when component unmounts
+      Vibration.cancel();
+    };
+  }, [data, player]);
 
   // Mutation to update order status
   const updateStatusMutation = useMutation({

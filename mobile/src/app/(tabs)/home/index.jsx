@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from "react";
+﻿import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -12,7 +12,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { useRouter } from "expo-router";
-import { ChevronLeft, Search, Home } from "lucide-react-native";
+import { ChevronLeft, Search, Home, X } from "lucide-react-native";
 import * as Haptics from "expo-haptics";
 import { useTheme } from "../../../utils/theme";
 import { useBranchStore } from "../../../utils/branchStore";
@@ -202,10 +202,11 @@ export default function HomeScreen() {
     ? products.filter((p) => p.category_id === selectedCategory.id)
     : [];
 
-  // Filter products by search query - search across ALL products when there's a search query
+  // Filter products by search query - search across ALL products when there's a search query (checks title and description)
   const searchFilteredProducts = searchQuery
     ? products.filter((p) =>
-        p.name.toLowerCase().includes(searchQuery.toLowerCase()),
+        p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (p.description || "").toLowerCase().includes(searchQuery.toLowerCase())
       )
     : filteredProducts;
 
@@ -476,6 +477,12 @@ export default function HomeScreen() {
         cartItemCount={cartItemCount}
         selectedBranch={selectedBranch}
         onBranchPress={() => handleChangeLocation(cartData)}
+        headerHeight={headerHeight}
+        showBackButton={!!selectedCategory}
+        onBackPress={() => {
+          setSelectedCategory(null);
+          setSearchQuery("");
+        }}
       />
       <SlideMenu
         visible={menuVisible}
@@ -578,11 +585,83 @@ export default function HomeScreen() {
         }}
         showsVerticalScrollIndicator={false}
       >
+        {/* Search Input - Always visible under the header */}
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            backgroundColor: colors.surface,
+            borderRadius: 8,
+            paddingHorizontal: 10,
+            paddingVertical: 6,
+            marginBottom: 16,
+            borderWidth: 1,
+            borderColor: colors.separator,
+          }}
+        >
+          <Search size={16} color={colors.textSecondary} />
+          <TextInput
+            style={{
+              flex: 1,
+              fontFamily: "Inter_400Regular",
+              fontSize: 13,
+              color: colors.text,
+              marginLeft: 8,
+              paddingVertical: 2,
+            }}
+            placeholder="Search all products..."
+            placeholderTextColor={colors.textSecondary}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+          <TouchableOpacity
+            onPress={() => setSearchQuery("")}
+            disabled={!searchQuery}
+            style={{ padding: 4, opacity: searchQuery ? 1 : 0 }}
+          >
+            <X size={16} color={colors.textSecondary} />
+          </TouchableOpacity>
+        </View>
+
         {isLoadingData ? (
           // Show inline loading indicator
           (<View style={{ alignItems: "center", paddingTop: 60 }}>
             <ActivityIndicator size="large" color={colors.primary} />
           </View>)
+        ) : searchQuery ? (
+          // Show search results globally
+          (<>
+            {searchFilteredProducts.length > 0 ? (
+              searchFilteredProducts.map((product) => (
+                <SimpleProductCard
+                  key={product.id}
+                  product={product}
+                  colors={colors}
+                  onPress={handleProductPress}
+                  branchDiscount={selectedBranch?.discount_percentage || 0}
+                  onAddToCart={handleAddToCart}
+                  isAddingToCart={addToCartMutation.isPending}
+                  cartData={cartData}
+                  isFavorite={favoritesMap[product.id] || false}
+                  onToggleFavorite={() => toggleFavorite(product.id)}
+                  hasCustomizations={customizationsCheck?.[product.id] || false}
+                />
+              ))
+            ) : (
+              <View style={{ alignItems: "center", paddingTop: 60 }}>
+                <Text
+                  style={{
+                    fontFamily: "Inter_400Regular",
+                    fontSize: 16,
+                    color: colors.textSecondary,
+                    textAlign: "center",
+                  }}
+                >
+                  No products match your search
+                </Text>
+              </View>
+            )}
+          </>)
         ) : !selectedCategory ? (
           // Show categories
           (<>
@@ -613,38 +692,8 @@ export default function HomeScreen() {
         ) : (
           // Show products in selected category
           (<>
-            {/* Search Input - much smaller */}
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                backgroundColor: colors.surface,
-                borderRadius: 8,
-                paddingHorizontal: 10,
-                paddingVertical: 6,
-                marginBottom: 16,
-                borderWidth: 1,
-                borderColor: colors.separator,
-              }}
-            >
-              <Search size={16} color={colors.textSecondary} />
-              <TextInput
-                style={{
-                  flex: 1,
-                  fontFamily: "Inter_400Regular",
-                  fontSize: 13,
-                  color: colors.text,
-                  marginLeft: 8,
-                  paddingVertical: 2,
-                }}
-                placeholder="Search all products..."
-                placeholderTextColor={colors.textSecondary}
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-              />
-            </View>
-            {searchFilteredProducts.length > 0 ? (
-              searchFilteredProducts.map((product) => (
+            {filteredProducts.length > 0 ? (
+              filteredProducts.map((product) => (
                 <SimpleProductCard
                   key={product.id}
                   product={product}
@@ -669,9 +718,7 @@ export default function HomeScreen() {
                     textAlign: "center",
                   }}
                 >
-                  {searchQuery
-                    ? "No products match your search"
-                    : "No products in this category"}
+                  No products in this category
                 </Text>
               </View>
             )}

@@ -381,6 +381,7 @@ function AppContent() {
           }}
         >
           {/* Let Expo Router automatically discover all routes */}
+          <Stack.Screen name="select-branch" options={{ gestureEnabled: false }} />
         </Stack>
         <GlobalHomeButton />
 

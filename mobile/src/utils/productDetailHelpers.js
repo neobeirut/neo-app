@@ -205,6 +205,7 @@ export const handleAddToCart = async ({
   addToCartMutation,
   comment,
   onWillAdd,
+  onSuccess,
 }) => {
   // Fire-and-forget haptics so navigation/animation isn't delayed.
   Haptics.selectionAsync().catch(() => {});
@@ -279,6 +280,8 @@ export const handleAddToCart = async ({
 
   // IMPORTANT UX FIX:
   // Navigate back after adding to show users the updated cart.
+    // IMPORTANT UX FIX:
+  // Navigate back after adding to show users the updated cart.
   if (product.status === "Unavailable Today") {
     Alert.alert(
       "Unavailable Today",
@@ -303,8 +306,11 @@ export const handleAddToCart = async ({
               selected_addons: selectedAddonIds,
               customizations: allCustomizations,
               comment: normalizedComment,
-              shouldNavigateBack: false, // ✅ Navigation handled in product-detail screen
+              shouldNavigateBack: false,
             });
+            if (typeof onSuccess === "function") {
+              onSuccess();
+            }
           },
         },
       ],
@@ -322,6 +328,9 @@ export const handleAddToCart = async ({
     selected_addons: selectedAddonIds,
     customizations: allCustomizations,
     comment: normalizedComment,
-    shouldNavigateBack: false, // ✅ Navigation handled in product-detail screen
+    shouldNavigateBack: false,
   });
+  if (typeof onSuccess === "function") {
+    onSuccess();
+  }
 };

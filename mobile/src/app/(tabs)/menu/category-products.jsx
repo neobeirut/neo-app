@@ -1,6 +1,5 @@
 import React, { useState, useRef } from "react";
-import { View, Text, Animated, TouchableOpacity } from "react-native";
-import { ScrollView } from "react-native-gesture-handler";
+import { View, Text, Animated, TouchableOpacity, ScrollView } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { useRouter, useLocalSearchParams } from "expo-router";
@@ -112,7 +111,11 @@ export default function CategoryProductsScreen() {
 
   const handleBack = async () => {
     await Haptics.selectionAsync();
-    router.back();
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace("/(tabs)/home");
+    }
   };
 
   return (

@@ -45,7 +45,11 @@ export function useCartActions(
 
   const handleCloseCart = async () => {
     await safeSelectionHaptic();
-    router.push("/(tabs)/home");
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.push("/(tabs)/home");
+    }
   };
 
   const handleCheckout = async (cartData) => {

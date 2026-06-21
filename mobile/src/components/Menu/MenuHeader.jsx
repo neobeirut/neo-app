@@ -1,4 +1,4 @@
-import React from "react";
+﻿import React from "react";
 import {
   View,
   Text,
@@ -7,7 +7,7 @@ import {
   ScrollView,
   Animated,
 } from "react-native";
-import { Search, Filter, MapPin, ArrowLeft, Menu } from "lucide-react-native";
+import { Search, Filter, MapPin, ArrowLeft, Menu, X } from "lucide-react-native";
 import * as Haptics from "expo-haptics";
 
 export function MenuHeader({
@@ -184,8 +184,12 @@ export function MenuHeader({
             value={searchQuery}
             onChangeText={setSearchQuery}
           />
-          <TouchableOpacity>
-            <Filter size={16} color={colors.primary} />
+          <TouchableOpacity
+            onPress={() => setSearchQuery("")}
+            disabled={!searchQuery}
+            style={{ padding: 4, opacity: searchQuery ? 1 : 0 }}
+          >
+            <X size={16} color={colors.textSecondary} />
           </TouchableOpacity>
         </View>
       </View>

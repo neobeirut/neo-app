@@ -1,5 +1,13 @@
 import { Platform } from "react-native";
-import * as Notifications from "expo-notifications";
+let Notifications;
+if (Platform.OS !== "web") {
+  try {
+    Notifications = require("expo-notifications");
+  } catch (e) {
+    console.warn("[Notifications] Failed to load expo-notifications, using polyfill:", e.message);
+    Notifications = require("../../polyfills/native/notifications.native.tsx");
+  }
+}
 import Constants from "expo-constants";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { apiFetch } from "@/utils/apiFetch";
@@ -239,9 +247,12 @@ export async function registerForPushNotifications() {
 
   try {
     const permission = await Notifications.getPermissionsAsync();
+    console.log("[registerForPushNotifications] Raw permission object:", permission);
     const mapped = mapExpoPermissionToStatus(permission);
+    console.log("[registerForPushNotifications] Mapped permission status:", mapped);
 
     if (mapped !== "granted") {
+      console.log("[registerForPushNotifications] Permission not granted, returning null early.");
       return null;
     }
 
@@ -283,16 +294,21 @@ export async function registerForPushNotifications() {
       // Preferred: let Expo infer project automatically when possible.
       token = await Notifications.getExpoPushTokenAsync();
     } catch (e) {
+      console.warn("[registerForPushNotifications] First attempt failed:", e.message);
       // Retry with explicit projectId (required for many standalone builds)
-      if (!projectId) {
-        return null;
+      if (projectId) {
+        try {
+          token = await Notifications.getExpoPushTokenAsync({ projectId });
+        } catch (retryErr) {
+          console.error("[registerForPushNotifications] Retry attempt failed:", retryErr.message);
+        }
       }
-
-      token = await Notifications.getExpoPushTokenAsync({ projectId });
     }
 
+    console.log("[registerForPushNotifications] Fetched token:", token?.data || null);
     return token?.data || null;
   } catch (error) {
+    console.error("[registerForPushNotifications] Outer catch error:", error);
     return null;
   }
 }
