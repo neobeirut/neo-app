@@ -665,40 +665,6 @@ export default function HomeScreen() {
         ) : !selectedCategory ? (
           // Show categories
           (<>
-            {/* AI Plate Scanner Banner */}
-            {!searchQuery && (
-              <TouchableOpacity
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-                  router.push("/scanner");
-                }}
-                style={{
-                  backgroundColor: "#2D5F3F", // Deep Green NeoTheme
-                  borderRadius: 12,
-                  paddingVertical: 14,
-                  paddingHorizontal: 16,
-                  marginBottom: 16,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  shadowColor: "#000",
-                  shadowOffset: { width: 0, height: 2 },
-                  shadowOpacity: 0.1,
-                  shadowRadius: 4,
-                  elevation: 2,
-                }}
-              >
-                <Text
-                  style={{
-                    fontFamily: "Inter_600SemiBold",
-                    fontSize: 16,
-                    color: "#ffffff",
-                    letterSpacing: 0.2,
-                  }}
-                >
-                  Scan My Plate
-                </Text>
-              </TouchableOpacity>
-            )}
             {activeCategories.length > 0 ? (
               activeCategories.map((category) => (
                 <CategoryCard
