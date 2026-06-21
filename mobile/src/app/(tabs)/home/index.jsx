@@ -665,6 +665,70 @@ export default function HomeScreen() {
         ) : !selectedCategory ? (
           // Show categories
           (<>
+            {/* AI Plate Scanner Banner */}
+            {!searchQuery && (
+              <TouchableOpacity
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                  router.push("/scanner");
+                }}
+                style={{
+                  backgroundColor: "#2D5F3F", // Deep Green NeoTheme
+                  borderRadius: 12,
+                  padding: 16,
+                  marginBottom: 16,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  shadowColor: "#000",
+                  shadowOffset: { width: 0, height: 2 },
+                  shadowOpacity: 0.1,
+                  shadowRadius: 4,
+                  elevation: 2,
+                }}
+              >
+                <View style={{ flex: 1, marginRight: 12 }}>
+                  <Text
+                    style={{
+                      fontFamily: "Inter_600SemiBold",
+                      fontSize: 15,
+                      color: "#ffffff",
+                      marginBottom: 4,
+                    }}
+                  >
+                    🥗 AI Plate Scanner
+                  </Text>
+                  <Text
+                    style={{
+                      fontFamily: "Inter_400Regular",
+                      fontSize: 11,
+                      color: "#e2e8f0",
+                      lineHeight: 16,
+                    }}
+                  >
+                    Scan your plate to instantly detect ingredients and estimate nutrition facts!
+                  </Text>
+                </View>
+                <View
+                  style={{
+                    backgroundColor: "#F97316", // Amber Neo Accent
+                    borderRadius: 8,
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontFamily: "Inter_600SemiBold",
+                      fontSize: 11,
+                      color: "#ffffff",
+                    }}
+                  >
+                    Scan
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            )}
             {activeCategories.length > 0 ? (
               activeCategories.map((category) => (
                 <CategoryCard
