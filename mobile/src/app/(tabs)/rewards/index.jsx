@@ -48,6 +48,7 @@ import {
   useTierBenefits,
   formatActivityItem,
 } from "../../../utils/rewardsHelpers";
+import { useScrollHandler } from "../../../hooks/useScrollHandler";
 
 export default function RewardsScreen() {
   const insets = useSafeAreaInsets();
@@ -57,6 +58,15 @@ export default function RewardsScreen() {
   const { isAuthenticated, signIn, auth } = useAuth();
   const { selectedBranch } = useBranchStore();
   const [menuVisible, setMenuVisible] = useState(false);
+  const handleScroll = useScrollHandler();
+
+  const handleScrollCombined = useCallback((event) => {
+    Animated.event(
+      [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+      { useNativeDriver: false }
+    )(event);
+    handleScroll(event);
+  }, [handleScroll, scrollY]);
 
   // How-it-works overlay (auto-opens until user selects "Do not show again")
   const [howItWorksVisible, setHowItWorksVisible] = useState(false);
@@ -303,13 +313,10 @@ export default function RewardsScreen() {
         contentContainerStyle={{
           paddingTop: insets.top + headerHeight + 16,
           paddingHorizontal: 24,
-          paddingBottom: 100,
+          paddingBottom: insets.bottom + 120, // increased padding to clear bottom navigation bar
         }}
         showsVerticalScrollIndicator={false}
-        onScroll={Animated.event(
-          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-          { useNativeDriver: false },
-        )}
+        onScroll={handleScrollCombined}
         scrollEventThrottle={16}
       >
         <PointsCard

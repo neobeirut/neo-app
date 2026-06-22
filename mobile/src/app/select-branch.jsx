@@ -447,7 +447,7 @@ export default function SelectBranchScreen() {
               );
               await clearCartMutation.mutateAsync(selectedBranch.id);
               setSelectedBranch(branch);
-              router.replace("/(tabs)/home");
+              router.navigate("/(tabs)/home");
             },
           },
         ],
@@ -458,7 +458,7 @@ export default function SelectBranchScreen() {
       setSelectedBranch(branch);
       // Small delay to ensure state propagates before navigation (Android fix)
       setTimeout(() => {
-        router.replace("/(tabs)/home");
+        router.navigate("/(tabs)/home");
       }, 50);
     }
   };

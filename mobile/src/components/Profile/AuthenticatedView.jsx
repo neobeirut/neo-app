@@ -31,6 +31,7 @@ export default function AuthenticatedView({
   insets,
   onSignOut,
   onMenuPress,
+  onScroll,
 }) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -188,8 +189,10 @@ export default function AuthenticatedView({
         contentContainerStyle={{
           paddingTop: insets.top + 80,
           paddingHorizontal: 24,
-          paddingBottom: 100,
+          paddingBottom: insets.bottom + 120, // increased padding to clear bottom navigation bar
         }}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
       >
         {/* Profile Header */}
         <View style={{ alignItems: "center", marginBottom: 24 }}>

@@ -156,10 +156,14 @@ export async function GET(request) {
     }
 
     // Attach items to orders
-    const ordersWithItems = orders.map((order) => ({
-      ...order,
-      items: itemsMap[order.id] || [],
-    }));
+    const ordersWithItems = orders.map((order) => {
+      const mappedOrder = {
+        ...order,
+        items: itemsMap[order.id] || [],
+      };
+      mappedOrder.id = order.order_number || order.id;
+      return mappedOrder;
+    });
 
     return Response.json({ orders: ordersWithItems });
   } catch (error) {

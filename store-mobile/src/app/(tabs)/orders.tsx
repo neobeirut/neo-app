@@ -1,41 +1,28 @@
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  TouchableOpacity,
-  ActivityIndicator,
-  Modal,
-  ScrollView,
-  Linking,
-  Platform,
-  Vibration,
-} from 'react-native';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useOrdersStore } from '@/store/ordersStore';
-import { useAudioPlayer } from 'expo-audio';
-import Ionicons from '@expo/vector-icons/Ionicons';
-
-import { getJson, patchJson, getStoredAdminUser } from '@/utils/api';
-
-export default function OrdersScreen() {
-  const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<'new' | 'progress' | 'ready' | 'history'>('new');
-  const [selectedOrder, setSelectedOrder] = useState<any>(null);
-  const [adminUser, setAdminUser] = useState<any>(null);
-  const [knownOrderIds, setKnownOrderIds] = useState<string[]>([]);
-
-  // Setup sound alert player
-  let player: any = null;
-  try {
-    player = useAudioPlayer('https://assets.mixkit.co/active_storage/sfx/2869/2869-600.wav');
-    if (player) {
-      player.loop = true;
-    }
-  } catch (e) {
-    console.warn('Failed to initialize audio player:', e);
-  }
+import React, { useState, useEffect } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  TouchableOpacity,
+  ActivityIndicator,
+  Modal,
+  ScrollView,
+  Linking,
+  Platform,
+} from 'react-native';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useOrdersStore } from '@/store/ordersStore';
+import Ionicons from '@expo/vector-icons/Ionicons';
+
+import { getJson, patchJson, getStoredAdminUser } from '@/utils/api';
+
+export default function OrdersScreen() {
+  const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState<'new' | 'progress' | 'ready' | 'history'>('new');
+  const [selectedOrder, setSelectedOrder] = useState<any>(null);
+  const [adminUser, setAdminUser] = useState<any>(null);
+  const [knownOrderIds, setKnownOrderIds] = useState<string[]>([]);
 
   // Load admin user profile
   useEffect(() => {
@@ -53,46 +40,10 @@ export default function OrdersScreen() {
     refetchInterval: 8000, // Poll every 8 seconds
   });
 
-  // Handle continuous alarm/ringing and repeated vibration for pending orders
-  useEffect(() => {
-    if (data?.orders) {
-      const pendingOrders = data.orders.filter((o: any) => o.status === 'pending');
-
-      if (pendingOrders.length > 0) {
-        console.log(`[Orders] ${pendingOrders.length} pending orders detected. Alarm ringing...`);
-        try {
-          if (player) {
-            player.play();
-          }
-        } catch (e) {
-          console.warn('Failed to play alarm sound:', e);
-        }
-        // Vibrate repeatedly with pattern: wait 0ms, vibrate 500ms, wait 250ms, vibrate 500ms, and repeat (loop = true)
-        Vibration.vibrate([0, 500, 250, 500], true);
-      } else {
-        console.log('[Orders] No pending orders. Alarm stopped.');
-        try {
-          if (player) {
-            player.pause();
-            player.seekTo(0);
-          }
-        } catch (e) {
-          console.warn('Failed to stop/reset audio player:', e);
-        }
-        Vibration.cancel();
-      }
-    }
-
-    return () => {
-      // Clean up vibration when component unmounts
-      Vibration.cancel();
-    };
-  }, [data, player]);
-
-  // Mutation to update order status
-  const updateStatusMutation = useMutation({
-    mutationFn: ({ orderId, status }: { orderId: number; status: string }) =>
-      patchJson(`/api/orders/admin/${orderId}`, { status }),
+  // Mutation to update order status
+  const updateStatusMutation = useMutation({
+    mutationFn: ({ orderId, status }: { orderId: number; status: string }) =>
+      patchJson(`/api/orders/admin/${orderId}`, { status }),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['admin-orders'] });
       // Update local selected order state if modal is open

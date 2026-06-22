@@ -8,6 +8,7 @@ import {
   lockUntilMonthsFromNowDate,
 } from "@/app/api/utils/loyalty";
 import { sendWhatsAppNotification } from "@/app/api/utils/whatsappNotification";
+import { resolveOrderId } from "../../utils/orderIdResolver";
 
 // Push notification helpers removed. Managed centrally via whatsappNotification.js
 
@@ -153,6 +154,11 @@ export async function PATCH(request, { params }) {
     const { id } = params;
     const { status } = await request.json();
 
+    const resolvedId = await resolveOrderId(id);
+    if (!resolvedId) {
+      return Response.json({ error: "Order not found" }, { status: 404 });
+    }
+
     const validStatuses = [
       "pending",
       "accepted",
@@ -170,7 +176,7 @@ export async function PATCH(request, { params }) {
     // Status updates are allowed even when order content is locked.
     // Only final states are locked from further status changes.
     const [currentOrder] = await sql`
-      SELECT status FROM orders WHERE id = ${id}
+      SELECT status FROM orders WHERE id = ${resolvedId}
     `;
 
     if (!currentOrder) {
@@ -189,26 +195,26 @@ export async function PATCH(request, { params }) {
     await sql`
       UPDATE orders
       SET status = ${status}
-      WHERE id = ${id}
+      WHERE id = ${resolvedId}
     `;
 
     // Award loyalty points ONLY when the order becomes completed
     let loyaltyResult = { awarded: false, points: 0 };
     if (status === "completed") {
-      loyaltyResult = await awardLoyaltyIfNeededForCompletedOrder(id);
+      loyaltyResult = await awardLoyaltyIfNeededForCompletedOrder(resolvedId);
     }
 
     // Redeem/release tier/perk rewards based on order status
     if (status === "completed" || status === "cancelled") {
-      await redeemOrReleaseUserRewardForOrder({ orderId: id, status });
+      await redeemOrReleaseUserRewardForOrder({ orderId: resolvedId, status });
     }
 
     // ========== Send WhatsApp notification automatically (direct call, no HTTP) ==========
     let whatsappResult = { attempted: false, sent: false, error: null };
     try {
-      console.log(`[admin-order-update] Sending WhatsApp for order ${id}...`);
+      console.log(`[admin-order-update] Sending WhatsApp for order ${resolvedId}...`);
 
-      const whatsappData = await sendWhatsAppNotification(id, status);
+      const whatsappData = await sendWhatsAppNotification(resolvedId, status);
 
       whatsappResult.attempted = true;
       whatsappResult.sent = whatsappData?.ok && whatsappData?.sent;
@@ -291,10 +297,15 @@ export async function DELETE(request, { params }) {
 
     const { id } = params;
 
+    const resolvedId = await resolveOrderId(id);
+    if (!resolvedId) {
+      return Response.json({ error: "Order not found" }, { status: 404 });
+    }
+
     // Start transaction (Neon allows multiple statements in a single template string, but doing them sequentially is safe)
-    await sql`DELETE FROM order_item_customizations WHERE order_item_id IN (SELECT id FROM order_items WHERE order_id = ${id})`;
-    await sql`DELETE FROM order_items WHERE order_id = ${id}`;
-    await sql`DELETE FROM orders WHERE id = ${id}`;
+    await sql`DELETE FROM order_item_customizations WHERE order_item_id IN (SELECT id FROM order_items WHERE order_id = ${resolvedId})`;
+    await sql`DELETE FROM order_items WHERE order_id = ${resolvedId}`;
+    await sql`DELETE FROM orders WHERE id = ${resolvedId}`;
 
     return Response.json({ message: "Order deleted successfully" });
   } catch (error) {

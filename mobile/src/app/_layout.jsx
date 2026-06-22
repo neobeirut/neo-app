@@ -26,6 +26,7 @@ import * as Haptics from "expo-haptics";
 import { Home } from "lucide-react-native";
 import { useTheme } from "../utils/theme";
 import NotificationPrePrompt from "../components/NotificationPrePrompt";
+import AppNavigationBar from "../components/AppNavigationBar";
 import {
   useNotificationPermissionUIStore,
   hideNotificationPrePrompt,
@@ -53,114 +54,7 @@ const queryClient = new QueryClient({
   },
 });
 
-function GlobalHomeButton() {
-  const insets = useSafeAreaInsets();
-  const pathname = usePathname();
-  const router = useRouter();
-  const { colors } = useTheme();
-
-  const path = useMemo(() => {
-    return String(pathname || "");
-  }, [pathname]);
-
-  const hidden = useMemo(() => {
-    if (!path) return true;
-
-    // expo-router pathnames often omit group segments like /(tabs)
-    const isHome =
-      path === "/home" ||
-      path.startsWith("/home/") ||
-      path === "/(tabs)/home" ||
-      path.startsWith("/(tabs)/home/");
-
-    const isSelectBranch =
-      path === "/select-branch" ||
-      path.startsWith("/select-branch/") ||
-      path === "/(tabs)/select-branch" ||
-      path.startsWith("/(tabs)/select-branch/");
-
-    // User requested: do not show the floating Home icon on cart + checkout.
-    const isCart =
-      path === "/cart" ||
-      path.startsWith("/cart/") ||
-      path === "/(tabs)/cart" ||
-      path.startsWith("/(tabs)/cart/");
-
-    const isCheckout = path === "/checkout" || path.startsWith("/checkout/");
-
-    return isHome || isSelectBranch || isCart || isCheckout;
-  }, [path]);
-
-  const isTabsRoute = useMemo(() => {
-    if (!path) return false;
-
-    // In expo-router, group segments like /(tabs) are often not present in pathname.
-    // Treat known tab routes as "tabs" so we can keep the button above the tab bar.
-    const knownTabPrefixes = [
-      "/(tabs)",
-      "/home",
-      "/menu",
-      "/cart",
-      "/rewards",
-      "/profile",
-      "/favorites",
-      "/specials",
-    ];
-
-    return knownTabPrefixes.some(
-      (prefix) => path === prefix || path.startsWith(prefix + "/"),
-    );
-  }, [path]);
-
-  const bottomOffset = isTabsRoute ? insets.bottom + 84 : insets.bottom + 20;
-
-  const onPress = useCallback(async () => {
-    try {
-      await Haptics.selectionAsync();
-    } catch (e) {
-      // haptics can fail on web; ignore
-    }
-
-    router.push("/(tabs)/home");
-  }, [router]);
-
-  if (hidden) return null;
-
-  return (
-    <View
-      pointerEvents="box-none"
-      style={{
-        position: "absolute",
-        left: 0,
-        right: 0,
-        top: 0,
-        bottom: 0,
-      }}
-    >
-      <Pressable
-        onPress={onPress}
-        style={{
-          position: "absolute",
-          right: 18,
-          bottom: bottomOffset,
-          width: 52,
-          height: 52,
-          borderRadius: 26,
-          backgroundColor: colors.primary,
-          justifyContent: "center",
-          alignItems: "center",
-          shadowColor: "#000",
-          shadowOffset: { width: 0, height: 6 },
-          shadowOpacity: 0.18,
-          shadowRadius: 10,
-          elevation: 6,
-        }}
-      >
-        <Home size={22} color="#FFFFFF" />
-      </Pressable>
-    </View>
-  );
-}
+// GlobalHomeButton was removed in favor of AppNavigationBar
 
 function AppContent() {
   const { data: user } = useUser();
@@ -381,9 +275,9 @@ function AppContent() {
           }}
         >
           {/* Let Expo Router automatically discover all routes */}
-          <Stack.Screen name="select-branch" options={{ gestureEnabled: false }} />
+          <Stack.Screen name="select-branch" options={{ gestureEnabled: true }} />
         </Stack>
-        <GlobalHomeButton />
+        <AppNavigationBar />
 
         <NotificationPrePrompt
           visible={prePromptVisible}

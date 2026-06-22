@@ -1,5 +1,6 @@
 import sql from "@/app/api/utils/sql";
 import { getAdminWithRolesFromRequest } from "@/app/api/utils/adminAuth";
+import { resolveOrderId } from "../../../utils/orderIdResolver";
 
 const LOCKED_FOR_ITEM_EDITS = [
   "ready",
@@ -78,7 +79,12 @@ export async function PUT(request, { params }) {
 
     const { id } = params;
 
-    const guard = await assertOrderItemEditsAllowed(id);
+    const resolvedId = await resolveOrderId(id);
+    if (!resolvedId) {
+      return Response.json({ error: "Order not found" }, { status: 404 });
+    }
+
+    const guard = await assertOrderItemEditsAllowed(resolvedId);
     if (!guard.ok) {
       return guard.response;
     }
@@ -111,11 +117,11 @@ export async function PUT(request, { params }) {
       // Delete items that exist in DB but aren't in the submitted list
       await sql(
         `DELETE FROM order_items WHERE order_id = $1 AND id NOT IN (${submittedItemIds.map((_, i) => `$${i + 2}`).join(",")})`,
-        [id, ...submittedItemIds],
+        [resolvedId, ...submittedItemIds],
       );
     } else {
       // All items are new — delete everything first (shouldn't normally happen)
-      await sql`DELETE FROM order_items WHERE order_id = ${id}`;
+      await sql`DELETE FROM order_items WHERE order_id = ${resolvedId}`;
     }
 
     // ── Step 2: Upsert each submitted item ──────────────────────────────────
@@ -169,7 +175,7 @@ export async function PUT(request, { params }) {
             total_price = ${itemTotal},
             customizations = ${customizationsJson}::jsonb,
             comment = ${comment}
-          WHERE id = ${item.id} AND order_id = ${id}
+          WHERE id = ${item.id} AND order_id = ${resolvedId}
         `;
         orderItemId = item.id;
       } else {
@@ -177,7 +183,7 @@ export async function PUT(request, { params }) {
         const [newRow] = await sql`
           INSERT INTO order_items (order_id, product_id, quantity, unit_price, total_price, customizations, comment)
           VALUES (
-            ${id},
+            ${resolvedId},
             ${item.product_id},
             ${quantity},
             ${unitPrice},
@@ -209,13 +215,13 @@ export async function PUT(request, { params }) {
     // ── Step 3: Recalculate order totals ─────────────────────────────────────
     // Re-sum from DB to be accurate (handles any rounding)
     const [sumRow] = await sql`
-      SELECT COALESCE(SUM(total_price), 0) as items_total FROM order_items WHERE order_id = ${id}
+      SELECT COALESCE(SUM(total_price), 0) as items_total FROM order_items WHERE order_id = ${resolvedId}
     `;
     const itemsTotal = parseFloat(sumRow.items_total);
 
     // Fetch current order for delivery fee / promo info
     const [currentOrder] = await sql`
-      SELECT delivery_fee, discount_amount, promo_discount FROM orders WHERE id = ${id}
+      SELECT delivery_fee, discount_amount, promo_discount FROM orders WHERE id = ${resolvedId}
     `;
 
     const deliveryFee = parseFloat(currentOrder?.delivery_fee || 0);
@@ -234,7 +240,7 @@ export async function PUT(request, { params }) {
         total_before_discount = ${totalBeforeDiscount},
         total_after_discount = ${totalAfterDiscount},
         total_amount = ${totalAfterDiscount}
-      WHERE id = ${id}
+      WHERE id = ${resolvedId}
     `;
 
     return Response.json({
@@ -271,7 +277,12 @@ export async function DELETE(request, { params }) {
 
     const { id } = params;
 
-    const guard = await assertOrderItemEditsAllowed(id);
+    const resolvedId = await resolveOrderId(id);
+    if (!resolvedId) {
+      return Response.json({ error: "Order not found" }, { status: 404 });
+    }
+
+    const guard = await assertOrderItemEditsAllowed(resolvedId);
     if (!guard.ok) {
       return guard.response;
     }
@@ -284,16 +295,16 @@ export async function DELETE(request, { params }) {
     }
 
     await sql`
-      DELETE FROM order_items WHERE id = ${itemId} AND order_id = ${id}
+      DELETE FROM order_items WHERE id = ${itemId} AND order_id = ${resolvedId}
     `;
 
     const [sumRow] = await sql`
-      SELECT COALESCE(SUM(total_price), 0) as items_total FROM order_items WHERE order_id = ${id}
+      SELECT COALESCE(SUM(total_price), 0) as items_total FROM order_items WHERE order_id = ${resolvedId}
     `;
     const newTotal = parseFloat(sumRow.items_total);
 
     await sql`
-      UPDATE orders SET total_amount = ${newTotal} WHERE id = ${id}
+      UPDATE orders SET total_amount = ${newTotal} WHERE id = ${resolvedId}
     `;
 
     return Response.json({

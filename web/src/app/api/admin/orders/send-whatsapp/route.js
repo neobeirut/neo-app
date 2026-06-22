@@ -9,6 +9,7 @@ import {
   getTemplateConfig,
   buildPayloadFromSchema,
 } from "@/app/api/utils/whatsappTemplateRegistry";
+import { resolveOrderId } from "../../../orders/utils/orderIdResolver";
 
 // The only provisioned sender in Infobip for this account
 const FORCED_SENDER = "96176489078";
@@ -126,23 +127,33 @@ export async function POST(request) {
 
     // ── Parse body ─────────────────────────────────────────────────────────
     const body = (await request.json().catch(() => ({}))) || {};
-    orderId = body?.orderId;
+    const orderIdParam = body?.orderId;
     const dryRun = body?.dryRun === true;
     const force = body?.force === true;
 
-    if (!orderId) {
+    if (!orderIdParam) {
       return Response.json(
         { ok: false, error: "orderId is required" },
         { status: 400 },
       );
     }
 
+    const resolvedId = await resolveOrderId(orderIdParam);
+    if (!resolvedId) {
+      return Response.json(
+        { ok: false, error: "Order not found" },
+        { status: 404 },
+      );
+    }
+
+    orderId = resolvedId;
+
     // ── Load order ─────────────────────────────────────────────────────────
     const [order] = await sql`
-      SELECT id, user_id, branch_id, address_id, created_at,
+      SELECT id, order_number, user_id, branch_id, address_id, created_at,
              subtotal_amount, delivery_fee, total_amount,
              total_after_discount, special_instructions
-      FROM orders WHERE id = ${Number(orderId)} LIMIT 1
+      FROM orders WHERE id = ${resolvedId} LIMIT 1
     `;
     if (!order) {
       return Response.json(
@@ -233,8 +244,10 @@ export async function POST(request) {
         : order.total_amount;
     const deliveryFeeRaw = order.delivery_fee != null ? order.delivery_fee : 0;
 
+    const orderDisplayId = order.order_number || order.id;
+
     messageText = [
-      `🛵 New Delivery Order #${order.id}`,
+      `🛵 New Delivery Order #${orderDisplayId}`,
       `👤 Client: ${clientName}`,
       `📞 Phone: ${clientPhone}`,
       `📍 Address: ${addressText}`,
@@ -295,7 +308,7 @@ export async function POST(request) {
     let placeholders = [];
     if (schema.bodyPlaceholderCount === 7) {
       placeholders = [
-        String(order.id),
+        String(orderDisplayId),
         clientName,
         clientPhone,
         addressText + (mapsLink ? ` | 🗺 Location: ${mapsLink}` : ""),
@@ -306,7 +319,7 @@ export async function POST(request) {
     } else if (schema.bodyPlaceholderCount === 1) {
       // Build a consolidated single-line details text for a 1-placeholder template (newlines are rejected by Infobip)
       const rawText = [
-        `🛵 New Delivery Order #${order.id}`,
+        `🛵 New Delivery Order #${orderDisplayId}`,
         `👤 Client: ${clientName}`,
         `📞 Phone: ${clientPhone}`,
         `📍 Address: ${addressText}`,
@@ -324,7 +337,7 @@ export async function POST(request) {
 
       placeholders = [sanitizedText];
     } else if (schema.bodyPlaceholderCount > 0) {
-      placeholders = [String(order.id)]; // Default legacy behavior
+      placeholders = [String(orderDisplayId)]; // Default legacy behavior
     }
 
     console.log(

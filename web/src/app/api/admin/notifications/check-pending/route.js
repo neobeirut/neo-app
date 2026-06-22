@@ -14,7 +14,7 @@ export async function GET(request) {
   try {
     // 1. Query all orders that are still pending
     const pendingOrders = await sql`
-      SELECT id, branch_id
+      SELECT id, order_number, branch_id
       FROM orders
       WHERE status = 'pending'
       ORDER BY id ASC
@@ -36,10 +36,12 @@ export async function GET(request) {
 
       branchesNotified.add(branchId);
 
+      const orderDisplayId = order.order_number || order.id;
+
       const res = await sendPushNotificationToBranchAdmins(branchId, {
         title: "Pending Order Reminder!",
-        body: `Order #${order.id} is still waiting for response.`,
-        data: { orderId: String(order.id), status: "pending" },
+        body: `Order #${orderDisplayId} is still waiting for response.`,
+        data: { orderId: String(orderDisplayId), status: "pending" },
       });
 
       if (res.success) {

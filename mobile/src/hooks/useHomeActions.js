@@ -434,7 +434,7 @@ export function useHomeActions(
 
               // Navigate immediately to the branch picker.
               // If clearing fails, Select Branch will still prompt before switching.
-              router.replace("/select-branch");
+              router.push("/select-branch");
               clearCartMutation.mutate();
             },
           },
@@ -444,7 +444,7 @@ export function useHomeActions(
     } else {
       // Go to the branch picker without clearing selectedBranch first.
       // Clearing it first causes Home to render an empty state ("No categories available").
-      router.replace("/select-branch");
+      router.push("/select-branch");
     }
   };
 

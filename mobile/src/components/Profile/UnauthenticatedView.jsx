@@ -17,6 +17,7 @@ export default function UnauthenticatedView({
   insets,
   onSignIn,
   onMenuPress,
+  onScroll,
 }) {
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
@@ -57,8 +58,10 @@ export default function UnauthenticatedView({
         contentContainerStyle={{
           paddingTop: insets.top + 80,
           paddingHorizontal: 24,
-          paddingBottom: 100,
+          paddingBottom: insets.bottom + 120, // increased padding to clear bottom navigation bar
         }}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
       >
         <View style={{ alignItems: "center", marginBottom: 40 }}>
           <View

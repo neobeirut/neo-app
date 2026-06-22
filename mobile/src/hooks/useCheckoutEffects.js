@@ -57,7 +57,7 @@ export function useCheckoutEffects({
         : true;
 
     if (!isLoading && hasNoItems && !orderPlaced) {
-      router.replace("/(tabs)/cart");
+      router.replace("/cart");
     }
   }, [cartData, orderPlaced, router, isLoading]);
 }

@@ -75,7 +75,7 @@ export function HomeHeader({
     if (Platform.OS !== "web") {
       Haptics.selectionAsync().catch(() => {});
     }
-    router.push("/(tabs)/cart");
+    router.push("/cart");
   };
 
   const handleBranchPress = () => {

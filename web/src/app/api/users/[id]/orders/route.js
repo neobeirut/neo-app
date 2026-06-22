@@ -6,9 +6,10 @@ export async function GET(request, { params }) {
     const userId = parseInt(params.id);
 
     // Get all orders for the user with order items and product details
-    const orders = await sql`
+    const rawOrders = await sql`
       SELECT 
         o.id,
+        o.order_number,
         o.total_amount,
         o.status,
         o.order_type,
@@ -38,6 +39,11 @@ export async function GET(request, { params }) {
       GROUP BY o.id, ua.building, ua.company_name, ua.address_line2
       ORDER BY o.created_at DESC
     `;
+
+    const orders = rawOrders.map(order => ({
+      ...order,
+      id: order.order_number || order.id
+    }));
 
     return Response.json({ orders });
   } catch (error) {

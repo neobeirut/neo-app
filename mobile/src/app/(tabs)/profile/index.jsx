@@ -23,6 +23,7 @@ import {
 } from "@expo-google-fonts/inter";
 import { useRouter } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
+import { useScrollHandler } from "../../../hooks/useScrollHandler";
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
@@ -33,6 +34,7 @@ export default function ProfileScreen() {
   const { data: user, loading: userLoading } = useUser();
   const { selectedBranch, setSelectedBranch, clearBranch } = useBranchStore();
   const [menuVisible, setMenuVisible] = useState(false);
+  const handleScroll = useScrollHandler();
 
   // Fetch full profile data
   const { data: profileData } = useProfileData(isAuthenticated);
@@ -114,6 +116,7 @@ export default function ProfileScreen() {
           insets={insets}
           onSignIn={handleSignIn}
           onMenuPress={() => setMenuVisible(true)}
+          onScroll={handleScroll}
         />
       </>
     );
@@ -140,6 +143,7 @@ export default function ProfileScreen() {
         insets={insets}
         onSignOut={handleSignOut}
         onMenuPress={() => setMenuVisible(true)}
+        onScroll={handleScroll}
       />
     </>
   );

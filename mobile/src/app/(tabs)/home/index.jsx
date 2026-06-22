@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   TextInput,
   Platform,
   BackHandler,
+  PanResponder,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
@@ -42,6 +43,8 @@ import { getAuthPhone } from "../../../utils/auth/getAuthPhone";
 import { useFocusEffect } from "expo-router/react-navigation";
 import { usePromoPopupSettings } from "../../../hooks/usePromoPopupSettings";
 import PromoPopup from "../../../components/Home/PromoPopup";
+import { useScrollHandler } from "../../../hooks/useScrollHandler";
+import { useBottomBarStore } from "../../../utils/bottomBarStore";
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
@@ -56,6 +59,40 @@ export default function HomeScreen() {
   const categoryScrollRef = useRef(null);
   const categoryButtonRefs = useRef({});
   const mainScrollRef = useRef(null);
+  const handleScroll = useScrollHandler();
+
+  const homeResetCounter = useBottomBarStore((state) => state.homeResetCounter);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: (evt, gestureState) => {
+        return selectedCategory !== null && evt.nativeEvent.pageX < 40;
+      },
+      onMoveShouldSetPanResponder: (evt, gestureState) => {
+        return (
+          selectedCategory !== null &&
+          evt.nativeEvent.pageX < 40 &&
+          gestureState.dx > 10 &&
+          Math.abs(gestureState.dy) < 30
+        );
+      },
+      onPanResponderRelease: (evt, gestureState) => {
+        if (gestureState.dx > 80) {
+          handleBackToCategories();
+        }
+      },
+    })
+  ).current;
+
+  useEffect(() => {
+    if (homeResetCounter > 0) {
+      setSelectedCategory(null);
+      setSearchQuery("");
+      if (mainScrollRef.current) {
+        mainScrollRef.current.scrollTo({ y: 0, animated: true });
+      }
+    }
+  }, [homeResetCounter]);
 
   // Prevent Android hardware back from closing the app while on Home.
   // Instead, use it to close the slide menu / go back to categories.
@@ -459,7 +496,10 @@ export default function HomeScreen() {
   const { data: promoPopupData } = usePromoPopupSettings();
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.background }}>
+    <View 
+      style={{ flex: 1, backgroundColor: colors.background }}
+      {...(selectedCategory ? panResponder.panHandlers : {})}
+    >
       <StatusBar style={statusBarStyle} />
       {/* Home promo popup (best-effort; never block the screen) */}
       {promoPopupData?.promo_popup ? (
@@ -493,31 +533,7 @@ export default function HomeScreen() {
         onHomePress={handleBackToCategories}
         logoData={logoData}
       />
-      {/* Floating Back Button - now on the bottom */}
-      {selectedCategory && (
-        <TouchableOpacity
-          onPress={handleBackToCategories}
-          style={{
-            position: "absolute",
-            bottom: insets.bottom + 20,
-            right: 24,
-            width: 56,
-            height: 56,
-            borderRadius: 28,
-            backgroundColor: colors.primary,
-            alignItems: "center",
-            justifyContent: "center",
-            shadowColor: "#000",
-            shadowOffset: { width: 0, height: 4 },
-            shadowOpacity: 0.3,
-            shadowRadius: 8,
-            elevation: 8,
-            zIndex: 1000,
-          }}
-        >
-          <Home size={24} color="#FFFFFF" />
-        </TouchableOpacity>
-      )}
+      {/* Floating Back Button removed to avoid collision with new bottom navigation bar */}
       {/* Sticky Horizontal Category Menu - only show when category is selected */}
       {selectedCategory && (
         <View
@@ -581,9 +597,11 @@ export default function HomeScreen() {
             ? insets.top + headerHeight + categoryMenuHeight + 20
             : insets.top + headerHeight + 20,
           paddingHorizontal: 24,
-          paddingBottom: insets.bottom + 20,
+          paddingBottom: insets.bottom + 100, // increased padding to clear bottom navigation bar
         }}
         showsVerticalScrollIndicator={false}
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
       >
         {/* Search Input - Always visible under the header */}
         <View

@@ -22,6 +22,7 @@ import {
 } from "./database/orderCreation";
 import { deductInventory } from "./database/inventoryUpdate";
 import { getUserOrders } from "./database/orderRetrieval";
+import { resolveOrderId } from "./utils/orderIdResolver";
 import {
   toLebanonE164,
   sendWhatsAppPayload,
@@ -37,12 +38,12 @@ import {
 const FORCED_WHATSAPP_SENDER = "96176489078";
 
 // Send new order notification to branch via WhatsApp using "new_order_to_branch" template
-async function sendNewOrderWhatsApp({ orderId, branchId }) {
+async function sendNewOrderWhatsApp({ orderId, orderNumber, branchId }) {
   console.log(
     `[new_order_whatsapp] ==================== START ====================`,
   );
   console.log(
-    `[new_order_whatsapp] Order ${orderId} created for branch ${branchId}`,
+    `[new_order_whatsapp] Order ${orderNumber} created for branch ${branchId}`,
   );
 
   try {
@@ -112,7 +113,7 @@ async function sendNewOrderWhatsApp({ orderId, branchId }) {
     console.log(
       "╠════════════════════════════════════════════════════════════════╣",
     );
-    console.log(`║ Order ID:              ${String(orderId).padEnd(39)}║`);
+    console.log(`║ Order ID:              ${String(orderNumber).padEnd(39)}║`);
     console.log(
       `║ Branch:                ${branch.name.substring(0, 39).padEnd(39)}║`,
     );
@@ -144,9 +145,9 @@ async function sendNewOrderWhatsApp({ orderId, branchId }) {
     // Build placeholders array based on schema requirements
     const placeholders = [];
 
-    // If template expects placeholders, add orderId
+    // If template expects placeholders, add orderNumber
     if (schema.bodyPlaceholderCount > 0) {
-      placeholders.push(String(orderId));
+      placeholders.push(String(orderNumber));
 
       // Fill remaining placeholders with branch name if needed
       if (schema.bodyPlaceholderCount > 1) {
@@ -188,7 +189,7 @@ async function sendNewOrderWhatsApp({ orderId, branchId }) {
           ${Number(orderId)},
           ${Number(branchId)},
           ${branchPhone},
-          '[Template: ${templateName}] New order #${orderId}',
+          '[Template: ${templateName}] New order #${orderNumber}',
           'failed',
           ${errorMsg}
         )
@@ -219,7 +220,7 @@ async function sendNewOrderWhatsApp({ orderId, branchId }) {
           ${Number(orderId)},
           ${Number(branchId)},
           ${branchPhone},
-          '[Template: ${templateName}] New order #${orderId}',
+          '[Template: ${templateName}] New order #${orderNumber}',
           'sent',
           ${response.id || null}
         )
@@ -239,7 +240,7 @@ async function sendNewOrderWhatsApp({ orderId, branchId }) {
     } catch (sendError) {
       const errorMsg = String(sendError?.message || sendError);
       console.error(
-        `[new_order_whatsapp] Send failed for order ${orderId}`,
+        `[new_order_whatsapp] Send failed for order ${orderNumber}`,
         sendError,
       );
 
@@ -251,7 +252,7 @@ async function sendNewOrderWhatsApp({ orderId, branchId }) {
           ${Number(orderId)},
           ${Number(branchId)},
           ${branchPhone},
-          '[Template: ${templateName}] New order #${orderId}',
+          '[Template: ${templateName}] New order #${orderNumber}',
           'failed',
           ${errorMsg}
         )
@@ -452,7 +453,7 @@ export async function POST(request) {
     const totalBeforeDiscount = Math.max(subtotalAmount + deliveryFee, 0);
 
     // Create order with delivery distance and cost information
-    createdOrderId = await createOrder({
+    const orderCreationResult = await createOrder({
       userId,
       totalAmount,
       order_type,
@@ -477,6 +478,9 @@ export async function POST(request) {
       freeDeliveryPeriodId: deliveryInfo.freeDeliveryPeriodId,
       deliveryCostCalculationMethod: deliveryInfo.calculationMethod,
     });
+
+    createdOrderId = orderCreationResult?.id;
+    const createdOrderNumber = orderCreationResult?.orderNumber;
 
     if (!createdOrderId) {
       throw new Error("Failed to create order");
@@ -553,6 +557,7 @@ export async function POST(request) {
     // Send new order WhatsApp notification to branch (non-blocking)
     sendNewOrderWhatsApp({
       orderId: createdOrderId,
+      orderNumber: createdOrderNumber,
       branchId: effectiveBranchId,
     }).catch((err) => {
       console.error("[new_order_whatsapp] Async error:", err);
@@ -561,8 +566,8 @@ export async function POST(request) {
     // Send push notification to branch admins (non-blocking)
     sendPushNotificationToBranchAdmins(effectiveBranchId, {
       title: "New Order Alert!",
-      body: `New order #${createdOrderId} has been received.`,
-      data: { orderId: String(createdOrderId), status: "pending" },
+      body: `New order #${createdOrderNumber} has been received.`,
+      data: { orderId: String(createdOrderNumber), status: "pending" },
     }).catch((err) => {
       console.error("[new_order_push] Async error:", err);
     });
@@ -571,7 +576,7 @@ export async function POST(request) {
 
     return corsJson(request, {
       message: "Order created successfully",
-      order_id: createdOrderId,
+      order_id: createdOrderNumber,
       subtotal_amount: subtotalAmount,
       discount_amount: discountAmount,
       promo_code: promoCodeNorm || null,
@@ -651,7 +656,11 @@ export async function GET(request) {
       );
     }
 
-    const orders = await getUserOrders(userId);
+    const rawOrders = await getUserOrders(userId);
+    const orders = rawOrders.map(order => ({
+      ...order,
+      id: order.order_number || order.id
+    }));
 
     return corsJson(request, { orders });
   } catch (error) {

@@ -1,5 +1,6 @@
 import sql from "@/app/api/utils/sql";
 import { auth } from "@/auth";
+import { resolveOrderId } from "../../utils/orderIdResolver";
 
 // Update order items
 export async function PUT(request, { params }) {
@@ -14,6 +15,11 @@ export async function PUT(request, { params }) {
 
     const { id } = params;
     const { items } = await request.json(); // Array of { id?, product_id, quantity, selected_addons }
+
+    const resolvedId = await resolveOrderId(id);
+    if (!resolvedId) {
+      return Response.json({ error: "Order not found" }, { status: 404 });
+    }
 
     // Recalculate total
     let totalAmount = 0;
@@ -55,7 +61,7 @@ export async function PUT(request, { params }) {
           SET quantity = ${item.quantity},
               unit_price = ${productPrice},
               total_price = ${itemTotal}
-          WHERE id = ${item.id} AND order_id = ${id}
+          WHERE id = ${item.id} AND order_id = ${resolvedId}
         `;
 
         // Delete old addons
@@ -80,7 +86,7 @@ export async function PUT(request, { params }) {
         // Add new item
         const result = await sql`
           INSERT INTO order_items (order_id, product_id, quantity, unit_price, total_price)
-          VALUES (${id}, ${item.product_id}, ${item.quantity}, ${productPrice}, ${itemTotal})
+          VALUES (${resolvedId}, ${item.product_id}, ${item.quantity}, ${productPrice}, ${itemTotal})
           RETURNING id
         `;
 
@@ -106,7 +112,7 @@ export async function PUT(request, { params }) {
     await sql`
       UPDATE orders 
       SET total_amount = ${totalAmount}
-      WHERE id = ${id}
+      WHERE id = ${resolvedId}
     `;
 
     return Response.json({
@@ -141,14 +147,19 @@ export async function DELETE(request, { params }) {
       return Response.json({ error: "Item ID is required" }, { status: 400 });
     }
 
+    const resolvedId = await resolveOrderId(id);
+    if (!resolvedId) {
+      return Response.json({ error: "Order not found" }, { status: 404 });
+    }
+
     // Delete the item
     await sql`
-      DELETE FROM order_items WHERE id = ${itemId} AND order_id = ${id}
+      DELETE FROM order_items WHERE id = ${itemId} AND order_id = ${resolvedId}
     `;
 
     // Recalculate order total
     const items = await sql`
-      SELECT total_price FROM order_items WHERE order_id = ${id}
+      SELECT total_price FROM order_items WHERE order_id = ${resolvedId}
     `;
 
     const newTotal = items.reduce(
@@ -159,7 +170,7 @@ export async function DELETE(request, { params }) {
     await sql`
       UPDATE orders 
       SET total_amount = ${newTotal}
-      WHERE id = ${id}
+      WHERE id = ${resolvedId}
     `;
 
     return Response.json({

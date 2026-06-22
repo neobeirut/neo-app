@@ -16,11 +16,13 @@ import { LoadingState } from "../components/OrderHistory/LoadingState";
 import { ErrorState } from "../components/OrderHistory/ErrorState";
 import { useAuth } from "../utils/auth/useAuth";
 import { maybeShowNotificationPrePrompt } from "../utils/notifications";
+import { useScrollHandler } from "../hooks/useScrollHandler";
 
 export default function OrderHistoryScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { colors, statusBarStyle } = useTheme();
+  const handleScroll = useScrollHandler();
   const { selectedBranch } = useBranchStore();
   const { signIn, isAuthenticated, isReady } = useAuth();
   const [selectedStatus, setSelectedStatus] = useState("all");
@@ -87,7 +89,7 @@ export default function OrderHistoryScreen() {
                     { text: "Continue Shopping", style: "cancel" },
                     {
                       text: "View Cart",
-                      onPress: () => router.push("/(tabs)/cart"),
+                      onPress: () => router.push("/cart"),
                     },
                   ],
                 );
@@ -142,8 +144,10 @@ export default function OrderHistoryScreen() {
         style={{ flex: 1 }}
         contentContainerStyle={{
           padding: 24,
-          paddingBottom: insets.bottom + 24,
+          paddingBottom: insets.bottom + 100, // increased padding to clear bottom navigation bar
         }}
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
         refreshControl={
           <RefreshControl
             refreshing={isRefetching}

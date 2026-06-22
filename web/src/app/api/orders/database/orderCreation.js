@@ -1,5 +1,6 @@
 import sql from "@/app/api/utils/sql";
 import { normalizePromoCode } from "../utils/promoHelpers";
+import { generateOrderNumber } from "../utils/orderIdResolver";
 
 export async function createOrder({
   userId,
@@ -27,6 +28,7 @@ export async function createOrder({
   deliveryCostCalculationMethod,
 }) {
   const promoCodeNorm = normalizePromoCode(promo_code);
+  const orderNumber = await generateOrderNumber();
 
   const [orderRow] = await sql`
     INSERT INTO orders (
@@ -56,7 +58,8 @@ export async function createOrder({
       delivery_rule_id,
       free_delivery_applied,
       free_delivery_period_id,
-      delivery_cost_calculation_method
+      delivery_cost_calculation_method,
+      order_number
     ) VALUES (
       ${userId},
       ${totalAmount},
@@ -84,11 +87,15 @@ export async function createOrder({
       ${deliveryRuleId || null},
       ${deliveryCostCalculationMethod === "free_period"},
       ${freeDeliveryPeriodId || null},
-      ${deliveryCostCalculationMethod || null}
-    ) RETURNING id
+      ${deliveryCostCalculationMethod || null},
+      ${orderNumber}
+    ) RETURNING id, order_number
   `;
 
-  return orderRow?.id || null;
+  return {
+    id: orderRow?.id || null,
+    orderNumber: orderRow?.order_number || null,
+  };
 }
 
 export async function insertOrderItems({ createdOrderId, orderItems }) {

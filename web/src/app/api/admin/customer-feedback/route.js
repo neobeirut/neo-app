@@ -25,7 +25,7 @@ export async function GET(request) {
     const feedback = await sql`
       SELECT 
         f.id,
-        f.order_id,
+        COALESCE(o.order_number, f.order_id::text) as order_id,
         f.user_id,
         f.rating,
         f.feedback_text,
@@ -35,6 +35,7 @@ export async function GET(request) {
         u.name as user_name
       FROM order_feedback f
       LEFT JOIN auth_users u ON u.id = f.user_id
+      LEFT JOIN orders o ON f.order_id = o.id
       WHERE f.created_at > now() - interval '30 days'
       ORDER BY f.created_at DESC
       LIMIT 200

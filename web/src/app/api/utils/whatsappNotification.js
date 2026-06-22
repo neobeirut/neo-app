@@ -9,6 +9,7 @@ import {
 } from "./customerWhatsApp";
 import { buildTemplatePayloadFromStatus } from "./whatsappTemplateRegistry";
 import { sendPushNotificationToUser } from "./pushNotification";
+import { resolveOrderId } from "../orders/utils/orderIdResolver";
 
 function getPushTitle(status) {
   const titles = {
@@ -72,6 +73,16 @@ export async function sendWhatsAppNotification(orderId, newStatus) {
   );
   console.log(`[whatsapp-notification] Order ${orderId}, Status: ${newStatus}`);
 
+  const resolvedId = await resolveOrderId(orderId);
+  if (!resolvedId) {
+    console.log(`[whatsapp-notification] Order ${orderId} could not be resolved`);
+    return {
+      ok: false,
+      error: "Order not found",
+      skipped: true,
+    };
+  }
+
   // Status-based Routing Rules
   // Preparing (preparing) -> WhatsApp (with push fallback)
   // Ready (ready) -> Push notification ONLY
@@ -91,6 +102,7 @@ export async function sendWhatsAppNotification(orderId, newStatus) {
     const [order] = await sql`
       SELECT 
         o.id,
+        o.order_number,
         o.user_id,
         o.branch_id,
         o.status,
@@ -101,7 +113,7 @@ export async function sendWhatsAppNotification(orderId, newStatus) {
         b.name as branch_name
       FROM orders o
       LEFT JOIN branches b ON b.id = o.branch_id
-      WHERE o.id = ${Number(orderId)}
+      WHERE o.id = ${resolvedId}
       LIMIT 1
     `;
 
@@ -112,6 +124,8 @@ export async function sendWhatsAppNotification(orderId, newStatus) {
         skipped: true,
       };
     }
+
+    const orderDisplayId = order.order_number || order.id;
 
     // Load customer
     const [customer] = await sql`
@@ -145,7 +159,7 @@ export async function sendWhatsAppNotification(orderId, newStatus) {
         pushResult = await sendPushNotificationToUser(customer.id, {
           title: pushTitle,
           body: pushBody,
-          data: { orderId: String(order.id), status: newStatus, type: "order_update" }
+          data: { orderId: String(orderDisplayId), status: newStatus, type: "order_update" }
         });
       } catch (pushErr) {
         console.error(`[whatsapp-notification] Push error for user ${customer.id}:`, pushErr);
@@ -171,7 +185,7 @@ export async function sendWhatsAppNotification(orderId, newStatus) {
         pushResult = await sendPushNotificationToUser(customer.id, {
           title: pushTitle,
           body: pushBody,
-          data: { orderId: String(order.id), status: newStatus, type: "order_update" }
+          data: { orderId: String(orderDisplayId), status: newStatus, type: "order_update" }
         });
       } catch (pushErr) {
         console.error(`[whatsapp-notification] Push fallback error for user ${customer.id}:`, pushErr);
@@ -197,7 +211,7 @@ export async function sendWhatsAppNotification(orderId, newStatus) {
         pushResult = await sendPushNotificationToUser(customer.id, {
           title: pushTitle,
           body: pushBody,
-          data: { orderId: String(order.id), status: newStatus, type: "order_update" }
+          data: { orderId: String(orderDisplayId), status: newStatus, type: "order_update" }
         });
       } catch (pushErr) {
         console.error(`[whatsapp-notification] Push fallback error for user ${customer.id}:`, pushErr);
@@ -230,7 +244,7 @@ export async function sendWhatsAppNotification(orderId, newStatus) {
         pushResult = await sendPushNotificationToUser(customer.id, {
           title: pushTitle,
           body: pushBody,
-          data: { orderId: String(order.id), status: newStatus, type: "order_update" }
+          data: { orderId: String(orderDisplayId), status: newStatus, type: "order_update" }
         });
       } catch (pushErr) {
         console.error(`[whatsapp-notification] Push fallback error for user ${customer.id}:`, pushErr);
@@ -317,7 +331,7 @@ export async function sendWhatsAppNotification(orderId, newStatus) {
         // Prepare all available dynamic data
         // The template system will extract what it needs based on template structure
         const dynamicData = {
-          orderId: String(order.id),
+          orderId: String(orderDisplayId),
           branchName: order.branch_name || "Néo Beirut",
           customerName: customer.name || "",
           orderType: order.order_type,
@@ -358,7 +372,7 @@ export async function sendWhatsAppNotification(orderId, newStatus) {
             pushResult = await sendPushNotificationToUser(customer.id, {
               title: pushTitle,
               body: pushBody,
-              data: { orderId: String(order.id), status: newStatus, type: "order_update" }
+              data: { orderId: String(orderDisplayId), status: newStatus, type: "order_update" }
             });
           } catch (pushErr) {
             console.error(`[whatsapp-notification] Push fallback error for user ${customer.id}:`, pushErr);
@@ -518,7 +532,7 @@ export async function sendWhatsAppNotification(orderId, newStatus) {
         pushResult = await sendPushNotificationToUser(customer.id, {
           title: pushTitle,
           body: pushBody,
-          data: { orderId: String(order.id), status: newStatus, type: "order_update" }
+          data: { orderId: String(orderDisplayId), status: newStatus, type: "order_update" }
         });
       } catch (pushErr) {
         console.error(`[whatsapp-notification] Push fallback error for user ${customer.id}:`, pushErr);

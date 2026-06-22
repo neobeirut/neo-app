@@ -11,8 +11,8 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { useRouter } from "expo-router";
-import { useTheme } from "../../../utils/theme";
-import { useAuth } from "../../../utils/auth/useAuth";
+import { useTheme } from "../utils/theme";
+import { useAuth } from "../utils/auth/useAuth";
 import {
   useFonts,
   Inter_400Regular,
@@ -23,24 +23,24 @@ import {
   PlayfairDisplay_400Regular,
   PlayfairDisplay_500Medium,
 } from "@expo-google-fonts/playfair-display";
-import { useBranchStore } from "../../../utils/branchStore";
-import { SlideMenu } from "../../../components/Home/SlideMenu";
-import { useCartData } from "../../../hooks/useCartData";
-import { useUnifiedCartMutations } from "../../../hooks/useUnifiedCartMutations";
-import { useCartActions } from "../../../hooks/useCartActions";
-import { CartHeader } from "../../../components/Cart/CartHeader";
-import { EmptyCart } from "../../../components/Cart/EmptyCart";
-import { CartItem } from "../../../components/Cart/CartItem";
-import { CartSummary } from "../../../components/Cart/CartSummary";
-import { CheckoutButton } from "../../../components/Cart/CheckoutButton";
-import { calculateCartTotals } from "../../../utils/cartHelpers";
+import { useBranchStore } from "../utils/branchStore";
+import { SlideMenu } from "../components/Home/SlideMenu";
+import { useCartData } from "../hooks/useCartData";
+import { useUnifiedCartMutations } from "../hooks/useUnifiedCartMutations";
+import { useCartActions } from "../hooks/useCartActions";
+import { CartHeader } from "../components/Cart/CartHeader";
+import { EmptyCart } from "../components/Cart/EmptyCart";
+import { CartItem } from "../components/Cart/CartItem";
+import { CartSummary } from "../components/Cart/CartSummary";
+import { CheckoutButton } from "../components/Cart/CheckoutButton";
+import { calculateCartTotals } from "../utils/cartHelpers";
 import {
   apiFetch,
   API_FETCH_VERSION,
   getChosenApiBaseUrl,
   resolveApiUrl,
-} from "../../../utils/apiFetch";
-import { getAuthPhone } from "../../../utils/auth/getAuthPhone";
+} from "../utils/apiFetch";
+import { getAuthPhone } from "../utils/auth/getAuthPhone";
 
 export default function CartScreen() {
   const insets = useSafeAreaInsets();

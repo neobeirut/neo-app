@@ -1,5 +1,6 @@
 import sql from "@/app/api/utils/sql";
 import { auth } from "@/auth";
+import { resolveOrderId } from "../utils/orderIdResolver";
 
 // Helper: load all known push tokens for a user (new table), falling back to legacy auth_users.push_token
 // Push notification helpers removed. Managed centrally via whatsappNotification.js
@@ -17,6 +18,11 @@ export async function PATCH(request, { params }) {
     const { id } = params;
     const { status } = await request.json();
 
+    const resolvedId = await resolveOrderId(id);
+    if (!resolvedId) {
+      return Response.json({ error: "Order not found" }, { status: 404 });
+    }
+
     const validStatuses = [
       "pending",
       "accepted",
@@ -33,7 +39,7 @@ export async function PATCH(request, { params }) {
     await sql`
       UPDATE orders 
       SET status = ${status}
-      WHERE id = ${id}
+      WHERE id = ${resolvedId}
     `;
 
     let pushDebug = {
@@ -69,8 +75,13 @@ export async function DELETE(request, { params }) {
 
     const { id } = params;
 
+    const resolvedId = await resolveOrderId(id);
+    if (!resolvedId) {
+      return Response.json({ error: "Order not found" }, { status: 404 });
+    }
+
     await sql`
-      DELETE FROM orders WHERE id = ${id}
+      DELETE FROM orders WHERE id = ${resolvedId}
     `;
 
     return Response.json({ message: "Order deleted successfully" });

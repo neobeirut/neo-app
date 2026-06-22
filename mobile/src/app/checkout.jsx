@@ -1,4 +1,4 @@
-﻿import React from "react";
+import React from "react";
 import { View, ScrollView, Alert } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
@@ -234,7 +234,7 @@ export default function CheckoutScreen() {
     if (router.canGoBack()) {
       router.back();
     } else {
-      router.replace("/(tabs)/cart");
+      router.replace("/cart");
     }
   };
 

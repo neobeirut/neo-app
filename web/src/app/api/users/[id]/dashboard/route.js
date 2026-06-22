@@ -73,6 +73,7 @@ export async function GET(request, { params }) {
     const ordersResult = await sql`
       SELECT 
         o.id,
+        o.order_number,
         o.total_amount,
         o.status,
         o.order_type,
@@ -118,10 +119,14 @@ export async function GET(request, { params }) {
       });
     }
 
-    const ordersWithItems = ordersResult.map((order) => ({
-      ...order,
-      items: orderItemsMap[order.id] || [],
-    }));
+    const ordersWithItems = ordersResult.map((order) => {
+      const mappedOrder = {
+        ...order,
+        items: orderItemsMap[order.id] || [],
+      };
+      mappedOrder.id = order.order_number || order.id;
+      return mappedOrder;
+    });
 
     // Fetch saved addresses
     const addressesResult = await sql`

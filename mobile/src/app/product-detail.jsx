@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef, useEffect, useMemo } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import {
   View,
   Text,
@@ -613,7 +613,7 @@ export default function ProductDetailScreen() {
         router.back();
       } else {
         // Fallback: go to cart if we can't go back
-        router.replace("/(tabs)/cart");
+        router.replace("/cart");
       }
     } catch (e) {
       console.error("[ProductDetail] ❌ Failed to save cart edits", e);
@@ -661,7 +661,7 @@ export default function ProductDetailScreen() {
         if (canGoBack) {
           router.back();
         } else {
-          router.replace("/(tabs)/cart");
+          router.replace("/cart");
         }
       },
     });
@@ -717,7 +717,7 @@ export default function ProductDetailScreen() {
           isFavorite={isFavorite}
           setIsFavorite={handleToggleFavorite}
           onGoBack={() => router.back()}
-          onCartPress={() => router.push("/(tabs)/cart")}
+          onCartPress={() => router.push("/cart")}
           cartItemCount={cartItemCount}
           cartIconRef={cartIconRef}
         />
