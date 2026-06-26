@@ -1,4 +1,4 @@
-﻿{
+{
     "expo":  {
                  "name":  "Neo Beirut",
                  "slug":  "neo-beirut",
@@ -12,7 +12,7 @@
                              "bundleIdentifier":  "com.createinc.caf208ee23f24e85a97f59206c18a02a",
                              "buildNumber":  "33",
                              "infoPlist":  {
-                                               "NSCameraUsageDescription":  "This app does not use your camera.",
+                                               "NSCameraUsageDescription":  "Neo needs access to your camera to scan your plate and display nutrition facts.",
                                                "NSContactsUsageDescription":  "We need access to your contacts to use contacts.",
                                                "NSCalendarsUsageDescription":  "We need access to your notifications to help you stay updated.",
                                                "NSRemindersUsageDescription":  "We need access to your reminders to help you stay updated.",
@@ -35,10 +35,7 @@
                                                   },
                                  "package":  "com.neobeirut.app",
                                  "permissions":  [
-                                                     "android.permission.RECORD_AUDIO",
-                                                     "android.permission.MODIFY_AUDIO_SETTINGS",
-                                                     "android.permission.FOREGROUND_SERVICE",
-                                                     "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+                                                      "android.permission.CAMERA"
                                                  ],
                                  "googleServicesFile":  "./google-services.json",
                                  "config":  {
@@ -71,14 +68,7 @@
                                  "expo-secure-store",
                                  "expo-status-bar",
                                  "expo-video",
-                                 "expo-web-browser",
-                                 [
-                                     "react-native-google-mobile-ads",
-                                     {
-                                         "androidAppId":  "ca-app-pub-3940256099942544~3347511713",
-                                         "iosAppId":  "ca-app-pub-3940256099942544~1458002511"
-                                     }
-                                 ]
+                                 "expo-web-browser"
                              ],
                  "experiments":  {
                                      "typedRoutes":  true
@@ -92,9 +82,5 @@
                                        }
                            },
                  "owner":  "neo-beirut"
-             },
-    "react-native-google-mobile-ads":  {
-                                           "android_app_id":  "ca-app-pub-3940256099942544~3347511713",
-                                           "ios_app_id":  "ca-app-pub-3940256099942544~1458002511"
-                                       }
+             }
 }

@@ -46,7 +46,7 @@ function registerRoutes() {
   for (const routeFile of routeFiles) {
     try {
       const route = routesMap[routeFile] as any;
-      const methods = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'];
+      const methods = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'];
 
       for (const method of methods) {
         if (route[method]) {
@@ -74,6 +74,9 @@ function registerRoutes() {
               break;
             case 'patch':
               api.patch(honoPath, handler);
+              break;
+            case 'options':
+              api.options(honoPath, handler);
               break;
             default:
               console.warn(`Unsupported method: ${method}`);

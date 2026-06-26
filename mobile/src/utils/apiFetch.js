@@ -2,6 +2,7 @@ import { Platform } from "react-native";
 import { useAuthStore } from "@/utils/auth/store";
 import * as SecureStore from "expo-secure-store";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import Constants from "expo-constants";
 
 // Bump this when debugging EAS/Android builds so we can confirm the installed bundle is up to date.
 export const API_FETCH_VERSION = "2026-01-18-cart-auth-storage-fallback-2";
@@ -34,6 +35,16 @@ function normalizeBaseUrl(baseUrl) {
 const PUBLISHED_WEB_BASE_URL = "https://gregarious-curiosity-production-653f.up.railway.app";
 
 function getApiBaseUrl() {
+  // In local development on native platforms, dynamically resolve the host IP of the Metro server
+  if (__DEV__ && Platform.OS !== "web") {
+    const hostUri = Constants.expoConfig?.hostUri || Constants.manifest?.debuggerHost;
+    const hostIp = hostUri ? hostUri.split(":")[0] : null;
+    if (hostIp) {
+      console.log(`[apiFetch] Dev Mode - Resolved Metro Host IP to http://${hostIp}:4000`);
+      return `http://${hostIp}:4000`;
+    }
+  }
+
   const proxyBase = normalizeBaseUrl(process.env.EXPO_PUBLIC_PROXY_BASE_URL);
   const base = normalizeBaseUrl(process.env.EXPO_PUBLIC_BASE_URL);
 
