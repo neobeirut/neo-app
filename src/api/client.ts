@@ -2023,5 +2023,11 @@ export const api = {
     if (error) return { success: false, error: error.message };
     return { success: true, data };
   },
+
+  importTableData: async (tableName: string, rows: any[]) => {
+    const { data, error } = await supabase.from(tableName).insert(rows);
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
 };
 
