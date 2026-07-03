@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { Search, Plus, Loader2, DollarSign, Settings, List, ArrowRight } from 'lucide-react';
@@ -27,7 +27,7 @@ export default function TipsScreen() {
     } else if (activeTab === 'employees') {
       const [branchesRes, empRes] = await Promise.all([
         api.getBranchesList(),
-        api.getEmployees('Active')
+        api.getEmployees()
       ]);
       if (branchesRes.success && branchesRes.data) {
         setBranches(branchesRes.data.map((b: any) => typeof b === 'string' ? b : b.name));
@@ -105,10 +105,14 @@ export default function TipsScreen() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
         <div>
-          <h1 style={{ fontSize: '24px', fontWeight: 700, color: '#1a1a1a' }}>Tips Management</h1>
-          <p style={{ color: 'var(--text-muted)' }}>Manage tip collections, distribution, and branch settings.</p>
+          <h1 style={{ fontSize: '26px', fontWeight: 800, color: '#111827', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <DollarSign size={28} style={{ color: 'var(--primary)' }} /> Tips Config & Distribution
+          </h1>
+          <p style={{ color: 'var(--text-muted)', margin: '4px 0 0 0', fontSize: '14px' }}>
+            Manage tip collections, distribution, and branch settings.
+          </p>
         </div>
         {activeTab === 'collections' && (
           <button 

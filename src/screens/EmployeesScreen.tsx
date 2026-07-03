@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
-import { Search, Plus, Loader2 } from 'lucide-react';
+import { Search, Plus, Loader2, Users } from 'lucide-react';
 
 export default function EmployeesScreen() {
   const [employees, setEmployees] = useState<any[]>([]);
@@ -29,10 +29,14 @@ export default function EmployeesScreen() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
         <div>
-          <h1 style={{ fontSize: '24px', fontWeight: 700, color: '#1a1a1a' }}>HR & Employees</h1>
-          <p style={{ color: 'var(--text-muted)' }}>Manage staff, roles, and payroll basics.</p>
+          <h1 style={{ fontSize: '26px', fontWeight: 800, color: '#111827', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <Users size={28} style={{ color: 'var(--primary)' }} /> Employees
+          </h1>
+          <p style={{ color: 'var(--text-muted)', margin: '4px 0 0 0', fontSize: '14px' }}>
+            Manage staff profiles, roles, departments, and payroll basics.
+          </p>
         </div>
         <button 
           onClick={() => navigate('/employees/new')}

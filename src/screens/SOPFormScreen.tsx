@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api/client';
-import { ArrowLeft, Loader2, Upload, FileText, Video } from 'lucide-react';
+import { ArrowLeft, Loader2, Upload, FileText, Video, BookOpen } from 'lucide-react';
 
 const DEPARTMENTS = ['Kitchen', 'Bar', 'Pastry', 'Floor', 'Management', 'All'];
 
@@ -114,13 +114,20 @@ export default function SOPFormScreen() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', paddingBottom: '40px', maxWidth: '600px', margin: '0 auto', width: '100%' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '24px' }}>
-        <button onClick={() => navigate('/sops')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '8px', borderRadius: '50%', backgroundColor: 'var(--background)' }}>
-          <ArrowLeft size={20} />
-        </button>
-        <h1 style={{ fontSize: '24px', fontWeight: 700, color: '#1a1a1a' }}>
-          {id ? 'Edit Training Record' : 'New Training Record'}
-        </h1>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <button onClick={() => navigate('/sops')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '8px', borderRadius: '50%', backgroundColor: 'var(--background)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <ArrowLeft size={20} />
+          </button>
+          <div>
+            <h1 style={{ fontSize: '26px', fontWeight: 800, color: '#111827', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <BookOpen size={28} style={{ color: 'var(--primary)' }} /> {id ? 'Edit Training Record' : 'New Training Record'}
+            </h1>
+            <p style={{ color: 'var(--text-muted)', margin: '4px 0 0 0', fontSize: '14px' }}>
+              {id ? 'Update standard operating procedure steps, documents, or video links.' : 'Publish a new standard operating procedure manual or training media.'}
+            </p>
+          </div>
+        </div>
       </div>
 
       <form onSubmit={handleSave} style={{ backgroundColor: 'var(--surface)', padding: '24px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -193,7 +200,7 @@ export default function SOPFormScreen() {
         <button 
           type="submit"
           disabled={loading}
-          style={{ width: '100%', padding: '12px', backgroundColor: 'var(--primary)', color: 'white', border: 'none', borderRadius: '4px', fontWeight: 600, cursor: 'pointer', marginTop: '8px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}
+          style={{ width: '100%', padding: '12px', backgroundColor: 'var(--primary)', color: 'white', border: 'none', borderRadius: 'var(--radius)', fontWeight: 600, cursor: 'pointer', marginTop: '8px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}
         >
           {loading ? <Loader2 className="spin" size={20} /> : 'Save Training Record'}
         </button>

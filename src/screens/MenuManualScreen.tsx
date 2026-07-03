@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../api/client';
-import { Search, Plus, Loader2 } from 'lucide-react';
+import { Search, Plus, Loader2, ChefHat } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export default function MenuManualScreen() {
@@ -32,11 +32,18 @@ export default function MenuManualScreen() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-        <h1 style={{ fontSize: '24px', fontWeight: 700, color: '#1a1a1a' }}>Menu Manual</h1>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
+        <div>
+          <h1 style={{ fontSize: '26px', fontWeight: 800, color: '#111827', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <ChefHat size={28} style={{ color: 'var(--primary)' }} /> Menu Manual
+          </h1>
+          <p style={{ color: 'var(--text-muted)', margin: '4px 0 0 0', fontSize: '14px' }}>
+            Manage kitchen recipes, final menu items, and preparation instructions.
+          </p>
+        </div>
         <button 
           onClick={() => navigate('/menu/new')}
-          style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', backgroundColor: 'var(--success)', color: 'white', border: 'none', borderRadius: 'var(--radius)', fontWeight: 600, cursor: 'pointer' }}
+          style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', backgroundColor: 'var(--primary)', color: 'white', border: 'none', borderRadius: 'var(--radius)', fontWeight: 600, cursor: 'pointer' }}
         >
           <Plus size={20} /> New Recipe
         </button>
@@ -89,7 +96,7 @@ export default function MenuManualScreen() {
                       </div>
                     </td>
                     <td style={{ padding: '16px' }}>
-                      <span style={{ backgroundColor: '#eef2f5', color: '#007bff', padding: '4px 12px', borderRadius: '16px', fontSize: '12px', fontWeight: 600 }}>
+                      <span style={{ backgroundColor: '#eef2f5', color: 'var(--primary)', padding: '4px 12px', borderRadius: '16px', fontSize: '12px', fontWeight: 600 }}>
                         {recipe.menu_sections?.name}
                       </span>
                     </td>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
-import { ArrowLeft, Save, Loader2 } from 'lucide-react';
+import { ArrowLeft, Save, Loader2, Users } from 'lucide-react';
 
 export default function EmployeeFormScreen() {
   const { id } = useParams();
@@ -82,8 +82,8 @@ export default function EmployeeFormScreen() {
         api.getDepartmentsList(),
         api.getBranchesList()
       ]);
-      if (deptRes.success) setAllDepartments(deptRes.data);
-      if (branchRes.success) setAllBranches(branchRes.data);
+      if (deptRes.success) setAllDepartments(deptRes.data || []);
+      if (branchRes.success) setAllBranches(branchRes.data || []);
 
       if (isEditing && id) {
         const res = await api.getEmployeeById(id);
@@ -166,12 +166,19 @@ export default function EmployeeFormScreen() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', paddingBottom: '40px', maxWidth: '800px', margin: '0 auto', width: '100%' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <button onClick={() => navigate('/employees')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '8px', borderRadius: '50%', backgroundColor: 'var(--background)' }}>
+          <button onClick={() => navigate('/employees')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '8px', borderRadius: '50%', backgroundColor: 'var(--background)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <ArrowLeft size={20} />
           </button>
-          <h1 style={{ fontSize: '24px', fontWeight: 700, color: '#1a1a1a' }}>{isEditing ? 'Edit Employee' : 'New Employee'}</h1>
+          <div>
+            <h1 style={{ fontSize: '26px', fontWeight: 800, color: '#111827', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <Users size={28} style={{ color: 'var(--primary)' }} /> {isEditing ? 'Edit Employee' : 'New Employee'}
+            </h1>
+            <p style={{ color: 'var(--text-muted)', margin: '4px 0 0 0', fontSize: '14px' }}>
+              {isEditing ? 'Update profile details, position, and uploaded documents.' : 'Register a new employee profile and document records.'}
+            </p>
+          </div>
         </div>
         <button 
           onClick={handleSave}

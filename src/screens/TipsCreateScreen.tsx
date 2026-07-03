@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
-import { ArrowLeft, Loader2, Save } from 'lucide-react';
+import { ArrowLeft, Loader2, DollarSign } from 'lucide-react';
 
 export default function TipsCreateScreen() {
   const navigate = useNavigate();
@@ -45,7 +45,7 @@ export default function TipsCreateScreen() {
     setLoading(true);
 
     const settingsRes = await api.getTipsSettings(branch);
-    const settings = settingsRes.success && settingsRes.data?.length > 0 ? settingsRes.data[0] : null;
+    const settings = settingsRes.success && settingsRes.data && settingsRes.data.length > 0 ? settingsRes.data[0] : null;
     if (!settings) {
       alert('Tips settings not configured for this branch. Please go to Branch Settings first.');
       setLoading(false);
@@ -116,12 +116,19 @@ export default function TipsCreateScreen() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', paddingBottom: '40px', maxWidth: '600px', margin: '0 auto', width: '100%' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <button onClick={() => navigate('/tips')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '8px', borderRadius: '50%', backgroundColor: 'var(--background)' }}>
+          <button onClick={() => navigate('/tips')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '8px', borderRadius: '50%', backgroundColor: 'var(--background)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <ArrowLeft size={20} />
           </button>
-          <h1 style={{ fontSize: '24px', fontWeight: 700, color: '#1a1a1a' }}>Create Tips Collection</h1>
+          <div>
+            <h1 style={{ fontSize: '26px', fontWeight: 800, color: '#111827', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <DollarSign size={28} style={{ color: 'var(--primary)' }} /> Create Tips Collection
+            </h1>
+            <p style={{ color: 'var(--text-muted)', margin: '4px 0 0 0', fontSize: '14px' }}>
+              Enter cash and card tip pools to distribute to floor and service staff.
+            </p>
+          </div>
         </div>
       </div>
 
@@ -174,7 +181,7 @@ export default function TipsCreateScreen() {
         <button 
           type="submit"
           disabled={loading}
-          style={{ width: '100%', padding: '12px', backgroundColor: 'var(--primary)', color: 'white', border: 'none', borderRadius: '4px', fontWeight: 600, cursor: 'pointer', marginTop: '8px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}
+          style={{ width: '100%', padding: '12px', backgroundColor: 'var(--primary)', color: 'white', border: 'none', borderRadius: 'var(--radius)', fontWeight: 600, cursor: 'pointer', marginTop: '8px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}
         >
           {loading ? <Loader2 className="spin" size={20} /> : 'Calculate Distribution'}
         </button>

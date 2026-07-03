@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
-import { ArrowLeft, Save, Loader2, Image as ImageIcon } from 'lucide-react';
+import { ArrowLeft, Save, Loader2, Upload, ChefHat } from 'lucide-react';
 
 export default function MenuRecipeFormScreen() {
   const { id } = useParams();
@@ -26,6 +26,38 @@ export default function MenuRecipeFormScreen() {
   // Dual Image
   const [inhouseImageUrl, setInhouseImageUrl] = useState('');
   const [deliveryImageUrl, setDeliveryImageUrl] = useState('');
+  const [uploadingInhouse, setUploadingInhouse] = useState(false);
+  const [uploadingDelivery, setUploadingDelivery] = useState(false);
+
+  const handleInhouseImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    setUploadingInhouse(true);
+    const res = await api.uploadTrainingMedia(file);
+    setUploadingInhouse(false);
+    
+    if (res.success && res.url) {
+      setInhouseImageUrl(res.url);
+    } else {
+      alert(res.error || 'Failed to upload inhouse image.');
+    }
+  };
+
+  const handleDeliveryImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    setUploadingDelivery(true);
+    const res = await api.uploadTrainingMedia(file);
+    setUploadingDelivery(false);
+    
+    if (res.success && res.url) {
+      setDeliveryImageUrl(res.url);
+    } else {
+      alert(res.error || 'Failed to upload delivery image.');
+    }
+  };
 
   // Production & New Fields
   const [isProduction, setIsProduction] = useState(false);
@@ -58,10 +90,10 @@ export default function MenuRecipeFormScreen() {
         api.getAllUsers()
       ]);
 
-      if (secRes.success) setSections(secRes.data);
-      if (recRes.success) setAllRecipes(recRes.data.filter((r: any) => r.id !== id));
-      if (deptRes.success) setAllDepartments([{name: 'All'}, ...deptRes.data]);
-      if (empRes.success) setAllUsers(empRes.data);
+      if (secRes.success) setSections(secRes.data || []);
+      if (recRes.success && recRes.data) setAllRecipes(recRes.data.filter((r: any) => r.id !== id));
+      if (deptRes.success && deptRes.data) setAllDepartments([{name: 'All'}, ...deptRes.data]);
+      if (empRes.success) setAllUsers(empRes.data || []);
 
       if (isEditing && id) {
         const res = await api.getMenuRecipeById(id);
@@ -153,12 +185,19 @@ export default function MenuRecipeFormScreen() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', paddingBottom: '40px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <button onClick={() => navigate('/menu')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '8px', borderRadius: '50%', backgroundColor: 'var(--background)' }}>
+          <button onClick={() => navigate('/menu')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '8px', borderRadius: '50%', backgroundColor: 'var(--background)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <ArrowLeft size={20} />
           </button>
-          <h1 style={{ fontSize: '24px', fontWeight: 700, color: '#1a1a1a' }}>{isEditing ? 'Edit Recipe' : 'New Recipe'}</h1>
+          <div>
+            <h1 style={{ fontSize: '26px', fontWeight: 800, color: '#111827', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <ChefHat size={28} style={{ color: 'var(--primary)' }} /> {isEditing ? 'Edit Recipe' : 'New Recipe'}
+            </h1>
+            <p style={{ color: 'var(--text-muted)', margin: '4px 0 0 0', fontSize: '14px' }}>
+              {isEditing ? 'Update ingredients, preparation steps, and plating images.' : 'Create a new recipe with preparation details and instructions.'}
+            </p>
+          </div>
         </div>
         <button 
           onClick={handleSave}
@@ -278,12 +317,25 @@ export default function MenuRecipeFormScreen() {
           {/* Images Section */}
           <div style={{ backgroundColor: 'var(--surface)', padding: '24px', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
             <h3 style={{ marginBottom: '16px', fontSize: '16px' }}>Images</h3>
-            <label style={labelStyle}>Inhouse Image URL</label>
-            <input style={{...inputStyle, marginBottom: '16px'}} value={inhouseImageUrl} onChange={e => setInhouseImageUrl(e.target.value)} placeholder="https://..." />
+            
+            <label style={labelStyle}>Inhouse Image</label>
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+              <input style={{...inputStyle, flex: 1}} value={inhouseImageUrl} onChange={e => setInhouseImageUrl(e.target.value)} placeholder="Image URL or upload..." />
+              <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '40px', backgroundColor: 'var(--border)', borderRadius: '6px', cursor: 'pointer', flexShrink: 0 }}>
+                {uploadingInhouse ? <Loader2 size={18} className="spin" /> : <Upload size={18} />}
+                <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleInhouseImageUpload} disabled={uploadingInhouse} />
+              </label>
+            </div>
             {inhouseImageUrl && <img src={inhouseImageUrl} style={{ width: '100%', height: '150px', objectFit: 'cover', borderRadius: '8px', marginBottom: '16px' }} alt="Inhouse" />}
             
-            <label style={labelStyle}>Delivery Image URL</label>
-            <input style={{...inputStyle, marginBottom: '16px'}} value={deliveryImageUrl} onChange={e => setDeliveryImageUrl(e.target.value)} placeholder="https://..." />
+            <label style={labelStyle}>Delivery Image</label>
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+              <input style={{...inputStyle, flex: 1}} value={deliveryImageUrl} onChange={e => setDeliveryImageUrl(e.target.value)} placeholder="Image URL or upload..." />
+              <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '40px', backgroundColor: 'var(--border)', borderRadius: '6px', cursor: 'pointer', flexShrink: 0 }}>
+                {uploadingDelivery ? <Loader2 size={18} className="spin" /> : <Upload size={18} />}
+                <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleDeliveryImageUpload} disabled={uploadingDelivery} />
+              </label>
+            </div>
             {deliveryImageUrl && <img src={deliveryImageUrl} style={{ width: '100%', height: '150px', objectFit: 'cover', borderRadius: '8px' }} alt="Delivery" />}
           </div>
 

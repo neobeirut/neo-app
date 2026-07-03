@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
-import { Search, Plus, Loader2, FileText, Settings, BookOpen, FolderTree, Trash2 } from 'lucide-react';
+import { Search, Plus, Loader2, FileText, BookOpen, FolderTree, Trash2 } from 'lucide-react';
 
 export default function SOPsScreen() {
   const navigate = useNavigate();
@@ -18,13 +18,11 @@ export default function SOPsScreen() {
   const [categories, setCategories] = useState<any[]>([]);
   const [subcategories, setSubcategories] = useState<any[]>([]);
   const [newCatName, setNewCatName] = useState('');
-  const [newCatRoles, setNewCatRoles] = useState<string[]>(['Admin', 'Manager', 'Staff']);
+  const [newCatSection, setNewCatSection] = useState('Knowledge Base Library');
   const [newSubName, setNewSubName] = useState('');
   const [newSubDept, setNewSubDept] = useState('Floor');
-  const [newSubRoles, setNewSubRoles] = useState<string[]>(['Admin', 'Manager', 'Staff']);
 
   const DEPARTMENTS = ['All', 'Kitchen', 'Bar', 'Pastry', 'Floor', 'Management'];
-  const ROLES = ['Admin', 'Manager', 'Staff'];
 
   useEffect(() => {
     fetchData();
@@ -54,7 +52,7 @@ export default function SOPsScreen() {
   const handleAddCategory = async () => {
     if (!newCatName) return;
     setLoading(true);
-    await api.addTrainingCategory(newCatName);
+    await api.addTrainingCategory(newCatName, undefined, undefined, newCatSection);
     setNewCatName('');
     fetchData();
   };
@@ -89,10 +87,14 @@ export default function SOPsScreen() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
         <div>
-          <h1 style={{ fontSize: '24px', fontWeight: 700, color: '#1a1a1a' }}>Training & Procedures</h1>
-          <p style={{ color: 'var(--text-muted)' }}>Manage SOPs, Knowledge Base, and Training Modules.</p>
+          <h1 style={{ fontSize: '26px', fontWeight: 800, color: '#111827', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <BookOpen size={28} style={{ color: 'var(--primary)' }} /> Training & Procedures
+          </h1>
+          <p style={{ color: 'var(--text-muted)', margin: '4px 0 0 0', fontSize: '14px' }}>
+            Manage SOPs, Knowledge Base, and Training Modules.
+          </p>
         </div>
         {activeTab === 'library' && (
           <button 
@@ -190,19 +192,43 @@ export default function SOPsScreen() {
                 <div style={{ border: '1px solid var(--border)', borderRadius: '8px', padding: '20px', backgroundColor: '#f8f9fa' }}>
                   <h3 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '16px', borderBottom: '1px solid var(--border)', paddingBottom: '8px' }}>Main Categories</h3>
                   
-                  <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
-                    <input type="text" placeholder="New Category Name" value={newCatName} onChange={e => setNewCatName(e.target.value)} style={inputStyle} />
-                    <button onClick={handleAddCategory} style={{ padding: '8px 16px', backgroundColor: 'var(--primary)', color: 'white', border: 'none', borderRadius: '4px', fontWeight: 600, cursor: 'pointer' }}>Add</button>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '20px' }}>
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                      <input type="text" placeholder="New Category Name" value={newCatName} onChange={e => setNewCatName(e.target.value)} style={inputStyle} />
+                      <select value={newCatSection} onChange={e => setNewCatSection(e.target.value)} style={{ ...inputStyle, width: '220px' }}>
+                        <option value="Knowledge Base Library">Knowledge Base Library</option>
+                        <option value="Employee Development">Employee Development</option>
+                      </select>
+                    </div>
+                    <button onClick={handleAddCategory} style={{ padding: '8px 16px', backgroundColor: 'var(--primary)', color: 'white', border: 'none', borderRadius: '4px', fontWeight: 600, cursor: 'pointer', alignSelf: 'flex-end' }}>Add Category</button>
                   </div>
 
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {categories.map(c => (
-                      <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', backgroundColor: 'white', borderRadius: '4px', border: '1px solid var(--border)' }}>
-                        <span style={{ fontWeight: 600 }}>{c.name}</span>
-                        <button onClick={() => handleDeleteCategory(c.id)} style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer' }}><Trash2 size={16} /></button>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    <div>
+                      <h4 style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Knowledge Base Library</h4>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {categories.filter(c => !c.section || c.section === 'Knowledge Base Library').map(c => (
+                          <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', backgroundColor: 'white', borderRadius: '4px', border: '1px solid var(--border)' }}>
+                            <span style={{ fontWeight: 600 }}>{c.name}</span>
+                            <button onClick={() => handleDeleteCategory(c.id)} style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer' }}><Trash2 size={16} /></button>
+                          </div>
+                        ))}
+                        {categories.filter(c => !c.section || c.section === 'Knowledge Base Library').length === 0 && <div style={{ fontSize: '13px', color: 'var(--text-muted)', fontStyle: 'italic' }}>No categories created.</div>}
                       </div>
-                    ))}
-                    {categories.length === 0 && <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>No categories created.</div>}
+                    </div>
+
+                    <div>
+                      <h4 style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Employee Development</h4>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {categories.filter(c => c.section === 'Employee Development').map(c => (
+                          <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', backgroundColor: 'white', borderRadius: '4px', border: '1px solid var(--border)' }}>
+                            <span style={{ fontWeight: 600 }}>{c.name}</span>
+                            <button onClick={() => handleDeleteCategory(c.id)} style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer' }}><Trash2 size={16} /></button>
+                          </div>
+                        ))}
+                        {categories.filter(c => c.section === 'Employee Development').length === 0 && <div style={{ fontSize: '13px', color: 'var(--text-muted)', fontStyle: 'italic' }}>No categories created.</div>}
+                      </div>
+                    </div>
                   </div>
                 </div>
 
