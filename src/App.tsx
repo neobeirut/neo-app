@@ -12,7 +12,7 @@ import TipsDistributionScreen from './screens/TipsDistributionScreen';
 import PermissionsScreen from './screens/PermissionsScreen';
 import SOPsScreen from './screens/SOPsScreen';
 import SOPFormScreen from './screens/SOPFormScreen';
-import { LayoutDashboard, ChefHat, Users, LogOut, DollarSign, Shield, BookOpen, TrendingUp, MessageSquare, Newspaper, AlertTriangle, Sparkles, Trash2, History, Coins, Truck, ShoppingBag, Calendar, ClipboardList, Package, CheckSquare, Receipt, Briefcase, Store, ChevronDown, ChevronRight } from 'lucide-react';
+import { LayoutDashboard, ChefHat, Users, LogOut, DollarSign, Shield, BookOpen, TrendingUp, MessageSquare, Newspaper, AlertTriangle, Sparkles, Trash2, History, Coins, Truck, ShoppingBag, Calendar, ClipboardList, Package, CheckSquare, Receipt, Briefcase, Store, ChevronDown, ChevronRight, FileSpreadsheet } from 'lucide-react';
 import { api } from './api/client';
 import FinanceDashboardScreen from './screens/FinanceDashboardScreen';
 import PaymentDetailsScreen from './screens/PaymentDetailsScreen';
@@ -119,7 +119,8 @@ import SuperAdminScreen from './screens/SuperAdminScreen';
       {
         name: 'Administration',
         items: [
-          { to: '/super-admin', label: 'Super Admin', icon: <Shield size={18} />, visible: user.role === 'SuperAdmin' },
+          { to: '/super-admin', label: 'Super Admin', icon: <Shield size={18} />, visible: user.role?.toLowerCase() === 'superadmin' },
+          { to: '/super-admin?tab=importer', label: 'CSV Data Importer', icon: <FileSpreadsheet size={18} />, visible: user.role?.toLowerCase() === 'superadmin' },
           { to: '/branch-management', label: 'Branch Management', icon: <Store size={18} /> },
           { to: '/news', label: 'News Management', icon: <Newspaper size={18} /> },
           { to: '/sops', label: 'SOPs & Training', icon: <BookOpen size={18} /> },
@@ -321,7 +322,7 @@ function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () 
                 </div>
               } 
             />
-            {user.role === 'SuperAdmin' && (
+            {user.role?.toLowerCase() === 'superadmin' && (
               <Route path="/super-admin" element={<SuperAdminScreen />} />
             )}
             <Route path="/branch-management" element={<BranchManagementScreen />} />

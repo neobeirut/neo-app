@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import { api } from '../api/client';
 import { Search, Plus, X, Shield, Calendar, Compass, AlertCircle, FileSpreadsheet, Download, Upload, CheckCircle2 } from 'lucide-react';
 
@@ -18,6 +19,18 @@ export default function SuperAdminScreen() {
 
   // Active Tab: 'restaurants' or 'importer'
   const [activeTab, setActiveTab] = useState<'restaurants' | 'importer'>('restaurants');
+
+  const location = useLocation();
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const tab = params.get('tab');
+    if (tab === 'importer') {
+      setActiveTab('importer');
+    } else {
+      setActiveTab('restaurants');
+    }
+  }, [location.search]);
 
   // Form State
   const [showModal, setShowModal] = useState(false);
