@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "react-router dev",
     "typecheck": "react-router typegen && tsc --noEmit",
-    "build": "react-router build",
+    "build": "rm -rf node_modules/.cache .react-router build && react-router build",
     "start": "node ./build/server/index.js"
   },
   "dependencies": {
