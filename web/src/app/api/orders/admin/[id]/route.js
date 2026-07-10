@@ -302,10 +302,12 @@ export async function DELETE(request, { params }) {
       return Response.json({ error: "Order not found" }, { status: 404 });
     }
 
-    // Start transaction (Neon allows multiple statements in a single template string, but doing them sequentially is safe)
-    await sql`DELETE FROM order_item_customizations WHERE order_item_id IN (SELECT id FROM order_items WHERE order_id = ${resolvedId})`;
-    await sql`DELETE FROM order_items WHERE order_id = ${resolvedId}`;
-    await sql`DELETE FROM orders WHERE id = ${resolvedId}`;
+    // Start transaction to delete order and its related items/addons atomically
+    await sql.transaction([
+      sql`DELETE FROM order_item_addons WHERE order_item_id IN (SELECT id FROM order_items WHERE order_id = ${resolvedId})`,
+      sql`DELETE FROM order_items WHERE order_id = ${resolvedId}`,
+      sql`DELETE FROM orders WHERE id = ${resolvedId}`,
+    ]);
 
     return Response.json({ message: "Order deleted successfully" });
   } catch (error) {

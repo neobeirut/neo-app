@@ -80,9 +80,12 @@ export async function DELETE(request, { params }) {
       return Response.json({ error: "Order not found" }, { status: 404 });
     }
 
-    await sql`
-      DELETE FROM orders WHERE id = ${resolvedId}
-    `;
+    // Delete order and its related items/addons atomically
+    await sql.transaction([
+      sql`DELETE FROM order_item_addons WHERE order_item_id IN (SELECT id FROM order_items WHERE order_id = ${resolvedId})`,
+      sql`DELETE FROM order_items WHERE order_id = ${resolvedId}`,
+      sql`DELETE FROM orders WHERE id = ${resolvedId}`,
+    ]);
 
     return Response.json({ message: "Order deleted successfully" });
   } catch (error) {

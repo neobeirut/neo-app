@@ -1,5 +1,6 @@
 import sql from "@/app/api/utils/sql";
 import { getAdminWithRolesFromRequest } from "@/app/api/utils/adminAuth";
+import crypto from "crypto";
 
 function normalizeCode(code) {
   return String(code || "")
@@ -145,6 +146,7 @@ export async function POST(request) {
 
     const [row] = await sql`
       INSERT INTO promo_codes (
+        id,
         code,
         description,
         discount_type,
@@ -164,9 +166,10 @@ export async function POST(request) {
         created_by
       )
       VALUES (
+        ${crypto.randomUUID()},
         ${code},
         ${description},
-        ${discountType}::promo_discount_type,
+        ${discountType},
         ${discountValue},
         ${minSubtotal},
         ${maxDiscount},
@@ -256,7 +259,7 @@ export async function PATCH(request) {
         );
       }
 
-      setParts.push(`discount_type = $${idx}::promo_discount_type`);
+      setParts.push(`discount_type = $${idx}`);
       values.push(discountType);
       idx++;
     }
