@@ -149,6 +149,18 @@ export default function SupplierPriceIntelligenceScreen({ user }: { user?: { nam
   const [selectedCompareItem, setSelectedCompareItem] = useState<string>('');
   const [compareQty, setCompareQty] = useState<number>(10);
 
+  const [showAllItemsInManualQuote, setShowAllItemsInManualQuote] = useState(false);
+  const [showAddSupplierModal, setShowAddSupplierModal] = useState(false);
+  const [quickSupForm, setQuickSupForm] = useState({
+    name: '',
+    contact_name: '',
+    phone: '',
+    time_to_deliver: 'Next day',
+    payment_terms: 'Net 15'
+  });
+  const [csvSupplierId, setCsvSupplierId] = useState('');
+  const [ocrSupplierId, setOcrSupplierId] = useState('');
+
   // AI Assistant Chat state - Initialized purely using lazy initializer
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>(() => [
     {
@@ -690,6 +702,52 @@ CREATE POLICY "Enable write access for all authenticated users" ON public.item_d
     });
   };
 
+  const handleQuickSaveSupplier = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickSupForm.name.trim()) return;
+
+    const newSupplierPayload = {
+      name: quickSupForm.name,
+      contact_name: quickSupForm.contact_name || undefined,
+      phone: quickSupForm.phone || undefined,
+      time_to_deliver: quickSupForm.time_to_deliver || undefined,
+      payment_terms: quickSupForm.payment_terms || undefined,
+      is_active: true
+    };
+
+    if (dbStatus === 'ready') {
+      const res = await api.saveSupplier(newSupplierPayload);
+      if (res.success) {
+        showToast('New supplier added successfully!');
+        const suppliersRes = await api.getSuppliers();
+        const updatedList = (suppliersRes.success && suppliersRes.data) ? (suppliersRes.data as Supplier[]) : [];
+        setSuppliers(updatedList);
+        
+        const added = updatedList.find(s => s.name === quickSupForm.name);
+        if (added) {
+          setQuoteForm(prev => ({ ...prev, supplier_id: added.id }));
+        }
+      } else {
+        alert(res.error || 'Failed to save supplier');
+      }
+    } else {
+      const newId = `sup-quick-${Date.now()}`;
+      const newSup = { id: newId, ...newSupplierPayload };
+      setSuppliers(prev => [...prev, newSup]);
+      setQuoteForm(prev => ({ ...prev, supplier_id: newId }));
+      showToast('New supplier added in sandbox!');
+    }
+
+    setShowAddSupplierModal(false);
+    setQuickSupForm({
+      name: '',
+      contact_name: '',
+      phone: '',
+      time_to_deliver: 'Next day',
+      payment_terms: 'Net 15'
+    });
+  };
+
   const handleSaveEvaluation = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!evalForm.supplier_id) {
@@ -789,7 +847,7 @@ CREATE POLICY "Enable write access for all authenticated users" ON public.item_d
 
       const newMappings = [...mappings];
       const newQuotes = [...quotations];
-      const targetSupId = suppliers[0]?.id || 'sup-1';
+      const targetSupId = csvSupplierId || (suppliers[0]?.id || 'sup-1');
 
       parsed.forEach((row, rIdx) => {
         const match = catalogItems.find(ci => ci.name.toLowerCase().includes(row.matched_item_name.toLowerCase()) || row.supplier_item_desc.toLowerCase().includes(ci.name.toLowerCase()));
@@ -846,7 +904,7 @@ Items:
 3. BULK CACAO POWDER - 5 KG PACK - $42.50
 4. RED CHEDDAR BLOCKS - 2.5 KG - $20.80`);
 
-      const freshFarmsId = suppliers.find(s => s.name.includes('Fresh Farms'))?.id || 'sup-2';
+      const freshFarmsId = ocrSupplierId || (suppliers.find(s => s.name.toLowerCase().includes('fresh farms'))?.id || suppliers[0]?.id || 'sup-2');
       const extracted = [
         { desc: 'FRESH BEEF COARSE (GROUND)', unit: 'Kg', price: 11.50, moq: 1, flowName: 'Coarse Ground Beef' },
         { desc: 'ANCHOVY FILLETS IN OIL', unit: 'Jar', price: 14.20, moq: 1, flowName: 'Anchovies' },
@@ -1730,19 +1788,46 @@ CREATE POLICY "Enable write access for all authenticated users" ON public.item_d
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                       <div>
                         <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '4px' }}>Supplier</label>
-                        <select
-                          value={quoteForm.supplier_id}
-                          onChange={(e) => setQuoteForm({ ...quoteForm, supplier_id: e.target.value })}
-                          style={{ width: '100%', padding: '8px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '13px' }}
-                        >
-                          <option value="">Select Supplier</option>
-                          {suppliers.map(s => (
-                            <option key={s.id} value={s.id}>{s.name}</option>
-                          ))}
-                        </select>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <select
+                            value={quoteForm.supplier_id}
+                            onChange={(e) => setQuoteForm({ ...quoteForm, supplier_id: e.target.value })}
+                            style={{ flex: 1, padding: '8px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '13px' }}
+                          >
+                            <option value="">Select Supplier</option>
+                            {suppliers.map(s => (
+                              <option key={s.id} value={s.id}>{s.name}</option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            onClick={() => setShowAddSupplierModal(true)}
+                            style={{
+                              padding: '0 12px', borderRadius: '6px',
+                              background: 'var(--primary)', color: 'white', border: 'none',
+                              fontWeight: 'bold', fontSize: '15px', cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center'
+                            }}
+                            title="Add New Supplier"
+                          >
+                            +
+                          </button>
+                        </div>
                       </div>
                       <div>
-                        <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '4px' }}>Matched Flow Item</label>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                          <label style={{ fontSize: '12px', fontWeight: 700 }}>Matched Flow Item</label>
+                          {quoteForm.supplier_id && (
+                            <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+                              <input 
+                                type="checkbox" 
+                                checked={showAllItemsInManualQuote}
+                                onChange={(e) => setShowAllItemsInManualQuote(e.target.checked)} 
+                              />
+                              Show All
+                            </label>
+                          )}
+                        </div>
                         <select
                           value={quoteForm.flow_item_id}
                           onChange={(e) => {
@@ -1757,7 +1842,10 @@ CREATE POLICY "Enable write access for all authenticated users" ON public.item_d
                           style={{ width: '100%', padding: '8px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '13px' }}
                         >
                           <option value="">Select Catalog Item</option>
-                          {catalogItems.map(item => (
+                          {(showAllItemsInManualQuote || !quoteForm.supplier_id
+                            ? catalogItems
+                            : catalogItems.filter(ci => ci.supplier_id === quoteForm.supplier_id)
+                          ).map(item => (
                             <option key={item.id} value={item.id}>{item.name}</option>
                           ))}
                         </select>
@@ -1841,6 +1929,19 @@ CREATE POLICY "Enable write access for all authenticated users" ON public.item_d
                   <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '16px' }}>
                     Select a CSV containing headers: <code>item_name, unit, price_usd, moq, matched_catalog_name</code>
                   </p>
+                  <div style={{ marginBottom: '16px' }}>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '6px' }}>Target Supplier for CSV Mappings</label>
+                    <select
+                      value={csvSupplierId}
+                      onChange={(e) => setCsvSupplierId(e.target.value)}
+                      style={{ width: '100%', padding: '8px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '13px' }}
+                    >
+                      <option value="">-- Choose Supplier (Defaults to first) --</option>
+                      {suppliers.map(s => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
+                  </div>
                   <div style={{ border: '2px dashed var(--border)', borderRadius: '8px', padding: '20px', textAlign: 'center', cursor: 'pointer', position: 'relative' }}>
                     <Upload size={32} color="var(--primary)" style={{ marginBottom: '8px' }} />
                     <span style={{ display: 'block', fontSize: '13px', fontWeight: 600 }}>Click to select CSV File</span>
@@ -1858,6 +1959,20 @@ CREATE POLICY "Enable write access for all authenticated users" ON public.item_d
                   <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '16px' }}>
                     Upload a PDF or Image contract to automatically match descriptions and map prices using Flow AI OCR.
                   </p>
+                  
+                  <div style={{ marginBottom: '16px' }}>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '6px' }}>Target Supplier for OCR Scan</label>
+                    <select
+                      value={ocrSupplierId}
+                      onChange={(e) => setOcrSupplierId(e.target.value)}
+                      style={{ width: '100%', padding: '8px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '13px' }}
+                    >
+                      <option value="">-- Auto-Detect Supplier (from Invoice header) --</option>
+                      {suppliers.map(s => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
+                  </div>
                   
                   {importStatus === 'idle' && (
                     <div style={{ border: '2px dashed var(--primary)', borderRadius: '8px', padding: '20px', textAlign: 'center', cursor: 'pointer', position: 'relative', background: '#f4f9f8' }}>
@@ -2168,6 +2283,77 @@ CREATE POLICY "Enable write access for all authenticated users" ON public.item_d
         )}
 
       </div>
+
+      {/* Quick Add Supplier Modal */}
+      {showAddSupplierModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, backdropFilter: 'blur(4px)' }}>
+          <div className="card" style={{ backgroundColor: 'white', maxWidth: '450px', width: '90%', padding: '24px', borderRadius: '16px', border: '1px solid var(--border)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: 'var(--text-main)' }}>Add New Supplier</h3>
+              <button type="button" onClick={() => setShowAddSupplierModal(false)} style={{ border: 'none', background: 'transparent', cursor: 'pointer' }}><X size={20} /></button>
+            </div>
+            <form onSubmit={handleQuickSaveSupplier} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '4px' }}>Supplier Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={quickSupForm.name}
+                  onChange={(e) => setQuickSupForm({ ...quickSupForm, name: e.target.value })}
+                  placeholder="e.g. Al Kayan Distributors"
+                  style={{ width: '100%', padding: '8px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '13px' }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '4px' }}>Contact Person</label>
+                <input
+                  type="text"
+                  value={quickSupForm.contact_name}
+                  onChange={(e) => setQuickSupForm({ ...quickSupForm, contact_name: e.target.value })}
+                  placeholder="e.g. Imad"
+                  style={{ width: '100%', padding: '8px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '13px' }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '4px' }}>Phone Number</label>
+                <input
+                  type="text"
+                  value={quickSupForm.phone}
+                  onChange={(e) => setQuickSupForm({ ...quickSupForm, phone: e.target.value })}
+                  placeholder="e.g. +961 3 123456"
+                  style={{ width: '100%', padding: '8px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '13px' }}
+                />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '4px' }}>Lead Time</label>
+                  <input
+                    type="text"
+                    value={quickSupForm.time_to_deliver}
+                    onChange={(e) => setQuickSupForm({ ...quickSupForm, time_to_deliver: e.target.value })}
+                    placeholder="e.g. Next day, 48h"
+                    style={{ width: '100%', padding: '8px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '13px' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '4px' }}>Payment Terms</label>
+                  <input
+                    type="text"
+                    value={quickSupForm.payment_terms}
+                    onChange={(e) => setQuickSupForm({ ...quickSupForm, payment_terms: e.target.value })}
+                    placeholder="e.g. Net 15, COD"
+                    style={{ width: '100%', padding: '8px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '13px' }}
+                  />
+                </div>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '12px' }}>
+                <button type="button" onClick={() => setShowAddSupplierModal(false)} className="btn btn-secondary" style={{ fontSize: '13px' }}>Cancel</button>
+                <button type="submit" className="btn btn-primary" style={{ fontSize: '13px' }}>Save & Select</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
