@@ -12,7 +12,7 @@ import TipsDistributionScreen from './screens/TipsDistributionScreen';
 import PermissionsScreen from './screens/PermissionsScreen';
 import SOPsScreen from './screens/SOPsScreen';
 import SOPFormScreen from './screens/SOPFormScreen';
-import { LayoutDashboard, ChefHat, Users, LogOut, DollarSign, Shield, BookOpen, TrendingUp, MessageSquare, Newspaper, AlertTriangle, Sparkles, Trash2, History, Coins, Truck, ShoppingBag, Calendar, ClipboardList, Package, CheckSquare, Receipt, Briefcase, Store, ChevronDown, ChevronRight, FileSpreadsheet } from 'lucide-react';
+import { LayoutDashboard, ChefHat, Users, LogOut, DollarSign, Shield, BookOpen, TrendingUp, MessageSquare, Newspaper, AlertTriangle, Sparkles, Trash2, History, Coins, Truck, ShoppingBag, Calendar, ClipboardList, Package, CheckSquare, Receipt, Briefcase, Store, ChevronDown, ChevronRight } from 'lucide-react';
 import { api } from './api/client';
 import FinanceDashboardScreen from './screens/FinanceDashboardScreen';
 import PaymentDetailsScreen from './screens/PaymentDetailsScreen';
@@ -39,6 +39,7 @@ import ClientOrdersScreen from './screens/ClientOrdersScreen';
 import ClientOrderFormScreen from './screens/ClientOrderFormScreen';
 import ClientOrdersReportsScreen from './screens/ClientOrdersReportsScreen';
 import SuppliersScreen from './screens/SuppliersScreen';
+import SupplierPriceIntelligenceScreen from './screens/SupplierPriceIntelligenceScreen';
 import BranchManagementScreen from './screens/BranchManagementScreen';
 import ReelCreditScreen from './screens/ReelCreditScreen';
 import SuperAdminScreen from './screens/SuperAdminScreen';
@@ -62,7 +63,13 @@ import SuperAdminScreen from './screens/SuperAdminScreen';
       }));
     };
 
-    const menuGroups = [
+    const isSectionEnabled = (key: string) => {
+      const enabledSections = user?.restaurants?.settings?.enabled_sections;
+      if (!enabledSections) return true; // Default to enabled if not configured
+      return enabledSections.includes(key);
+    };
+
+    const menuGroups: any[] = [
       {
         name: 'Dashboard',
         items: [
@@ -72,62 +79,87 @@ import SuperAdminScreen from './screens/SuperAdminScreen';
       {
         name: 'Operations',
         items: [
-          { to: '/orders', label: 'Branch Orders', icon: <ShoppingBag size={18} /> },
-          { to: '/client-orders', label: 'Client Orders', icon: <Briefcase size={18} />, visible: permissions?.can_view_client_orders },
-          { to: '/reservations', label: 'Table Reservations', icon: <Calendar size={18} /> },
-          { to: '/checklists', label: 'Daily Checklists', icon: <ClipboardList size={18} /> },
-          { to: '/cash', label: 'Daily Shift Submissions', icon: <Coins size={18} />, visible: user.role === 'Admin' },
-          { to: '/tasks', label: 'Task Manager', icon: <CheckSquare size={18} />, visible: permissions?.can_manage_tasks }
+          { to: '/orders', label: 'Branch Orders', icon: <ShoppingBag size={18} />, key: 'orders' },
+          { to: '/client-orders', label: 'Client Orders', icon: <Briefcase size={18} />, visible: permissions?.can_view_client_orders, key: 'client_orders' },
+          { to: '/reservations', label: 'Table Reservations', icon: <Calendar size={18} />, key: 'reservations' },
+          { to: '/checklists', label: 'Daily Checklists', icon: <ClipboardList size={18} />, key: 'checklists' },
+          { to: '/cash', label: 'Daily Shift Submissions', icon: <Coins size={18} />, visible: user.role?.toLowerCase() === 'admin' || user.role?.toLowerCase() === 'superadmin', key: 'shift_submissions' },
+          { to: '/tasks', label: 'Task Manager', icon: <CheckSquare size={18} />, visible: permissions?.can_manage_tasks, key: 'tasks' }
         ]
       },
       {
         name: 'Inventory',
         items: [
-          { to: '/catalog', label: 'Item Catalog', icon: <Package size={18} /> },
-          { to: '/purchasing', label: 'Purchasing & Procurement', icon: <Truck size={18} /> },
-          { to: '/suppliers', label: 'Supplier Management', icon: <Store size={18} /> },
-          { to: '/waste', label: 'Waste Management', icon: <Trash2 size={18} /> },
-          { to: '/86', label: '86 Missing Items', icon: <AlertTriangle size={18} /> },
-          { to: '/inventory-reporting', label: 'Inventory Reporting (to be added)', icon: <TrendingUp size={18} /> },
-          { to: '/voids', label: 'Void Receipts', icon: <Receipt size={18} />, visible: permissions?.can_view_voids }
+          { to: '/catalog', label: 'Item Catalog', icon: <Package size={18} />, key: 'catalog' },
+          { to: '/purchasing', label: 'Purchasing & Procurement', icon: <Truck size={18} />, key: 'purchasing' },
+          { to: '/suppliers', label: 'Supplier Management', icon: <Store size={18} />, key: 'suppliers' },
+          { to: '/price-intelligence', label: 'Supplier Price Intelligence', icon: <TrendingUp size={18} />, key: 'price_intelligence' },
+          { to: '/waste', label: 'Waste Management', icon: <Trash2 size={18} />, key: 'waste' },
+          { to: '/86', label: '86 Missing Items', icon: <AlertTriangle size={18} />, key: 'missing_items' },
+          { to: '/inventory-reporting', label: 'Inventory Reporting (to be added)', icon: <TrendingUp size={18} />, key: 'inventory_reporting' },
+          { to: '/voids', label: 'Void Receipts', icon: <Receipt size={18} />, visible: permissions?.can_view_voids, key: 'voids' }
         ]
       },
       {
         name: 'People',
         items: [
-          { to: '/employees', label: 'Employees', icon: <Users size={18} /> },
-          { to: '/tips', label: 'Tips Config', icon: <DollarSign size={18} /> },
-          { to: '/permissions', label: 'Security & Matrix', icon: <Shield size={18} /> },
-          { to: '/signin-logs', label: 'Sign-In Logs', icon: <History size={18} />, visible: permissions?.can_view_signin_logs }
+          { to: '/employees', label: 'Employees', icon: <Users size={18} />, key: 'employees' },
+          { to: '/tips', label: 'Tips Config', icon: <DollarSign size={18} />, key: 'tips' },
+          { to: '/permissions', label: 'Security & Matrix', icon: <Shield size={18} />, key: 'permissions' },
+          { to: '/signin-logs', label: 'Sign-In Logs', icon: <History size={18} />, visible: permissions?.can_view_signin_logs, key: 'signin_logs' }
         ]
       },
       {
         name: 'Customers',
         items: [
-          { to: '/complaints', label: 'Client Complaints', icon: <MessageSquare size={18} />, visible: permissions?.can_view_complaints },
-          { to: '/specials', label: 'Specials & Upsell', icon: <Sparkles size={18} />, visible: permissions?.can_view_upsell }
+          { to: '/complaints', label: 'Client Complaints', icon: <MessageSquare size={18} />, visible: permissions?.can_view_complaints, key: 'complaints' },
+          { to: '/specials', label: 'Specials & Upsell', icon: <Sparkles size={18} />, visible: permissions?.can_view_upsell, key: 'specials' }
         ]
       },
       {
         name: 'Analytics',
         items: [
-          { to: '/finance', label: 'Financial Analytics', icon: <TrendingUp size={18} />, visible: permissions?.can_view_finance_dashboard },
-          { to: '/finance/payments', label: 'Payment Details', icon: <Coins size={18} />, visible: permissions?.can_view_finance_dashboard },
-          { to: '/reel-credit', label: 'Reel Credit', icon: <Receipt size={18} />, visible: permissions?.can_view_finance_dashboard }
+          { to: '/finance', label: 'Financial Analytics', icon: <TrendingUp size={18} />, visible: permissions?.can_view_finance_dashboard, key: 'finance' },
+          { to: '/finance/payments', label: 'Payment Details', icon: <Coins size={18} />, visible: permissions?.can_view_finance_dashboard, key: 'finance' },
+          { to: '/reel-credit', label: 'Reel Credit', icon: <Receipt size={18} />, visible: permissions?.can_view_finance_dashboard, key: 'finance' }
         ]
       },
       {
         name: 'Administration',
         items: [
           { to: '/super-admin', label: 'Super Admin', icon: <Shield size={18} />, visible: user.role?.toLowerCase() === 'superadmin' },
-          { to: '/super-admin?tab=importer', label: 'CSV Data Importer', icon: <FileSpreadsheet size={18} />, visible: user.role?.toLowerCase() === 'superadmin' },
-          { to: '/branch-management', label: 'Branch Management', icon: <Store size={18} /> },
-          { to: '/news', label: 'News Management', icon: <Newspaper size={18} /> },
-          { to: '/sops', label: 'SOPs & Training', icon: <BookOpen size={18} /> },
-          { to: '/menu', label: 'Menu Manual', icon: <ChefHat size={18} /> }
+          { to: '/branch-management', label: 'Branch Management', icon: <Store size={18} />, key: 'branch_management' },
+          { to: '/news', label: 'News Management', icon: <Newspaper size={18} />, key: 'news' },
+          { to: '/sops', label: 'SOPs & Training', icon: <BookOpen size={18} />, key: 'sops' },
+          { to: '/menu', label: 'Menu Manual', icon: <ChefHat size={18} />, key: 'menu' }
         ]
       }
     ];
+
+    const allVisibleItems = menuGroups.flatMap(group =>
+      group.items.filter((item: any) => {
+        if (item.visible === false) return false;
+        if (item.key && !isSectionEnabled(item.key)) return false;
+        return true;
+      })
+    );
+
+    const isLinkActive = (itemTo: string) => {
+      if (itemTo === '/') {
+        return location.pathname === '/';
+      }
+      const isExactOrSub = location.pathname === itemTo || location.pathname.startsWith(itemTo + '/');
+      if (!isExactOrSub) return false;
+
+      // Avoid marking a link active if there is a more specific matching item visible in the sidebar
+      const hasMoreSpecificMatch = allVisibleItems.some(otherItem => 
+        otherItem.to !== itemTo && 
+        otherItem.to.startsWith(itemTo) && 
+        (location.pathname === otherItem.to || location.pathname.startsWith(otherItem.to + '/'))
+      );
+
+      return !hasMoreSpecificMatch;
+    };
 
     return (
       <div className="sidebar">
@@ -139,7 +171,11 @@ import SuperAdminScreen from './screens/SuperAdminScreen';
         </div>
         <div className="sidebar-nav-container">
           {menuGroups.map(group => {
-            const visibleItems = group.items.filter(item => item.visible !== false);
+            const visibleItems = group.items.filter((item: any) => {
+              if (item.visible === false) return false;
+              if (item.key && !isSectionEnabled(item.key)) return false;
+              return true;
+            });
             if (visibleItems.length === 0) return null;
 
             if (group.name === 'Dashboard') {
@@ -169,14 +205,12 @@ import SuperAdminScreen from './screens/SuperAdminScreen';
                 </div>
                 {!isCollapsed && (
                   <div className="sidebar-group-items">
-                    {visibleItems.map(item => (
+                    {visibleItems.map((item: any) => (
                       <Link
                         key={item.to}
                         to={item.to}
                         className={`nav-link nav-link-nested ${
-                          (item.to === '/' ? location.pathname === '/' : location.pathname.startsWith(item.to)) 
-                            ? 'active' 
-                            : ''
+                          isLinkActive(item.to) ? 'active' : ''
                         }`}
                         style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
                       >
@@ -200,24 +234,32 @@ import SuperAdminScreen from './screens/SuperAdminScreen';
 
 
 function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () => void; onUpdateUser: (user: any) => void }) {
+  const isSectionEnabled = (key: string) => {
+    const enabledSections = user?.restaurants?.settings?.enabled_sections;
+    if (!enabledSections) return true; // Default to enabled if not configured
+    return enabledSections.includes(key);
+  };
+
+  const roleLower = user.role?.toLowerCase();
+  const isPrivileged = roleLower === 'admin' || roleLower === 'manager' || roleLower === 'superadmin';
   const [permissions, setPermissions] = useState<any>({
-    can_view_finance_dashboard: user.role === 'Admin' || user.role === 'Manager',
-    can_view_complaints: user.role === 'Admin' || user.role === 'Manager',
-    can_manage_complaints: user.role === 'Admin' || user.role === 'Manager',
-    can_view_upsell: user.role === 'Admin' || user.role === 'Manager',
-    can_manage_upsell: user.role === 'Admin' || user.role === 'Manager'
+    can_view_finance_dashboard: isPrivileged,
+    can_view_complaints: isPrivileged,
+    can_manage_complaints: isPrivileged,
+    can_view_upsell: isPrivileged,
+    can_manage_upsell: isPrivileged,
+    can_view_signin_logs: isPrivileged,
+    can_view_voids: isPrivileged,
+    can_manage_tasks: isPrivileged
   });
   const [branchesList, setBranchesList] = useState<string[]>([]);
 
   useEffect(() => {
-    if (user.role === 'Admin') {
-      api.getBranchesList().then(res => {
-        if (res.success && res.data) {
-          const names = res.data.map((b: any) => b.name);
-          setBranchesList(names);
-        }
-      });
-    }
+    api.getBranchesList().then(res => {
+      const dbNames = (res.success && res.data) ? res.data.map((b: any) => b.name) : [];
+      const combined = Array.from(new Set(['Badaro', 'Naccache', ...dbNames])).filter(Boolean);
+      setBranchesList(combined);
+    });
   }, [user]);
 
   useEffect(() => {
@@ -234,27 +276,19 @@ function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () 
       <div className="main-content">
         <div className="top-bar">
           <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-            {user.role === 'Admin' ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)' }}>Active Branch:</span>
-                <select
-                  className="admin-branch-select"
-                  value={user.branch || 'All'}
-                  onChange={(e) => onUpdateUser({ ...user, branch: e.target.value })}
-                >
-                  <option value="All">All Branches</option>
-                  {branchesList.map(b => (
-                    <option key={b} value={b}>{b}</option>
-                  ))}
-                </select>
-              </div>
-            ) : (
-              <div className={`topbar-branch-badge ${user.isBranchLocked ? 'locked' : 'manual'}`}>
-                {user.isBranchLocked ? '📍 Locked: ' : '🏢 '}
-                {user.branch || 'None'}
-                {!user.isBranchLocked && ' (Manual)'}
-              </div>
-            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)' }}>Active Branch:</span>
+              <select
+                className="admin-branch-select"
+                value={user.branch || 'All'}
+                onChange={(e) => onUpdateUser({ ...user, branch: e.target.value })}
+              >
+                <option value="All">All Branches</option>
+                {branchesList.map(b => (
+                  <option key={b} value={b}>{b}</option>
+                ))}
+              </select>
+            </div>
             <div style={{ width: '1px', height: '20px', backgroundColor: 'var(--border)' }} />
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <Users size={18} color="var(--text-muted)" />
@@ -266,66 +300,122 @@ function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () 
         <div className="content-area">
           <Routes>
             <Route path="/" element={<DashboardScreen user={user} permissions={permissions} />} />
-            <Route path="/orders" element={<OrdersScreen user={user} />} />
-            <Route path="/purchasing" element={<PurchasingScreen user={user} />} />
-            <Route path="/catalog" element={<ItemCatalogScreen user={user} />} />
-            <Route path="/waste" element={<WasteScreen user={user} />} />
-            <Route path="/reservations" element={<ReservationsScreen user={user} />} />
-            <Route path="/cash" element={<DailyShiftSubmissionsScreen user={user} />} />
-            {permissions?.can_view_voids && (
-              <Route path="/voids" element={<VoidReceiptsScreen user={user} />} />
+            {isSectionEnabled('orders') && <Route path="/orders" element={<OrdersScreen user={user} />} />}
+            {isSectionEnabled('purchasing') && <Route path="/purchasing" element={<PurchasingScreen user={user} />} />}
+            {isSectionEnabled('catalog') && <Route path="/catalog" element={<ItemCatalogScreen user={user} />} />}
+            {isSectionEnabled('waste') && <Route path="/waste" element={<WasteScreen user={user} />} />}
+            {isSectionEnabled('reservations') && <Route path="/reservations" element={<ReservationsScreen user={user} />} />}
+            {isSectionEnabled('shift_submissions') && <Route path="/cash" element={<DailyShiftSubmissionsScreen user={user} />} />}
+            {isSectionEnabled('voids') && (
+              <Route 
+                path="/voids" 
+                element={
+                  permissions?.can_view_voids !== false 
+                    ? <VoidReceiptsScreen user={user} />
+                    : <Navigate to="/" replace />
+                } 
+              />
             )}
-            <Route path="/checklists" element={<ChecklistsScreen user={user} />} />
-            <Route path="/menu" element={<MenuManualScreen />} />
-            <Route path="/menu/new" element={<MenuRecipeFormScreen />} />
-            <Route path="/menu/edit/:id" element={<MenuRecipeFormScreen />} />
-            <Route path="/86" element={<Menu86ViewScreen />} />
-            <Route path="/employees" element={<EmployeesScreen />} />
-            <Route path="/employees/new" element={<EmployeeFormScreen />} />
-            <Route path="/employees/edit/:id" element={<EmployeeFormScreen />} />
-            <Route path="/tips" element={<TipsScreen />} />
-            <Route path="/tips/new" element={<TipsCreateScreen />} />
-            <Route path="/tips/distribution/:id" element={<TipsDistributionScreen />} />
-            <Route path="/permissions" element={<PermissionsScreen />} />
-            {permissions?.can_view_signin_logs && (
-              <Route path="/signin-logs" element={<SignInLogsScreen user={user} />} />
+            {isSectionEnabled('checklists') && <Route path="/checklists" element={<ChecklistsScreen user={user} />} />}
+            {isSectionEnabled('menu') && (
+              <>
+                <Route path="/menu" element={<MenuManualScreen />} />
+                <Route path="/menu/new" element={<MenuRecipeFormScreen />} />
+                <Route path="/menu/edit/:id" element={<MenuRecipeFormScreen />} />
+              </>
             )}
-            <Route path="/sops" element={<SOPsScreen />} />
-            <Route path="/sops/new" element={<SOPFormScreen />} />
-            <Route path="/sops/edit/:id" element={<SOPFormScreen />} />
-            <Route path="/complaints" element={<ComplaintsDashboardScreen permissions={permissions} user={user} />} />
-            <Route path="/complaints/new" element={<ComplaintFormScreen permissions={permissions} user={user} />} />
-            <Route path="/complaints/edit/:id" element={<ComplaintFormScreen permissions={permissions} user={user} />} />
-            <Route path="/news" element={<NewsManagementScreen />} />
-            <Route path="/news/new" element={<NewsFormScreen />} />
-            <Route path="/news/edit/:id" element={<NewsFormScreen />} />
-            <Route path="/complaints/analytics" element={<ComplaintsAnalyticsScreen permissions={permissions} user={user} />} />
-            <Route path="/finance" element={<FinanceDashboardScreen user={user} permissions={permissions} />} />
-            <Route path="/finance/payments" element={<PaymentDetailsScreen user={user} />} />
-            <Route path="/reel-credit" element={<ReelCreditScreen user={user} />} />
-            <Route path="/specials" element={<ChefSpecialsScreen permissions={permissions} user={user} />} />
-            {permissions?.can_manage_tasks && (
-              <Route path="/tasks" element={<TasksScreen user={user} />} />
+            {isSectionEnabled('missing_items') && <Route path="/86" element={<Menu86ViewScreen />} />}
+            {isSectionEnabled('employees') && (
+              <>
+                <Route path="/employees" element={<EmployeesScreen user={user} />} />
+                <Route path="/employees/new" element={<EmployeeFormScreen user={user} />} />
+                <Route path="/employees/edit/:id" element={<EmployeeFormScreen user={user} />} />
+              </>
             )}
-            <Route path="/client-orders" element={<ClientOrdersScreen user={user} permissions={permissions} />} />
-            <Route path="/client-orders/new" element={<ClientOrderFormScreen user={user} permissions={permissions} />} />
-            <Route path="/client-orders/edit/:id" element={<ClientOrderFormScreen user={user} permissions={permissions} />} />
-            <Route path="/client-orders/reports" element={<ClientOrdersReportsScreen user={user} permissions={permissions} />} />
-            <Route path="/suppliers" element={<SuppliersScreen />} />
-            <Route 
-              path="/inventory-reporting" 
-              element={
-                <div className="placeholder-screen" style={{ padding: '40px', textAlign: 'center', backgroundColor: '#fff', borderRadius: '12px', border: '1px solid var(--border)', margin: '20px' }}>
-                  <TrendingUp size={48} color="var(--primary)" style={{ marginBottom: '20px' }} />
-                  <h2 style={{ fontSize: '24px', fontWeight: 700, marginBottom: '10px', color: 'var(--text-main)' }}>Inventory Reporting</h2>
-                  <p style={{ color: 'var(--text-muted)' }}>This module is currently under development. Stay tuned for advanced analytics!</p>
-                </div>
-              } 
-            />
+            {isSectionEnabled('tips') && (
+              <>
+                <Route path="/tips" element={<TipsScreen />} />
+                <Route path="/tips/new" element={<TipsCreateScreen />} />
+                <Route path="/tips/distribution/:id" element={<TipsDistributionScreen />} />
+              </>
+            )}
+            {isSectionEnabled('permissions') && <Route path="/permissions" element={<PermissionsScreen />} />}
+            {isSectionEnabled('signin_logs') && (
+              <Route 
+                path="/signin-logs" 
+                element={
+                  permissions?.can_view_signin_logs !== false 
+                    ? <SignInLogsScreen user={user} />
+                    : <Navigate to="/" replace />
+                } 
+              />
+            )}
+            {isSectionEnabled('sops') && (
+              <>
+                <Route path="/sops" element={<SOPsScreen />} />
+                <Route path="/sops/new" element={<SOPFormScreen />} />
+                <Route path="/sops/edit/:id" element={<SOPFormScreen />} />
+              </>
+            )}
+            {isSectionEnabled('complaints') && (
+              <>
+                <Route path="/complaints" element={<ComplaintsDashboardScreen permissions={permissions} user={user} />} />
+                <Route path="/complaints/new" element={<ComplaintFormScreen permissions={permissions} user={user} />} />
+                <Route path="/complaints/edit/:id" element={<ComplaintFormScreen permissions={permissions} user={user} />} />
+                <Route path="/complaints/analytics" element={<ComplaintsAnalyticsScreen permissions={permissions} user={user} />} />
+              </>
+            )}
+            {isSectionEnabled('news') && (
+              <>
+                <Route path="/news" element={<NewsManagementScreen />} />
+                <Route path="/news/new" element={<NewsFormScreen />} />
+                <Route path="/news/edit/:id" element={<NewsFormScreen />} />
+              </>
+            )}
+            {isSectionEnabled('finance') && (
+              <>
+                <Route path="/finance" element={<FinanceDashboardScreen user={user} permissions={permissions} />} />
+                <Route path="/finance/payments" element={<PaymentDetailsScreen user={user} />} />
+                <Route path="/reel-credit" element={<ReelCreditScreen user={user} />} />
+              </>
+            )}
+            {isSectionEnabled('specials') && <Route path="/specials" element={<ChefSpecialsScreen permissions={permissions} user={user} />} />}
+            {isSectionEnabled('tasks') && (
+              <Route 
+                path="/tasks" 
+                element={
+                  permissions?.can_manage_tasks !== false 
+                    ? <TasksScreen user={user} />
+                    : <Navigate to="/" replace />
+                } 
+              />
+            )}
+            {isSectionEnabled('client_orders') && (
+              <>
+                <Route path="/client-orders" element={<ClientOrdersScreen user={user} permissions={permissions} onUpdateUser={onUpdateUser} />} />
+                <Route path="/client-orders/new" element={<ClientOrderFormScreen user={user} permissions={permissions} onUpdateUser={onUpdateUser} />} />
+                <Route path="/client-orders/edit/:id" element={<ClientOrderFormScreen user={user} permissions={permissions} onUpdateUser={onUpdateUser} />} />
+                <Route path="/client-orders/reports" element={<ClientOrdersReportsScreen user={user} permissions={permissions} />} />
+              </>
+            )}
+            {isSectionEnabled('suppliers') && <Route path="/suppliers" element={<SuppliersScreen />} />}
+            {isSectionEnabled('price_intelligence') && <Route path="/price-intelligence" element={<SupplierPriceIntelligenceScreen user={user} />} />}
+            {isSectionEnabled('inventory_reporting') && (
+              <Route 
+                path="/inventory-reporting" 
+                element={
+                  <div className="placeholder-screen" style={{ padding: '40px', textAlign: 'center', backgroundColor: '#fff', borderRadius: '12px', border: '1px solid var(--border)', margin: '20px' }}>
+                    <TrendingUp size={48} color="var(--primary)" style={{ marginBottom: '20px' }} />
+                    <h2 style={{ fontSize: '24px', fontWeight: 700, marginBottom: '10px', color: 'var(--text-main)' }}>Inventory Reporting</h2>
+                    <p style={{ color: 'var(--text-muted)' }}>This module is currently under development. Stay tuned for advanced analytics!</p>
+                  </div>
+                } 
+              />
+            )}
             {user.role?.toLowerCase() === 'superadmin' && (
               <Route path="/super-admin" element={<SuperAdminScreen />} />
             )}
-            <Route path="/branch-management" element={<BranchManagementScreen />} />
+            {isSectionEnabled('branch_management') && <Route path="/branch-management" element={<BranchManagementScreen />} />}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>
@@ -355,8 +445,20 @@ function App() {
     // Quick and simple persist
     const saved = localStorage.getItem('neo_admin_user');
     if (saved) {
-      setUser(JSON.parse(saved));
+      const parsed = JSON.parse(saved);
+      setUser(parsed);
       sessionLogger.startHeartbeat();
+
+      // Background refresh of restaurant configuration settings
+      if (parsed.restaurant_id) {
+        api.getRestaurantById(parsed.restaurant_id).then(res => {
+          if (res.success && res.data) {
+            const updatedUser = { ...parsed, restaurants: res.data };
+            setUser(updatedUser);
+            localStorage.setItem('neo_admin_user', JSON.stringify(updatedUser));
+          }
+        });
+      }
     }
     setLoading(false);
   }, []);

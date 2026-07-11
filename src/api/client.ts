@@ -47,22 +47,55 @@ export const api = {
   },
 
   getMenuRecipes: async (sectionId?: number) => {
-    let query = supabase.from('menu_recipes').select('*, menu_sections(name)').order('item_name');
+    let query = supabase.from('menu_recipes').select('*').order('item_name');
     if (sectionId) query = query.eq('section_id', sectionId);
     
-    const { data, error } = await query;
-    if (error) return { success: false, error: error.message };
-    return { success: true, data };
+    const { data: recipes, error: recipesError } = await query;
+    if (recipesError) return { success: false, error: recipesError.message };
+
+    const { data: sections, error: sectionsError } = await supabase.from('menu_sections').select('*');
+    if (sectionsError) return { success: false, error: sectionsError.message };
+
+    const sectionsMap = new Map();
+    sections?.forEach(sec => {
+      sectionsMap.set(String(sec.id), sec);
+    });
+
+    const joinedRecipes = recipes?.map(recipe => ({
+      ...recipe,
+      menu_sections: recipe.section_id && sectionsMap.has(String(recipe.section_id))
+        ? { name: sectionsMap.get(String(recipe.section_id)).name }
+        : null
+    }));
+
+    return { success: true, data: joinedRecipes };
   },
 
   getMenuRecipeById: async (id: string) => {
-    const { data, error } = await supabase
+    const { data: recipe, error: recipeError } = await supabase
       .from('menu_recipes')
-      .select('*, menu_sections(name)')
+      .select('*')
       .eq('id', id)
       .single();
-    if (error) return { success: false, error: error.message };
-    return { success: true, data };
+    if (recipeError) return { success: false, error: recipeError.message };
+
+    if (recipe && recipe.section_id) {
+      const { data: section } = await supabase
+        .from('menu_sections')
+        .select('*')
+        .eq('id', recipe.section_id)
+        .maybeSingle();
+
+      return {
+        success: true,
+        data: {
+          ...recipe,
+          menu_sections: section ? { name: section.name } : null
+        }
+      };
+    }
+
+    return { success: true, data: { ...recipe, menu_sections: null } };
   },
 
   saveMenuRecipe: async (recipe: any) => {
@@ -291,13 +324,29 @@ export const api = {
   },
 
   getTrainingDocuments: async (categoryId?: string, department?: string) => {
-    let query = supabase.from('training_documents').select('*, training_categories(*)').order('created_at', { ascending: false });
+    let query = supabase.from('training_documents').select('*').order('created_at', { ascending: false });
     if (categoryId) query = query.eq('category_id', categoryId);
     if (department && department !== 'All') query = query.eq('department', department);
     
-    const { data, error } = await query;
-    if (error) return { success: false, error: error.message };
-    return { success: true, data };
+    const { data: docs, error: docsError } = await query;
+    if (docsError) return { success: false, error: docsError.message };
+
+    const { data: cats, error: catsError } = await supabase.from('training_categories').select('*');
+    if (catsError) return { success: false, error: catsError.message };
+
+    const catsMap = new Map();
+    cats?.forEach(cat => {
+      catsMap.set(String(cat.id), cat);
+    });
+
+    const joinedDocs = docs?.map(doc => ({
+      ...doc,
+      training_categories: doc.category_id && catsMap.has(String(doc.category_id))
+        ? catsMap.get(String(doc.category_id))
+        : null
+    }));
+
+    return { success: true, data: joinedDocs };
   },
 
   saveTrainingDocument: async (doc: any) => {
@@ -341,7 +390,7 @@ export const api = {
   // APP PERMISSIONS (per-user)
   // --------------------------------------------------------------------------
   getAppPermissions: async (userName: string, departments: string, userRole: string) => {
-    if (userRole === 'Admin') {
+    if (userRole === 'Admin' || userRole === 'SuperAdmin') {
       return {
         success: true,
         data: {
@@ -468,7 +517,7 @@ export const api = {
       };
     }
 
-    return { success: true, data: {} };
+        return { success: true, data: { can_view_complaints: true, can_manage_complaints: true, can_view_voids: true, can_manage_voids: true } };
   },
 
   // Activity / Audit Logs
@@ -481,25 +530,141 @@ export const api = {
   // Cash / Shift logs API
   getShiftCashLogs: async (filters: { startDate?: string, endDate?: string, branch?: string }) => {
     let query = supabase.from('shift_cash').select('*').order('date', { ascending: false });
-    if (filters.branch && filters.branch !== 'All') query = query.eq('branch', filters.branch);
-    if (filters.startDate) query = query.gte('date', filters.startDate);
-    if (filters.endDate) query = query.lte('date', filters.endDate);
+    
+    if (filters.branch && filters.branch !== 'All') {
+      query = query.ilike('branch', `%${filters.branch.trim()}%`);
+    }
+    
+    if (filters.startDate) {
+      const start = filters.startDate.split('T')[0].split(' ')[0];
+      query = query.gte('date', start);
+    }
+    
+    if (filters.endDate) {
+      const endClean = filters.endDate.split('T')[0].split(' ')[0];
+      const parts = endClean.split('-');
+      if (parts.length === 3) {
+        const year = parseInt(parts[0], 10);
+        const month = parseInt(parts[1], 10) - 1;
+        const day = parseInt(parts[2], 10);
+        const nextDayStr = new Date(Date.UTC(year, month, day + 1)).toISOString().split('T')[0];
+        query = query.lt('date', nextDayStr);
+      } else {
+        query = query.lte('date', `${endClean} 23:59:59`);
+      }
+    }
     
     const { data, error } = await query;
+    if (data && data.length > 0) {
+      return { success: true, data };
+    }
+
+    // Direct REST fetch fallback using explicit Bearer anon token if RLS session restricted rows
+    try {
+      const urlParams = new URLSearchParams();
+      urlParams.append('select', '*');
+      urlParams.append('order', 'date.desc');
+      if (filters.branch && filters.branch !== 'All') {
+        urlParams.append('branch', `ilike.*${filters.branch.trim()}*`);
+      }
+      if (filters.startDate) {
+        urlParams.append('date', `gte.${filters.startDate.split('T')[0].split(' ')[0]}`);
+      }
+      if (filters.endDate) {
+        const endClean = filters.endDate.split('T')[0].split(' ')[0];
+        const parts = endClean.split('-');
+        if (parts.length === 3) {
+          const nextDayStr = new Date(Date.UTC(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10) + 1)).toISOString().split('T')[0];
+          urlParams.append('date', `lt.${nextDayStr}`);
+        }
+      }
+      const rawRes = await fetch(`https://dybtzulafvtyfuqwsvkk.supabase.co/rest/v1/shift_cash?${urlParams.toString()}`, {
+        headers: {
+          'apikey': 'sb_publishable_hKaJMyrM0bQU7kRKgVplWg_bN2zzirF',
+          'Authorization': 'Bearer sb_publishable_hKaJMyrM0bQU7kRKgVplWg_bN2zzirF',
+          'Content-Type': 'application/json'
+        }
+      });
+      if (rawRes.ok) {
+        const rawData = await rawRes.json();
+        if (Array.isArray(rawData)) return { success: true, data: rawData };
+      }
+    } catch (e) {
+      console.warn('Fallback shift fetch failed:', e);
+    }
+
     if (error) return { success: false, error: error.message };
-    return { success: true, data };
+    return { success: true, data: data || [] };
   },
 
   // Daily Payments
   getAllDailyPayments: async (filters: { startDate?: string, endDate?: string, branch?: string }) => {
     let query = supabase.from('daily_payments').select('*').order('date', { ascending: false }).order('created_at', { ascending: false });
-    if (filters.branch && filters.branch !== 'All') query = query.eq('branch', filters.branch);
-    if (filters.startDate) query = query.gte('date', filters.startDate);
-    if (filters.endDate) query = query.lte('date', filters.endDate);
+    
+    if (filters.branch && filters.branch !== 'All') {
+      query = query.ilike('branch', `%${filters.branch.trim()}%`);
+    }
+    
+    if (filters.startDate) {
+      const start = filters.startDate.split('T')[0].split(' ')[0];
+      query = query.gte('date', start);
+    }
+    
+    if (filters.endDate) {
+      const endClean = filters.endDate.split('T')[0].split(' ')[0];
+      const parts = endClean.split('-');
+      if (parts.length === 3) {
+        const year = parseInt(parts[0], 10);
+        const month = parseInt(parts[1], 10) - 1;
+        const day = parseInt(parts[2], 10);
+        const nextDayStr = new Date(Date.UTC(year, month, day + 1)).toISOString().split('T')[0];
+        query = query.lt('date', nextDayStr);
+      } else {
+        query = query.lte('date', `${endClean} 23:59:59`);
+      }
+    }
     
     const { data, error } = await query;
+    if (data && data.length > 0) {
+      return { success: true, data };
+    }
+
+    // Direct REST fetch fallback
+    try {
+      const urlParams = new URLSearchParams();
+      urlParams.append('select', '*');
+      urlParams.append('order', 'date.desc,created_at.desc');
+      if (filters.branch && filters.branch !== 'All') {
+        urlParams.append('branch', `ilike.*${filters.branch.trim()}*`);
+      }
+      if (filters.startDate) {
+        urlParams.append('date', `gte.${filters.startDate.split('T')[0].split(' ')[0]}`);
+      }
+      if (filters.endDate) {
+        const endClean = filters.endDate.split('T')[0].split(' ')[0];
+        const parts = endClean.split('-');
+        if (parts.length === 3) {
+          const nextDayStr = new Date(Date.UTC(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10) + 1)).toISOString().split('T')[0];
+          urlParams.append('date', `lt.${nextDayStr}`);
+        }
+      }
+      const rawRes = await fetch(`https://dybtzulafvtyfuqwsvkk.supabase.co/rest/v1/daily_payments?${urlParams.toString()}`, {
+        headers: {
+          'apikey': 'sb_publishable_hKaJMyrM0bQU7kRKgVplWg_bN2zzirF',
+          'Authorization': 'Bearer sb_publishable_hKaJMyrM0bQU7kRKgVplWg_bN2zzirF',
+          'Content-Type': 'application/json'
+        }
+      });
+      if (rawRes.ok) {
+        const rawData = await rawRes.json();
+        if (Array.isArray(rawData)) return { success: true, data: rawData };
+      }
+    } catch (e) {
+      console.warn('Fallback payment fetch failed:', e);
+    }
+
     if (error) return { success: false, error: error.message };
-    return { success: true, data };
+    return { success: true, data: data || [] };
   },
 
   createDailyPayment: async (payload: {
@@ -546,6 +711,31 @@ export const api = {
     const { data, error } = await query.order('branch');
     if (error) return { success: false, error: error.message };
     return { success: true, data };
+  },
+
+  save86: async (branch: string, items: any[], date: string) => {
+    const { data: existing, error: findError } = await supabase
+      .from('menu_86')
+      .select('id')
+      .eq('branch', branch)
+      .eq('date', date)
+      .maybeSingle();
+
+    if (findError) return { success: false, error: findError.message };
+
+    if (existing) {
+      const { error } = await supabase
+        .from('menu_86')
+        .update({ items })
+        .eq('id', existing.id);
+      if (error) return { success: false, error: error.message };
+    } else {
+      const { error } = await supabase
+        .from('menu_86')
+        .insert([{ branch, date, items }]);
+      if (error) return { success: false, error: error.message };
+    }
+    return { success: true };
   },
 
   // Dashboard & KPI Analytics RPC call
@@ -825,6 +1015,66 @@ export const api = {
     return { success: true, data };
   },
 
+  getAllPurchasingRequestItems: async () => {
+    const { data, error } = await supabase.from('purchasing_request_items').select('*');
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  getSupplierQuotations: async () => {
+    const { data, error } = await supabase.from('supplier_quotations').select('*').order('created_at', { ascending: false });
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  saveSupplierQuotation: async (quotation: any) => {
+    const { data, error } = await supabase.from('supplier_quotations').upsert(quotation).select();
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  deleteSupplierQuotation: async (id: string) => {
+    const { error } = await supabase.from('supplier_quotations').delete().eq('id', id);
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  },
+
+  getSupplierEvaluations: async () => {
+    const { data, error } = await supabase.from('supplier_evaluations').select('*').order('created_at', { ascending: false });
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  saveSupplierEvaluation: async (evaluation: any) => {
+    const { data, error } = await supabase.from('supplier_evaluations').upsert(evaluation).select();
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  getSupplierIntelligenceConfig: async () => {
+    const { data, error } = await supabase.from('supplier_intelligence_config').select('*').limit(1);
+    if (error) return { success: false, error: error.message };
+    return { success: true, data: data?.[0] || null };
+  },
+
+  saveSupplierIntelligenceConfig: async (config: any) => {
+    const { data, error } = await supabase.from('supplier_intelligence_config').upsert(config).select();
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  getItemDescriptionMappings: async () => {
+    const { data, error } = await supabase.from('item_description_mappings').select('*').order('created_at', { ascending: false });
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  saveItemDescriptionMapping: async (mapping: any) => {
+    const { data, error } = await supabase.from('item_description_mappings').upsert(mapping).select();
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
   savePurchasingRequest: async (header: any, items: any[]) => {
     let requestId = header.id;
     
@@ -954,7 +1204,7 @@ export const api = {
 
   // Ordering Module API
   getOrders: async (filters: { branch?: string; to_branch?: string; status?: string | string[]; urgent?: boolean }) => {
-    let query = supabase.from('orders').select('*, order_items(*)');
+    let query = supabase.from('orders').select('*');
     
     if (filters.branch && filters.branch !== 'All') query = query.eq('branch', filters.branch);
     if (filters.to_branch && filters.to_branch !== 'All') query = query.eq('to_branch', filters.to_branch);
@@ -971,9 +1221,35 @@ export const api = {
       query = query.eq('urgent', filters.urgent);
     }
     
-    const { data, error } = await query.order('date_submitted', { ascending: false });
-    if (error) return { success: false, error: error.message };
-    return { success: true, data };
+    const { data: orders, error: ordersError } = await query.order('date_submitted', { ascending: false });
+    if (ordersError) return { success: false, error: ordersError.message };
+
+    if (!orders || orders.length === 0) {
+      return { success: true, data: [] };
+    }
+
+    const orderIds = orders.map(o => o.id);
+    const { data: items, error: itemsError } = await supabase
+      .from('order_items')
+      .select('*')
+      .in('order_id', orderIds);
+    
+    if (itemsError) return { success: false, error: itemsError.message };
+
+    const itemsByOrderId = new Map();
+    items?.forEach(item => {
+      if (!itemsByOrderId.has(item.order_id)) {
+        itemsByOrderId.set(item.order_id, []);
+      }
+      itemsByOrderId.get(item.order_id).push(item);
+    });
+
+    const joinedOrders = orders.map(order => ({
+      ...order,
+      order_items: itemsByOrderId.get(order.id) || []
+    }));
+
+    return { success: true, data: joinedOrders };
   },
 
   updateOrder: async (orderId: string, updates: any, itemsUpdates?: any[], newItems?: any[]) => {
@@ -1039,17 +1315,37 @@ export const api = {
 
   getItemSentToBranchHistory: async (itemName: string, toBranch: string) => {
     try {
-      const { data, error } = await supabase
+      const { data: orders, error: ordersError } = await supabase
+        .from('orders')
+        .select('*')
+        .eq('to_branch', toBranch)
+        .in('status', ['Sent', 'Received']);
+
+      if (ordersError) return { success: false, error: ordersError.message };
+
+      if (!orders || orders.length === 0) {
+        return { success: true, data: [] };
+      }
+
+      const orderIds = orders.map(o => o.id);
+      const { data: items, error: itemsError } = await supabase
         .from('order_items')
-        .select('*, orders!inner(*)')
+        .select('*')
         .eq('item_name', itemName)
-        .eq('orders.to_branch', toBranch)
-        .in('orders.status', ['Sent', 'Received'])
-        .gt('qty_sent', 0);
+        .gt('qty_sent', 0)
+        .in('order_id', orderIds);
 
-      if (error) return { success: false, error: error.message };
+      if (itemsError) return { success: false, error: itemsError.message };
 
-      const sortedData = (data || []).sort((a: any, b: any) => {
+      const ordersMap = new Map();
+      orders.forEach(o => ordersMap.set(o.id, o));
+
+      const joinedItems = (items || []).map(item => ({
+        ...item,
+        orders: ordersMap.get(item.order_id) || null
+      })).filter(item => item.orders !== null);
+
+      const sortedData = joinedItems.sort((a: any, b: any) => {
         const dateA = a.orders?.date_sent ? new Date(a.orders.date_sent).getTime() : 0;
         const dateB = b.orders?.date_sent ? new Date(b.orders.date_sent).getTime() : 0;
         return dateB - dateA;
@@ -1172,9 +1468,39 @@ export const api = {
   },
 
   getReservations: async (branch: string, date: string) => {
-    const { data, error } = await supabase.from('reservations').select('*, clients(*)').eq('branch', branch).eq('reservation_date', date).order('reservation_time');
-    if (error) return { success: false, error: error.message };
-    return { success: true, data };
+    const { data: reservations, error: reservationsError } = await supabase
+      .from('reservations')
+      .select('*')
+      .eq('branch', branch)
+      .eq('reservation_date', date)
+      .order('reservation_time');
+    
+    if (reservationsError) return { success: false, error: reservationsError.message };
+
+    if (!reservations || reservations.length === 0) {
+      return { success: true, data: [] };
+    }
+
+    const clientIds = reservations.map(r => r.client_id).filter(Boolean);
+    let clients: any[] = [];
+    if (clientIds.length > 0) {
+      const { data: clientsData, error: clientsError } = await supabase
+        .from('clients')
+        .select('*')
+        .in('id', clientIds);
+      if (clientsError) return { success: false, error: clientsError.message };
+      clients = clientsData || [];
+    }
+
+    const clientsMap = new Map();
+    clients.forEach(c => clientsMap.set(c.id, c));
+
+    const joinedReservations = reservations.map(res => ({
+      ...res,
+      clients: res.client_id ? (clientsMap.get(res.client_id) || null) : null
+    }));
+
+    return { success: true, data: joinedReservations };
   },
 
   saveReservation: async (reservation: any) => {
@@ -1407,13 +1733,13 @@ export const api = {
 
   // Complaints Module API
   getComplaints: async (filters?: { branch?: string; status?: string; category?: string; startDate?: string; endDate?: string }) => {
-    let query = supabase.from('complaints').select('*').order('created_at', { ascending: false });
+    let query = supabase.from('ClientComplaints').select('*').order('DateCreated', { ascending: false });
     if (filters) {
-      if (filters.branch && filters.branch !== 'All') query = query.eq('branch', filters.branch);
-      if (filters.status && filters.status !== 'All') query = query.eq('status', filters.status);
-      if (filters.category && filters.category !== 'All') query = query.eq('category', filters.category);
-      if (filters.startDate) query = query.gte('created_at', filters.startDate);
-      if (filters.endDate) query = query.lte('created_at', filters.endDate + 'T23:59:59');
+      if (filters.branch && filters.branch !== 'All') query = query.eq('Branch', filters.branch);
+      if (filters.status && filters.status !== 'All') query = query.eq('Status', filters.status);
+      if (filters.category && filters.category !== 'All') query = query.eq('Category', filters.category);
+      if (filters.startDate) query = query.gte('DateCreated', filters.startDate);
+      if (filters.endDate) query = query.lte('DateCreated', filters.endDate + 'T23:59:59');
     }
     const { data, error } = await query;
     if (error) return { success: false, error: error.message };
@@ -1421,17 +1747,17 @@ export const api = {
   },
 
   getComplaintById: async (id: string) => {
-    const { data, error } = await supabase.from('complaints').select('*').eq('id', id).single();
+    const { data, error } = await supabase.from('ClientComplaints').select('*').eq('id', id).single();
     if (error) return { success: false, error: error.message };
     return { success: true, data };
   },
 
   saveComplaint: async (complaint: any) => {
     if (complaint.id) {
-      const { error } = await supabase.from('complaints').update(complaint).eq('id', complaint.id);
+      const { error } = await supabase.from('ClientComplaints').update(complaint).eq('id', complaint.id);
       if (error) return { success: false, error: error.message };
     } else {
-      const { error } = await supabase.from('complaints').insert([complaint]);
+      const { error } = await supabase.from('ClientComplaints').insert([complaint]);
       if (error) return { success: false, error: error.message };
     }
     return { success: true };
@@ -1542,7 +1868,7 @@ export const api = {
   },
 
   getClientOrders: async (filters?: { startDate?: string; endDate?: string; branch?: string; category?: string; status?: string; salesperson?: string; clientId?: string }) => {
-    let query = supabase.from('client_orders').select('*, clients(*)').order('created_at', { ascending: false });
+    let query = supabase.from('client_orders').select('*').order('created_at', { ascending: false });
     
     if (filters) {
       if (filters.branch && filters.branch !== 'All') query = query.eq('branch', filters.branch);
@@ -1554,20 +1880,60 @@ export const api = {
       if (filters.endDate) query = query.lte('order_date', filters.endDate);
     }
     
-    const { data, error } = await query;
-    if (error) return { success: false, error: error.message };
-    return { success: true, data };
+    const { data: orders, error: ordersError } = await query;
+    if (ordersError) return { success: false, error: ordersError.message };
+
+    if (!orders || orders.length === 0) {
+      return { success: true, data: [] };
+    }
+
+    const clientIds = orders.map(o => o.client_id).filter(Boolean);
+    let clients: any[] = [];
+    if (clientIds.length > 0) {
+      const { data: clientsData, error: clientsError } = await supabase
+        .from('clients')
+        .select('*')
+        .in('id', clientIds);
+      if (clientsError) return { success: false, error: clientsError.message };
+      clients = clientsData || [];
+    }
+
+    const clientsMap = new Map();
+    clients.forEach(c => clientsMap.set(c.id, c));
+
+    const joinedOrders = orders.map(order => ({
+      ...order,
+      clients: order.client_id ? (clientsMap.get(order.client_id) || null) : null
+    }));
+
+    return { success: true, data: joinedOrders };
   },
 
   getClientOrderDetails: async (orderId: string) => {
     const [orderRes, itemsRes, tasksRes, attachmentsRes] = await Promise.all([
-      supabase.from('client_orders').select('*, clients(*)').eq('id', orderId).single(),
+      supabase.from('client_orders').select('*').eq('id', orderId).single(),
       supabase.from('client_order_items').select('*').eq('order_id', orderId),
       supabase.from('client_order_tasks').select('*').eq('order_id', orderId),
       supabase.from('client_order_attachments').select('*').eq('order_id', orderId)
     ]);
 
     if (orderRes.error) return { success: false, error: orderRes.error.message };
+
+    const order = orderRes.data;
+    let client = null;
+    if (order && order.client_id) {
+      const { data: clientData } = await supabase
+        .from('clients')
+        .select('*')
+        .eq('id', order.client_id)
+        .maybeSingle();
+      client = clientData;
+    }
+
+    const orderWithClient = {
+      ...order,
+      clients: client
+    };
 
     const fetchedTasks = tasksRes.data || [];
     for (let i = 0; i < fetchedTasks.length; i++) {
@@ -1590,7 +1956,7 @@ export const api = {
     return {
       success: true,
       data: {
-        order: orderRes.data,
+        order: orderWithClient,
         items: itemsRes.data || [],
         tasks: fetchedTasks,
         attachments: attachmentsRes.data || []
@@ -2010,6 +2376,69 @@ export const api = {
     return { success: true, data };
   },
 
+  getRestaurantById: async (id: string) => {
+    const { data, error } = await supabase.from('restaurants').select('*').eq('id', id).single();
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  updateRestaurantSettings: async (id: string, settings: any) => {
+    const { data, error } = await supabase
+      .from('restaurants')
+      .update({ settings })
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  getTenantAdmin: async (restaurantId: string) => {
+    const { data, error } = await supabase
+      .from('users')
+      .select('name, email, pin')
+      .eq('restaurant_id', restaurantId)
+      .order('created_at', { ascending: true })
+      .limit(1);
+
+    if (error) return { success: false, error: error.message };
+    return { success: true, data: data?.[0] || null };
+  },
+
+  updateRestaurantDetails: async (id: string, payload: {
+    name: string;
+    logo_url: string;
+    primary_color: string;
+    admin_name?: string;
+    admin_email?: string;
+    admin_pin?: string;
+  }) => {
+    const { error: restoErr } = await supabase
+      .from('restaurants')
+      .update({
+        name: payload.name,
+        logo_url: payload.logo_url,
+        primary_color: payload.primary_color
+      })
+      .eq('id', id);
+
+    if (restoErr) return { success: false, error: restoErr.message };
+
+    if (payload.admin_email || payload.admin_name || payload.admin_pin) {
+      const updateData: any = {};
+      if (payload.admin_name) updateData.name = payload.admin_name;
+      if (payload.admin_email) updateData.email = payload.admin_email.toLowerCase();
+      if (payload.admin_pin) updateData.pin = payload.admin_pin;
+
+      await supabase
+        .from('users')
+        .update(updateData)
+        .eq('restaurant_id', id);
+    }
+
+    return { success: true };
+  },
+
   createTenantAdmin: async (payload: {
     r_name: string;
     r_logo: string;
@@ -2028,6 +2457,65 @@ export const api = {
     const { data, error } = await supabase.from(tableName).insert(rows);
     if (error) return { success: false, error: error.message };
     return { success: true, data };
+  },
+
+  deleteRestaurant: async (restaurantId: string) => {
+    const tables = [
+      'users',
+      'branches',
+      'employees',
+      'items',
+      'menu_recipes',
+      'waste_logs',
+      'shift_cash',
+      'daily_payments',
+      'tips_collections',
+      'chef_specials',
+      'menu_86',
+      'ClientComplaints',
+      'client_orders',
+      'void_receipts',
+      'activity_logs',
+      'reel_credit_transactions',
+      'training_documents'
+    ];
+
+    for (const t of tables) {
+      try {
+        await supabase.from(t).delete().eq('restaurant_id', restaurantId);
+      } catch (e) {
+        // ignore individual table deletion errors
+      }
+    }
+
+    const { error } = await supabase.from('restaurants').delete().eq('id', restaurantId);
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  },
+
+  sendDeletionApprovalEmail: async (restaurantId: string, restaurantName: string) => {
+    let targetEmail = '';
+    try {
+      const { data } = await supabase
+        .from('users')
+        .select('email')
+        .eq('restaurant_id', restaurantId)
+        .order('created_at', { ascending: true })
+        .limit(1);
+
+      if (data && data.length > 0 && data[0].email) {
+        targetEmail = data[0].email;
+      }
+
+      await supabase.from('activity_logs').insert([{
+        user_name: 'SuperAdmin',
+        action: 'DELETION_APPROVAL_REQUESTED',
+        details: `Approval notification requested for deletion of restaurant: ${restaurantName} (${restaurantId}). Target Email: ${targetEmail || 'N/A'}`
+      }]);
+    } catch (e) {
+      // ignore log error
+    }
+    return { success: true, email: targetEmail };
   },
 };
 

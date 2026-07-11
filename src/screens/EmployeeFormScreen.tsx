@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { ArrowLeft, Save, Loader2, Users } from 'lucide-react';
+import { encryptAES, decryptAES, getStoredDecryptionKey, ENCRYPTION_ENABLED } from '../utils/cryptoHelper';
 
-export default function EmployeeFormScreen() {
+export default function EmployeeFormScreen({ user }: { user?: any }) {
   const { id } = useParams();
   const navigate = useNavigate();
   const isEditing = Boolean(id);
@@ -14,21 +15,17 @@ export default function EmployeeFormScreen() {
   // Form State
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
-  const [branch, setBranch] = useState('');
+  const [branch, setBranch] = useState(user?.branch || '');
   const [department, setDepartment] = useState('');
   const [position, setPosition] = useState('');
-  const [basicSalary, setBasicSalary] = useState(''); // using local state variable, mapped to salary
-  const [activeStatus, setActiveStatus] = useState('Active'); // mapped to status
-  
-  // Additional Info
+  const [basicSalary, setBasicSalary] = useState('');
   const [phone, setPhone] = useState('');
   const [emergencyContact, setEmergencyContact] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('Cash');
   const [bankAccount, setBankAccount] = useState('');
-  const [dateStarted, setDateStarted] = useState('');
   const [transportation, setTransportation] = useState('');
-  
-  // Document URLs
+  const [paymentMethod, setPaymentMethod] = useState('Cash');
+  const [activeStatus, setActiveStatus] = useState('Active');
+  const [dateStarted, setDateStarted] = useState('');
   const [pictureUrl, setPictureUrl] = useState('');
   const [idUrl, setIdUrl] = useState('');
   const [proofResidenceUrl, setProofResidenceUrl] = useState('');
@@ -36,8 +33,6 @@ export default function EmployeeFormScreen() {
   const [ketabTaeenUrl, setKetabTaeenUrl] = useState('');
   const [dischargeUrl, setDischargeUrl] = useState('');
   const [resignationLetterUrl, setResignationLetterUrl] = useState('');
-  
-  // App Access
   const [isAppUser, setIsAppUser] = useState(false);
   const [productionAccess, setProductionAccess] = useState(false);
 
@@ -49,7 +44,7 @@ export default function EmployeeFormScreen() {
   const [uploadingDoc, setUploadingDoc] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchData();
+    fetchInitialData();
   }, [id]);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, setter: (val: string) => void, fieldName: string) => {
@@ -75,7 +70,7 @@ export default function EmployeeFormScreen() {
     }
   };
 
-  const fetchData = async () => {
+  const fetchInitialData = async () => {
     setLoading(true);
     try {
       const [deptRes, branchRes] = await Promise.all([
@@ -83,25 +78,20 @@ export default function EmployeeFormScreen() {
         api.getBranchesList()
       ]);
       if (deptRes.success) setAllDepartments(deptRes.data || []);
-      if (branchRes.success) setAllBranches(branchRes.data || []);
+      if (branchRes.success && branchRes.data) setAllBranches(branchRes.data);
 
       if (isEditing && id) {
-        const res = await api.getEmployeeById(id);
-        if (res.success && res.data) {
-          const emp = res.data;
+        const empRes = await api.getEmployeeById(id);
+        if (empRes.success && empRes.data) {
+          const emp = empRes.data;
           setFirstName(emp.first_name || '');
           setLastName(emp.last_name || '');
           setBranch(emp.branch || '');
           setDepartment(emp.department || '');
           setPosition(emp.position || '');
-          setBasicSalary(emp.salary || '');
-          setActiveStatus(emp.status || 'Active');
-          setPhone(emp.phone || '');
-          setEmergencyContact(emp.emergency_contact || '');
           setPaymentMethod(emp.payment_method || 'Cash');
-          setBankAccount(emp.bank_account || '');
+          setActiveStatus(emp.status || 'Active');
           setDateStarted(emp.date_started || '');
-          setTransportation(emp.transportation?.toString() || '');
           setPictureUrl(emp.picture_url || '');
           setIdUrl(emp.id_url || '');
           setProofResidenceUrl(emp.proof_residence_url || '');
@@ -111,6 +101,50 @@ export default function EmployeeFormScreen() {
           setResignationLetterUrl(emp.resignation_letter_url || '');
           setIsAppUser(emp.is_app_user || false);
           setProductionAccess(emp.production_access || false);
+
+          const savedKey = getStoredDecryptionKey(user);
+          let loaded = false;
+
+          if (ENCRYPTION_ENABLED && emp.secure_payload) {
+            try {
+              const rawJSON = decryptAES(emp.secure_payload, savedKey);
+              if (rawJSON) {
+                const decrypted = JSON.parse(rawJSON);
+                setBasicSalary(decrypted.salary?.toString() || '');
+                setPhone(decrypted.phone || '');
+                setEmergencyContact(decrypted.emergency_contact || '');
+                setBankAccount(decrypted.bank_account || '');
+                setTransportation(decrypted.transportation?.toString() || '');
+                loaded = true;
+              }
+            } catch (e) {
+              console.error(e);
+            }
+          }
+
+          if (!loaded) {
+            if (emp.secure_payload && emp.salary == null && !emp.phone) {
+              try {
+                const rawJSON = decryptAES(emp.secure_payload, savedKey);
+                if (rawJSON) {
+                  const decrypted = JSON.parse(rawJSON);
+                  setBasicSalary(decrypted.salary?.toString() || '');
+                  setPhone(decrypted.phone || '');
+                  setEmergencyContact(decrypted.emergency_contact || '');
+                  setBankAccount(decrypted.bank_account || '');
+                  setTransportation(decrypted.transportation?.toString() || '');
+                  loaded = true;
+                }
+              } catch (e) {}
+            }
+            if (!loaded) {
+              setBasicSalary(emp.salary?.toString() || '');
+              setPhone(emp.phone || '');
+              setEmergencyContact(emp.emergency_contact || '');
+              setBankAccount(emp.bank_account || '');
+              setTransportation(emp.transportation?.toString() || '');
+            }
+          }
         }
       }
     } catch (e) {
@@ -126,7 +160,21 @@ export default function EmployeeFormScreen() {
       return;
     }
 
+    const savedKey = getStoredDecryptionKey(user);
     setSaving(true);
+
+    let securePayloadText: string | null = null;
+    if (ENCRYPTION_ENABLED) {
+      const sensitiveData = {
+        salary: basicSalary ? Number(basicSalary) : null,
+        transportation: transportation ? Number(transportation) : null,
+        phone: phone || '',
+        emergency_contact: emergencyContact || '',
+        bank_account: bankAccount || ''
+      };
+      securePayloadText = encryptAES(JSON.stringify(sensitiveData), savedKey);
+    }
+
     const payload = {
       employee_id: isEditing ? id : undefined,
       first_name: firstName,
@@ -134,14 +182,9 @@ export default function EmployeeFormScreen() {
       branch,
       department,
       position,
-      salary: basicSalary ? Number(basicSalary) : null,
       status: activeStatus,
-      phone,
-      emergency_contact: emergencyContact,
       payment_method: paymentMethod,
-      bank_account: bankAccount,
       date_started: dateStarted || new Date().toISOString().split('T')[0],
-      transportation: transportation ? Number(transportation) : null,
       picture_url: pictureUrl,
       id_url: idUrl,
       proof_residence_url: proofResidenceUrl,
@@ -150,7 +193,13 @@ export default function EmployeeFormScreen() {
       discharge_url: dischargeUrl,
       resignation_letter_url: resignationLetterUrl,
       is_app_user: isAppUser,
-      production_access: productionAccess
+      production_access: productionAccess,
+      secure_payload: securePayloadText,
+      salary: ENCRYPTION_ENABLED ? null : (basicSalary ? Number(basicSalary) : null),
+      transportation: ENCRYPTION_ENABLED ? null : (transportation ? Number(transportation) : null),
+      phone: ENCRYPTION_ENABLED ? '' : (phone || ''),
+      emergency_contact: ENCRYPTION_ENABLED ? '' : (emergencyContact || ''),
+      bank_account: ENCRYPTION_ENABLED ? '' : (bankAccount || '')
     };
 
     const res = await api.saveEmployee(payload);
@@ -229,7 +278,7 @@ export default function EmployeeFormScreen() {
             <label style={labelStyle}>Branch *</label>
             <select style={inputStyle} value={branch} onChange={e => setBranch(e.target.value)} required>
               <option value="">Select Branch...</option>
-              {allBranches.map(b => <option key={b.id || b.name} value={b.name}>{b.name}</option>)}
+              {allBranches.map((b: any) => <option key={b.id || b.name} value={b.name}>{b.name}</option>)}
             </select>
           </div>
           

@@ -16,7 +16,7 @@ import { api } from '../api/client';
 import './DashboardScreen.css';
 
 export default function ClientOrdersReportsScreen({ user, permissions }: { user: any; permissions: any }) {
-  const hasAccess = permissions?.can_view_client_reports || user?.role === 'Admin' || user?.role === 'Manager';
+  const hasAccess = permissions?.can_view_client_reports || user?.role === 'Admin' || user?.role === 'Manager' || user?.role === 'SuperAdmin';
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState<any[]>([]);
 
@@ -69,16 +69,18 @@ export default function ClientOrdersReportsScreen({ user, permissions }: { user:
     : 0;
 
   // 2. Revenue by Category
-  const categoryTotals: { [key: string]: number } = {
-    Pastry: 0,
-    Bakery: 0,
-    Breakfast: 0,
-    Lunch: 0,
-    Dinner: 0,
-    Catering: 0,
-    Corporate: 0,
-    Other: 0
-  };
+  const categories = user?.restaurants?.settings?.client_order_categories || [
+    'Pastry', 'Bakery', 'Breakfast', 'Lunch', 'Dinner', 'Catering', 'Corporate', 'Other'
+  ];
+
+  const categoryTotals: { [key: string]: number } = {};
+  categories.forEach((cat: string) => {
+    categoryTotals[cat] = 0;
+  });
+  if (categoryTotals.Other === undefined) {
+    categoryTotals.Other = 0;
+  }
+
   orders.filter(o => o.status !== 'Cancelled').forEach(o => {
     if (categoryTotals[o.category] !== undefined) {
       categoryTotals[o.category] += Number(o.grand_total) || 0;

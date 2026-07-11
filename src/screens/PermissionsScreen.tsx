@@ -171,7 +171,7 @@ const CATEGORIES = [
   },
   {
     id: 'client_orders',
-    title: 'Client Orders (CRM)',
+    title: 'Client Orders',
     icon: <FolderOpen size={18} style={{ color: '#20c997' }} />,
     permissions: [
       { key: 'can_view_client_orders', label: 'View Client Orders' },

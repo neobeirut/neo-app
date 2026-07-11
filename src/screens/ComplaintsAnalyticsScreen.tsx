@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
-import { ArrowLeft, Loader2, AlertTriangle, TrendingUp } from 'lucide-react';
+import { ArrowLeft, Loader2, AlertTriangle, TrendingUp, Copy, AlertCircle } from 'lucide-react';
 
 const CHART_COLORS = [
   '#2e7d32', // NÉO Flow primary green
@@ -24,10 +24,11 @@ interface ComplaintsAnalyticsScreenProps {
 export default function ComplaintsAnalyticsScreen({ permissions, user: propUser }: ComplaintsAnalyticsScreenProps) {
   const navigate = useNavigate();
   const user = propUser || (localStorage.getItem('neo_admin_user') ? JSON.parse(localStorage.getItem('neo_admin_user')!) : null);
-  const canView = permissions?.can_view_complaints || user?.role === 'Admin' || user?.role === 'Manager';
+  const canView = permissions?.can_view_complaints || user?.role === 'Admin' || user?.role === 'Manager' || user?.role === 'SuperAdmin';
 
   const [loading, setLoading] = useState(true);
   const [complaints, setComplaints] = useState<any[]>([]);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // Filter States
   const [branchFilter, setBranchFilter] = useState('All');
@@ -48,6 +49,7 @@ export default function ComplaintsAnalyticsScreen({ permissions, user: propUser 
 
   const loadData = async () => {
     setLoading(true);
+    setErrorMsg(null);
     try {
       const [branchRes, complaintsRes] = await Promise.all([
         api.getBranchesList(),
@@ -61,10 +63,11 @@ export default function ComplaintsAnalyticsScreen({ permissions, user: propUser 
       if (complaintsRes.success && complaintsRes.data) {
         setComplaints(complaintsRes.data);
       } else {
-        alert(complaintsRes.error || 'Failed to load complaints.');
+        setErrorMsg(complaintsRes.error || 'Failed to load complaints.');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error loading complaints analytics data:', err);
+      setErrorMsg(err.message || String(err));
     } finally {
       setLoading(false);
     }
@@ -329,11 +332,170 @@ export default function ComplaintsAnalyticsScreen({ permissions, user: propUser 
     );
   };
 
+  const handleCopySql = () => {
+    const sqlText = `CREATE TABLE IF NOT EXISTS public.complaints (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  "ComplaintID" TEXT NOT NULL UNIQUE,
+  "Branch" TEXT NOT NULL,
+  "LoggedBy" TEXT,
+  "ClientName" TEXT NOT NULL,
+  "ClientPhone" TEXT,
+  "ClientEmail" TEXT,
+  "OrderType" TEXT DEFAULT 'Dine-In',
+  "TableNumber" TEXT,
+  "OrderNumber" TEXT,
+  "Category" TEXT NOT NULL,
+  "SubCategory" TEXT,
+  "Severity" TEXT DEFAULT 'Low',
+  "Description" TEXT NOT NULL,
+  "ItemInvolved" TEXT,
+  "StaffInvolved" TEXT,
+  "Department" TEXT,
+  "ImmediateAction" TEXT,
+  "CompensationAmount" NUMERIC DEFAULT 0,
+  "Status" TEXT DEFAULT 'New',
+  "AttachmentURLs" TEXT[] DEFAULT '{}',
+  "RootCause" TEXT,
+  "InternalNotes" TEXT,
+  "TrainingRequired" BOOLEAN DEFAULT false,
+  "SupplierIssue" BOOLEAN DEFAULT false,
+  "RecurringProblem" BOOLEAN DEFAULT false,
+  "Resolution" TEXT,
+  "CustomerSatisfied" TEXT,
+  "ResolvedBy" TEXT,
+  "ResolutionDate" TIMESTAMPTZ,
+  "DateCreated" TIMESTAMPTZ DEFAULT now(),
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE public.complaints ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Enable read access for all authenticated users" ON public.complaints
+  FOR SELECT USING (true);
+
+CREATE POLICY "Enable write access for all authenticated users" ON public.complaints
+  FOR ALL USING (true);`;
+
+    navigator.clipboard.writeText(sqlText);
+    alert('SQL Migration Query copied to clipboard!');
+  };
+
   if (loading) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: '12px' }}>
         <Loader2 className="spin" size={32} color="var(--primary)" />
         <span style={{ color: 'var(--text-muted)', fontSize: '15px' }}>Analyzing client complaints...</span>
+      </div>
+    );
+  }
+
+  const errorLower = (errorMsg || '').toLowerCase();
+  const isTableMissing = errorLower.includes('relation "public.complaints" does not exist') ||
+                         errorLower.includes('public.complaints') ||
+                         errorLower.includes("could not find the table 'public.complaints'") ||
+                         errorLower.includes('clientcomplaints');
+
+  if (isTableMissing) {
+    return (
+      <div style={{ maxWidth: '800px', margin: '40px auto', padding: '24px' }} className="card">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', color: '#be123c', marginBottom: '16px' }}>
+          <AlertTriangle size={32} />
+          <h2>Database Migration Required</h2>
+        </div>
+        <p style={{ color: '#4b5563', lineHeight: '1.6', marginBottom: '20px' }}>
+          It looks like the <code>complaints</code> table hasn't been created in your Supabase database yet. Because DDL operations require admin access, you must execute the SQL migration query manually:
+        </p>
+
+        <div style={{ background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '16px', marginBottom: '24px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+            <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#64748b' }}>20260705_create_complaints.sql</span>
+            <button 
+              onClick={handleCopySql}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#ffffff', border: '1px solid #cbd5e1', padding: '6px 12px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer', fontWeight: 600 }}
+            >
+              <Copy size={14} /> Copy SQL
+            </button>
+          </div>
+          <pre style={{ overflowX: 'auto', fontSize: '12px', color: '#1e293b', background: '#ffffff', padding: '12px', borderRadius: '6px', border: '1px solid #e2e8f0', fontFamily: 'monospace', maxHeight: '300px' }}>
+{`CREATE TABLE IF NOT EXISTS public.complaints (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  "ComplaintID" TEXT NOT NULL UNIQUE,
+  "Branch" TEXT NOT NULL,
+  "LoggedBy" TEXT,
+  "ClientName" TEXT NOT NULL,
+  "ClientPhone" TEXT,
+  "ClientEmail" TEXT,
+  "OrderType" TEXT DEFAULT 'Dine-In',
+  "TableNumber" TEXT,
+  "OrderNumber" TEXT,
+  "Category" TEXT NOT NULL,
+  "SubCategory" TEXT,
+  "Severity" TEXT DEFAULT 'Low',
+  "Description" TEXT NOT NULL,
+  "ItemInvolved" TEXT,
+  "StaffInvolved" TEXT,
+  "Department" TEXT,
+  "ImmediateAction" TEXT,
+  "CompensationAmount" NUMERIC DEFAULT 0,
+  "Status" TEXT DEFAULT 'New',
+  "AttachmentURLs" TEXT[] DEFAULT '{}',
+  "RootCause" TEXT,
+  "InternalNotes" TEXT,
+  "TrainingRequired" BOOLEAN DEFAULT false,
+  "SupplierIssue" BOOLEAN DEFAULT false,
+  "RecurringProblem" BOOLEAN DEFAULT false,
+  "Resolution" TEXT,
+  "CustomerSatisfied" TEXT,
+  "ResolvedBy" TEXT,
+  "ResolutionDate" TIMESTAMPTZ,
+  "DateCreated" TIMESTAMPTZ DEFAULT now(),
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE public.complaints ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Enable read access for all authenticated users" ON public.complaints
+  FOR SELECT USING (true);
+
+CREATE POLICY "Enable write access for all authenticated users" ON public.complaints
+  FOR ALL USING (true);`}
+          </pre>
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <button 
+            onClick={loadData}
+            style={{ 
+              padding: '10px 20px', 
+              backgroundColor: 'var(--primary)', 
+              color: 'white', 
+              border: 'none', 
+              borderRadius: 'var(--radius)', 
+              fontWeight: 600, 
+              cursor: 'pointer' 
+            }}
+          >
+            Retry Connection
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (errorMsg) {
+    return (
+      <div style={{ maxWidth: '800px', margin: '40px auto', padding: '24px', textAlign: 'center' }} className="card">
+        <AlertCircle size={48} color="#e53e3e" style={{ marginBottom: '16px' }} />
+        <h2 style={{ color: '#e53e3e', marginBottom: '8px' }}>Failed to Load Complaints Analytics</h2>
+        <p style={{ color: 'var(--text-muted)', marginBottom: '24px' }}>{errorMsg}</p>
+        <button 
+          onClick={loadData}
+          style={{ padding: '10px 20px', backgroundColor: 'var(--primary)', color: 'white', border: 'none', borderRadius: 'var(--radius)', fontWeight: 600, cursor: 'pointer' }}
+        >
+          Try Again
+        </button>
       </div>
     );
   }

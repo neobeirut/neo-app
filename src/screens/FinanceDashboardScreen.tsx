@@ -9,8 +9,11 @@ import {
   PieChart as PieIcon, 
   BarChart3, 
   RefreshCw,
-  Info
+  Info,
+  ShieldAlert,
+  AlertCircle
 } from 'lucide-react';
+import { decryptAES, getStoredDecryptionKey } from '../utils/cryptoHelper';
 
 interface FinanceDashboardScreenProps {
   user: any;
@@ -25,38 +28,87 @@ export default function FinanceDashboardScreen({ user }: FinanceDashboardScreenP
   const [reelCreditMap, setReelCreditMap] = useState<Record<string, number>>({});
   const [reelShiftDefs, setReelShiftDefs] = useState<any[]>([]);
   const [branches, setBranches] = useState<string[]>([]);
-  
-  // Branch Filter (restricted if not Admin)
-  const [branchFilter, setBranchFilter] = useState(user?.role === 'Admin' ? 'All' : user?.branch || 'All');
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Yesterday date generator for default values
+  // Decryption Key States
+  const [decryptionKey, setDecryptionKey] = useState<string>('');
+  const [showKeyModal, setShowKeyModal] = useState(false);
+  const [keyInput, setKeyInput] = useState('');
+  
+  // Branch Filter
+  const [branchFilter, setBranchFilter] = useState('All');
+
+  const cleanDateStr = (rawDate: any): string => {
+    if (!rawDate) return '';
+    const str = String(rawDate).trim();
+    return str.split('T')[0].split(' ')[0];
+  };
+
+  const getTodayStr = () => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   const getYesterdayStr = () => {
     const d = new Date();
     d.setDate(d.getDate() - 1);
-    return d.toISOString().split('T')[0];
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   };
 
-  // Overview Date Filters
-  const [fromDate, setFromDate] = useState(getYesterdayStr());
-  const [toDate, setToDate] = useState(getYesterdayStr());
+  const getStartOfMonthStr = () => {
+    const d = new Date();
+    d.setDate(1);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const getLast30DaysStr = () => {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  // Overview Date Filters (defaults to current month)
+  const [fromDate, setFromDate] = useState(getStartOfMonthStr());
+  const [toDate, setToDate] = useState(getTodayStr());
 
   // Weekly Comparison Anchor Date
-  const [anchorDate, setAnchorDate] = useState(new Date().toISOString().split('T')[0]);
+  const [anchorDate, setAnchorDate] = useState(getTodayStr());
 
-  // Load branch list
+  // Initial key checking
   useEffect(() => {
-    if (user?.role === 'Admin') {
-      api.getBranchesList().then(res => {
-        if (res.success && res.data) {
-          // Map array of objects [{id, name}] to array of string names
-          const branchNames = res.data.map((b: any) => b.name);
-          setBranches(['All', ...branchNames]);
-        }
-      });
-    } else {
-      setBranches([user?.branch || 'All']);
-    }
+    const autoKey = getStoredDecryptionKey(user);
+    setDecryptionKey(autoKey);
   }, [user]);
+
+  const handleSaveKey = () => {
+    if (!keyInput.trim()) return;
+    localStorage.setItem('flow_decryption_key', keyInput.trim());
+    setDecryptionKey(keyInput.trim());
+    setShowKeyModal(false);
+  };
+
+  // Load branch list & dynamically collect branches present in data
+  useEffect(() => {
+    api.getBranchesList().then(res => {
+      const dbBranches = (res.success && res.data) ? res.data.map((b: any) => b.name).filter(Boolean) : [];
+      const shiftBranches = shiftData.map((s: any) => s.branch).filter(Boolean);
+      const payBranches = paymentData.map((p: any) => p.branch).filter(Boolean);
+      const combined = Array.from(new Set(['All', 'Naccache', ...dbBranches, ...shiftBranches, ...payBranches]));
+      setBranches(combined);
+    });
+  }, [user, shiftData, paymentData]);
 
   // Load data when filters change
   useEffect(() => {
@@ -65,6 +117,29 @@ export default function FinanceDashboardScreen({ user }: FinanceDashboardScreenP
 
   const fetchData = async () => {
     setLoading(true);
+    const key = decryptionKey || localStorage.getItem('flow_decryption_key') || '';
+
+    const localDecryptLogs = (rawLogs: any[]) => {
+      if (!rawLogs) return [];
+      return rawLogs.map(log => {
+        if (!log.secure_payload) return log;
+        try {
+          const rawJSON = decryptAES(log.secure_payload, key, user);
+          if (rawJSON) {
+            const decrypted = JSON.parse(rawJSON);
+            return {
+              ...log,
+              ...decrypted
+            };
+          }
+        } catch (e) {
+          console.warn('Decryption failed for log date/shift:', log.date, log.shift, e);
+        }
+        return log;
+      });
+    };
+
+    setErrorMsg(null);
     if (activeTab === 'overview' || activeTab === 'available-cash') {
       const [shiftRes, payRes] = await Promise.all([
         api.getShiftCashLogs({ startDate: fromDate, endDate: toDate, branch: branchFilter }),
@@ -72,14 +147,17 @@ export default function FinanceDashboardScreen({ user }: FinanceDashboardScreenP
       ]);
 
       if (shiftRes.success && shiftRes.data) {
-        setShiftData(shiftRes.data);
+        const decrypted = localDecryptLogs(shiftRes.data);
+        setShiftData(decrypted);
         // Load shift defs first (or reuse cached), then compute reel credit
         const defsRes = await api.getBranchShifts(branchFilter !== 'All' ? branchFilter : undefined);
         const defs = defsRes.success && defsRes.data ? defsRes.data : reelShiftDefs;
         if (defsRes.success && defsRes.data) setReelShiftDefs(defsRes.data);
-        api.getReelCreditByShifts(shiftRes.data, fromDate, toDate, branchFilter, defs).then(rc => {
+        api.getReelCreditByShifts(decrypted, fromDate, toDate, branchFilter, defs).then(rc => {
           if (rc.success && rc.data) setReelCreditMap(rc.data);
         });
+      } else if (shiftRes.error) {
+        setErrorMsg(shiftRes.error);
       }
       if (payRes.success && payRes.data) {
         setPaymentData(payRes.data);
@@ -97,7 +175,7 @@ export default function FinanceDashboardScreen({ user }: FinanceDashboardScreenP
       });
 
       if (shiftRes.success && shiftRes.data) {
-        setShiftData(shiftRes.data);
+        setShiftData(localDecryptLogs(shiftRes.data));
       }
     }
     setLoading(false);
@@ -138,9 +216,12 @@ export default function FinanceDashboardScreen({ user }: FinanceDashboardScreenP
     const dayBranchMap: Record<string, { AM?: any; PM?: any }> = {};
 
     shiftData.forEach(row => {
-      const key = `${row.date.split('T')[0]}_${row.branch}`;
+      const dateKey = cleanDateStr(row.date);
+      const key = `${dateKey}_${row.branch}`;
       if (!dayBranchMap[key]) dayBranchMap[key] = {};
-      dayBranchMap[key][row.shift as 'AM' | 'PM'] = row;
+      const sRaw = String(row.shift || '').toUpperCase().trim();
+      const normShift = (sRaw.includes('PM') || sRaw.includes('NIGHT') || sRaw.includes('EVENING') || sRaw === '2') ? 'PM' : 'AM';
+      dayBranchMap[key][normShift] = row;
     });
 
     Object.values(dayBranchMap).forEach(group => {
@@ -150,15 +231,24 @@ export default function FinanceDashboardScreen({ user }: FinanceDashboardScreenP
       const amRate = am ? (num(am.rate) || 90000) : 90000;
       const pmRate = pm ? (num(pm.rate) || 90000) : 90000;
 
-      // Raw AM values
-      const amRawSalesUsd = am ? num(am.sales_lbp) / amRate : 0;
-      const amRawOnAccUsd = am ? num(am.on_credit_lbp) / amRate : 0;
-      const amDiffUsd = am ? num(am.difference_usd) : 0;
-
-      // Card, Cash, CashOut are per-shift additive
+      // Raw AM values (supporting sales_usd, total_sales, sales_lbp / rate, or collected cash+card sum)
       const amCardUsd = am ? num(am.credit_card_usd) + (num(am.credit_card_lbp) / amRate) : 0;
       const amCashUsd = am ? num(am.actual_usd) + (num(am.actual_lbp) / amRate) : 0;
       const amCashOutUsd = am ? num(am.cash_out_usd) + (num(am.cash_out_lbp) / amRate) : 0;
+      
+      const amRawSalesUsd = am ? (
+        num(am.sales_usd) || 
+        (am.sales_lbp ? num(am.sales_lbp) / amRate : 0) || 
+        num(am.total_sales) || 
+        num(am.sales) || 
+        (amCardUsd + amCashUsd + amCashOutUsd)
+      ) : 0;
+      const amRawOnAccUsd = am ? (
+        num(am.on_credit_usd) || 
+        (am.on_credit_lbp ? num(am.on_credit_lbp) / amRate : 0) || 
+        num(am.on_account_usd)
+      ) : 0;
+      const amDiffUsd = am ? (num(am.difference_usd) || num(am.shortage_usd)) : 0;
 
       const pmCardUsd = pm ? num(pm.credit_card_usd) + (num(pm.credit_card_lbp) / pmRate) : 0;
       const pmCashUsd = pm ? num(pm.actual_usd) + (num(pm.actual_lbp) / pmRate) : 0;
@@ -174,15 +264,21 @@ export default function FinanceDashboardScreen({ user }: FinanceDashboardScreenP
 
       if (pm) {
         // PM contains cumulative values for Sales, On Account, and Shortages
-        daySalesUsd = num(pm.sales_lbp) / pmRate;
-        dayOnAccUsd = num(pm.on_credit_lbp) / pmRate;
-        dayShortageUsd = num(pm.difference_usd) < 0 ? num(pm.difference_usd) : 0;
+        daySalesUsd = num(pm.sales_usd) || 
+          (pm.sales_lbp ? num(pm.sales_lbp) / pmRate : 0) || 
+          num(pm.total_sales) || 
+          num(pm.sales) || 
+          (pmCardUsd + pmCashUsd + pmCashOutUsd);
+        dayOnAccUsd = num(pm.on_credit_usd) || 
+          (pm.on_credit_lbp ? num(pm.on_credit_lbp) / pmRate : 0) || 
+          num(pm.on_account_usd);
+        dayShortageUsd = num(pm.difference_usd) < 0 ? num(pm.difference_usd) : (num(pm.shortage_usd) < 0 ? num(pm.shortage_usd) : 0);
 
         amSalesUsd += amRawSalesUsd;
         pmSalesUsd += Math.max(0, daySalesUsd - amRawSalesUsd);
 
         if (amDiffUsd < 0) amShortagesUsd += amDiffUsd;
-        const pmDiffRaw = num(pm.difference_usd);
+        const pmDiffRaw = num(pm.difference_usd) || num(pm.shortage_usd);
         if (pmDiffRaw < 0) pmShortagesUsd += pmDiffRaw;
       } else if (am) {
         daySalesUsd = amRawSalesUsd;
@@ -199,7 +295,7 @@ export default function FinanceDashboardScreen({ user }: FinanceDashboardScreenP
 
       // Daily trend mapping
       const refRow = pm || am;
-      const dateStr = refRow.date.split('T')[0];
+      const dateStr = cleanDateStr(refRow.date);
       const branch = refRow.branch;
 
       if (!dailyMap[dateStr]) dailyMap[dateStr] = 0;
@@ -300,7 +396,7 @@ export default function FinanceDashboardScreen({ user }: FinanceDashboardScreenP
 
     const dayBranchMap: Record<string, { AM?: any; PM?: any }> = {};
     shiftData.forEach(row => {
-      const d = row.date.split('T')[0];
+      const d = cleanDateStr(row.date);
       if (d >= prev13 && d <= exactToStr) {
         const key = `${d}_${row.branch}`;
         if (!dayBranchMap[key]) dayBranchMap[key] = {};
@@ -316,12 +412,20 @@ export default function FinanceDashboardScreen({ user }: FinanceDashboardScreenP
 
       let daySalesUsd = 0;
       if (pm) {
-        daySalesUsd = num(pm.sales_lbp) / pmRate;
+        daySalesUsd = num(pm.sales_usd) || 
+          (pm.sales_lbp ? num(pm.sales_lbp) / pmRate : 0) || 
+          num(pm.total_sales) || 
+          num(pm.sales) || 
+          (num(pm.actual_usd) + num(pm.credit_card_usd));
       } else if (am) {
-        daySalesUsd = num(am.sales_lbp) / amRate;
+        daySalesUsd = num(am.sales_usd) || 
+          (am.sales_lbp ? num(am.sales_lbp) / amRate : 0) || 
+          num(am.total_sales) || 
+          num(am.sales) || 
+          (num(am.actual_usd) + num(am.credit_card_usd));
       }
 
-      const dateStr = (pm || am).date.split('T')[0];
+      const dateStr = cleanDateStr((pm || am).date);
       const dayName = daysArr[new Date(dateStr).getUTCDay()];
 
       if (dateStr >= prev6 && dateStr <= exactToStr) {
@@ -384,7 +488,7 @@ export default function FinanceDashboardScreen({ user }: FinanceDashboardScreenP
     const grouped: Record<string, { AM?: any; PM?: any }> = {};
     
     shiftData.forEach(row => {
-      const dateStr = row.date.split('T')[0];
+      const dateStr = cleanDateStr(row.date);
       const key = `${dateStr}_${row.branch}`;
       if (!grouped[key]) {
         grouped[key] = {};
@@ -397,7 +501,7 @@ export default function FinanceDashboardScreen({ user }: FinanceDashboardScreenP
       // Extract date & branch from the actual row data to avoid splitting issues
       // when branch names contain underscores
       const refRow = AM || PM;
-      const date = refRow.date.split('T')[0];
+      const date = cleanDateStr(refRow.date);
       const branch = refRow.branch;
       
       const rate = PM?.rate || AM?.rate || 90000;
@@ -421,7 +525,7 @@ export default function FinanceDashboardScreen({ user }: FinanceDashboardScreenP
 
       // Payments from daily_payments split by type
       const dayPayments = paymentData.filter(
-        p => p.branch === branch && p.date?.split('T')[0] === date
+        p => p.branch === branch && cleanDateStr(p.date) === date
       );
 
       // Suppliers sum — paid-only (unpaid suppliers appear in the Unpaid Invoices info row)
@@ -642,6 +746,24 @@ export default function FinanceDashboardScreen({ user }: FinanceDashboardScreenP
         </div>
       </div>
 
+      {errorMsg && (
+        <div style={{
+          padding: '12px 16px',
+          background: '#fef2f2',
+          border: '1px solid #fee2e2',
+          borderRadius: '8px',
+          color: '#991b1b',
+          fontSize: '14px',
+          fontWeight: 600,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px'
+        }}>
+          <AlertCircle size={18} />
+          <span>{errorMsg}</span>
+        </div>
+      )}
+
       {/* FILTER CONTROL BAR */}
       <div style={{
         display: 'flex',
@@ -660,7 +782,6 @@ export default function FinanceDashboardScreen({ user }: FinanceDashboardScreenP
           <select 
             value={branchFilter}
             onChange={(e) => setBranchFilter(e.target.value)}
-            disabled={user?.role !== 'Admin'}
             style={{
               flex: 1,
               padding: '8px 12px',
@@ -669,13 +790,30 @@ export default function FinanceDashboardScreen({ user }: FinanceDashboardScreenP
               fontSize: '14px',
               background: '#f9fafb',
               fontWeight: 500,
-              cursor: user?.role === 'Admin' ? 'pointer' : 'not-allowed'
+              cursor: 'pointer'
             }}
           >
             {branches.map(b => (
               <option key={b} value={b}>{b}</option>
             ))}
           </select>
+        </div>
+
+        {/* Live Status Badge */}
+        <div style={{
+          fontSize: '12px',
+          fontWeight: 700,
+          padding: '6px 12px',
+          borderRadius: '20px',
+          background: shiftData.length > 0 ? '#ecfdf5' : '#fff7ed',
+          color: shiftData.length > 0 ? '#047857' : '#c2410c',
+          border: `1px solid ${shiftData.length > 0 ? '#a7f3d0' : '#ffedd5'}`,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px'
+        }}>
+          <span>{shiftData.length > 0 ? '🟢' : '🟠'}</span>
+          <span>{shiftData.length} Shift Logs Loaded ({branchFilter})</span>
         </div>
 
         {/* Date Filters depending on Tab */}
@@ -721,6 +859,43 @@ export default function FinanceDashboardScreen({ user }: FinanceDashboardScreenP
                 background: '#f9fafb'
               }}
             />
+            <div style={{ display: 'flex', gap: '4px', marginLeft: '4px' }}>
+              <button
+                type="button"
+                onClick={() => { setFromDate(getTodayStr()); setToDate(getTodayStr()); }}
+                style={{ padding: '6px 10px', fontSize: '12px', fontWeight: 600, borderRadius: '6px', border: '1px solid #cbd5e1', background: fromDate === getTodayStr() && toDate === getTodayStr() ? 'var(--primary)' : '#f8fafc', color: fromDate === getTodayStr() && toDate === getTodayStr() ? '#fff' : '#334155', cursor: 'pointer' }}
+              >
+                Today
+              </button>
+              <button
+                type="button"
+                onClick={() => { setFromDate(getYesterdayStr()); setToDate(getYesterdayStr()); }}
+                style={{ padding: '6px 10px', fontSize: '12px', fontWeight: 600, borderRadius: '6px', border: '1px solid #cbd5e1', background: fromDate === getYesterdayStr() && toDate === getYesterdayStr() ? 'var(--primary)' : '#f8fafc', color: fromDate === getYesterdayStr() && toDate === getYesterdayStr() ? '#fff' : '#334155', cursor: 'pointer' }}
+              >
+                Yesterday
+              </button>
+              <button
+                type="button"
+                onClick={() => { setFromDate(getStartOfMonthStr()); setToDate(getTodayStr()); }}
+                style={{ padding: '6px 10px', fontSize: '12px', fontWeight: 600, borderRadius: '6px', border: '1px solid #cbd5e1', background: fromDate === getStartOfMonthStr() && toDate === getTodayStr() ? 'var(--primary)' : '#f8fafc', color: fromDate === getStartOfMonthStr() && toDate === getTodayStr() ? '#fff' : '#334155', cursor: 'pointer' }}
+              >
+                This Month
+              </button>
+              <button
+                type="button"
+                onClick={() => { setFromDate(getLast30DaysStr()); setToDate(getTodayStr()); }}
+                style={{ padding: '6px 10px', fontSize: '12px', fontWeight: 600, borderRadius: '6px', border: '1px solid #cbd5e1', background: fromDate === getLast30DaysStr() && toDate === getTodayStr() ? 'var(--primary)' : '#f8fafc', color: fromDate === getLast30DaysStr() && toDate === getTodayStr() ? '#fff' : '#334155', cursor: 'pointer' }}
+              >
+                Last 30 Days
+              </button>
+              <button
+                type="button"
+                onClick={() => { setFromDate(''); setToDate(''); }}
+                style={{ padding: '6px 10px', fontSize: '12px', fontWeight: 600, borderRadius: '6px', border: '1px solid #cbd5e1', background: !fromDate && !toDate ? 'var(--primary)' : '#f8fafc', color: !fromDate && !toDate ? '#fff' : '#334155', cursor: 'pointer' }}
+              >
+                All Time
+              </button>
+            </div>
             <button 
               onClick={fetchData}
               title="Refresh Data"
@@ -2315,6 +2490,34 @@ export default function FinanceDashboardScreen({ user }: FinanceDashboardScreenP
                 </table>
               </div>
             )}
+          </div>
+        </div>
+      )}
+      {/* Decryption Key Request Modal */}
+      {showKeyModal && (
+        <div style={{ position: 'fixed', left: 0, top: 0, right: 0, bottom: 0, background: 'rgba(15, 23, 42, 0.4)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ background: '#fff', borderRadius: '16px', width: '100%', maxWidth: '440px', padding: '24px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+            <h3 style={{ fontSize: '18px', fontWeight: 800, color: '#1e293b', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <ShieldAlert size={22} color="var(--primary)" /> Decryption Passphrase Required
+            </h3>
+            <p style={{ fontSize: '14px', color: 'var(--text-muted)', lineHeight: '20px', marginBottom: '16px' }}>
+              To view daily sales, register cash closing balances, and shortage details, please input your **Secret Restaurant Decryption Passphrase**.
+            </p>
+            <input
+              type="password"
+              placeholder="Enter Private Decryption Key"
+              value={keyInput}
+              onChange={(e) => setKeyInput(e.target.value)}
+              style={{ width: '100%', padding: '12px 14px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '14px', outline: 'none', marginBottom: '16px' }}
+            />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                onClick={handleSaveKey}
+                style={{ padding: '10px 20px', background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '14px' }}
+              >
+                Submit Key
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { api } from '../api/client';
-import { Search, Plus, X, Shield, Calendar, Compass, AlertCircle, FileSpreadsheet, Download, Upload, CheckCircle2 } from 'lucide-react';
+import { Search, Plus, X, Shield, Calendar, Compass, AlertCircle, FileSpreadsheet, Download, Upload, CheckCircle2, Trash2, Mail, AlertTriangle, Check, Edit } from 'lucide-react';
 
 interface Restaurant {
   id: string;
@@ -9,7 +9,39 @@ interface Restaurant {
   logo_url: string;
   primary_color: string;
   created_at: string;
+  settings?: {
+    enabled_sections: string[];
+  };
 }
+
+const SECTIONS = [
+  { key: 'orders', label: 'Branch Orders', desc: 'Branch supply orders and order workflows' },
+  { key: 'client_orders', label: 'Client Orders', desc: 'B2B client orders, delivery reporting, and client database' },
+  { key: 'reservations', label: 'Table Reservations', desc: 'Track table bookings and reservations log' },
+  { key: 'checklists', label: 'Daily Checklists', desc: 'Complete daily checklist forms and review logs' },
+  { key: 'shift_submissions', label: 'Daily Shift Submissions', desc: 'Registry cash drop records and end of day logs' },
+  { key: 'tasks', label: 'Task Manager', desc: 'Assign and track completion of operational tasks' },
+  { key: 'catalog', label: 'Item Catalog', desc: 'Primary database catalog of items and recipes' },
+  { key: 'purchasing', label: 'Purchasing & Procurement', desc: 'Supplier order logs and invoice uploads' },
+  { key: 'suppliers', label: 'Supplier Management', desc: 'Directories, delivery schedules, and contracts' },
+  { key: 'price_intelligence', label: 'Supplier Price Intelligence', desc: 'Analyze supplier pricing, compare quotations, monitor price trends, evaluate performance, and get AI-powered recommendations' },
+  { key: 'waste', label: 'Waste Management', desc: 'Log ingredient/dish waste and track loss metrics' },
+  { key: 'missing_items', label: '86 Missing Items', desc: 'Realtime view and toggle of out-of-stock items' },
+  { key: 'voids', label: 'Void Receipts', desc: 'Audit cashier voids and manager authorizations' },
+  { key: 'employees', label: 'Employees', desc: 'Employee registry database, payroll details, and branches' },
+  { key: 'tips', label: 'Tips Config', desc: 'Define tips pools, share distribution rates, and collections' },
+  { key: 'permissions', label: 'Security Matrix', desc: 'Configure role-based department and screen privileges' },
+  { key: 'signin_logs', label: 'Sign-In Logs', desc: 'Audit user logins, timestamps, and locations' },
+  { key: 'complaints', label: 'Client Complaints', desc: 'Log and track resolution of customer complaints' },
+  { key: 'specials', label: 'Specials & Upsell', desc: 'Manage chef specials and promotional upsell items' },
+  { key: 'finance', label: 'Financial Analytics', desc: 'Financial dashboard reports, payments, and credit transactions' },
+  { key: 'branch_management', label: 'Branch Management', desc: 'Create, edit, and configure physical branch settings' },
+  { key: 'news', label: 'News Management', desc: 'Publish internal announcement feeds and notification banners' },
+  { key: 'sops', label: 'SOPs & Training', desc: 'Store standard operating procedures and kitchen training manuals' },
+  { key: 'menu', label: 'Menu Manual', desc: 'Cook recipes, dish ingredients, and plating step guides' }
+];
+
+const allSectionKeys = SECTIONS.map(s => s.key);
 
 export default function SuperAdminScreen() {
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
@@ -45,6 +77,156 @@ export default function SuperAdminScreen() {
   const [uEmail, setUEmail] = useState('');
   const [uPassword, setUPassword] = useState('');
   const [uPin, setUPin] = useState('');
+
+  // Selected sections for new restaurant
+  const [selectedSections, setSelectedSections] = useState<string[]>(allSectionKeys);
+
+  // Config modal states for existing restaurants
+  const [configResto, setConfigResto] = useState<Restaurant | null>(null);
+  const [configSections, setConfigSections] = useState<string[]>([]);
+  const [savingConfig, setSavingConfig] = useState(false);
+  const [searchSectionQuery, setSearchSectionQuery] = useState('');
+
+  // Delete restaurant modal states
+  const [deleteModalResto, setDeleteModalResto] = useState<Restaurant | null>(null);
+  const [approvalChecked, setApprovalChecked] = useState(false);
+  const [emailSent, setEmailSent] = useState(false);
+  const [sendingEmail, setSendingEmail] = useState(false);
+  const [deletingResto, setDeletingResto] = useState(false);
+  const [deleteErr, setDeleteErr] = useState('');
+  const [targetRecipientEmail, setTargetRecipientEmail] = useState('');
+
+  // Edit restaurant modal states
+  const [editModalResto, setEditModalResto] = useState<Restaurant | null>(null);
+  const [editRName, setEditRName] = useState('');
+  const [editRLogo, setEditRLogo] = useState('');
+  const [editRColor, setEditRColor] = useState('#1e5c4f');
+  const [editUName, setEditUName] = useState('');
+  const [editUEmail, setEditUEmail] = useState('');
+  const [editUPin, setEditUPin] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editErr, setEditErr] = useState('');
+
+  const handleOpenDeleteModal = (r: Restaurant) => {
+    setDeleteModalResto(r);
+    setApprovalChecked(false);
+    setEmailSent(false);
+    setSendingEmail(false);
+    setDeletingResto(false);
+    setDeleteErr('');
+    setTargetRecipientEmail('');
+  };
+
+  const handleSendApprovalEmail = async () => {
+    if (!deleteModalResto) return;
+    setSendingEmail(true);
+    const res = await api.sendDeletionApprovalEmail(deleteModalResto.id, deleteModalResto.name);
+    setSendingEmail(false);
+    setEmailSent(true);
+
+    const recipient = res.email || '';
+    setTargetRecipientEmail(recipient);
+
+    // Compose mailto link and open mail client
+    const subject = encodeURIComponent(`URGENT: Approval Required for Deletion of ${deleteModalResto.name}`);
+    const body = encodeURIComponent(`Hello,\n\nPlease confirm your formal approval to delete restaurant "${deleteModalResto.name}" and purge all related data from our web admin database.\n\nThank you,\nSuper Admin Team`);
+    
+    if (recipient) {
+      window.open(`mailto:${recipient}?subject=${subject}&body=${body}`, '_blank');
+    } else {
+      window.open(`mailto:?subject=${subject}&body=${body}`, '_blank');
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteModalResto || !approvalChecked) return;
+    setDeletingResto(true);
+    setDeleteErr('');
+    const res = await api.deleteRestaurant(deleteModalResto.id);
+    setDeletingResto(false);
+    if (res.success) {
+      setDeleteModalResto(null);
+      loadRestaurants();
+    } else {
+      setDeleteErr(res.error || 'Failed to delete restaurant.');
+    }
+  };
+
+  const handleOpenEditModal = async (r: Restaurant) => {
+    setEditModalResto(r);
+    setEditRName(r.name || '');
+    setEditRLogo(r.logo_url || '');
+    setEditRColor(r.primary_color || '#1e5c4f');
+    setEditUName('');
+    setEditUEmail('');
+    setEditUPin('');
+    setEditErr('');
+
+    const res = await api.getTenantAdmin(r.id);
+    if (res.success && res.data) {
+      setEditUName(res.data.name || '');
+      setEditUEmail(res.data.email || '');
+      setEditUPin(res.data.pin || '');
+    }
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editModalResto) return;
+    if (!editRName.trim()) { setEditErr('Restaurant Name is required.'); return; }
+
+    setSavingEdit(true);
+    setEditErr('');
+
+    const res = await api.updateRestaurantDetails(editModalResto.id, {
+      name: editRName.trim(),
+      logo_url: editRLogo.trim(),
+      primary_color: editRColor,
+      admin_name: editUName.trim(),
+      admin_email: editUEmail.trim().toLowerCase(),
+      admin_pin: editUPin.trim()
+    });
+
+    setSavingEdit(false);
+    if (res.success) {
+      setEditModalResto(null);
+      loadRestaurants();
+    } else {
+      setEditErr(res.error || 'Failed to update restaurant details.');
+    }
+  };
+
+  const handleToggleSection = (key: string) => {
+    setSelectedSections(prev => 
+      prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
+    );
+  };
+
+  const handleToggleConfigSection = (key: string) => {
+    setConfigSections(prev => 
+      prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
+    );
+  };
+
+  const handleConfigureSections = (r: Restaurant) => {
+    setConfigResto(r);
+    const enabled = r.settings?.enabled_sections || allSectionKeys;
+    setConfigSections(enabled);
+    setSearchSectionQuery('');
+  };
+
+  const handleSaveConfig = async () => {
+    if (!configResto) return;
+    setSavingConfig(true);
+    const res = await api.updateRestaurantSettings(configResto.id, { enabled_sections: configSections });
+    setSavingConfig(false);
+    if (res.success) {
+      setConfigResto(null);
+      loadRestaurants();
+    } else {
+      alert(res.error || 'Failed to update restaurant settings.');
+    }
+  };
 
   // Importer States
   const [selectedRestoId, setSelectedRestoId] = useState('');
@@ -96,8 +278,14 @@ export default function SuperAdminScreen() {
       u_pin: uPin.trim(),
     });
 
-    setSaving(false);
     if (res.success) {
+      // Save settings containing the enabled sections
+      const restoId = res.data;
+      if (restoId) {
+        const autoKey = `neo_sec_${restoId}_${Math.random().toString(36).substring(2, 10)}`;
+        await api.updateRestaurantSettings(restoId, { enabled_sections: selectedSections, decryption_key: autoKey });
+      }
+
       setRName('');
       setRLogo('');
       setRColor('#1e5c4f');
@@ -105,11 +293,13 @@ export default function SuperAdminScreen() {
       setUEmail('');
       setUPassword('');
       setUPin('');
+      setSelectedSections(allSectionKeys); // Reset to default all sections checked
       setShowModal(false);
       loadRestaurants();
     } else {
       setFormErr(res.error || 'Failed to create restaurant and admin.');
     }
+    setSaving(false);
   };
 
   // --- CSV Template Download Helper ---
@@ -344,6 +534,7 @@ export default function SuperAdminScreen() {
                     <th style={{ padding: '16px 20px' }}>Database UUID</th>
                     <th style={{ padding: '16px 20px' }}>Primary Theme</th>
                     <th style={{ padding: '16px 20px' }}>Created At</th>
+                    <th style={{ padding: '16px 20px', textAlign: 'right' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -368,6 +559,64 @@ export default function SuperAdminScreen() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}>
                           <Calendar size={14} />
                           {new Date(r.created_at).toLocaleDateString(undefined, { dateStyle: 'medium' })}
+                        </div>
+                      </td>
+                      <td style={{ padding: '16px 20px', textAlign: 'right' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                          <button
+                            onClick={() => handleOpenEditModal(r)}
+                            style={{
+                              background: '#fff',
+                              border: '1px solid var(--border)',
+                              color: 'var(--text-main)',
+                              padding: '6px 12px',
+                              borderRadius: '8px',
+                              fontWeight: 700,
+                              fontSize: '12px',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px'
+                            }}
+                          >
+                            <Edit size={13} /> Edit
+                          </button>
+                          <button
+                            onClick={() => handleConfigureSections(r)}
+                            style={{
+                              background: 'none',
+                              border: '1px solid var(--primary)',
+                              color: 'var(--primary)',
+                              padding: '6px 12px',
+                              borderRadius: '8px',
+                              fontWeight: 700,
+                              fontSize: '12px',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px'
+                            }}
+                          >
+                            ⚙️ Configure
+                          </button>
+                          <button
+                            onClick={() => handleOpenDeleteModal(r)}
+                            style={{
+                              background: '#fef2f2',
+                              border: '1px solid #fee2e2',
+                              color: 'var(--danger)',
+                              padding: '6px 12px',
+                              borderRadius: '8px',
+                              fontWeight: 700,
+                              fontSize: '12px',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px'
+                            }}
+                          >
+                            <Trash2 size={13} /> Delete
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -649,6 +898,47 @@ export default function SuperAdminScreen() {
                 </div>
               </div>
 
+              {/* SECTION C: Section Configuration */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <h3 style={{ fontSize: '12px', fontWeight: 800, color: 'var(--primary)', letterSpacing: '0.5px', textTransform: 'uppercase', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>3. Enable Sections / Modules</h3>
+                
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                  <span style={{ fontSize: '11px', color: 'gray' }}>Select modules to activate for this restaurant:</span>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedSections(allSectionKeys)}
+                      style={{ background: '#f1f5f9', border: 'none', padding: '4px 8px', borderRadius: '4px', fontSize: '10px', fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      Enable All
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedSections([])}
+                      style={{ background: '#f1f5f9', border: 'none', padding: '4px 8px', borderRadius: '4px', fontSize: '10px', fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      Disable All
+                    </button>
+                  </div>
+                </div>
+
+                <div style={{ maxHeight: '180px', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px', background: '#f8fafc' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                    {SECTIONS.map(s => (
+                      <label key={s.key} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', cursor: 'pointer', fontWeight: 500, color: 'var(--text-main)' }}>
+                        <input
+                          type="checkbox"
+                          checked={selectedSections.includes(s.key)}
+                          onChange={() => handleToggleSection(s.key)}
+                          style={{ accentColor: 'var(--primary)' }}
+                        />
+                        {s.label}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
               {/* Modal Footer / Buttons */}
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', borderTop: '1px solid var(--border)', paddingTop: '20px', marginTop: '10px' }}>
                 <button
@@ -664,6 +954,339 @@ export default function SuperAdminScreen() {
                   style={{ background: 'var(--primary)', color: '#fff', border: 'none', padding: '10px 24px', borderRadius: '8px', cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '14px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                 >
                   {saving ? 'Provisioning...' : 'Provision Client'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Configuration Modal */}
+      {configResto && (
+        <div style={{ position: 'fixed', left: 0, top: 0, right: 0, bottom: 0, background: 'rgba(15, 23, 42, 0.4)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ background: '#fff', borderRadius: '16px', width: '100%', maxWidth: '850px', maxHeight: '90vh', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            {/* Modal Header */}
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h2 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  ⚙️ Configure Sections: {configResto.name}
+                </h2>
+                <p style={{ color: 'var(--text-muted)', fontSize: '12px', marginTop: '2px' }}>
+                  Select which modules are accessible in the Web Admin and Mobile App for this tenant.
+                </p>
+              </div>
+              <button onClick={() => setConfigResto(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'gray' }}><X size={20} /></button>
+            </div>
+
+            {/* Quick Actions & Search */}
+            <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', display: 'flex', gap: '16px', alignItems: 'center', justifyContent: 'space-between', background: '#f8fafc' }}>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => setConfigSections(allSectionKeys)}
+                  style={{ background: '#fff', border: '1px solid var(--border)', padding: '6px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', color: 'var(--text-main)' }}
+                >
+                  ✅ Enable All
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfigSections([])}
+                  style={{ background: '#fff', border: '1px solid var(--border)', padding: '6px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', color: 'var(--text-main)' }}
+                >
+                  ❌ Disable All
+                </button>
+              </div>
+              <input
+                type="text"
+                placeholder="Search modules..."
+                value={searchSectionQuery}
+                onChange={e => setSearchSectionQuery(e.target.value)}
+                style={{ padding: '6px 12px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '12px', outline: 'none', width: '200px' }}
+              />
+            </div>
+
+            {/* Modal Body / Toggles */}
+            <div style={{ padding: '24px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                {SECTIONS.filter(s => s.label.toLowerCase().includes(searchSectionQuery.toLowerCase()) || s.desc.toLowerCase().includes(searchSectionQuery.toLowerCase())).map(s => {
+                  const isChecked = configSections.includes(s.key);
+                  return (
+                    <div
+                      key={s.key}
+                      onClick={() => handleToggleConfigSection(s.key)}
+                      style={{
+                        border: isChecked ? '1px solid var(--primary)' : '1px solid var(--border)',
+                        background: isChecked ? '#f0fdf4' : '#fff',
+                        padding: '12px',
+                        borderRadius: '8px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        transition: 'all 0.2s ease',
+                        boxShadow: isChecked ? '0 2px 4px rgba(22, 101, 52, 0.05)' : 'none'
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => {}} // handled by parent div click
+                        style={{ accentColor: 'var(--primary)', scale: '1.1' }}
+                      />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 700, fontSize: '13px', color: 'var(--text-main)' }}>{s.label}</div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>{s.desc}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: '12px', background: '#f8fafc' }}>
+              <button
+                type="button"
+                onClick={() => setConfigResto(null)}
+                style={{ background: '#fff', border: '1px solid #cbd5e1', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, fontSize: '13px' }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveConfig}
+                disabled={savingConfig}
+                style={{ background: 'var(--primary)', color: '#fff', border: 'none', padding: '10px 24px', borderRadius: '8px', cursor: savingConfig ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '13px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+              >
+                {savingConfig ? 'Saving...' : 'Save Configuration'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Restaurant & Data Modal */}
+      {deleteModalResto && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
+          <div style={{ background: '#fff', borderRadius: '16px', width: '100%', maxWidth: '520px', padding: '24px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--danger)', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+                <AlertTriangle size={22} color="var(--danger)" /> Confirm Restaurant Deletion
+              </h3>
+              <button onClick={() => setDeleteModalResto(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+                <X size={20} />
+              </button>
+            </div>
+
+            <div style={{ padding: '12px 16px', background: '#fef2f2', border: '1px solid #fee2e2', borderRadius: '8px', marginBottom: '20px' }}>
+              <p style={{ fontSize: '13px', color: '#991b1b', margin: 0, lineHeight: '18px' }}>
+                <strong>WARNING:</strong> You are about to permanently delete <strong>{deleteModalResto.name}</strong> and purge ALL associated data (users, branches, catalog items, employee records, sales logs, and checklists).
+              </p>
+            </div>
+
+            {deleteErr && (
+              <div style={{ padding: '10px 14px', background: '#fef2f2', border: '1px solid #fee2e2', color: 'var(--danger)', borderRadius: '8px', fontSize: '13px', marginBottom: '16px' }}>
+                {deleteErr}
+              </div>
+            )}
+
+            {/* Approval Verification & Request Notification Step */}
+            <div style={{ padding: '16px', background: '#f8fafc', border: '1px solid var(--border)', borderRadius: '10px', marginBottom: '20px' }}>
+              <h4 style={{ fontSize: '13px', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>Client Approval Verification</h4>
+              <p style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: '16px', marginBottom: '12px' }}>
+                Have you received official client approval to delete all restaurant data? If not, click below to send an approval notification request email.
+              </p>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={handleSendApprovalEmail}
+                  disabled={sendingEmail}
+                  style={{
+                    padding: '8px 14px',
+                    background: emailSent ? '#ecfdf5' : '#fff',
+                    border: `1px solid ${emailSent ? '#10b981' : 'var(--border)'}`,
+                    color: emailSent ? '#047857' : 'var(--text-main)',
+                    borderRadius: '8px',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    cursor: sendingEmail ? 'wait' : 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  {emailSent ? <Check size={14} color="#10b981" /> : <Mail size={14} />}
+                  {sendingEmail ? 'Opening Email Client...' : emailSent ? 'Approval Email Composed' : 'Send Approval Email to Client'}
+                </button>
+                {targetRecipientEmail && (
+                  <span style={{ fontSize: '12px', color: '#047857', fontWeight: 600 }}>
+                    Target: {targetRecipientEmail}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Confirmation Checkbox */}
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer', marginBottom: '24px' }}>
+              <input
+                type="checkbox"
+                checked={approvalChecked}
+                onChange={(e) => setApprovalChecked(e.target.checked)}
+                style={{ width: '18px', height: '18px', marginTop: '2px', cursor: 'pointer', accentColor: 'var(--danger)' }}
+              />
+              <span style={{ fontSize: '13px', color: 'var(--text-main)', fontWeight: 600, lineHeight: '18px' }}>
+                I confirm that written/email approval has been received from the client to delete this restaurant and purge all related data.
+              </span>
+            </label>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+              <button
+                type="button"
+                onClick={() => setDeleteModalResto(null)}
+                style={{ padding: '10px 18px', background: '#fff', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                disabled={!approvalChecked || deletingResto}
+                style={{
+                  padding: '10px 20px',
+                  background: approvalChecked ? 'var(--danger)' : '#f87171',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  fontWeight: 700,
+                  cursor: approvalChecked && !deletingResto ? 'pointer' : 'not-allowed',
+                  opacity: approvalChecked ? 1 : 0.6,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                {deletingResto ? 'Deleting All Data...' : 'Delete All Restaurant Data'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Restaurant & Admin Modal */}
+      {editModalResto && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.4)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
+          <div style={{ background: '#fff', borderRadius: '16px', width: '100%', maxWidth: '540px', padding: '24px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+                <Edit size={20} color="var(--primary)" /> Edit Restaurant Details
+              </h3>
+              <button onClick={() => setEditModalResto(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+                <X size={20} />
+              </button>
+            </div>
+
+            {editErr && (
+              <div style={{ padding: '10px 14px', background: '#fef2f2', border: '1px solid #fee2e2', color: 'var(--danger)', borderRadius: '8px', fontSize: '13px', marginBottom: '16px' }}>
+                {editErr}
+              </div>
+            )}
+
+            <form onSubmit={handleSaveEdit}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+                <div style={{ gridColumn: 'span 2' }}>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px' }}>Restaurant Name *</label>
+                  <input
+                    type="text"
+                    value={editRName}
+                    onChange={e => setEditRName(e.target.value)}
+                    required
+                    style={{ width: '100%', padding: '10px 12px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '14px', outline: 'none' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px' }}>Logo URL</label>
+                  <input
+                    type="text"
+                    value={editRLogo}
+                    onChange={e => setEditRLogo(e.target.value)}
+                    style={{ width: '100%', padding: '10px 12px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '14px', outline: 'none' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px' }}>Theme Primary Color</label>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <input
+                      type="color"
+                      value={editRColor}
+                      onChange={e => setEditRColor(e.target.value)}
+                      style={{ width: '40px', height: '38px', border: 'none', borderRadius: '6px', cursor: 'pointer', background: 'none' }}
+                    />
+                    <input
+                      type="text"
+                      value={editRColor}
+                      onChange={e => setEditRColor(e.target.value)}
+                      style={{ flex: 1, padding: '10px 12px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '14px', outline: 'none' }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ borderTop: '1px solid var(--border)', paddingTop: '16px', marginBottom: '20px' }}>
+                <h4 style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-main)', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Shield size={16} color="var(--primary)" /> Tenant Admin Account Credentials
+                </h4>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                  <div style={{ gridColumn: 'span 2' }}>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px' }}>Admin Name</label>
+                    <input
+                      type="text"
+                      value={editUName}
+                      onChange={e => setEditUName(e.target.value)}
+                      style={{ width: '100%', padding: '10px 12px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '14px', outline: 'none' }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px' }}>Admin Email</label>
+                    <input
+                      type="email"
+                      value={editUEmail}
+                      onChange={e => setEditUEmail(e.target.value)}
+                      style={{ width: '100%', padding: '10px 12px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '14px', outline: 'none' }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px' }}>Mobile PIN</label>
+                    <input
+                      type="text"
+                      value={editUPin}
+                      onChange={e => setEditUPin(e.target.value)}
+                      style={{ width: '100%', padding: '10px 12px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '14px', outline: 'none' }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                <button
+                  type="button"
+                  onClick={() => setEditModalResto(null)}
+                  style={{ padding: '10px 18px', background: '#fff', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingEdit}
+                  style={{ padding: '10px 20px', background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 700, cursor: savingEdit ? 'wait' : 'pointer' }}
+                >
+                  {savingEdit ? 'Saving Changes...' : 'Save Restaurant Details'}
                 </button>
               </div>
             </form>

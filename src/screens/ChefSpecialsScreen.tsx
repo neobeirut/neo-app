@@ -43,8 +43,9 @@ export default function ChefSpecialsScreen({ permissions, user }: ChefSpecialsSc
   };
 
   // Permissions gate check
-  const canView = permissions?.can_view_upsell || user?.role === 'Admin' || user?.role === 'Manager';
-  const canManage = permissions?.can_manage_upsell || user?.role === 'Admin' || user?.role === 'Manager';
+  const isPrivileged = user?.role === 'Admin' || user?.role === 'Manager' || user?.role === 'SuperAdmin';
+  const canView = permissions?.can_view_upsell || isPrivileged;
+  const canManage = permissions?.can_manage_upsell || isPrivileged;
 
   // Tabs: 'today' | 'analytics'
   const [activeTab, setActiveTab] = useState<'today' | 'analytics'>('today');

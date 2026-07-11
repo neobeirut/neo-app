@@ -1,23 +1,87 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
-import { Search, Plus, Loader2, Users } from 'lucide-react';
+import { Search, Plus, Loader2, Users, ShieldAlert, KeyRound } from 'lucide-react';
+import { decryptAES, getStoredDecryptionKey, ENCRYPTION_ENABLED } from '../utils/cryptoHelper';
 
-export default function EmployeesScreen() {
+export default function EmployeesScreen({ user }: { user?: any }) {
   const [employees, setEmployees] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const navigate = useNavigate();
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  // Decryption Key States
+  const [decryptionKey, setDecryptionKey] = useState<string>('');
+  const [showKeyModal, setShowKeyModal] = useState(false);
+  const [keyInput, setKeyInput] = useState('');
 
-  const fetchData = async () => {
+  useEffect(() => {
+    const autoKey = getStoredDecryptionKey(user);
+    setDecryptionKey(autoKey);
+    fetchData(autoKey);
+  }, [user]);
+
+  const handleSaveKey = () => {
+    if (!keyInput.trim()) {
+      alert('Please enter a valid decryption key.');
+      return;
+    }
+    localStorage.setItem('flow_decryption_key', keyInput);
+    setDecryptionKey(keyInput);
+    setShowKeyModal(false);
+    fetchData(keyInput);
+  };
+
+  const fetchData = async (keyToUse: string) => {
     setLoading(true);
     const res = await api.getEmployees();
     if (res.success && res.data) {
-      setEmployees(res.data);
+      // Map sensitive data locally based on encryption status
+      const mapped = res.data.map((emp: any) => {
+        const decryptedEmp = { ...emp };
+        let loaded = false;
+
+        if (ENCRYPTION_ENABLED && emp.secure_payload) {
+          try {
+            const rawJSON = decryptAES(emp.secure_payload, keyToUse);
+            if (rawJSON) {
+              const decryptedFields = JSON.parse(rawJSON);
+              decryptedEmp.salary = decryptedFields.salary;
+              decryptedEmp.phone = decryptedFields.phone;
+              decryptedEmp.emergency_contact = decryptedFields.emergency_contact;
+              decryptedEmp.bank_account = decryptedFields.bank_account;
+              decryptedEmp.transportation = decryptedFields.transportation;
+              decryptedEmp.isDecrypted = true;
+              loaded = true;
+            } else {
+              decryptedEmp.isDecrypted = false;
+            }
+          } catch (e) {
+            decryptedEmp.isDecrypted = false;
+          }
+        }
+
+        if (!loaded) {
+          // Fallback if encrypted payload exists but raw columns are null
+          if (emp.secure_payload && emp.salary == null && !emp.phone) {
+            try {
+              const rawJSON = decryptAES(emp.secure_payload, keyToUse);
+              if (rawJSON) {
+                const decryptedFields = JSON.parse(rawJSON);
+                decryptedEmp.salary = decryptedFields.salary;
+                decryptedEmp.phone = decryptedFields.phone;
+                decryptedEmp.emergency_contact = decryptedFields.emergency_contact;
+                decryptedEmp.bank_account = decryptedFields.bank_account;
+                decryptedEmp.transportation = decryptedFields.transportation;
+              }
+            } catch (e) {}
+          }
+          decryptedEmp.isDecrypted = true;
+        }
+
+        return decryptedEmp;
+      });
+      setEmployees(mapped);
     }
     setLoading(false);
   };
@@ -35,15 +99,28 @@ export default function EmployeesScreen() {
             <Users size={28} style={{ color: 'var(--primary)' }} /> Employees
           </h1>
           <p style={{ color: 'var(--text-muted)', margin: '4px 0 0 0', fontSize: '14px' }}>
-            Manage staff profiles, roles, departments, and payroll basics.
+            Manage staff profiles, roles, departments, and payroll basics{ENCRYPTION_ENABLED ? ' (Zero-Knowledge AES Encrypted)' : ''}.
           </p>
         </div>
-        <button 
-          onClick={() => navigate('/employees/new')}
-          style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', backgroundColor: 'var(--primary)', color: 'white', border: 'none', borderRadius: 'var(--radius)', fontWeight: 600, cursor: 'pointer' }}
-        >
-          <Plus size={20} /> Add Employee
-        </button>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          {ENCRYPTION_ENABLED && (
+            <button
+              onClick={() => {
+                setKeyInput(decryptionKey);
+                setShowKeyModal(true);
+              }}
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', backgroundColor: '#f1f5f9', color: '#1e293b', border: '1px solid #cbd5e1', borderRadius: 'var(--radius)', fontWeight: 600, cursor: 'pointer' }}
+            >
+              <KeyRound size={18} /> Change Decryption Key
+            </button>
+          )}
+          <button 
+            onClick={() => navigate('/employees/new')}
+            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', backgroundColor: 'var(--primary)', color: 'white', border: 'none', borderRadius: 'var(--radius)', fontWeight: 600, cursor: 'pointer' }}
+          >
+            <Plus size={20} /> Add Employee
+          </button>
+        </div>
       </div>
 
       <div style={{ position: 'relative', marginBottom: '24px' }}>
@@ -98,7 +175,15 @@ export default function EmployeesScreen() {
                     <td style={tdStyle}>{emp.branch || 'N/A'}</td>
                     <td style={tdStyle}><span style={{ backgroundColor: '#e9ecef', padding: '4px 8px', borderRadius: '12px', fontSize: '12px', fontWeight: 600 }}>{emp.department || 'N/A'}</span></td>
                     <td style={tdStyle}>{emp.position || 'Staff'}</td>
-                    <td style={tdStyle}>${emp.salary || '0'}</td>
+                    <td style={tdStyle}>
+                      {emp.isDecrypted ? (
+                        `$${emp.salary || '0'}`
+                      ) : (
+                        <span style={{ color: 'var(--danger)', fontSize: '12px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                          🔒 Encrypted
+                        </span>
+                      )}
+                    </td>
                     <td style={tdStyle}>
                       {emp.status !== 'Inactive' ? (
                         <span style={{ color: 'var(--success)', fontWeight: 600 }}>Active</span>
@@ -113,6 +198,35 @@ export default function EmployeesScreen() {
           </div>
         )}
       </div>
+
+      {/* Decryption Key Request Modal */}
+      {showKeyModal && (
+        <div style={{ position: 'fixed', left: 0, top: 0, right: 0, bottom: 0, background: 'rgba(15, 23, 42, 0.4)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ background: '#fff', borderRadius: '16px', width: '100%', maxWidth: '440px', padding: '24px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+            <h3 style={{ fontSize: '18px', fontWeight: 800, color: '#1e293b', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <ShieldAlert size={22} color="var(--primary)" /> Decryption Passphrase Required
+            </h3>
+            <p style={{ fontSize: '14px', color: 'var(--text-muted)', lineHeight: '20px', marginBottom: '16px' }}>
+              To load and display sensitive payroll parameters, please input your **Secret Restaurant Decryption Passphrase**. This key resides locally in your browser.
+            </p>
+            <input
+              type="password"
+              placeholder="Enter Private Decryption Key"
+              value={keyInput}
+              onChange={(e) => setKeyInput(e.target.value)}
+              style={{ width: '100%', padding: '12px 14px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '14px', outline: 'none', marginBottom: '16px' }}
+            />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                onClick={handleSaveKey}
+                style={{ padding: '10px 20px', background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '14px' }}
+              >
+                Submit Key
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,0 +1,173 @@
+Flow ERPFunctional SpecificationSupplier Price Intelligence Module
+
+Version: 1.0Purpose: Build a supplier intelligence module that analyzes historical purchasing and receiving data, compares supplier quotations, monitors price fluctuations, evaluates supplier performance, and provides AI-driven purchasing recommendations.
+
+Objectives
+
+Compare supplier prices.
+
+Monitor historical price fluctuations.
+
+Identify savings opportunities.
+
+Evaluate suppliers by price, quality, reliability, payment terms and delivery.
+
+Import supplier price lists manually, Excel/CSV, and AI OCR from PDFs/images.
+
+Generate explainable AI purchasing recommendations.
+
+Integration
+
+Reuse existing Purchasing, Receiving, Inventory, Item Catalog, Supplier, Dashboard and Financial Analytics modules.
+
+Do not duplicate purchasing data.
+
+Dashboard
+
+Purchasing KPIs, supplier rankings, price alerts, savings opportunities, expired quotations, abnormal price changes.
+
+Supplier Management
+
+Supplier profile, payment terms, lead time, preferred supplier, performance indicators, quality and reliability ratings.
+
+Item Price Intelligence
+
+Current, lowest, highest and weighted average price.
+
+Historical graphs.
+
+Monthly consumption.
+
+Estimated savings.
+
+Best supplier.
+
+Supplier Comparison
+
+Compare suppliers using normalized prices, quality, reliability, payment terms, lead time, MOQ and Best Value Score.
+
+Price List Management
+
+Manual entry.
+
+Excel/CSV import.
+
+PDF/Image OCR import using AI.
+
+Effective and expiry dates.
+
+Currency, taxes and delivery inclusion.
+
+AI Item Matching
+
+Match supplier item descriptions to Flow items.
+
+Require user approval for new mappings.
+
+Store approved mappings.
+
+Unit Normalization
+
+Normalize Kg, Gram, Liter, ml, Piece, Pack, Box, Carton, Bottle and Roll before comparison.
+
+Calculations
+
+Lowest price.
+
+Highest price.
+
+Weighted average.
+
+Price increase/decrease percentages.
+
+Price volatility.
+
+Estimated monthly and annual savings.
+
+Supplier Evaluation
+
+Rate quality, freshness, packaging, specification compliance, delivery, communication, service and replacement handling (1–5).
+
+Supplier Performance
+
+On-time delivery.
+
+Rejected deliveries.
+
+Returns.
+
+Invoice variance.
+
+Lead time.
+
+Order fulfilment.
+
+Best Value Algorithm
+
+Default weights: Price 40%, Quality 25%, Reliability 15%, Payment Terms 10%, Delivery 5%, Service 5%.
+
+Administrator configurable.
+
+AI Purchasing Assistant
+
+Answer procurement questions.
+
+Recommend suppliers with clear reasoning.
+
+Prepare negotiation summaries.
+
+Identify negotiation opportunities.
+
+Price Alerts
+
+Price increases/decreases.
+
+Expired quotations.
+
+Invoice differs from quotation.
+
+Better supplier available.
+
+Reports
+
+Supplier comparison.
+
+Price history.
+
+Supplier performance.
+
+Savings.
+
+Negotiation report.
+
+Permissions
+
+Administrator, Purchasing Manager, Store Manager (view), Finance.
+
+Future Enhancements
+
+Supplier portal.
+
+Automatic RFQs.
+
+Market price APIs.
+
+Demand forecasting.
+
+Supplier risk analysis.
+
+Business Rules
+
+Never recommend a supplier based only on price.
+
+Always normalize units.
+
+Explain every AI recommendation.
+
+Keep complete audit history.
+
+Reuse existing purchasing data.
+
+Implementation Guidance for Antigravity
+
+Design the database schema first, followed by APIs/business logic, then the user interface, and finally the AI layer. If a business requirement cannot be implemented exactly as specified, propose an alternative before changing the functional behavior.

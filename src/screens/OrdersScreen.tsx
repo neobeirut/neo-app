@@ -6,23 +6,18 @@ import {
   AlertCircle, 
   Eye, 
   RefreshCw,
-  ShoppingBag,
   AlertTriangle,
-  X,
-  Download
+  X
 } from 'lucide-react';
 import { api } from '../api/client';
 import './DashboardScreen.css';
 
 export default function OrdersScreen({ user }: { user: any }) {
-  const [activeTab, setActiveTab] = useState<'orders' | 'catalog'>('orders');
   const [loading, setLoading] = useState(true);
 
   // Lists
   const [orders, setOrders] = useState<any[]>([]);
-  const [catalogItems, setCatalogItems] = useState<any[]>([]);
   const [branches, setBranches] = useState<string[]>([]);
-  const [departments, setDepartments] = useState<string[]>([]);
 
   // Order Filters
   const [filterStatus, setFilterStatus] = useState('All');
@@ -30,23 +25,11 @@ export default function OrdersScreen({ user }: { user: any }) {
   const [filterToBranch, setFilterToBranch] = useState('All');
   const [filterUrgent, setFilterUrgent] = useState(false);
 
-  // Catalog Filters
-  const [catalogSearch, setCatalogSearch] = useState('');
-  const [catalogDept, setCatalogDept] = useState('All');
-
   // Modal / Editor states
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
   const [orderItems, setOrderItems] = useState<any[]>([]);
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [submittingAction, setSubmittingAction] = useState(false);
-
-
-  // Sent History state
-  const [showHistoryModal, setShowHistoryModal] = useState(false);
-  const [historyItem, setHistoryItem] = useState<any | null>(null);
-  const [historyBranch, setHistoryBranch] = useState<string>('');
-  const [historyLoading, setHistoryLoading] = useState(false);
-  const [sentHistory, setSentHistory] = useState<any[]>([]);
 
   // KPI counts
   const [kpis, setKpis] = useState({
@@ -126,89 +109,11 @@ export default function OrdersScreen({ user }: { user: any }) {
     loadFilterOptions();
   }, []);
 
-  useEffect(() => {
-    if (showHistoryModal && historyItem && historyBranch) {
-      loadSentHistory();
-    } else {
-      setSentHistory([]);
-    }
-  }, [historyBranch, historyItem, showHistoryModal]);
-
-  const loadSentHistory = async () => {
-    setHistoryLoading(true);
-    try {
-      const res = await api.getItemSentToBranchHistory(historyItem.name, historyBranch);
-      if (res.success && res.data) {
-        setSentHistory(res.data);
-      } else {
-        setSentHistory([]);
-      }
-    } catch (e) {
-      console.error('Error loading sent history:', e);
-    }
-    setHistoryLoading(false);
-  };
-
-  const handleOpenSentHistory = (item: any) => {
-    setHistoryItem(item);
-    setSentHistory([]);
-    setHistoryBranch('');
-    setShowHistoryModal(true);
-  };
-
-  const handleExportToExcel = () => {
-    if (!sentHistory || sentHistory.length === 0 || !historyItem || !historyBranch) return;
-
-    // Build CSV content
-    const headers = ['Date Sent', 'Quantity Sent', 'Unit', 'Sent By', 'Order ID'];
-    const rows = sentHistory.map(record => {
-      const date = record.orders?.date_sent 
-        ? new Date(record.orders.date_sent).toLocaleString().replace(/,/g, '') 
-        : '—';
-      const qty = record.qty_sent || 0;
-      const unit = record.unit || '—';
-      const sentBy = (record.orders?.sent_by || '—').replace(/,/g, '');
-      const orderId = record.order_id || '—';
-
-      return [date, qty, unit, sentBy, orderId].join(',');
-    });
-
-    const csvContent = [headers.join(','), ...rows].join('\n');
-    
-    // Create download link
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    
-    const safeItemName = historyItem.name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-    const safeBranchName = historyBranch.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-    link.setAttribute('href', url);
-    link.setAttribute('download', `sent_history_${safeItemName}_to_${safeBranchName}.csv`);
-    
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  useEffect(() => {
-    if (activeTab === 'orders') {
-      loadOrders();
-    } else {
-      loadCatalog();
-    }
-  }, [activeTab, filterStatus, filterFromBranch, filterToBranch, filterUrgent, catalogSearch, catalogDept]);
-
   const loadFilterOptions = async () => {
     try {
-      const [branchRes, deptRes] = await Promise.all([
-        api.getBranchesList(),
-        api.getDepartmentsList()
-      ]);
+      const branchRes = await api.getBranchesList();
       if (branchRes.success && branchRes.data) {
         setBranches(branchRes.data.map((b: any) => typeof b === 'string' ? b : b.name));
-      }
-      if (deptRes.success && deptRes.data) {
-        setDepartments(deptRes.data.map((d: any) => typeof d === 'string' ? d : d.name));
       }
     } catch (e) {
       console.error('Error loading filter options:', e);
@@ -235,20 +140,9 @@ export default function OrdersScreen({ user }: { user: any }) {
     setLoading(false);
   };
 
-  const loadCatalog = async () => {
-    setLoading(true);
-    try {
-      const res = await api.getOrderCatalogItems(catalogSearch || undefined, catalogDept);
-      if (res.success && res.data) {
-        setCatalogItems(res.data);
-      } else {
-        setCatalogItems([]);
-      }
-    } catch (e) {
-      console.error('Error loading catalog:', e);
-    }
-    setLoading(false);
-  };
+  useEffect(() => {
+    loadOrders();
+  }, [filterStatus, filterFromBranch, filterToBranch, filterUrgent]);
 
   const num = (val: any) => Number(val) || 0;
 
@@ -523,48 +417,10 @@ export default function OrdersScreen({ user }: { user: any }) {
         <div>
           <h1>Branch Orders Management</h1>
           <p style={{ color: 'var(--text-muted)', fontSize: '14px', marginTop: '4px' }}>
-            Process branch-to-branch stock transfers, fulfill requests, and manage ordering catalog items.
+            Process branch-to-branch stock transfers and fulfill requests.
           </p>
         </div>
-        
-        {/* Toggle Tabs */}
-        <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden' }}>
-          <button 
-            className="auth-btn" 
-            style={{ 
-              width: 'auto', 
-              borderRadius: 0,
-              backgroundColor: activeTab === 'orders' ? 'var(--primary)' : '#ffffff',
-              color: activeTab === 'orders' ? '#ffffff' : 'var(--text-main)',
-              border: 'none',
-              padding: '10px 18px',
-              fontWeight: 600,
-              fontSize: '14px'
-            }}
-            onClick={() => setActiveTab('orders')}
-          >
-            Active Orders
-          </button>
-          <button 
-            className="auth-btn" 
-            style={{ 
-              width: 'auto', 
-              borderRadius: 0,
-              backgroundColor: activeTab === 'catalog' ? 'var(--primary)' : '#ffffff',
-              color: activeTab === 'catalog' ? '#ffffff' : 'var(--text-main)',
-              border: 'none',
-              padding: '10px 18px',
-              fontWeight: 600,
-              fontSize: '14px'
-            }}
-            onClick={() => setActiveTab('catalog')}
-          >
-            Ordering Catalog
-          </button>
-        </div>
       </div>
-
-      {activeTab === 'orders' && (
         <>
           {/* Summary KPIs */}
           <div className="kpi-grid">
@@ -775,114 +631,6 @@ export default function OrdersScreen({ user }: { user: any }) {
             )}
           </div>
         </>
-      )}
-
-      {activeTab === 'catalog' && (
-        <>
-          {/* Catalog Filter Card */}
-          <div className="filters-card">
-            <div className="filters-row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ display: 'flex', gap: '16px', flex: 1, maxWidth: '600px' }}>
-                <div className="filter-group" style={{ flex: 1 }}>
-                  <label>Search Item</label>
-                  <input 
-                    type="text" 
-                    className="filter-input"
-                    placeholder="Search by name..."
-                    value={catalogSearch} 
-                    onChange={(e) => setCatalogSearch(e.target.value)}
-                  />
-                </div>
-
-                <div className="filter-group" style={{ width: '180px' }}>
-                  <label>Department</label>
-                  <select 
-                    className="filter-select"
-                    value={catalogDept} 
-                    onChange={(e) => setCatalogDept(e.target.value)}
-                  >
-                    <option value="All">All Departments</option>
-                    {departments.map(d => (
-                      <option key={d} value={d}>{d}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Catalog Grid List */}
-          <div style={{ 
-            backgroundColor: 'var(--surface)', 
-            borderRadius: '12px', 
-            border: '1px solid var(--border)', 
-            boxShadow: 'var(--shadow)',
-            overflow: 'hidden',
-            marginTop: '16px'
-          }}>
-            {loading ? (
-              <div className="loading-container" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '40px', gap: '8px' }}>
-                <RefreshCw className="spin" size={24} style={{ color: 'var(--primary)' }} />
-                <p style={{ color: 'var(--text-muted)' }}>Loading catalog items...</p>
-              </div>
-            ) : catalogItems.length === 0 ? (
-              <div className="empty-state" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '40px', textAlign: 'center', gap: '8px' }}>
-                <ShoppingBag size={36} style={{ color: 'var(--text-muted)' }} />
-                <span className="empty-state-title" style={{ fontWeight: 700, fontSize: '16px' }}>Catalog is Empty</span>
-                <span className="empty-state-desc" style={{ color: 'var(--text-muted)', fontSize: '14px' }}>Add items using the button above to populate the ordering list.</span>
-              </div>
-            ) : (
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                  <thead>
-                    <tr style={{ backgroundColor: '#f8fafc', borderBottom: '2px solid var(--border)' }}>
-                      <th style={tableHeaderStyle}>Item Name</th>
-                      <th style={tableHeaderStyle}>Department</th>
-                      <th style={tableHeaderStyle}>Sub Department</th>
-                      <th style={tableHeaderStyle}>Standard Unit</th>
-                      <th style={tableHeaderStyle}>Par Level</th>
-                      <th style={tableHeaderStyle}>Step</th>
-                      <th style={tableHeaderStyle}>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {catalogItems.map((item) => (
-                      <tr key={item.id} style={{ borderBottom: '1px solid var(--border)', transition: 'background-color 0.15s' }}>
-                        <td style={{ ...tableCellStyle, fontWeight: 600 }}>{item.name}</td>
-                        <td style={tableCellStyle}>{item.department}</td>
-                        <td style={tableCellStyle}>{item.sub_department || '—'}</td>
-                        <td style={tableCellStyle}>
-                          <span style={{
-                            padding: '2px 8px',
-                            backgroundColor: '#f1f5f9',
-                            borderRadius: '4px',
-                            fontWeight: 600,
-                            color: '#475569',
-                            fontSize: '12px'
-                          }}>
-                            {item.unit}
-                          </span>
-                        </td>
-                        <td style={tableCellStyle}>{item.par_level}</td>
-                        <td style={tableCellStyle}>{item.step}</td>
-                        <td style={tableCellStyle}>
-                          <button 
-                            onClick={() => handleOpenSentHistory(item)} 
-                            className="auth-btn"
-                            style={{ width: 'auto', padding: '6px 12px', fontSize: '12px', backgroundColor: 'rgba(59, 130, 246, 0.1)', color: 'var(--primary)', border: 'none' }}
-                          >
-                            Sent History
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        </>
-      )}
 
       {/* ORDER DETAIL MODAL */}
       {showOrderModal && selectedOrder && (
@@ -1178,171 +926,6 @@ export default function OrdersScreen({ user }: { user: any }) {
         </div>
       )}
 
-
-      {/* SENT HISTORY MODAL */}
-      {showHistoryModal && historyItem && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(15, 23, 42, 0.6)',
-          backdropFilter: 'blur(4px)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 9999,
-          padding: '20px'
-        }}>
-          <div style={{
-            backgroundColor: '#ffffff',
-            borderRadius: '16px',
-            width: '100%',
-            maxWidth: '650px',
-            maxHeight: '90vh',
-            display: 'flex',
-            flexDirection: 'column',
-            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)',
-            overflow: 'hidden'
-          }}>
-            {/* Modal Header */}
-            <div style={{
-              padding: '20px',
-              borderBottom: '1px solid var(--border)',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center'
-            }}>
-              <div>
-                <h2 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  Branch Delivery History: <span style={{ color: 'var(--primary)' }}>{historyItem.name}</span>
-                </h2>
-                <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                  Check when and how much of this item has been sent to any branch.
-                </p>
-              </div>
-              <button 
-                onClick={() => setShowHistoryModal(false)}
-                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            {/* Modal Body */}
-            <div style={{ padding: '20px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div className="filter-group" style={{ width: '100%' }}>
-                <label style={{ fontSize: '13px', fontWeight: 600, marginBottom: '6px', display: 'block' }}>Destination Branch</label>
-                <select 
-                  className="filter-select"
-                  style={{ width: '100%' }}
-                  value={historyBranch} 
-                  onChange={(e) => setHistoryBranch(e.target.value)}
-                >
-                  <option value="">-- Select Destination Branch --</option>
-                  {branches.map(b => (
-                    <option key={b} value={b}>{b}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div style={{ marginTop: '8px', minHeight: '150px' }}>
-                {!historyBranch ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '150px', color: 'var(--text-muted)', border: '1px dashed var(--border)', borderRadius: '8px' }}>
-                    <p style={{ fontSize: '14px' }}>Please select a destination branch to view history.</p>
-                  </div>
-                ) : historyLoading ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '150px', gap: '8px' }}>
-                    <RefreshCw className="spin" size={24} style={{ color: 'var(--primary)' }} />
-                    <p style={{ color: 'var(--text-muted)', fontSize: '13px' }}>Loading delivery records...</p>
-                  </div>
-                ) : sentHistory.length === 0 ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '150px', color: 'var(--text-muted)', border: '1px dashed var(--border)', borderRadius: '8px', padding: '16px', textAlign: 'center' }}>
-                    <p style={{ fontSize: '14px', fontWeight: 600 }}>No Records Found</p>
-                    <p style={{ fontSize: '12.5px', color: 'var(--text-muted)', marginTop: '4px' }}>
-                      This item has never been sent to <strong>{historyBranch}</strong>.
-                    </p>
-                  </div>
-                ) : (
-                  <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                      <h3 style={{ fontSize: '13.5px', fontWeight: 700, color: 'var(--text-main)', margin: 0 }}>
-                        Shipments Sent to {historyBranch}
-                      </h3>
-                      <button
-                        onClick={handleExportToExcel}
-                        className="auth-btn"
-                        style={{ 
-                          width: 'auto', 
-                          padding: '6px 12px', 
-                          fontSize: '12px', 
-                          backgroundColor: 'var(--success)', 
-                          color: '#ffffff', 
-                          border: 'none',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '6px'
-                        }}
-                      >
-                        <Download size={14} /> Export to Excel
-                      </button>
-                    </div>
-                    <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden' }}>
-                      <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                        <thead>
-                          <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid var(--border)' }}>
-                            <th style={{ padding: '8px 12px', fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Date Sent</th>
-                            <th style={{ padding: '8px 12px', fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', textAlign: 'right' }}>Qty Sent</th>
-                            <th style={{ padding: '8px 12px', fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Sent By</th>
-                            <th style={{ padding: '8px 12px', fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Order ID</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {sentHistory.map((record) => (
-                            <tr key={record.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                              <td style={{ padding: '10px 12px', fontSize: '13px' }}>
-                                {record.orders?.date_sent ? new Date(record.orders.date_sent).toLocaleString() : '—'}
-                              </td>
-                              <td style={{ padding: '10px 12px', fontSize: '13px', fontWeight: 700, color: 'var(--primary)', textAlign: 'right' }}>
-                                {record.qty_sent} {record.unit}
-                              </td>
-                              <td style={{ padding: '10px 12px', fontSize: '13px' }}>
-                                {record.orders?.sent_by || '—'}
-                              </td>
-                              <td style={{ padding: '10px 12px', fontSize: '13px', fontFamily: 'monospace', color: 'var(--text-muted)' }}>
-                                {record.order_id}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Modal Footer */}
-            <div style={{
-              padding: '20px',
-              borderTop: '1px solid var(--border)',
-              display: 'flex',
-              justifyContent: 'flex-end',
-              backgroundColor: '#f8fafc'
-            }}>
-              <button
-                type="button"
-                onClick={() => setShowHistoryModal(false)}
-                className="auth-btn"
-                style={{ width: 'auto', padding: '10px 18px', backgroundColor: '#ffffff', color: 'var(--text-main)', border: '1px solid var(--border)' }}
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

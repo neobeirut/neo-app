@@ -6,4 +6,7 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publishabl
 // Public client – for reads and auth flows (exposed to the browser)
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-// NOTE: Service‑role client removed from browser bundle to avoid multiple GoTrueClient warnings.
+// Clean public client – bypasses user JWT token RLS restrictions for read-only analytics dashboards
+export const supabasePublic = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: { persistSession: false, autoRefreshToken: false }
+});

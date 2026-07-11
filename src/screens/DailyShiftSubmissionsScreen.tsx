@@ -10,7 +10,7 @@ import {
 import { api } from '../api/client';
 
 export default function DailyShiftSubmissionsScreen({ user }: { user: any }) {
-  const isAdmin = user?.role === 'Admin';
+  const isAdmin = user?.role === 'Admin' || user?.role === 'SuperAdmin';
 
   // Default filters to today
   const todayStr = new Date().toISOString().split('T')[0];

@@ -4,7 +4,7 @@ import { api } from '../api/client';
 import { 
   Search, Plus, Edit, Trash2, Truck, Coins, Filter, X, 
   ArrowUpRight, ArrowDownRight, FileText, CheckCircle, RefreshCw, 
-  BarChart2, Info, AlertCircle, TrendingUp, FileSpreadsheet
+  BarChart2, Info, AlertCircle, FileSpreadsheet
 } from 'lucide-react';
 
 
@@ -19,7 +19,7 @@ export default function PaymentDetailsScreen({ user }: { user: any }) {
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
   const [startDate, setStartDate] = useState(thirtyDaysAgo.toISOString().split('T')[0]);
   const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
-  const [branchFilter, setBranchFilter] = useState(user.branch || 'All');
+  const [branchFilter, setBranchFilter] = useState('All');
   const [typeFilter, setTypeFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState('All');
   const [supplierFilter, setSupplierFilter] = useState('All');
@@ -58,9 +58,9 @@ export default function PaymentDetailsScreen({ user }: { user: any }) {
 
   const loadBranches = async () => {
     const res = await api.getBranchesList();
-    if (res.success && res.data) {
-      setBranches(res.data.map((b: any) => b.name));
-    }
+    const dbNames = (res.success && res.data) ? res.data.map((b: any) => b.name) : [];
+    const combined = Array.from(new Set(['Badaro', 'Naccache', ...dbNames])).filter(Boolean);
+    setBranches(combined);
   };
 
   const loadPayments = async () => {
@@ -421,7 +421,7 @@ export default function PaymentDetailsScreen({ user }: { user: any }) {
           {/* Branch Filter */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)' }}>Branch</label>
-            <select className="admin-select" value={branchFilter} onChange={e => setBranchFilter(e.target.value)} disabled={user.branch !== 'All'} style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '14px', color: 'var(--text-main)', outline: 'none', background: user.branch !== 'All' ? '#eef2f5' : '#fff' }}>
+            <select className="admin-select" value={branchFilter} onChange={e => setBranchFilter(e.target.value)} style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '14px', color: 'var(--text-main)', outline: 'none', background: '#fff', cursor: 'pointer' }}>
               <option value="All">All Branches</option>
               {branches.map(b => <option key={b} value={b}>{b}</option>)}
             </select>
@@ -527,22 +527,6 @@ export default function PaymentDetailsScreen({ user }: { user: any }) {
             <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
               <span style={{ color: '#10b981', fontWeight: 500 }}>Paid: {formatUsd(stats.deliveryPaidConsolidated)}</span>
               <span style={{ color: '#ef4444', fontWeight: 500 }}>Unpaid: {formatUsd(stats.deliveryUnpaidConsolidated)}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Card 5: Net Shift Cashflow */}
-        <div className="card-glass" style={{ background: '#fff', borderRadius: '12px', border: '1px solid var(--border)', padding: '20px', display: 'flex', flexDirection: 'column', gap: '12px', boxShadow: 'var(--shadow)', borderLeft: '4px solid var(--primary)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Net Cash Flow (Est.)</span>
-            <div style={{ padding: '6px', borderRadius: '8px', background: '#eef6f4', color: 'var(--primary)' }}><TrendingUp size={18} /></div>
-          </div>
-          <div>
-            <div style={{ fontSize: '24px', fontWeight: 800, color: stats.netCashFlow >= 0 ? '#10b981' : '#ef4444' }}>
-              {formatUsd(stats.netCashFlow)}
-            </div>
-            <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px', lineHeight: '1.4' }}>
-              Calculated as: Cash In - Cash Out - Paid Expenses. Converted using 1 USD = 90k LBP.
             </div>
           </div>
         </div>

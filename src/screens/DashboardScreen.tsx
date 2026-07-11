@@ -64,20 +64,11 @@ export default function DashboardScreen({ user, permissions }: DashboardScreenPr
           api.getDepartmentsList()
         ]);
 
-        if (branchRes.success && branchRes.data) {
-          setBranches(branchRes.data);
-          
-          // Set default branch
-          if (isAdmin) {
-            // Admin defaults to the first branch in the list
-            if (branchRes.data.length > 0) {
-              setSelectedBranch(branchRes.data[0].name);
-            }
-          } else {
-            // Non-admin defaults to their assigned branch
-            setSelectedBranch(user.branch || '');
-          }
-        }
+        const dbBranches = (branchRes.success && branchRes.data) ? branchRes.data.map((b: any) => typeof b === 'string' ? { id: b, name: b } : b) : [];
+        const combinedNames = Array.from(new Set(['Badaro', 'Naccache', ...dbBranches.map((b: any) => b.name)]));
+        const formattedBranches = combinedNames.map((n: string) => ({ id: n, name: n }));
+        setBranches(formattedBranches);
+        setSelectedBranch('All');
 
         if (deptRes.success && deptRes.data) {
           setDepartments(deptRes.data);
@@ -356,18 +347,13 @@ export default function DashboardScreen({ user, permissions }: DashboardScreenPr
               className="filter-select"
               value={selectedBranch}
               onChange={(e) => setSelectedBranch(e.target.value)}
-              disabled={!isAdmin}
             >
-              {!selectedBranch && <option value="">Select Branch...</option>}
-              {isAdmin ? (
-                branches.map((b) => (
-                  <option key={b.id} value={b.name}>
-                    {b.name}
-                  </option>
-                ))
-              ) : (
-                <option value={user.branch}>{user.branch}</option>
-              )}
+              <option value="All">All Branches</option>
+              {branches.map((b: any) => (
+                <option key={b.id || b.name || b} value={b.name || b}>
+                  {b.name || b}
+                </option>
+              ))}
             </select>
           </div>
 

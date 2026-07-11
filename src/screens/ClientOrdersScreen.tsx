@@ -12,17 +12,94 @@ import {
   TrendingUp, 
   AlertCircle,
   RefreshCw,
-  Clock
+  Clock,
+  Settings,
+  X
 } from 'lucide-react';
 import { api } from '../api/client';
 import './DashboardScreen.css';
 
-export default function ClientOrdersScreen({ user, permissions }: { user: any; permissions: any }) {
+export default function ClientOrdersScreen({ user, permissions, onUpdateUser }: { user: any; permissions: any; onUpdateUser: (user: any) => void }) {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState<any[]>([]);
   const [salespeople, setSalespeople] = useState<string[]>([]);
   const branches = ['Downtown', 'Hamra', 'Achrafieh', 'Badaro'];
+
+  // Dynamic Categories
+  const categories = user?.restaurants?.settings?.client_order_categories || [
+    'Pastry', 'Bakery', 'Breakfast', 'Lunch', 'Dinner', 'Catering', 'Corporate', 'Other'
+  ];
+
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [newCatName, setNewCatName] = useState('');
+  const [editingCatIndex, setEditingCatIndex] = useState<number | null>(null);
+  const [editingCatName, setEditingCatName] = useState('');
+  const [savingSettings, setSavingSettings] = useState(false);
+
+  const handleSaveCategories = async (updatedCats: string[]) => {
+    setSavingSettings(true);
+    try {
+      const currentSettings = user?.restaurants?.settings || {};
+      const newSettings = {
+        ...currentSettings,
+        client_order_categories: updatedCats
+      };
+      const res = await api.updateRestaurantSettings(user.restaurant_id || user.restaurants?.id, newSettings);
+      if (res.success && res.data) {
+        onUpdateUser({
+          ...user,
+          restaurants: {
+            ...user.restaurants,
+            settings: res.data.settings
+          }
+        });
+      } else {
+        alert('Error updating categories: ' + (res.error || 'Unknown error'));
+      }
+    } catch (e: any) {
+      alert('Error updating categories: ' + e.message);
+    }
+    setSavingSettings(false);
+  };
+
+  const handleAddCategory = () => {
+    const trimmed = newCatName.trim();
+    if (!trimmed) return;
+    if (categories.includes(trimmed)) {
+      alert('Category already exists.');
+      return;
+    }
+    const updated = [...categories, trimmed];
+    handleSaveCategories(updated);
+    setNewCatName('');
+  };
+
+  const handleDeleteCategory = (cat: string) => {
+    if (window.confirm(`Are you sure you want to remove the category "${cat}"? Existing orders under this category will not be changed, but you won't be able to select it for new orders.`)) {
+      const updated = categories.filter((c: string) => c !== cat);
+      handleSaveCategories(updated);
+    }
+  };
+
+  const handleStartEdit = (index: number, cat: string) => {
+    setEditingCatIndex(index);
+    setEditingCatName(cat);
+  };
+
+  const handleSaveEdit = () => {
+    const trimmed = editingCatName.trim();
+    if (!trimmed) return;
+    if (categories.includes(trimmed) && categories[editingCatIndex!] !== trimmed) {
+      alert('Category already exists.');
+      return;
+    }
+    const updated = [...categories];
+    updated[editingCatIndex!] = trimmed;
+    handleSaveCategories(updated);
+    setEditingCatIndex(null);
+    setEditingCatName('');
+  };
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -34,6 +111,8 @@ export default function ClientOrdersScreen({ user, permissions }: { user: any; p
   const [endDate, setEndDate] = useState('');
 
   const canViewReports = permissions?.can_view_client_reports || user.role === 'Admin' || user.role === 'Manager';
+  const roleLower = user.role?.toLowerCase();
+  const canManage = permissions?.can_manage_client_orders || roleLower === 'admin' || roleLower === 'manager' || roleLower === 'superadmin';
 
   useEffect(() => {
     loadOrders();
@@ -138,7 +217,7 @@ export default function ClientOrdersScreen({ user, permissions }: { user: any; p
       {/* Title Header */}
       <div className="dashboard-title-row">
         <div>
-          <h1>Client Orders (CRM)</h1>
+          <h1>Client Orders</h1>
           <p style={{ color: 'var(--text-muted)', fontSize: '14px', marginTop: '4px' }}>
             Record, track, and manage phone, WhatsApp, catering, and walk-in sales inquiries.
           </p>
@@ -164,6 +243,26 @@ export default function ClientOrdersScreen({ user, permissions }: { user: any; p
             >
               <TrendingUp size={16} /> Sales Reports
             </Link>
+          )}
+
+          {canManage && (
+            <button 
+              onClick={() => setShowCategoryModal(true)}
+              className="auth-btn"
+              style={{ 
+                width: 'auto', 
+                backgroundColor: '#f1f5f9', 
+                color: 'var(--text-main)', 
+                border: '1px solid var(--border)', 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '8px',
+                padding: '0 16px',
+                cursor: 'pointer'
+              }}
+            >
+              <Settings size={16} /> Categories
+            </button>
           )}
           
           <Link 
@@ -203,14 +302,9 @@ export default function ClientOrdersScreen({ user, permissions }: { user: any; p
             <label style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Tag size={14} /> Category</label>
             <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} style={{ width: '100%' }}>
               <option value="All">All Categories</option>
-              <option value="Pastry">Pastry</option>
-              <option value="Bakery">Bakery</option>
-              <option value="Breakfast">Breakfast</option>
-              <option value="Lunch">Lunch</option>
-              <option value="Dinner">Dinner</option>
-              <option value="Catering">Catering</option>
-              <option value="Corporate">Corporate</option>
-              <option value="Other">Other</option>
+              {categories.map((cat: string) => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
             </select>
           </div>
 
@@ -419,6 +513,165 @@ export default function ClientOrdersScreen({ user, permissions }: { user: any; p
           </div>
         )}
       </div>
+
+      {showCategoryModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(15, 23, 42, 0.6)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          padding: '20px'
+        }}>
+          <div style={{
+            backgroundColor: '#ffffff',
+            borderRadius: '16px',
+            width: '100%',
+            maxWidth: '500px',
+            maxHeight: '80vh',
+            display: 'flex',
+            flexDirection: 'column',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)',
+            overflow: 'hidden'
+          }}>
+            {/* Modal Header */}
+            <div style={{
+              padding: '20px',
+              borderBottom: '1px solid var(--border)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}>
+              <div>
+                <h2 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-main)', margin: 0 }}>
+                  Manage Order Categories
+                </h2>
+                <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px', margin: 0 }}>
+                  Add, rename, or delete categories for client CRM orders.
+                </p>
+              </div>
+              <button 
+                onClick={() => {
+                  setShowCategoryModal(false);
+                  setEditingCatIndex(null);
+                }}
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ padding: '20px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {/* Add New Category form */}
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input 
+                  type="text" 
+                  placeholder="New category name..."
+                  value={newCatName}
+                  onChange={(e) => setNewCatName(e.target.value)}
+                  style={{ flex: 1, height: '38px', padding: '0 12px', borderRadius: '6px', border: '1px solid var(--border)' }}
+                  disabled={savingSettings}
+                />
+                <button
+                  type="button"
+                  onClick={handleAddCategory}
+                  className="auth-btn"
+                  style={{ width: 'auto', padding: '0 16px', height: '38px', backgroundColor: 'var(--primary)', color: '#ffffff', border: 'none', borderRadius: '6px', fontWeight: 600 }}
+                  disabled={savingSettings}
+                >
+                  Add
+                </button>
+              </div>
+
+              {/* Categories list */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px' }}>
+                <h4 style={{ fontSize: '13px', fontWeight: 700, margin: '0 0 4px 0', color: 'var(--text-main)' }}>Existing Categories</h4>
+                {categories.length === 0 ? (
+                  <p style={{ fontSize: '13px', color: 'var(--text-muted)', fontStyle: 'italic', margin: 0 }}>No categories configured. Static defaults will be used.</p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', border: '1px solid var(--border)', borderRadius: '8px', padding: '8px', backgroundColor: '#f8fafc', maxHeight: '300px', overflowY: 'auto' }}>
+                    {categories.map((cat: string, index: number) => (
+                      <div key={index} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#ffffff', padding: '8px 12px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                        {editingCatIndex === index ? (
+                          <div style={{ display: 'flex', gap: '8px', flex: 1 }}>
+                            <input 
+                              type="text" 
+                              value={editingCatName}
+                              onChange={(e) => setEditingCatName(e.target.value)}
+                              style={{ flex: 1, height: '28px', padding: '0 8px', borderRadius: '4px', border: '1px solid var(--primary)', fontSize: '13px' }}
+                            />
+                            <button 
+                              onClick={handleSaveEdit}
+                              style={{ padding: '0 8px', fontSize: '12px', backgroundColor: 'var(--success)', color: '#ffffff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                              disabled={savingSettings}
+                            >
+                              Save
+                            </button>
+                            <button 
+                              onClick={() => setEditingCatIndex(null)}
+                              style={{ padding: '0 8px', fontSize: '12px', backgroundColor: '#f1f5f9', color: 'var(--text-main)', border: '1px solid var(--border)', borderRadius: '4px', cursor: 'pointer' }}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <>
+                            <span style={{ fontSize: '13.5px', fontWeight: 600, color: 'var(--text-main)' }}>{cat}</span>
+                            <div style={{ display: 'flex', gap: '6px' }}>
+                              <button
+                                onClick={() => handleStartEdit(index, cat)}
+                                style={{ padding: '4px 8px', fontSize: '11px', backgroundColor: '#eff6ff', color: '#1e40af', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                                disabled={savingSettings}
+                              >
+                                Rename
+                              </button>
+                              <button
+                                onClick={() => handleDeleteCategory(cat)}
+                                style={{ padding: '4px 8px', fontSize: '11px', backgroundColor: '#fef2f2', color: '#991b1b', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                                disabled={savingSettings}
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div style={{
+              padding: '16px 20px',
+              borderTop: '1px solid var(--border)',
+              display: 'flex',
+              justifyContent: 'flex-end',
+              backgroundColor: '#f8fafc'
+            }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCategoryModal(false);
+                  setEditingCatIndex(null);
+                }}
+                className="auth-btn"
+                style={{ width: 'auto', padding: '8px 16px', backgroundColor: '#ffffff', color: 'var(--text-main)', border: '1px solid var(--border)', borderRadius: '6px' }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

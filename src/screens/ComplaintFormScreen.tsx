@@ -57,9 +57,9 @@ export default function ComplaintFormScreen({ permissions, user: propUser }: Com
   const isEditing = Boolean(id);
 
   const user = propUser || (localStorage.getItem('neo_admin_user') ? JSON.parse(localStorage.getItem('neo_admin_user')!) : null);
-  const canView = permissions?.can_view_complaints || user?.role === 'Admin' || user?.role === 'Manager';
-  const canManage = permissions?.can_manage_complaints || user?.role === 'Admin' || user?.role === 'Manager';
-  const isAdmin = user?.role === 'Admin';
+  const canView = permissions?.can_view_complaints || user?.role === 'Admin' || user?.role === 'Manager' || user?.role === 'SuperAdmin';
+  const canManage = permissions?.can_manage_complaints || user?.role === 'Admin' || user?.role === 'Manager' || user?.role === 'SuperAdmin';
+  const isAdmin = user?.role === 'Admin' || user?.role === 'SuperAdmin';
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
