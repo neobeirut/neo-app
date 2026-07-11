@@ -314,28 +314,8 @@ export default function SupplierPriceIntelligenceScreen({ user }: { user?: { nam
       const requestsRes = await api.getPurchasingRequests();
       const reqItemsRes = await api.getAllPurchasingRequestItems();
 
-      const fallbackSups: Supplier[] = [
-        { id: 'sup-1', name: 'Al Kayan Distributors', contact_name: 'Imad', phone: '+961 3 123456', delivery_days: 'Monday, Wednesday, Friday', time_to_deliver: 'Next day', payment_terms: 'Net 15' },
-        { id: 'sup-2', name: 'Fresh Farms Beqaa', contact_name: 'Sami', phone: '+961 8 654321', delivery_days: 'Tuesday, Thursday', time_to_deliver: '2 days', payment_terms: 'Net 15' },
-        { id: 'sup-3', name: 'Safi Dairy & Cheese Co.', contact_name: 'Fady', phone: '+961 1 987654', delivery_days: 'Daily', time_to_deliver: 'Same day', payment_terms: 'Net 30' },
-        { id: 'sup-4', name: 'Metico Supply House', contact_name: 'Nadim', phone: '+961 4 456789', delivery_days: 'Wednesday', time_to_deliver: '3 days', payment_terms: 'Net 30' }
-      ];
-
-      const fallbackItems: CatalogItem[] = [
-        { id: 'item-1', name: 'Cacao 5kg', price_usd: 45.0, unit: 'Pack', department: 'Kitchen', supplier_id: 'sup-1' },
-        { id: 'item-2', name: 'Coarse Ground Beef', price_usd: 12.5, unit: 'Kg', department: 'Kitchen', supplier_id: 'sup-2' },
-        { id: 'item-3', name: 'Cheddar 2.5kg', price_usd: 22.0, unit: 'Pack', department: 'Kitchen', supplier_id: 'sup-3' },
-        { id: 'item-4', name: 'Almond Extract', price_usd: 8.0, unit: 'Litre', department: 'Kitchen', supplier_id: 'sup-1' },
-        { id: 'item-5', name: 'Anchovies', price_usd: 15.0, unit: 'Jar', department: 'Kitchen', supplier_id: 'sup-4' }
-      ];
-
-      const suppliersList: Supplier[] = (suppliersRes.success && suppliersRes.data && suppliersRes.data.length > 0)
-        ? (suppliersRes.data as Supplier[])
-        : fallbackSups;
-
-      const itemsList: CatalogItem[] = (itemsRes.success && itemsRes.data && itemsRes.data.length > 0)
-        ? (itemsRes.data as CatalogItem[])
-        : fallbackItems;
+      const itemsList: CatalogItem[] = (itemsRes.success && itemsRes.data) ? (itemsRes.data as CatalogItem[]) : [];
+      const suppliersList: Supplier[] = (suppliersRes.success && suppliersRes.data) ? (suppliersRes.data as Supplier[]) : [];
 
       setCatalogItems(itemsList);
       setSuppliers(suppliersList);
