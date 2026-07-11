@@ -339,7 +339,7 @@ function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () 
                 <Route path="/tips/distribution/:id" element={<TipsDistributionScreen />} />
               </>
             )}
-            {isSectionEnabled('permissions') && <Route path="/permissions" element={<PermissionsScreen />} />}
+            {isSectionEnabled('permissions') && <Route path="/permissions" element={<PermissionsScreen user={user} onUpdateUser={onUpdateUser} />} />}
             {isSectionEnabled('signin_logs') && (
               <Route 
                 path="/signin-logs" 

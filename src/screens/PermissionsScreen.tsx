@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { api } from '../api/client';
 import { 
   Loader2, Shield, Search, User, Users, Check, AlertCircle, 
@@ -261,7 +261,23 @@ const GLOBAL_MODULES = [
   }
 ];
 
-export default function PermissionsScreen() {
+interface UserProfile {
+  id: string;
+  name?: string;
+  role?: string;
+  restaurant_id?: string;
+  restaurants?: {
+    id: string;
+    name: string;
+    settings?: {
+      enabled_sections?: string[];
+      is_vat_subscribed?: boolean;
+    };
+  };
+}
+
+export default function PermissionsScreen({ user, onUpdateUser }: { user?: UserProfile; onUpdateUser?: (u: UserProfile) => void }) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [permissions, setPermissions] = useState<any[]>([]);
   const [departments, setDepartments] = useState<string[]>([]);
   const [users, setUsers] = useState<string[]>([]);
@@ -271,15 +287,12 @@ export default function PermissionsScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
   const [savingState, setSavingState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-  const [globalSettings, setGlobalSettings] = useState<any>(null);
+  const [globalSettings, setGlobalSettings] = useState<Record<string, boolean> | null>(null);
   const [exchangeRate, setExchangeRate] = useState<number>(90000);
   const [vatRate, setVatRate] = useState<number>(11);
+  const [isVatSubscribed, setIsVatSubscribed] = useState<boolean>(true);
 
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       const [permRes, deptsRes, usersRes, globalRes, exRateRes, vatRateRes] = await Promise.all([
@@ -296,11 +309,11 @@ export default function PermissionsScreen() {
       }
       
       if (deptsRes.success && deptsRes.data) {
-        setDepartments(deptsRes.data.map((d: any) => typeof d === 'string' ? d : d.name));
+        setDepartments(deptsRes.data.map((d: string | { name: string }) => typeof d === 'string' ? d : d.name));
       }
       
       if (usersRes.success && usersRes.data) {
-        setUsers(usersRes.data.map((u: any) => u.name));
+        setUsers(usersRes.data.map((u: { name: string }) => u.name));
       }
 
       if (globalRes.success && globalRes.data) {
@@ -321,29 +334,67 @@ export default function PermissionsScreen() {
       if (vatRateRes.success && vatRateRes.rate !== undefined) {
         setVatRate(vatRateRes.rate);
       }
+
+      const restId = user?.restaurant_id;
+      if (restId) {
+        const restRes = await api.getRestaurantById(restId);
+        if (restRes.success && restRes.data) {
+          const settings = restRes.data.settings || {};
+          setIsVatSubscribed(settings.is_vat_subscribed !== false);
+        }
+      }
     } catch (err) {
       console.error('Error fetching data:', err);
     }
     setLoading(false);
-  };
+  }, [user]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchData();
+  }, [fetchData]);
 
   const handleSaveSystemSettings = async () => {
     setSavingState('saving');
     try {
-      const [exRes, vatRes] = await Promise.all([
+      const promises: Promise<{ success: boolean; error?: string; rate?: number; data?: unknown }>[] = [
         api.updateExchangeRate(exchangeRate),
         api.updateVatRate(vatRate)
-      ]);
-      if (exRes.success && vatRes.success) {
+      ];
+
+      const restId = user?.restaurant_id;
+      if (restId) {
+        const restRes = await api.getRestaurantById(restId);
+        const currentSettings = (restRes.success && restRes.data) ? (restRes.data.settings || {}) : (user.restaurants?.settings || {});
+        const updatedSettings = {
+          ...currentSettings,
+          is_vat_subscribed: isVatSubscribed
+        };
+        promises.push(api.updateRestaurantSettings(restId, updatedSettings));
+      }
+
+      const results = await Promise.all(promises);
+      const allSuccess = results.every(res => res.success);
+      if (allSuccess) {
         setSavingState('saved');
+        if (onUpdateUser && user && restId) {
+          const restRes = await api.getRestaurantById(restId);
+          if (restRes.success && restRes.data) {
+            onUpdateUser({
+              ...user,
+              restaurants: restRes.data
+            });
+          }
+        }
         setTimeout(() => setSavingState('idle'), 2000);
       } else {
         setSavingState('error');
-        alert('Failed to save settings: ' + (exRes.error || vatRes.error || 'Unknown error'));
+        alert('Failed to save settings');
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
+      console.error(e);
       setSavingState('error');
-      alert('Error saving settings: ' + e.message);
+      alert('Error saving settings: ' + (e instanceof Error ? e.message || 'Unknown error' : String(e)));
     }
   };
 
@@ -442,7 +493,9 @@ export default function PermissionsScreen() {
             ? JSON.parse(fetchAgain.data.setting_value)
             : fetchAgain.data.setting_value;
           setGlobalSettings(val);
-        } catch (e) {}
+        } catch {
+          // Ignore parser issues
+        }
       }
       alert('Failed to save global notification settings: ' + (res.error || 'Unknown error'));
     }
@@ -972,7 +1025,7 @@ export default function PermissionsScreen() {
                 }}
               >
                 <Sliders size={16} />
-                Global Alerts
+                Settings
               </button>
             </div>
 
@@ -1026,7 +1079,7 @@ export default function PermissionsScreen() {
                 <div className="details-header">
                   <div className="details-title-row">
                     <Sliders size={20} color="var(--primary)" />
-                    <span className="details-title">Global Notification Control</span>
+                    <span className="details-title">System Settings</span>
                     <span className="entity-badge configured">
                       Admin Settings
                     </span>
@@ -1067,7 +1120,7 @@ export default function PermissionsScreen() {
                       Configure global business constants like LBP exchange rate and Lebanese VAT percentage.
                     </p>
                     
-                    <div style={{ display: 'flex', gap: '20px', marginTop: '15px', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', gap: '20px', marginTop: '15px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
                       <div style={{ flex: 1, minWidth: '180px' }}>
                         <label style={{ fontSize: '11px', fontWeight: 'bold', textTransform: 'uppercase', opacity: 0.9, display: 'block', marginBottom: '4px' }}>USD to LBP Exchange Rate</label>
                         <input 
@@ -1088,7 +1141,23 @@ export default function PermissionsScreen() {
                         />
                       </div>
 
-                      <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+                      <div style={{ flex: 1, minWidth: '220px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                        <label style={{ fontSize: '11px', fontWeight: 'bold', textTransform: 'uppercase', opacity: 0.9, display: 'block', marginBottom: '8px' }}>VAT Subscribed (Yes/No)</label>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <span style={{ fontSize: '12px', fontWeight: 'bold', color: !isVatSubscribed ? '#fff' : 'rgba(255,255,255,0.6)' }}>NO</span>
+                          <label className="custom-switch">
+                            <input 
+                              type="checkbox" 
+                              checked={isVatSubscribed} 
+                              onChange={(e) => setIsVatSubscribed(e.target.checked)}
+                            />
+                            <span className="switch-slider" style={{ border: '1px solid rgba(255,255,255,0.4)', backgroundColor: 'rgba(255,255,255,0.2)' }}></span>
+                          </label>
+                          <span style={{ fontSize: '12px', fontWeight: 'bold', color: isVatSubscribed ? '#fff' : 'rgba(255,255,255,0.6)' }}>YES</span>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex' }}>
                         <button 
                           onClick={handleSaveSystemSettings}
                           className="auth-btn"

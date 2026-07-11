@@ -119,7 +119,8 @@ const DEFAULT_WEIGHTS: Weights = {
   service: 0.05
 };
 
-export default function SupplierPriceIntelligenceScreen({ user }: { user?: { name?: string; role?: string } }) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export default function SupplierPriceIntelligenceScreen({ user }: { user?: any }) {
   const [activeTab, setActiveTab] = useState<'overview' | 'trends' | 'suppliers' | 'comparator' | 'import' | 'assistant' | 'config'>('overview');
   const [loading, setLoading] = useState(true);
   const [dbStatus, setDbStatus] = useState<'loading' | 'ready' | 'missing'>('loading');
@@ -148,6 +149,9 @@ export default function SupplierPriceIntelligenceScreen({ user }: { user?: { nam
   const [selectedTrendItem, setSelectedTrendItem] = useState<string>('');
   const [selectedCompareItem, setSelectedCompareItem] = useState<string>('');
   const [compareQty, setCompareQty] = useState<number>(10);
+
+  const [isVatSubscribed, setIsVatSubscribed] = useState<boolean>(true);
+  const [vatRate, setVatRate] = useState<number>(11);
 
   const [showAllItemsInManualQuote, setShowAllItemsInManualQuote] = useState(false);
   const [showAddSupplierModal, setShowAddSupplierModal] = useState(false);
@@ -325,6 +329,7 @@ export default function SupplierPriceIntelligenceScreen({ user }: { user?: { nam
       const suppliersRes = await api.getSuppliers();
       const requestsRes = await api.getPurchasingRequests();
       const reqItemsRes = await api.getAllPurchasingRequestItems();
+      const vatRateRes = await api.getVatRate();
 
       const itemsList: CatalogItem[] = (itemsRes.success && itemsRes.data) ? (itemsRes.data as CatalogItem[]) : [];
       const suppliersList: Supplier[] = (suppliersRes.success && suppliersRes.data) ? (suppliersRes.data as Supplier[]) : [];
@@ -333,6 +338,20 @@ export default function SupplierPriceIntelligenceScreen({ user }: { user?: { nam
       setSuppliers(suppliersList);
       setPurchasingRequests((requestsRes.success && requestsRes.data) ? (requestsRes.data as PurchasingRequest[]) : []);
       setPurchasingRequestItems((reqItemsRes.success && reqItemsRes.data) ? (reqItemsRes.data as PurchasingRequestItem[]) : []);
+
+      if (vatRateRes.success && vatRateRes.rate !== undefined) {
+        setVatRate(vatRateRes.rate);
+      }
+
+      if (user?.restaurant_id) {
+        const restRes = await api.getRestaurantById(user.restaurant_id);
+        if (restRes.success && restRes.data) {
+          const settings = restRes.data.settings || {};
+          setIsVatSubscribed(settings.is_vat_subscribed !== false);
+        }
+      } else if (user?.restaurants?.settings) {
+        setIsVatSubscribed(user.restaurants.settings.is_vat_subscribed !== false);
+      }
 
       if (itemsList.length > 0) {
         setSelectedTrendItem(itemsList[0].name);
@@ -366,7 +385,7 @@ export default function SupplierPriceIntelligenceScreen({ user }: { user?: { nam
       loadFallbackData([], []);
     }
     setLoading(false);
-  }, [loadFallbackData]);
+  }, [loadFallbackData, user]);
 
   // useEffect hook positioned after useCallback initialization of dependencies
   useEffect(() => {
@@ -453,31 +472,32 @@ CREATE POLICY "Enable write access for all authenticated users" ON public.item_d
 
   // Helper conversion logic
   const getNormalizedDetails = (price: number, quoteUnit: string, targetUnit: string) => {
+    const basePrice = isVatSubscribed ? price : price * (1 + vatRate / 100);
     const qUnit = quoteUnit.toLowerCase().trim();
     const tUnit = targetUnit.toLowerCase().trim();
 
-    if (qUnit === tUnit) return { price, multiplier: 1 };
+    if (qUnit === tUnit) return { price: basePrice, multiplier: 1 };
 
     if ((qUnit === 'g' || qUnit === 'gram' || qUnit === 'grams') && (tUnit === 'kg')) {
-      return { price: price * 1000, multiplier: 1000 };
+      return { price: basePrice * 1000, multiplier: 1000 };
     }
     if ((qUnit === 'kg') && (tUnit === 'g' || tUnit === 'gram' || tUnit === 'grams')) {
-      return { price: price / 1000, multiplier: 0.001 };
+      return { price: basePrice / 1000, multiplier: 0.001 };
     }
     if ((qUnit === 'ml') && (tUnit === 'litre' || tUnit === 'liter' || tUnit === 'l')) {
-      return { price: price * 1000, multiplier: 1000 };
+      return { price: basePrice * 1000, multiplier: 1000 };
     }
     if ((qUnit === 'litre' || qUnit === 'liter' || qUnit === 'l') && (tUnit === 'ml')) {
-      return { price: price / 1000, multiplier: 0.001 };
+      return { price: basePrice / 1000, multiplier: 0.001 };
     }
 
     const packMatch = qUnit.match(/(?:pack|box|carton|bag|case)\s*(?:of)?\s*(\d+)/i);
     if (packMatch) {
       const size = parseInt(packMatch[1]);
-      if (size > 0) return { price: price / size, multiplier: 1 / size };
+      if (size > 0) return { price: basePrice / size, multiplier: 1 / size };
     }
 
-    return { price, multiplier: 1, unnormalizable: true };
+    return { price: basePrice, multiplier: 1, unnormalizable: true };
   };
 
   // ----------------------------------------------------
@@ -1127,8 +1147,17 @@ Items:
       {/* Header Panel */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid var(--border)', paddingBottom: '16px' }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: '26px', fontWeight: 800, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <h1 style={{ margin: 0, fontSize: '26px', fontWeight: 800, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
             Supplier Price Intelligence <Sparkles size={22} color="var(--primary)" />
+            <span style={{
+              fontSize: '11px', fontWeight: 'bold', padding: '4px 10px', borderRadius: '12px',
+              backgroundColor: isVatSubscribed ? '#e6f4ea' : '#fce8e6',
+              color: isVatSubscribed ? '#137333' : '#c5221f',
+              border: `1px solid ${isVatSubscribed ? '#c2e7c9' : '#fad2cf'}`,
+              marginLeft: '10px', display: 'inline-flex', alignItems: 'center', gap: '4px'
+            }}>
+              VAT Subscribed: {isVatSubscribed ? 'Yes' : 'No'}
+            </span>
           </h1>
           <p style={{ margin: '4px 0 0', color: 'var(--text-muted)' }}>
             Compare quotations, evaluate reliability and logistics, track fluctuations, and find cost optimization opportunities.
@@ -1727,11 +1756,25 @@ CREATE POLICY "Enable write access for all authenticated users" ON public.item_d
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                                   <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Normalized Price:</span>
-                                  <strong style={{ fontSize: '13px', color: 'var(--primary)' }}>${result.normalizedPrice.toFixed(2)} / {targetItem.unit}</strong>
+                                  <strong style={{ fontSize: '13px', color: 'var(--primary)' }}>
+                                    ${result.normalizedPrice.toFixed(2)} / {targetItem.unit}
+                                    {!isVatSubscribed && (
+                                      <span style={{ fontSize: '10px', color: '#c5221f', marginLeft: '4px', fontWeight: 'normal' }}>
+                                        (incl. {vatRate}% VAT)
+                                      </span>
+                                    )}
+                                  </strong>
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', background: '#f8fafc', padding: '6px 8px', borderRadius: '4px', marginTop: '4px' }}>
                                   <span style={{ fontSize: '13px', fontWeight: 700 }}>Total projected cost:</span>
-                                  <strong style={{ fontSize: '14px', color: '#137333' }}>${result.totalCost.toFixed(2)}</strong>
+                                  <strong style={{ fontSize: '14px', color: '#137333' }}>
+                                    ${result.totalCost.toFixed(2)}
+                                    {!isVatSubscribed && (
+                                      <span style={{ fontSize: '10px', color: '#c5221f', marginLeft: '4px', fontWeight: 'normal' }}>
+                                        (incl. VAT)
+                                      </span>
+                                    )}
+                                  </strong>
                                 </div>
                             </div>
 
