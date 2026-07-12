@@ -914,6 +914,10 @@ CREATE POLICY "Enable write access for all authenticated users" ON public.item_d
   };
 
   const handleCsvUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!csvSupplierId) {
+      alert('Please select a target supplier first.');
+      return;
+    }
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -1006,6 +1010,10 @@ CREATE POLICY "Enable write access for all authenticated users" ON public.item_d
   };
 
   const handleOcrFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!ocrSupplierId) {
+      alert('Please select a target supplier first.');
+      return;
+    }
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -2196,21 +2204,30 @@ CREATE POLICY "Enable write access for all authenticated users" ON public.item_d
                       onChange={(e) => setCsvSupplierId(e.target.value)}
                       style={{ width: '100%', padding: '8px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '13px' }}
                     >
-                      <option value="">-- Choose Supplier (Defaults to first) --</option>
+                      <option value="">-- Choose Supplier --</option>
                       {suppliers.map(s => (
                         <option key={s.id} value={s.id}>{s.name}</option>
                       ))}
                     </select>
                   </div>
-                  <div style={{ border: '2px dashed var(--border)', borderRadius: '8px', padding: '20px', textAlign: 'center', cursor: 'pointer', position: 'relative' }}>
-                    <Upload size={32} color="var(--primary)" style={{ marginBottom: '8px' }} />
-                    <span style={{ display: 'block', fontSize: '13px', fontWeight: 600 }}>Click to select CSV File</span>
-                    <input 
-                      type="file" 
-                      accept=".csv" 
-                      onChange={handleCsvUpload} 
-                      style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, opacity: 0, cursor: 'pointer' }} 
-                    />
+                  <div style={{
+                    border: '2px dashed var(--border)', borderRadius: '8px', padding: '20px', textAlign: 'center',
+                    backgroundColor: !csvSupplierId ? '#f1f5f9' : 'transparent',
+                    cursor: !csvSupplierId ? 'not-allowed' : 'pointer',
+                    position: 'relative', opacity: !csvSupplierId ? 0.7 : 1
+                  }}>
+                    <Upload size={32} color={!csvSupplierId ? '#94a3b8' : 'var(--primary)'} style={{ marginBottom: '8px' }} />
+                    <span style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: !csvSupplierId ? '#64748b' : '#0f172a' }}>
+                      {!csvSupplierId ? 'Select a supplier to enable CSV upload' : 'Click to select CSV File'}
+                    </span>
+                    {csvSupplierId && (
+                      <input 
+                        type="file" 
+                        accept=".csv" 
+                        onChange={handleCsvUpload} 
+                        style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, opacity: 0, cursor: 'pointer' }} 
+                      />
+                    )}
                   </div>
                 </div>
 
@@ -2227,7 +2244,7 @@ CREATE POLICY "Enable write access for all authenticated users" ON public.item_d
                       onChange={(e) => setOcrSupplierId(e.target.value)}
                       style={{ width: '100%', padding: '8px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '13px' }}
                     >
-                      <option value="">-- Auto-Detect Supplier (from Invoice header) --</option>
+                      <option value="">-- Choose Supplier --</option>
                       {suppliers.map(s => (
                         <option key={s.id} value={s.id}>{s.name}</option>
                       ))}
@@ -2235,15 +2252,25 @@ CREATE POLICY "Enable write access for all authenticated users" ON public.item_d
                   </div>
                   
                   {importStatus === 'idle' && (
-                    <div style={{ border: '2px dashed var(--primary)', borderRadius: '8px', padding: '20px', textAlign: 'center', cursor: 'pointer', position: 'relative', background: '#f4f9f8' }}>
-                      <Cpu size={32} color="var(--primary)" style={{ marginBottom: '8px' }} />
-                      <span style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--primary)' }}>Scan Contract / Price PDF</span>
-                      <input 
-                        type="file" 
-                        accept="image/*,application/pdf" 
-                        onChange={handleOcrFileSelect} 
-                        style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, opacity: 0, cursor: 'pointer' }} 
-                      />
+                    <div style={{
+                      border: `2px dashed ${!ocrSupplierId ? 'var(--border)' : 'var(--primary)'}`,
+                      borderRadius: '8px', padding: '20px', textAlign: 'center',
+                      backgroundColor: !ocrSupplierId ? '#f1f5f9' : '#f4f9f8',
+                      cursor: !ocrSupplierId ? 'not-allowed' : 'pointer',
+                      position: 'relative', opacity: !ocrSupplierId ? 0.7 : 1
+                    }}>
+                      <Cpu size={32} color={!ocrSupplierId ? '#94a3b8' : 'var(--primary)'} style={{ marginBottom: '8px' }} />
+                      <span style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: !ocrSupplierId ? '#64748b' : 'var(--primary)' }}>
+                        {!ocrSupplierId ? 'Select a supplier to enable OCR scan' : 'Scan Contract / Price PDF'}
+                      </span>
+                      {ocrSupplierId && (
+                        <input 
+                          type="file" 
+                          accept="image/*,application/pdf" 
+                          onChange={handleOcrFileSelect} 
+                          style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, opacity: 0, cursor: 'pointer' }} 
+                        />
+                      )}
                     </div>
                   )}
 
