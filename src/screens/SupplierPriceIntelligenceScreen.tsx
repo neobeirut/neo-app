@@ -15,6 +15,7 @@ interface CatalogItem {
   unit: string;
   department?: string;
   supplier_id?: string;
+  vat?: 'yes' | 'no';
 }
 
 interface Supplier {
@@ -188,7 +189,8 @@ export default function SupplierPriceIntelligenceScreen({ user }: { user?: any }
     moq: '1',
     effective_date: new Date().toISOString().split('T')[0],
     expiry_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-    conversion_factor: '1'
+    conversion_factor: '1',
+    vat: 'no' as 'yes' | 'no'
   }));
 
   // Manual Evaluation Form
@@ -477,8 +479,17 @@ CREATE POLICY "Enable write access for all authenticated users" ON public.item_d
   };
 
   // Helper conversion logic
-  const getNormalizedDetails = (price: number, quoteUnit: string, targetUnit: string, conversionFactor?: number) => {
-    let basePrice = isVatSubscribed ? price : price * (1 + vatRate / 100);
+  const getNormalizedDetails = (
+    price: number,
+    quoteUnit: string,
+    targetUnit: string,
+    conversionFactor?: number,
+    isVatApplicable?: boolean
+  ) => {
+    let basePrice = price;
+    if (!isVatSubscribed && isVatApplicable) {
+      basePrice = price * (1 + vatRate / 100);
+    }
     if (conversionFactor && conversionFactor > 0) {
       basePrice = basePrice / conversionFactor;
     }
@@ -588,12 +599,12 @@ CREATE POLICY "Enable write access for all authenticated users" ON public.item_d
 
       const itemQuotes = quotations.filter(iq => iq.flow_item_id === targetItem.id);
       const normalizedQuotes = itemQuotes.map(iq => {
-        const norm = getNormalizedDetails(iq.price_usd, iq.unit, targetItem.unit, iq.conversion_factor);
+        const norm = getNormalizedDetails(iq.price_usd, iq.unit, targetItem.unit, iq.conversion_factor, targetItem.vat === 'yes');
         return norm.price;
       });
       const minPrice = Math.min(...normalizedQuotes);
 
-      const normalizedQuote = getNormalizedDetails(q.price_usd, q.unit, targetItem.unit, q.conversion_factor);
+      const normalizedQuote = getNormalizedDetails(q.price_usd, q.unit, targetItem.unit, q.conversion_factor, targetItem.vat === 'yes');
       if (normalizedQuote.price > 0) {
         const score = (minPrice / normalizedQuote.price) * 100;
         totalScore += score;
@@ -629,12 +640,12 @@ CREATE POLICY "Enable write access for all authenticated users" ON public.item_d
 
     const allItemQuotes = quotations.filter(q => q.flow_item_id === itemId);
     const normalizedItemQuotes = allItemQuotes.map(iq => {
-      const norm = getNormalizedDetails(iq.price_usd, iq.unit, item.unit, iq.conversion_factor);
+      const norm = getNormalizedDetails(iq.price_usd, iq.unit, item.unit, iq.conversion_factor, item.vat === 'yes');
       return norm.price;
     });
     const minPrice = Math.min(...normalizedItemQuotes);
 
-    const normQuote = getNormalizedDetails(quote.price_usd, quote.unit, item.unit, quote.conversion_factor);
+    const normQuote = getNormalizedDetails(quote.price_usd, quote.unit, item.unit, quote.conversion_factor, item.vat === 'yes');
     const priceScore = normQuote.price > 0 ? (minPrice / normQuote.price) * 100 : 0;
 
     const evals = getSupplierEvalAverage(supplierId);
@@ -694,6 +705,17 @@ CREATE POLICY "Enable write access for all authenticated users" ON public.item_d
     };
 
     if (dbStatus === 'ready') {
+      // Update catalog item's VAT status in database if it changed
+      if (quoteForm.flow_item_id) {
+        const selectedCatalogItem = catalogItems.find(ci => ci.id === quoteForm.flow_item_id);
+        if (selectedCatalogItem && selectedCatalogItem.vat !== quoteForm.vat) {
+          await api.savePurchasingItem({
+            ...selectedCatalogItem,
+            vat: quoteForm.vat
+          });
+        }
+      }
+
       const res = await api.saveSupplierQuotation(payload);
       if (res.success) {
         showToast('Quotation saved successfully!');
@@ -702,6 +724,17 @@ CREATE POLICY "Enable write access for all authenticated users" ON public.item_d
         alert(res.error || 'Failed to save quotation');
       }
     } else {
+      // Mock update local state item VAT status
+      if (quoteForm.flow_item_id) {
+        const updatedCatalog = catalogItems.map(ci => {
+          if (ci.id === quoteForm.flow_item_id) {
+            return { ...ci, vat: quoteForm.vat };
+          }
+          return ci;
+        });
+        setCatalogItems(updatedCatalog);
+      }
+
       const updated = [...quotations];
       const selectedSup = suppliers.find(s => s.id === quoteForm.supplier_id);
       const newQuote = {
@@ -722,7 +755,7 @@ CREATE POLICY "Enable write access for all authenticated users" ON public.item_d
       setQuotations(updated);
       showToast('Quotation saved to local state!');
     }
-
+ 
     setQuoteForm({
       supplier_id: '',
       item_name: '',
@@ -732,7 +765,8 @@ CREATE POLICY "Enable write access for all authenticated users" ON public.item_d
       moq: '1',
       effective_date: new Date().toISOString().split('T')[0],
       expiry_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      conversion_factor: '1'
+      conversion_factor: '1',
+      vat: 'no'
     });
   };
 
@@ -1133,7 +1167,7 @@ Items:
     const itemQuotes = quotations.filter(q => q.flow_item_id === item.id);
     if (itemQuotes.length <= 1) return acc;
     
-    const normalized = itemQuotes.map(iq => getNormalizedDetails(iq.price_usd, iq.unit, item.unit, iq.conversion_factor).price);
+    const normalized = itemQuotes.map(iq => getNormalizedDetails(iq.price_usd, iq.unit, item.unit, iq.conversion_factor, item.vat === 'yes').price);
     const minPrice = Math.min(...normalized);
     const currentPrice = item.price_usd;
     
@@ -1691,7 +1725,7 @@ CREATE POLICY "Enable write access for all authenticated users" ON public.item_d
 
                 const calculatedScores = itemQuotes.map(q => {
                   const score = calculateBestValueScore(q.supplier_id, targetItem.id);
-                  const norm = getNormalizedDetails(q.price_usd, q.unit, targetItem.unit, q.conversion_factor);
+                  const norm = getNormalizedDetails(q.price_usd, q.unit, targetItem.unit, q.conversion_factor, targetItem.vat === 'yes');
                   const totalCost = norm.price * compareQty;
                   const supplier = suppliers.find(s => s.id === q.supplier_id);
                   const history = calculateSupplierHistory(q.supplier_id);
@@ -1773,9 +1807,14 @@ CREATE POLICY "Enable write access for all authenticated users" ON public.item_d
                                   <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Normalized Price:</span>
                                   <strong style={{ fontSize: '13px', color: 'var(--primary)' }}>
                                     ${result.normalizedPrice.toFixed(2)} / {targetItem.unit}
-                                    {!isVatSubscribed && (
+                                    {!isVatSubscribed && targetItem.vat === 'yes' && (
                                       <span style={{ fontSize: '10px', color: '#c5221f', marginLeft: '4px', fontWeight: 'normal' }}>
                                         (incl. {vatRate}% VAT)
+                                      </span>
+                                    )}
+                                    {!isVatSubscribed && targetItem.vat !== 'yes' && (
+                                      <span style={{ fontSize: '10px', color: '#137333', marginLeft: '4px', fontWeight: 'normal', backgroundColor: '#e6f4ea', padding: '1px 4px', borderRadius: '4px' }}>
+                                        VAT Exempt
                                       </span>
                                     )}
                                   </strong>
@@ -1784,7 +1823,7 @@ CREATE POLICY "Enable write access for all authenticated users" ON public.item_d
                                   <span style={{ fontSize: '13px', fontWeight: 700 }}>Total projected cost:</span>
                                   <strong style={{ fontSize: '14px', color: '#137333' }}>
                                     ${result.totalCost.toFixed(2)}
-                                    {!isVatSubscribed && (
+                                    {!isVatSubscribed && targetItem.vat === 'yes' && (
                                       <span style={{ fontSize: '10px', color: '#c5221f', marginLeft: '4px', fontWeight: 'normal' }}>
                                         (incl. VAT)
                                       </span>
@@ -1894,7 +1933,8 @@ CREATE POLICY "Enable write access for all authenticated users" ON public.item_d
                               ...quoteForm, 
                               flow_item_id: e.target.value,
                               item_name: selected ? selected.name : quoteForm.item_name,
-                              unit: selected ? selected.unit : quoteForm.unit
+                              unit: selected ? selected.unit : quoteForm.unit,
+                              vat: selected ? (selected.vat || 'no') : 'no'
                             });
                           }}
                           style={{ width: '100%', padding: '8px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '13px' }}
@@ -1909,6 +1949,29 @@ CREATE POLICY "Enable write access for all authenticated users" ON public.item_d
                         </select>
                       </div>
                     </div>
+
+                    {quoteForm.flow_item_id && (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#f8fafc', padding: '10px 12px', borderRadius: '6px', border: '1px solid var(--border)', marginTop: '4px' }}>
+                        <div>
+                          <label style={{ display: 'block', fontSize: '12px', fontWeight: 700 }}>Item is Subject to VAT</label>
+                          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                            Updates the item's VAT configuration in the catalog.
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ fontSize: '11px', fontWeight: 'bold', color: quoteForm.vat === 'no' ? 'var(--text-main)' : 'var(--text-muted)' }}>NO</span>
+                          <label className="custom-switch">
+                            <input 
+                              type="checkbox" 
+                              checked={quoteForm.vat === 'yes'} 
+                              onChange={(e) => setQuoteForm({ ...quoteForm, vat: e.target.checked ? 'yes' : 'no' })}
+                            />
+                            <span className="switch-slider"></span>
+                          </label>
+                          <span style={{ fontSize: '11px', fontWeight: 'bold', color: quoteForm.vat === 'yes' ? 'var(--text-main)' : 'var(--text-muted)' }}>YES</span>
+                        </div>
+                      </div>
+                    )}
 
                     <div>
                       <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '4px' }}>Supplier Item Description</label>
