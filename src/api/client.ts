@@ -1097,7 +1097,9 @@ export const api = {
       unit: i.unit,
       qty_requested: i.qty_requested || 0,
       qty_ordered: i.qty_ordered || 0,
-      qty_received: i.qty_received || 0
+      qty_received: i.qty_received || 0,
+      price: i.price !== undefined ? Number(i.price) : 0,
+      vat: i.vat !== undefined ? Number(i.vat) : 0
     }));
 
     const { error: itemsError } = await supabase.from('purchasing_request_items').insert(itemsPayload);
@@ -1169,7 +1171,11 @@ export const api = {
     if (hErr) return { success: false, error: hErr.message };
 
     for (const item of originalItems) {
-      await supabase.from('purchasing_request_items').update({ qty_received: item.qty_received }).eq('id', item.id);
+      await supabase.from('purchasing_request_items').update({ 
+        qty_received: item.qty_received,
+        price: item.price !== undefined ? Number(item.price) : 0,
+        vat: item.vat !== undefined ? Number(item.vat) : 0
+      }).eq('id', item.id);
     }
 
     if (missingItems && missingItems.length > 0) {
@@ -2458,6 +2464,16 @@ export const api = {
     if (error) return { success: false, error: error.message };
     return { success: true, data };
   },
+
+  getTableData: async (tableName: string, restaurantId: string) => {
+    const { data, error } = await supabase
+      .from(tableName)
+      .select('*')
+      .eq('restaurant_id', restaurantId);
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
 
   deleteRestaurant: async (restaurantId: string) => {
     const tables = [

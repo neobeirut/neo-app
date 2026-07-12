@@ -24,6 +24,7 @@ export default function PurchasingScreen({ user }: { user: any }) {
   const [allCatalogItems, setAllCatalogItems] = useState<any[]>([]);
   const [branches, setBranches] = useState<string[]>([]);
   const [departments, setDepartments] = useState<string[]>([]);
+  const [dbVatRate, setDbVatRate] = useState<number>(11);
 
   // Request Filters
   const [filterStatus, setFilterStatus] = useState('All');
@@ -69,11 +70,12 @@ export default function PurchasingScreen({ user }: { user: any }) {
 
   const loadFilterOptions = async () => {
     try {
-      const [branchRes, deptRes, suppliersRes, catalogRes] = await Promise.all([
+      const [branchRes, deptRes, suppliersRes, catalogRes, vatRes] = await Promise.all([
         api.getBranchesList(),
         api.getDepartmentsList(),
         api.getSuppliers(),
-        api.getAllCatalogItems()
+        api.getAllCatalogItems(),
+        api.getVatRate()
       ]);
       if (branchRes.success && branchRes.data) {
         setBranches(branchRes.data.map((b: any) => typeof b === 'string' ? b : b.name));
@@ -86,6 +88,9 @@ export default function PurchasingScreen({ user }: { user: any }) {
       }
       if (catalogRes.success && catalogRes.data) {
         setAllCatalogItems(catalogRes.data);
+      }
+      if (vatRes && vatRes.success && vatRes.rate !== undefined) {
+        setDbVatRate(vatRes.rate);
       }
     } catch (e) {
       console.error('Error loading filter options:', e);
@@ -149,6 +154,16 @@ export default function PurchasingScreen({ user }: { user: any }) {
     return item?.price_usd || 0;
   };
 
+  const getItemPrice = (item: any): number => {
+    if (item.price !== undefined && item.price !== null && item.price !== '') return Number(item.price) || 0;
+    return resolveItemPrice(item.item_name);
+  };
+
+  const getItemVat = (item: any): number => {
+    if (item.vat !== undefined && item.vat !== null && item.vat !== '') return Number(item.vat) || 0;
+    return 0;
+  };
+
   const getItemsGroupedBySupplier = () => {
     const groups: { [supplierId: string]: { supplier: any; items: any[] } } = {};
     
@@ -196,12 +211,30 @@ export default function PurchasingScreen({ user }: { user: any }) {
     try {
       const res = await api.getPurchasingRequestItems(req.id);
       if (res.success && res.data) {
-        // Map item quantities and set status/defaults
-        const items = res.data.map((item: any) => ({
-          ...item,
-          qty_ordered: item.qty_ordered || item.qty_requested || 0,
-          qty_received: item.qty_received || item.qty_ordered || 0
-        }));
+        const items = res.data.map((item: any) => {
+          const qty_ordered = item.qty_ordered !== null && item.qty_ordered !== undefined ? Number(item.qty_ordered) : (req.status === 'Submitted' ? 0 : Number(item.qty_requested || 0));
+          const qty_received = item.qty_received !== null && item.qty_received !== undefined ? Number(item.qty_received) : qty_ordered;
+
+          const catalogItem = allCatalogItems.find((c: any) => c.name === item.item_name);
+          const defaultPrice = resolveItemPrice(item.item_name);
+          const priceVal = item.price !== null && item.price !== undefined ? Number(item.price) : defaultPrice;
+          const price = String(priceVal);
+
+          const hasVatInCatalog = catalogItem?.vat === 'yes';
+          const defaultVat = hasVatInCatalog ? dbVatRate : 0;
+          
+          const isUnpriced = item.price === null || item.price === undefined || Number(item.price) === 0;
+          const vatValResult = isUnpriced ? defaultVat : (item.vat !== null && item.vat !== undefined ? Number(item.vat) : defaultVat);
+          const vat = String(vatValResult);
+
+          return {
+            ...item,
+            qty_ordered,
+            qty_received,
+            price,
+            vat
+          };
+        });
         setRequestItems(items);
       }
     } catch (e) {
@@ -811,9 +844,9 @@ export default function PurchasingScreen({ user }: { user: any }) {
                       const hasPhone = !!group.supplier.phone;
                       const showWhatsApp = selectedRequest.status === 'Submitted' && hasPhone;
                       
-                      const groupTotalRequested = group.items.reduce((sum, item) => sum + (item.qty_requested * resolveItemPrice(item.item_name)), 0);
-                      const groupTotalOrdered = group.items.reduce((sum, item) => sum + (item.qty_ordered * resolveItemPrice(item.item_name)), 0);
-                      const groupTotalReceived = group.items.reduce((sum, item) => sum + ((item.qty_received || 0) * resolveItemPrice(item.item_name)), 0);
+                      const groupTotalRequested = group.items.reduce((sum, item) => sum + (item.qty_requested * getItemPrice(item)), 0);
+                      const groupTotalOrdered = group.items.reduce((sum, item) => sum + (item.qty_ordered * getItemPrice(item)), 0);
+                      const groupTotalReceived = group.items.reduce((sum, item) => sum + ((item.qty_received || 0) * getItemPrice(item) * (1 + getItemVat(item) / 100)), 0);
 
                       return (
                         <div key={groupIdx} style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden', backgroundColor: '#f8fafc', padding: '16px' }}>
@@ -846,8 +879,7 @@ export default function PurchasingScreen({ user }: { user: any }) {
                               </button>
                             )}
                           </div>
-                          
-                          <div style={{ backgroundColor: '#ffffff', borderRadius: '6px', border: '1px solid var(--border)', overflow: 'hidden' }}>
+                                         <div style={{ backgroundColor: '#ffffff', borderRadius: '6px', border: '1px solid var(--border)', overflow: 'hidden' }}>
                             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                               <thead>
                                 <tr style={{ backgroundColor: '#f1f5f9', borderBottom: '1px solid var(--border)' }}>
@@ -867,16 +899,22 @@ export default function PurchasingScreen({ user }: { user: any }) {
                                     <th style={{ padding: '8px 12px', fontSize: '12px', width: '90px', textAlign: 'right' }}>Qty to Order</th>
                                   )}
                                   {(selectedRequest.status === 'Ordered' || selectedRequest.status === 'Partially Received') && (
-                                    <th style={{ padding: '8px 12px', fontSize: '12px', width: '90px', textAlign: 'right' }}>Qty Received</th>
+                                    <>
+                                      <th style={{ padding: '8px 12px', fontSize: '12px', width: '90px', textAlign: 'right' }}>Qty Received</th>
+                                      <th style={{ padding: '8px 12px', fontSize: '12px', width: '95px', textAlign: 'right' }}>Price Input</th>
+                                      <th style={{ padding: '8px 12px', fontSize: '12px', width: '70px', textAlign: 'right' }}>VAT %</th>
+                                    </>
                                   )}
                                 </tr>
                               </thead>
                               <tbody>
                                 {group.items.map((item) => {
                                   const origIdx = requestItems.findIndex(orig => orig.id === item.id);
-                                  const price = resolveItemPrice(item.item_name);
+                                  const price = getItemPrice(item);
+                                  const vat = getItemVat(item);
                                   const rowQty = selectedRequest.status === 'Submitted' ? item.qty_ordered : item.qty_ordered;
                                   const rowTotal = rowQty * price;
+                                  const recvTotal = (item.qty_received || 0) * price * (1 + vat / 100);
 
                                   return (
                                     <tr key={item.id} style={{ borderBottom: '1px solid var(--border)' }}>
@@ -894,14 +932,17 @@ export default function PurchasingScreen({ user }: { user: any }) {
                                       )}
                                       
                                       {selectedRequest.status !== 'Submitted' && selectedRequest.status !== 'Ordered' && (
-                                        <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--success)' }}>{item.qty_received}</td>
+                                        <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--success)' }}>
+                                          {item.qty_received}
+                                        </td>
                                       )}
 
                                       <td style={{ padding: '8px 12px', textAlign: 'right', color: 'var(--text-muted)' }}>
                                         ${price.toFixed(2)}
+                                        {vat > 0 ? ` (+${vat}% VAT)` : ''}
                                       </td>
                                       <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600 }}>
-                                        ${rowTotal.toFixed(2)}
+                                        {selectedRequest.status === 'Received' ? `$${recvTotal.toFixed(2)}` : `$${rowTotal.toFixed(2)}`}
                                       </td>
 
                                       {selectedRequest.status === 'Submitted' && (
@@ -922,21 +963,48 @@ export default function PurchasingScreen({ user }: { user: any }) {
                                       )}
 
                                       {(selectedRequest.status === 'Ordered' || selectedRequest.status === 'Partially Received') && (
-                                        <td style={{ padding: '6px 12px', textAlign: 'right' }}>
-                                          <input 
-                                            type="number"
-                                            style={{ width: '70px', height: '28px', textAlign: 'right', padding: '2px 6px' }}
-                                            value={item.qty_received}
-                                            min="0"
-                                            max={item.qty_ordered}
-                                            onChange={(e) => {
-                                              const val = Number(e.target.value) || 0;
-                                              const updated = [...requestItems];
-                                              updated[origIdx].qty_received = val;
-                                              setRequestItems(updated);
-                                            }}
-                                          />
-                                        </td>
+                                        <>
+                                          <td style={{ padding: '6px 12px', textAlign: 'right' }}>
+                                            <input 
+                                              type="number"
+                                              style={{ width: '70px', height: '28px', textAlign: 'right', padding: '2px 6px', border: '1px solid var(--border)', borderRadius: '4px' }}
+                                              value={item.qty_received}
+                                              min="0"
+                                              onChange={(e) => {
+                                                const val = Number(e.target.value) || 0;
+                                                const updated = [...requestItems];
+                                                updated[origIdx].qty_received = val;
+                                                setRequestItems(updated);
+                                              }}
+                                            />
+                                          </td>
+                                          <td style={{ padding: '6px 12px', textAlign: 'right' }}>
+                                            <input 
+                                              type="text"
+                                              style={{ width: '75px', height: '28px', textAlign: 'right', padding: '2px 6px', border: '1px solid var(--border)', borderRadius: '4px' }}
+                                              value={item.price !== undefined ? String(item.price) : ''}
+                                              onChange={(e) => {
+                                                const val = e.target.value;
+                                                const updated = [...requestItems];
+                                                updated[origIdx].price = val;
+                                                setRequestItems(updated);
+                                              }}
+                                            />
+                                          </td>
+                                          <td style={{ padding: '6px 12px', textAlign: 'right' }}>
+                                            <input 
+                                              type="text"
+                                              style={{ width: '60px', height: '28px', textAlign: 'right', padding: '2px 6px', border: '1px solid var(--border)', borderRadius: '4px' }}
+                                              value={item.vat !== undefined ? String(item.vat) : ''}
+                                              onChange={(e) => {
+                                                const val = e.target.value;
+                                                const updated = [...requestItems];
+                                                updated[origIdx].vat = val;
+                                                setRequestItems(updated);
+                                              }}
+                                            />
+                                          </td>
+                                        </>
                                       )}
                                     </tr>
                                   );
@@ -960,16 +1028,21 @@ export default function PurchasingScreen({ user }: { user: any }) {
                                     </td>
                                   )}
                                   <td style={{ padding: '10px 12px', textAlign: 'right' }}>
-                                    Total Value:
+                                    {selectedRequest.status === 'Submitted' ? '' : `Order Total:`}
                                   </td>
                                   <td style={{ padding: '10px 12px', textAlign: 'right', color: 'var(--primary)', fontSize: '13px' }}>
                                     ${groupTotalOrdered.toFixed(2)}
                                   </td>
                                   {selectedRequest.status === 'Submitted' && <td />}
                                   {(selectedRequest.status === 'Ordered' || selectedRequest.status === 'Partially Received') && (
-                                    <td style={{ padding: '10px 12px', textAlign: 'right', color: 'var(--success)', fontSize: '13px' }}>
-                                      Recv Total: ${groupTotalReceived.toFixed(2)}
-                                    </td>
+                                    <>
+                                      <td style={{ padding: '10px 12px', textAlign: 'right', color: 'var(--success)', fontSize: '13px' }}>
+                                        Recv Total:
+                                      </td>
+                                      <td colSpan={2} style={{ padding: '10px 12px', textAlign: 'right', color: 'var(--success)', fontSize: '13px' }}>
+                                        ${groupTotalReceived.toFixed(2)}
+                                      </td>
+                                    </>
                                   )}
                                 </tr>
                               </tbody>

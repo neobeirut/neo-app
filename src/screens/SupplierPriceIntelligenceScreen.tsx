@@ -57,6 +57,7 @@ interface Quotation {
   effective_date?: string;
   expiry_date?: string;
   is_approved?: boolean;
+  conversion_factor?: number;
 }
 
 interface Evaluation {
@@ -186,7 +187,8 @@ export default function SupplierPriceIntelligenceScreen({ user }: { user?: any }
     price_usd: '',
     moq: '1',
     effective_date: new Date().toISOString().split('T')[0],
-    expiry_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+    expiry_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    conversion_factor: '1'
   }));
 
   // Manual Evaluation Form
@@ -408,9 +410,13 @@ CREATE TABLE IF NOT EXISTS public.supplier_quotations (
   expiry_date TIMESTAMPTZ,
   moq NUMERIC DEFAULT 0,
   is_approved BOOLEAN DEFAULT true,
+  conversion_factor NUMERIC DEFAULT 1,
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
+
+-- Ensure conversion_factor column exists in case table was created earlier
+ALTER TABLE public.supplier_quotations ADD COLUMN IF NOT EXISTS conversion_factor NUMERIC DEFAULT 1;
 
 CREATE TABLE IF NOT EXISTS public.supplier_evaluations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -471,8 +477,11 @@ CREATE POLICY "Enable write access for all authenticated users" ON public.item_d
   };
 
   // Helper conversion logic
-  const getNormalizedDetails = (price: number, quoteUnit: string, targetUnit: string) => {
-    const basePrice = isVatSubscribed ? price : price * (1 + vatRate / 100);
+  const getNormalizedDetails = (price: number, quoteUnit: string, targetUnit: string, conversionFactor?: number) => {
+    let basePrice = isVatSubscribed ? price : price * (1 + vatRate / 100);
+    if (conversionFactor && conversionFactor > 0) {
+      basePrice = basePrice / conversionFactor;
+    }
     const qUnit = quoteUnit.toLowerCase().trim();
     const tUnit = targetUnit.toLowerCase().trim();
 
@@ -579,12 +588,12 @@ CREATE POLICY "Enable write access for all authenticated users" ON public.item_d
 
       const itemQuotes = quotations.filter(iq => iq.flow_item_id === targetItem.id);
       const normalizedQuotes = itemQuotes.map(iq => {
-        const norm = getNormalizedDetails(iq.price_usd, iq.unit, targetItem.unit);
+        const norm = getNormalizedDetails(iq.price_usd, iq.unit, targetItem.unit, iq.conversion_factor);
         return norm.price;
       });
       const minPrice = Math.min(...normalizedQuotes);
 
-      const normalizedQuote = getNormalizedDetails(q.price_usd, q.unit, targetItem.unit);
+      const normalizedQuote = getNormalizedDetails(q.price_usd, q.unit, targetItem.unit, q.conversion_factor);
       if (normalizedQuote.price > 0) {
         const score = (minPrice / normalizedQuote.price) * 100;
         totalScore += score;
@@ -620,12 +629,12 @@ CREATE POLICY "Enable write access for all authenticated users" ON public.item_d
 
     const allItemQuotes = quotations.filter(q => q.flow_item_id === itemId);
     const normalizedItemQuotes = allItemQuotes.map(iq => {
-      const norm = getNormalizedDetails(iq.price_usd, iq.unit, item.unit);
+      const norm = getNormalizedDetails(iq.price_usd, iq.unit, item.unit, iq.conversion_factor);
       return norm.price;
     });
     const minPrice = Math.min(...normalizedItemQuotes);
 
-    const normQuote = getNormalizedDetails(quote.price_usd, quote.unit, item.unit);
+    const normQuote = getNormalizedDetails(quote.price_usd, quote.unit, item.unit, quote.conversion_factor);
     const priceScore = normQuote.price > 0 ? (minPrice / normQuote.price) * 100 : 0;
 
     const evals = getSupplierEvalAverage(supplierId);
@@ -670,6 +679,8 @@ CREATE POLICY "Enable write access for all authenticated users" ON public.item_d
       return;
     }
 
+    const conversionFactorVal = parseFloat(quoteForm.conversion_factor) || 1;
+ 
     const payload = {
       supplier_id: quoteForm.supplier_id,
       item_name: quoteForm.item_name,
@@ -678,7 +689,8 @@ CREATE POLICY "Enable write access for all authenticated users" ON public.item_d
       price_usd: parseFloat(quoteForm.price_usd),
       moq: parseFloat(quoteForm.moq) || 1,
       effective_date: quoteForm.effective_date,
-      expiry_date: quoteForm.expiry_date
+      expiry_date: quoteForm.expiry_date,
+      conversion_factor: conversionFactorVal
     };
 
     if (dbStatus === 'ready') {
@@ -703,7 +715,8 @@ CREATE POLICY "Enable write access for all authenticated users" ON public.item_d
         moq: parseFloat(quoteForm.moq) || 1,
         effective_date: quoteForm.effective_date,
         expiry_date: quoteForm.expiry_date,
-        is_approved: true
+        is_approved: true,
+        conversion_factor: conversionFactorVal
       };
       updated.push(newQuote);
       setQuotations(updated);
@@ -718,7 +731,8 @@ CREATE POLICY "Enable write access for all authenticated users" ON public.item_d
       price_usd: '',
       moq: '1',
       effective_date: new Date().toISOString().split('T')[0],
-      expiry_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+      expiry_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      conversion_factor: '1'
     });
   };
 
@@ -1119,7 +1133,7 @@ Items:
     const itemQuotes = quotations.filter(q => q.flow_item_id === item.id);
     if (itemQuotes.length <= 1) return acc;
     
-    const normalized = itemQuotes.map(iq => getNormalizedDetails(iq.price_usd, iq.unit, item.unit).price);
+    const normalized = itemQuotes.map(iq => getNormalizedDetails(iq.price_usd, iq.unit, item.unit, iq.conversion_factor).price);
     const minPrice = Math.min(...normalized);
     const currentPrice = item.price_usd;
     
@@ -1227,6 +1241,7 @@ CREATE TABLE IF NOT EXISTS public.supplier_quotations (
   expiry_date TIMESTAMPTZ,
   moq NUMERIC DEFAULT 0,
   is_approved BOOLEAN DEFAULT true,
+  conversion_factor NUMERIC DEFAULT 1,
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
@@ -1676,7 +1691,7 @@ CREATE POLICY "Enable write access for all authenticated users" ON public.item_d
 
                 const calculatedScores = itemQuotes.map(q => {
                   const score = calculateBestValueScore(q.supplier_id, targetItem.id);
-                  const norm = getNormalizedDetails(q.price_usd, q.unit, targetItem.unit);
+                  const norm = getNormalizedDetails(q.price_usd, q.unit, targetItem.unit, q.conversion_factor);
                   const totalCost = norm.price * compareQty;
                   const supplier = suppliers.find(s => s.id === q.supplier_id);
                   const history = calculateSupplierHistory(q.supplier_id);
@@ -1960,6 +1975,39 @@ CREATE POLICY "Enable write access for all authenticated users" ON public.item_d
                         />
                       </div>
                     </div>
+
+                    {(() => {
+                      const selectedCatalogItem = catalogItems.find(ci => ci.id === quoteForm.flow_item_id);
+                      const showConversionInput = selectedCatalogItem && selectedCatalogItem.unit.toLowerCase().trim() !== quoteForm.unit.toLowerCase().trim();
+                      if (!showConversionInput) return null;
+                      return (
+                        <div style={{ marginTop: '8px', background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                          <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '4px', color: 'var(--primary)' }}>
+                            Unit Conversion Factor
+                          </label>
+                          <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '8px' }}>
+                            How many <strong>{selectedCatalogItem.unit}</strong> are in 1 <strong>{quoteForm.unit}</strong>?
+                          </span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ fontSize: '13px', fontWeight: 600 }}>1 {quoteForm.unit} =</span>
+                            <input
+                              type="number"
+                              step="0.001"
+                              value={quoteForm.conversion_factor}
+                              onChange={(e) => setQuoteForm({ ...quoteForm, conversion_factor: e.target.value })}
+                              placeholder="1"
+                              style={{ width: '100px', padding: '6px 8px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '13px', fontWeight: 'bold' }}
+                            />
+                            <span style={{ fontSize: '13px', fontWeight: 600 }}>{selectedCatalogItem.unit}</span>
+                          </div>
+                          {parseFloat(quoteForm.conversion_factor) > 0 && parseFloat(quoteForm.price_usd) > 0 && (
+                            <span style={{ display: 'block', fontSize: '11px', color: '#137333', marginTop: '6px', fontWeight: 600 }}>
+                              → Base cost calculated as: ${(parseFloat(quoteForm.price_usd) / parseFloat(quoteForm.conversion_factor)).toFixed(2)} per {selectedCatalogItem.unit}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })()}
 
                     <button type="submit" className="btn btn-primary" style={{ width: '100%', padding: '10px', marginTop: '8px' }}>
                       Add Quotation Record

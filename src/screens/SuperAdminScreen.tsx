@@ -11,6 +11,8 @@ interface Restaurant {
   created_at: string;
   settings?: {
     enabled_sections: string[];
+    is_vat_subscribed?: boolean;
+    decryption_key?: string;
   };
 }
 
@@ -80,6 +82,7 @@ export default function SuperAdminScreen() {
 
   // Selected sections for new restaurant
   const [selectedSections, setSelectedSections] = useState<string[]>(allSectionKeys);
+  const [rIsVatSubscribed, setRIsVatSubscribed] = useState(true);
 
   // Config modal states for existing restaurants
   const [configResto, setConfigResto] = useState<Restaurant | null>(null);
@@ -104,6 +107,7 @@ export default function SuperAdminScreen() {
   const [editUName, setEditUName] = useState('');
   const [editUEmail, setEditUEmail] = useState('');
   const [editUPin, setEditUPin] = useState('');
+  const [editRIsVatSubscribed, setEditRIsVatSubscribed] = useState(true);
   const [savingEdit, setSavingEdit] = useState(false);
   const [editErr, setEditErr] = useState('');
 
@@ -157,6 +161,7 @@ export default function SuperAdminScreen() {
     setEditRName(r.name || '');
     setEditRLogo(r.logo_url || '');
     setEditRColor(r.primary_color || '#1e5c4f');
+    setEditRIsVatSubscribed(r.settings?.is_vat_subscribed !== false);
     setEditUName('');
     setEditUEmail('');
     setEditUPin('');
@@ -186,6 +191,14 @@ export default function SuperAdminScreen() {
       admin_email: editUEmail.trim().toLowerCase(),
       admin_pin: editUPin.trim()
     });
+
+    if (res.success) {
+      const newSettings = {
+        ...(editModalResto.settings || {}),
+        is_vat_subscribed: editRIsVatSubscribed
+      };
+      await api.updateRestaurantSettings(editModalResto.id, newSettings);
+    }
 
     setSavingEdit(false);
     if (res.success) {
@@ -218,7 +231,11 @@ export default function SuperAdminScreen() {
   const handleSaveConfig = async () => {
     if (!configResto) return;
     setSavingConfig(true);
-    const res = await api.updateRestaurantSettings(configResto.id, { enabled_sections: configSections });
+    const newSettings = {
+      ...(configResto.settings || {}),
+      enabled_sections: configSections
+    };
+    const res = await api.updateRestaurantSettings(configResto.id, newSettings);
     setSavingConfig(false);
     if (res.success) {
       setConfigResto(null);
@@ -228,9 +245,17 @@ export default function SuperAdminScreen() {
     }
   };
 
-  // Importer States
   const [selectedRestoId, setSelectedRestoId] = useState('');
   const [selectedTable, setSelectedTable] = useState('items');
+
+  const placeholderTemplates: Record<string, string> = {
+    items: 'name,department,sub_department,unit,par_level,step,price_usd,vat,order,purchasing,delivery_time,inventory_location,supplier_id\n"Tomato Paste","Kitchen","Dry Goods","can",10,1,5.50,"no","yes","yes","2 days","Shelf A",""',
+    suppliers: 'name,contact_name,phone,delivery_days,time_to_deliver,is_active\n"Fruit Supply Co.","John Doe","555-0199","Monday,Wednesday","2 days",true',
+    clients: 'name,phone,company_name,email,address,location,notes\n"Jane Smith","555-0123","ABC Corp","jane@abc.com","123 Street","London","Regular customer"',
+    menu_recipes: 'section_id,item_name,recipe_text,prep_time,plate_type,food_cost,selling_price,plating_instructions,hints,allergens,inhouse_image_url,delivery_image_url,is_production,preparation_steps,packaging_instructions,quality_standards\n1,"Pizza Margherita","Ingredients...","15 mins","Wood",2.50,12.00,"Instructions...","Hints","Gluten","","","true","Steps...","Packaging...","Standards"',
+    checklists: 'name,branch,department,tasks,is_active\n"Morning Clean","All","Kitchen","Clean stoves,Check fridge temp",true',
+    employees: 'first_name,last_name,position,branch,department,status,payment_method,date_started,picture_url,id_url,proof_residence_url,criminal_url,ketab_taeen_url,discharge_url,resignation_letter_url,is_app_user,production_access,salary,transportation,phone,emergency_contact,bank_account\n"David","Miller","Chef","All","Kitchen","Active","Cash","2026-01-15","","","","","","","",false,true,3000,200,"555-0188","555-0189",""'
+  };
   const [csvText, setCsvText] = useState('');
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState('');
@@ -283,7 +308,11 @@ export default function SuperAdminScreen() {
       const restoId = res.data;
       if (restoId) {
         const autoKey = `neo_sec_${restoId}_${Math.random().toString(36).substring(2, 10)}`;
-        await api.updateRestaurantSettings(restoId, { enabled_sections: selectedSections, decryption_key: autoKey });
+        await api.updateRestaurantSettings(restoId, {
+          enabled_sections: selectedSections,
+          decryption_key: autoKey,
+          is_vat_subscribed: rIsVatSubscribed
+        });
       }
 
       setRName('');
@@ -294,6 +323,7 @@ export default function SuperAdminScreen() {
       setUPassword('');
       setUPin('');
       setSelectedSections(allSectionKeys); // Reset to default all sections checked
+      setRIsVatSubscribed(true);
       setShowModal(false);
       loadRestaurants();
     } else {
@@ -305,12 +335,12 @@ export default function SuperAdminScreen() {
   // --- CSV Template Download Helper ---
   const handleDownloadSample = () => {
     const templates: Record<string, string> = {
-      items: `name,department,sub_department,unit,par_level,price_usd\n"Tomato Paste","Kitchen","Dry Goods","can",10,5.50\n"Fresh Chicken Breast","Kitchen","Meat","kg",30,12.00`,
-      suppliers: `name,contact_name,phone,delivery_days,time_to_deliver\n"Fruit Supply Co.","John Doe","555-0199","Monday,Wednesday","2 days"\n"Global Seafoods","Alice Smith","555-0124","Tuesday","1 day"`,
+      items: `name,department,sub_department,unit,par_level,step,price_usd,vat,order,purchasing,delivery_time,inventory_location,supplier_id\n"Tomato Paste","Kitchen","Dry Goods","can",10,1,5.50,"no","yes","yes","2 days","Shelf A",""\n"Fresh Chicken Breast","Kitchen","Meat","kg",30,0.5,12.00,"yes","yes","yes","1 day","Cold Room",""`,
+      suppliers: `name,contact_name,phone,delivery_days,time_to_deliver,is_active\n"Fruit Supply Co.","John Doe","555-0199","Monday,Wednesday","2 days",true\n"Global Seafoods","Alice Smith","555-0124","Tuesday","1 day",true`,
       clients: `name,phone,company_name,email,address,location,notes\n"Jane Smith","555-0123","ABC Corp","jane@abc.com","123 Street","London","Regular customer"`,
-      menu_recipes: `item_name,recipe_text,plating_instructions,prep_time,allergens,food_cost,selling_price\n"Pizza Margherita","1. Roll dough\n2. Add sauce\n3. Bake","Serve hot on wooden board","15 mins","Gluten,Dairy",2.50,12.00`,
-      checklists: `name,branch,department,tasks\n"Morning Clean","All","Kitchen","Clean stoves,Check fridge temp,Empty trash"`,
-      employees: `first_name,last_name,position,branch,department,salary,transportation,phone,emergency_contact\n"David","Miller","Chef","All","Kitchen",3000,200,"555-0188","555-0189"`
+      menu_recipes: `section_id,item_name,recipe_text,prep_time,plate_type,food_cost,selling_price,plating_instructions,hints,allergens,inhouse_image_url,delivery_image_url,is_production,preparation_steps,packaging_instructions,quality_standards\n1,"Pizza Margherita","1. Roll dough\n2. Add sauce\n3. Bake","15 mins","Round Wood",2.50,12.00,"Serve hot on wooden board","Preheat oven","Gluten,Dairy","https://images.unsplash.com/...","https://images.unsplash.com/...",true,"Roll and stretch dough...","Box in recycled carton","Golden crust"`,
+      checklists: `name,branch,department,tasks,is_active\n"Morning Clean","All","Kitchen","Clean stoves,Check fridge temp,Empty trash",true`,
+      employees: `first_name,last_name,position,branch,department,status,payment_method,date_started,picture_url,id_url,proof_residence_url,criminal_url,ketab_taeen_url,discharge_url,resignation_letter_url,is_app_user,production_access,salary,transportation,phone,emergency_contact,bank_account\n"David","Miller","Chef","All","Kitchen","Active","Cash","2026-01-15","","","","","","","",false,true,3000,200,"555-0188","555-0189",""`
     };
 
     const csvContent = templates[selectedTable] || '';
@@ -406,10 +436,14 @@ export default function SuperAdminScreen() {
           const key = header.trim().toLowerCase();
 
           // Type conversions
-          if (['par_level', 'price_usd', 'food_cost', 'selling_price', 'salary', 'transportation', 'section_id'].includes(key)) {
+          if (['par_level', 'step', 'price_usd', 'food_cost', 'selling_price', 'salary', 'transportation', 'section_id'].includes(key)) {
             obj[key] = Number(val);
-          } else if (key === 'is_active') {
-            obj[key] = val.toLowerCase() === 'true';
+          } else if (['is_active', 'is_production', 'is_app_user', 'production_access'].includes(key)) {
+            const lowerVal = val.toLowerCase().trim();
+            obj[key] = (lowerVal === 'true' || lowerVal === 'yes' || lowerVal === 'y');
+          } else if (key === 'vat') {
+            const lowerVal = val.toLowerCase().trim();
+            obj[key] = (lowerVal === 'yes' || lowerVal === 'true' || lowerVal === 'y') ? 'yes' : 'no';
           } else if (key === 'tasks') {
             // Checklists tasks as JSONB array of strings
             obj[key] = val.split(',').map((t) => t.trim()).filter(Boolean);
@@ -422,6 +456,7 @@ export default function SuperAdminScreen() {
         if (selectedTable === 'menu_recipes') {
           if (!obj.section_id) obj.section_id = 1; // default fallback section
           if (!obj.recipe_text) obj.recipe_text = 'Check manual recipe steps.';
+          if (obj.inhouse_image_url && !obj.image_url) obj.image_url = obj.inhouse_image_url;
         }
 
         return obj;
@@ -443,6 +478,86 @@ export default function SuperAdminScreen() {
       setImporting(false);
     }
   };
+
+  const handleExportCSV = async () => {
+    if (!selectedRestoId) {
+      setImportError('Please select a restaurant to export data from.');
+      return;
+    }
+
+    setImporting(true);
+    setImportError('');
+    setImportSuccess('');
+
+    try {
+      const res = await api.getTableData(selectedTable, selectedRestoId);
+      if (!res.success || !res.data) {
+        setImportError(res.error || 'Failed to fetch table data for export.');
+        setImporting(false);
+        return;
+      }
+
+      const rowsData = res.data as any[];
+      if (rowsData.length === 0) {
+        setImportError(`No records found in table "${selectedTable}" for this restaurant.`);
+        setImporting(false);
+        return;
+      }
+
+      // Map of table to headers (in the exact column order matching templates)
+      const tableHeaders: Record<string, string[]> = {
+        items: ['name', 'department', 'sub_department', 'unit', 'par_level', 'step', 'price_usd', 'vat', 'order', 'purchasing', 'delivery_time', 'inventory_location', 'supplier_id'],
+        suppliers: ['name', 'contact_name', 'phone', 'delivery_days', 'time_to_deliver', 'is_active'],
+        clients: ['name', 'phone', 'company_name', 'email', 'address', 'location', 'notes'],
+        menu_recipes: ['section_id', 'item_name', 'recipe_text', 'prep_time', 'plate_type', 'food_cost', 'selling_price', 'plating_instructions', 'hints', 'allergens', 'inhouse_image_url', 'delivery_image_url', 'is_production', 'preparation_steps', 'packaging_instructions', 'quality_standards'],
+        checklists: ['name', 'branch', 'department', 'tasks', 'is_active'],
+        employees: ['first_name', 'last_name', 'position', 'branch', 'department', 'status', 'payment_method', 'date_started', 'picture_url', 'id_url', 'proof_residence_url', 'criminal_url', 'ketab_taeen_url', 'discharge_url', 'resignation_letter_url', 'is_app_user', 'production_access', 'salary', 'transportation', 'phone', 'emergency_contact', 'bank_account']
+      };
+
+      const headers = tableHeaders[selectedTable] || Object.keys(rowsData[0]).filter(k => k !== 'id' && k !== 'restaurant_id' && k !== 'created_at' && k !== 'updated_at');
+
+      // Generate CSV string
+      const csvLines = [headers.join(',')];
+
+      rowsData.forEach(row => {
+        const lineValues = headers.map(header => {
+          let val = row[header];
+          if (val === undefined || val === null) return '""';
+
+          // If tasks (in checklists), it is an array
+          if (Array.isArray(val)) {
+            val = val.join(', ');
+          }
+
+          // Format value: quote it if it contains double quotes, commas, or newlines
+          let strVal = String(val);
+          if (strVal.includes('"') || strVal.includes(',') || strVal.includes('\n') || strVal.includes('\r')) {
+            strVal = strVal.replace(/"/g, '""');
+            return `"${strVal}"`;
+          }
+          return `"${strVal}"`;
+        });
+        csvLines.push(lineValues.join(','));
+      });
+
+      const csvContent = csvLines.join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', `${selectedTable}_export_${selectedRestoId.substring(0, 8)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      setImportSuccess(`Successfully exported ${rowsData.length} records from the "${selectedTable}" table.`);
+    } catch (err: any) {
+      setImportError(err.message || 'An error occurred during CSV export.');
+    } finally {
+      setImporting(false);
+    }
+  };
+
 
   const filtered = restaurants.filter(r => 
     r.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -677,15 +792,24 @@ export default function SuperAdminScreen() {
           {/* Template Actions */}
           <div style={{ padding: '16px', background: '#f8fafc', border: '1px solid var(--border)', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
             <div>
-              <h4 style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-main)' }}>Need to check CSV formatting requirements?</h4>
-              <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>Download a sample CSV file containing the expected header columns and correct format guide.</p>
+              <h4 style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-main)' }}>CSV Templates & Database Actions</h4>
+              <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>Download a sample CSV template file or export existing table records to a CSV file.</p>
             </div>
-            <button
-              onClick={handleDownloadSample}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 16px', background: '#fff', border: '1px solid var(--border)', borderRadius: '6px', cursor: 'pointer', fontWeight: 700, fontSize: '13px', color: 'var(--text-main)', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}
-            >
-              <Download size={14} /> Download Sample CSV
-            </button>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button
+                onClick={handleDownloadSample}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 16px', background: '#fff', border: '1px solid var(--border)', borderRadius: '6px', cursor: 'pointer', fontWeight: 700, fontSize: '13px', color: 'var(--text-main)', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}
+              >
+                <Download size={14} /> Download Sample CSV
+              </button>
+              <button
+                onClick={handleExportCSV}
+                disabled={importing}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 16px', background: '#fff', border: '1px solid var(--border)', borderRadius: '6px', cursor: importing ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '13px', color: 'var(--text-main)', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}
+              >
+                <Download size={14} /> Export Table Data (CSV)
+              </button>
+            </div>
           </div>
 
           {/* Import Errors & Success alerts */}
@@ -721,7 +845,7 @@ export default function SuperAdminScreen() {
             </div>
 
             <textarea
-              placeholder="name,department,sub_department,unit,par_level,price_usd&#10;&#34;Tomato Paste&#34;,&#34;Kitchen&#34;,&#34;Dry Goods&#34;,&#34;can&#34;,10,5.50"
+              placeholder={placeholderTemplates[selectedTable] || ''}
               value={csvText}
               onChange={(e) => handleCSVParse(e.target.value)}
               rows={8}
@@ -839,6 +963,18 @@ export default function SuperAdminScreen() {
                     onChange={e => setRLogo(e.target.value)}
                     style={{ width: '100%', padding: '10px 12px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '14px', outline: 'none' }}
                   />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
+                  <input
+                    type="checkbox"
+                    id="rIsVatSubscribed"
+                    checked={rIsVatSubscribed}
+                    onChange={e => setRIsVatSubscribed(e.target.checked)}
+                    style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: 'var(--primary)' }}
+                  />
+                  <label htmlFor="rIsVatSubscribed" style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-main)', cursor: 'pointer' }}>
+                    VAT Subscribed (Default 11% VAT added to Supplier quotations in Price Intelligence)
+                  </label>
                 </div>
               </div>
 
@@ -1232,6 +1368,19 @@ export default function SuperAdminScreen() {
                       style={{ flex: 1, padding: '10px 12px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '14px', outline: 'none' }}
                     />
                   </div>
+                </div>
+
+                <div style={{ gridColumn: 'span 2', display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
+                  <input
+                    type="checkbox"
+                    id="editRIsVatSubscribed"
+                    checked={editRIsVatSubscribed}
+                    onChange={e => setEditRIsVatSubscribed(e.target.checked)}
+                    style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: 'var(--primary)' }}
+                  />
+                  <label htmlFor="editRIsVatSubscribed" style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-main)', cursor: 'pointer' }}>
+                    VAT Subscribed (Default 11% VAT added to Supplier quotations in Price Intelligence)
+                  </label>
                 </div>
               </div>
 

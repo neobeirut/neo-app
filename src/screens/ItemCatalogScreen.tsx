@@ -67,6 +67,7 @@ export default function ItemCatalogScreen({ user: _user }: { user: any }) {
   const [formLocation, setFormLocation] = useState('');
   const [formSupplierId, setFormSupplierId] = useState('');
   const [formPriceUsd, setFormPriceUsd] = useState('0.00');
+  const [formVat, setFormVat] = useState<'yes' | 'no'>('no');
 
   // Location suggestions by department
   const locationSuggestions: { [key: string]: string[] } = {
@@ -188,6 +189,7 @@ export default function ItemCatalogScreen({ user: _user }: { user: any }) {
     setFormLocation('');
     setFormSupplierId('');
     setFormPriceUsd('0.00');
+    setFormVat('no');
     setShowItemModal(true);
   };
 
@@ -206,6 +208,7 @@ export default function ItemCatalogScreen({ user: _user }: { user: any }) {
     setFormLocation(item.inventory_location || '');
     setFormSupplierId(item.supplier_id || '');
     setFormPriceUsd(String(item.price_usd || '0.00'));
+    setFormVat(item.vat === 'yes' ? 'yes' : 'no');
     setShowItemModal(true);
   };
 
@@ -254,7 +257,8 @@ export default function ItemCatalogScreen({ user: _user }: { user: any }) {
         delivery_time: formPurchasing === 'yes' ? formDeliveryTime.trim() : null,
         inventory_location: formLocation.trim() || null,
         supplier_id: formSupplierId || null,
-        price_usd: parseFloat(formPriceUsd) || 0
+        price_usd: parseFloat(formPriceUsd) || 0,
+        vat: formVat
       };
 
       if (isEditingItem && editItemId) {
@@ -746,6 +750,7 @@ export default function ItemCatalogScreen({ user: _user }: { user: any }) {
                       {renderHeader('Step Size', 'step')}
                       {renderHeader('Ordering', 'order')}
                       {renderHeader('Procurement', 'purchasing')}
+                      {renderHeader('VAT', 'vat')}
                       {renderHeader('Supplier', 'supplier_id')}
                       {renderHeader('Price', 'price_usd')}
                       {renderHeader('Location', 'inventory_location')}
@@ -777,6 +782,13 @@ export default function ItemCatalogScreen({ user: _user }: { user: any }) {
                             <span style={{ fontSize: '11px', fontWeight: 700, padding: '4px 8px', borderRadius: '12px', backgroundColor: 'rgba(59, 130, 246, 0.1)', color: 'var(--primary)' }}>
                               Yes{item.delivery_time ? ` (${item.delivery_time})` : ''}
                             </span>
+                          ) : (
+                            <span style={{ fontSize: '11px', fontWeight: 700, padding: '4px 8px', borderRadius: '12px', backgroundColor: 'rgba(156, 163, 175, 0.1)', color: 'var(--text-muted)' }}>No</span>
+                          )}
+                        </td>
+                        <td style={tableCellStyle}>
+                          {item.vat === 'yes' ? (
+                            <span style={{ fontSize: '11px', fontWeight: 700, padding: '4px 8px', borderRadius: '12px', backgroundColor: 'rgba(16, 185, 129, 0.1)', color: 'var(--success)' }}>Yes</span>
                           ) : (
                             <span style={{ fontSize: '11px', fontWeight: 700, padding: '4px 8px', borderRadius: '12px', backgroundColor: 'rgba(156, 163, 175, 0.1)', color: 'var(--text-muted)' }}>No</span>
                           )}
@@ -1151,6 +1163,26 @@ export default function ItemCatalogScreen({ user: _user }: { user: any }) {
                     <option value="no">Hide from Purchasing</option>
                   </select>
                 </div>
+              </div>
+
+              {/* VAT Flag */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-main)' }}>VAT Status</label>
+                <select 
+                  value={formVat}
+                  onChange={(e) => setFormVat(e.target.value as 'yes' | 'no')}
+                  style={{
+                    height: '42px',
+                    padding: '0 12px',
+                    border: '1px solid var(--border)',
+                    borderRadius: 'var(--radius)',
+                    fontSize: '14px',
+                    backgroundColor: '#ffffff'
+                  }}
+                >
+                  <option value="no">No VAT (0%)</option>
+                  <option value="yes">Subject to VAT (11% default)</option>
+                </select>
               </div>
 
               {/* Delivery Time (Purchasing Only) */}
