@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { api } from '../api/client';
 import { supabase } from '../api/supabase';
 import { 
   TrendingUp, BarChart2, Star, Sliders, DollarSign, Upload, MessageSquare, 
   AlertCircle, RefreshCw, FileText, Check, X, ShieldAlert, Award, 
-  ArrowUpRight, Cpu, Sparkles, Scale, Percent, CheckCircle
+  ArrowUpRight, Cpu, Sparkles, Scale, Percent, CheckCircle, Search
 } from 'lucide-react';
 
 // Interfaces for strict typing
@@ -192,6 +192,36 @@ export default function SupplierPriceIntelligenceScreen({ user }: { user?: any }
     conversion_factor: '1',
     vat: 'no' as 'yes' | 'no'
   }));
+
+  // Trends tab search and department filter
+  const [trendsSearch, setTrendsSearch] = useState('');
+  const [trendsDept, setTrendsDept] = useState('All');
+
+  const departments = useMemo(() => {
+    const depts = new Set<string>();
+    catalogItems.forEach((item: CatalogItem) => {
+      if (item.department) depts.add(item.department);
+    });
+    return ['All', ...Array.from(depts)];
+  }, [catalogItems]);
+
+  const filteredTrendItems = useMemo(() => {
+    return catalogItems.filter((item: CatalogItem) => {
+      const matchesSearch = item.name.toLowerCase().includes(trendsSearch.toLowerCase());
+      const matchesDept = trendsDept === 'All' || item.department === trendsDept;
+      return matchesSearch && matchesDept;
+    });
+  }, [catalogItems, trendsSearch, trendsDept]);
+
+  useEffect(() => {
+    if (activeTab === 'trends' && filteredTrendItems.length > 0) {
+      const exists = filteredTrendItems.some((item: CatalogItem) => item.name === selectedTrendItem);
+      if (!exists) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setSelectedTrendItem(filteredTrendItems[0].name);
+      }
+    }
+  }, [filteredTrendItems, selectedTrendItem, activeTab]);
 
   // Manual Evaluation Form
   const [evalForm, setEvalForm] = useState({
@@ -1080,7 +1110,15 @@ Items:
   // ----------------------------------------------------
   const renderTrendChart = () => {
     const targetItem = catalogItems.find(ci => ci.name === selectedTrendItem);
-    if (!targetItem) return null;
+    if (!targetItem) {
+      return (
+        <div className="card" style={{ backgroundColor: 'white', padding: '40px', borderRadius: '12px', border: '1px solid var(--border)', textAlign: 'center', color: 'var(--text-muted)' }}>
+          <AlertCircle size={40} style={{ margin: '0 auto 12px', display: 'block', color: 'var(--text-muted)' }} />
+          <strong>No matching items found.</strong>
+          <p style={{ margin: '4px 0 0', fontSize: '13px' }}>Try adjusting your search query or department filter.</p>
+        </div>
+      );
+    }
 
     const months = ['Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul'];
     const prices = months.map((_m, idx) => {
@@ -1504,17 +1542,61 @@ CREATE POLICY "Enable write access for all authenticated users" ON public.item_d
         {/* TAB 2: PRICE MONITOR */}
         {activeTab === 'trends' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-              <span style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-muted)' }}>Select Catalog Item:</span>
-              <select
-                value={selectedTrendItem}
-                onChange={(e) => setSelectedTrendItem(e.target.value)}
-                style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '14px', color: 'var(--text-main)', minWidth: '220px', fontWeight: 600 }}
-              >
-                {catalogItems.map(item => (
-                  <option key={item.id} value={item.name}>{item.name}</option>
-                ))}
-              </select>
+            {/* Search & Filter Bar */}
+            <div style={{
+              display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'center',
+              backgroundColor: 'white', padding: '16px 20px', borderRadius: '12px',
+              border: '1px solid var(--border)', boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+            }}>
+              <div style={{ flex: 1, minWidth: '240px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '6px', textTransform: 'uppercase' }}>
+                  Search Catalog Item
+                </span>
+                <div style={{ position: 'relative' }}>
+                  <Search size={15} color="var(--text-muted)" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
+                  <input
+                    type="text"
+                    value={trendsSearch}
+                    onChange={(e) => setTrendsSearch(e.target.value)}
+                    placeholder="Search by item name..."
+                    style={{ width: '100%', padding: '6px 12px 6px 32px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '13px' }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ minWidth: '180px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '6px', textTransform: 'uppercase' }}>
+                  Department
+                </span>
+                <select
+                  value={trendsDept}
+                  onChange={(e) => setTrendsDept(e.target.value)}
+                  style={{ width: '100%', padding: '6px 12px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '13px', fontWeight: 600 }}
+                >
+                  {departments.map((dept: string) => (
+                    <option key={dept} value={dept}>{dept}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={{ minWidth: '220px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '6px', textTransform: 'uppercase' }}>
+                  Select Chart Target
+                </span>
+                <select
+                  value={selectedTrendItem}
+                  onChange={(e) => setSelectedTrendItem(e.target.value)}
+                  style={{ width: '100%', padding: '6px 12px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '13px', fontWeight: 600, color: 'var(--primary)' }}
+                >
+                  {filteredTrendItems.length === 0 ? (
+                    <option value="">No items match filters</option>
+                  ) : (
+                    filteredTrendItems.map((item: CatalogItem) => (
+                      <option key={item.id} value={item.name}>{item.name}</option>
+                    ))
+                  )}
+                </select>
+              </div>
             </div>
 
             {renderTrendChart()}
@@ -1534,7 +1616,7 @@ CREATE POLICY "Enable write access for all authenticated users" ON public.item_d
                     </tr>
                   </thead>
                   <tbody>
-                    {catalogItems.map((item) => {
+                    {filteredTrendItems.map((item: CatalogItem) => {
                       const seed = item.name.charCodeAt(0);
                       const isVolatile = seed % 4 === 0;
                       const volText = isVolatile ? 'High' : (seed % 3 === 0 ? 'Medium' : 'Low');
