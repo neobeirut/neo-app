@@ -1542,67 +1542,49 @@ CREATE POLICY "Enable write access for all authenticated users" ON public.item_d
         {/* TAB 2: PRICE MONITOR */}
         {activeTab === 'trends' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-            {/* Search & Filter Bar */}
-            <div style={{
-              display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'center',
-              backgroundColor: 'white', padding: '16px 20px', borderRadius: '12px',
-              border: '1px solid var(--border)', boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
-            }}>
-              <div style={{ flex: 1, minWidth: '240px' }}>
-                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '6px', textTransform: 'uppercase' }}>
-                  Search Catalog Item
-                </span>
-                <div style={{ position: 'relative' }}>
-                  <Search size={15} color="var(--text-muted)" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
-                  <input
-                    type="text"
-                    value={trendsSearch}
-                    onChange={(e) => setTrendsSearch(e.target.value)}
-                    placeholder="Search by item name..."
-                    style={{ width: '100%', padding: '6px 12px 6px 32px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '13px' }}
-                  />
-                </div>
-              </div>
-
-              <div style={{ minWidth: '180px' }}>
-                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '6px', textTransform: 'uppercase' }}>
-                  Department
-                </span>
-                <select
-                  value={trendsDept}
-                  onChange={(e) => setTrendsDept(e.target.value)}
-                  style={{ width: '100%', padding: '6px 12px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '13px', fontWeight: 600 }}
-                >
-                  {departments.map((dept: string) => (
-                    <option key={dept} value={dept}>{dept}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div style={{ minWidth: '220px' }}>
-                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '6px', textTransform: 'uppercase' }}>
-                  Select Chart Target
-                </span>
-                <select
-                  value={selectedTrendItem}
-                  onChange={(e) => setSelectedTrendItem(e.target.value)}
-                  style={{ width: '100%', padding: '6px 12px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '13px', fontWeight: 600, color: 'var(--primary)' }}
-                >
-                  {filteredTrendItems.length === 0 ? (
-                    <option value="">No items match filters</option>
-                  ) : (
-                    filteredTrendItems.map((item: CatalogItem) => (
-                      <option key={item.id} value={item.name}>{item.name}</option>
-                    ))
-                  )}
-                </select>
-              </div>
+            {/* Chart Target Selector at the Top */}
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'center', backgroundColor: 'white', padding: '12px 20px', borderRadius: '12px', border: '1px solid var(--border)' }}>
+              <span style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-muted)' }}>Select Catalog Item Chart:</span>
+              <select
+                value={selectedTrendItem}
+                onChange={(e) => setSelectedTrendItem(e.target.value)}
+                style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '14px', color: 'var(--primary)', minWidth: '240px', fontWeight: 600 }}
+              >
+                {catalogItems.map((item: CatalogItem) => (
+                  <option key={item.id} value={item.name}>{item.name}</option>
+                ))}
+              </select>
             </div>
 
             {renderTrendChart()}
 
             <div className="card" style={{ backgroundColor: 'white', padding: '24px', borderRadius: '12px', border: '1px solid var(--border)' }}>
-              <h3 style={{ margin: '0 0 16px', fontSize: '18px', fontWeight: 700, color: 'var(--text-main)' }}>Catalog Item Pricing Intelligence</h3>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '20px' }}>
+                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: 'var(--text-main)' }}>Catalog Item Pricing Intelligence</h3>
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  {/* Search Input */}
+                  <div style={{ position: 'relative', width: '220px' }}>
+                    <Search size={14} color="var(--text-muted)" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
+                    <input
+                      type="text"
+                      value={trendsSearch}
+                      onChange={(e) => setTrendsSearch(e.target.value)}
+                      placeholder="Search items..."
+                      style={{ width: '100%', padding: '6px 10px 6px 28px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '13px' }}
+                    />
+                  </div>
+                  {/* Department select */}
+                  <select
+                    value={trendsDept}
+                    onChange={(e) => setTrendsDept(e.target.value)}
+                    style={{ padding: '6px 12px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '13px', fontWeight: 600 }}
+                  >
+                    {departments.map((dept: string) => (
+                      <option key={dept} value={dept}>{dept}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                   <thead>
