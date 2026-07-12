@@ -968,29 +968,27 @@ CREATE POLICY "Enable write access for all authenticated users" ON public.item_d
           });
         }
 
-        if (match) {
-          const qPayload = {
-            supplier_id: targetSupId,
-            item_name: row.supplier_item_desc,
-            flow_item_id: match.id,
-            unit: row.unit,
-            price_usd: row.price_usd,
-            moq: row.moq,
-            effective_date: new Date().toISOString().split('T')[0],
-            expiry_date: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-            is_approved: true,
-            conversion_factor: 1
-          };
+        const qPayload = {
+          supplier_id: targetSupId,
+          item_name: row.supplier_item_desc,
+          flow_item_id: match ? match.id : null,
+          unit: row.unit,
+          price_usd: row.price_usd,
+          moq: row.moq,
+          effective_date: new Date().toISOString().split('T')[0],
+          expiry_date: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+          is_approved: true,
+          conversion_factor: 1
+        };
 
-          if (dbStatus === 'ready') {
-            await api.saveSupplierQuotation(qPayload);
-          } else {
-            newQuotes.push({
-              id: `q-csv-${Date.now()}-${rIdx}`,
-              ...qPayload,
-              supplier_name: suppliers.find(s => s.id === targetSupId)?.name || 'Supplier'
-            });
-          }
+        if (dbStatus === 'ready') {
+          await api.saveSupplierQuotation(qPayload);
+        } else {
+          newQuotes.push({
+            id: `q-csv-${Date.now()}-${rIdx}`,
+            ...qPayload,
+            supplier_name: suppliers.find(s => s.id === targetSupId)?.name || 'Supplier'
+          });
         }
       });
 
@@ -1058,12 +1056,10 @@ Items:
     const newMappings = [...mappings];
 
     const savePromises = detectedQuotes.map(async (det) => {
-      if (!det.flow_item_id) return;
-
       const qPayload = {
         supplier_id: det.supplier_id,
         item_name: det.supplier_item_desc,
-        flow_item_id: det.flow_item_id,
+        flow_item_id: det.flow_item_id || null,
         unit: det.unit,
         price_usd: det.price_usd,
         moq: det.moq,
@@ -1086,9 +1082,9 @@ Items:
       const mapPayload = {
         supplier_id: det.supplier_id,
         supplier_item_desc: det.supplier_item_desc,
-        flow_item_id: det.flow_item_id,
-        is_approved: true,
-        confidence_score: 0.99
+        flow_item_id: det.flow_item_id || null,
+        is_approved: !!det.flow_item_id,
+        confidence_score: det.flow_item_id ? 0.99 : 0.1
       };
 
       if (dbStatus === 'ready') {
