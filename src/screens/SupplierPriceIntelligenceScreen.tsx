@@ -109,6 +109,7 @@ interface OcrQuotation {
   price_usd: number;
   moq: number;
   is_approved: boolean;
+  conversion_factor?: number;
 }
 
 // Default Weights
@@ -947,24 +948,29 @@ CREATE POLICY "Enable write access for all authenticated users" ON public.item_d
       const newQuotes = [...quotations];
       const targetSupId = csvSupplierId || (suppliers[0]?.id || 'sup-1');
 
-      parsed.forEach((row, rIdx) => {
+      const savePromises = parsed.map(async (row, rIdx) => {
         const match = catalogItems.find(ci => ci.name.toLowerCase().includes(row.matched_item_name.toLowerCase()) || row.supplier_item_desc.toLowerCase().includes(ci.name.toLowerCase()));
         
-        const mapId = `m-csv-${Date.now()}-${rIdx}`;
-        newMappings.push({
-          id: mapId,
+        const mapPayload = {
           supplier_id: targetSupId,
           supplier_item_desc: row.supplier_item_desc,
           flow_item_id: match ? match.id : null,
           is_approved: !!match,
           confidence_score: match ? 0.91 : 0.42
-        });
+        };
+
+        if (dbStatus === 'ready') {
+          await supabase.from('item_description_mappings').upsert(mapPayload);
+        } else {
+          newMappings.push({
+            id: `m-csv-${Date.now()}-${rIdx}`,
+            ...mapPayload
+          });
+        }
 
         if (match) {
-          newQuotes.push({
-            id: `q-csv-${Date.now()}-${rIdx}`,
+          const qPayload = {
             supplier_id: targetSupId,
-            supplier_name: suppliers.find(s => s.id === targetSupId)?.name || 'Supplier',
             item_name: row.supplier_item_desc,
             flow_item_id: match.id,
             unit: row.unit,
@@ -972,14 +978,31 @@ CREATE POLICY "Enable write access for all authenticated users" ON public.item_d
             moq: row.moq,
             effective_date: new Date().toISOString().split('T')[0],
             expiry_date: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-            is_approved: true
-          });
+            is_approved: true,
+            conversion_factor: 1
+          };
+
+          if (dbStatus === 'ready') {
+            await api.saveSupplierQuotation(qPayload);
+          } else {
+            newQuotes.push({
+              id: `q-csv-${Date.now()}-${rIdx}`,
+              ...qPayload,
+              supplier_name: suppliers.find(s => s.id === targetSupId)?.name || 'Supplier'
+            });
+          }
         }
       });
 
-      setMappings(newMappings);
-      setQuotations(newQuotes);
-      showToast(`Imported ${parsed.length} items from CSV successfully!`);
+      Promise.all(savePromises).then(() => {
+        if (dbStatus === 'ready') {
+          loadAllData();
+        } else {
+          setMappings(newMappings);
+          setQuotations(newQuotes);
+        }
+        showToast(`Imported ${parsed.length} items from CSV successfully!`);
+      });
     };
     reader.readAsText(file);
   };
@@ -1030,17 +1053,15 @@ Items:
     }, 2500);
   };
 
-  const handleApproveOcrQuotes = () => {
+  const handleApproveOcrQuotes = async () => {
     const newQuotes = [...quotations];
     const newMappings = [...mappings];
 
-    detectedQuotes.forEach(det => {
+    const savePromises = detectedQuotes.map(async (det) => {
       if (!det.flow_item_id) return;
 
-      newQuotes.push({
-        id: `q-ocr-${Date.now()}-${det.id}`,
+      const qPayload = {
         supplier_id: det.supplier_id,
-        supplier_name: suppliers.find(s => s.id === det.supplier_id)?.name || 'Supplier',
         item_name: det.supplier_item_desc,
         flow_item_id: det.flow_item_id,
         unit: det.unit,
@@ -1048,21 +1069,46 @@ Items:
         moq: det.moq,
         effective_date: new Date().toISOString().split('T')[0],
         expiry_date: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-        is_approved: true
-      });
+        is_approved: true,
+        conversion_factor: det.conversion_factor || 1
+      };
 
-      newMappings.push({
-        id: `m-ocr-${Date.now()}-${det.id}`,
+      if (dbStatus === 'ready') {
+        await api.saveSupplierQuotation(qPayload);
+      } else {
+        newQuotes.push({
+          id: `q-ocr-${Date.now()}-${det.id}`,
+          ...qPayload,
+          supplier_name: suppliers.find(s => s.id === det.supplier_id)?.name || 'Supplier'
+        });
+      }
+
+      const mapPayload = {
         supplier_id: det.supplier_id,
         supplier_item_desc: det.supplier_item_desc,
         flow_item_id: det.flow_item_id,
         is_approved: true,
         confidence_score: 0.99
-      });
+      };
+
+      if (dbStatus === 'ready') {
+        await supabase.from('item_description_mappings').upsert(mapPayload);
+      } else {
+        newMappings.push({
+          id: `m-ocr-${Date.now()}-${det.id}`,
+          ...mapPayload
+        });
+      }
     });
 
-    setQuotations(newQuotes);
-    setMappings(newMappings);
+    await Promise.all(savePromises);
+
+    if (dbStatus === 'ready') {
+      loadAllData();
+    } else {
+      setQuotations(newQuotes);
+      setMappings(newMappings);
+    }
     setDetectedQuotes([]);
     setImportStatus('idle');
     showToast('Approved OCR quotations imported into price history!');
