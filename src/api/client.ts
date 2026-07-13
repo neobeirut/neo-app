@@ -9,11 +9,22 @@ export const api = {
       const { error: authError } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password });
       if (authError) return { success: false, error: authError.message };
 
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from('users')
         .select('*, restaurants:restaurant_id(*)')
         .eq('email', normalizedEmail)
         .single();
+
+      // Fallback for old database schemas that do not have the restaurant_id column/relationship
+      if (error && (error.message.includes('relationship') || error.message.includes('restaurant_id'))) {
+        const fallbackRes = await supabase
+          .from('users')
+          .select('*')
+          .eq('email', normalizedEmail)
+          .single();
+        data = fallbackRes.data;
+        error = fallbackRes.error;
+      }
 
       if (error || !data) return { success: false, error: 'User profile not found.' };
 
@@ -23,12 +34,23 @@ export const api = {
 
       return { success: true, data };
     } else {
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from('users')
         .select('*, restaurants:restaurant_id(*)')
         .eq('pin', cleanInput)
         .single();
         
+      // Fallback for old database schemas that do not have the restaurant_id column/relationship
+      if (error && (error.message.includes('relationship') || error.message.includes('restaurant_id'))) {
+        const fallbackRes = await supabase
+          .from('users')
+          .select('*')
+          .eq('pin', cleanInput)
+          .single();
+        data = fallbackRes.data;
+        error = fallbackRes.error;
+      }
+
       if (error || !data) return { success: false, error: 'Invalid PIN' };
       
       if (data.role !== 'Admin' && data.role !== 'Manager' && data.role !== 'SuperAdmin') {
