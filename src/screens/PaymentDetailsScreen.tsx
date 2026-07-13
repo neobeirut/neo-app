@@ -14,11 +14,19 @@ export default function PaymentDetailsScreen({ user }: { user: any }) {
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   
+  // Timezone-safe local date formatting helpers
+  const getLocalDateStr = (d: Date) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   // Filters State
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-  const [startDate, setStartDate] = useState(thirtyDaysAgo.toISOString().split('T')[0]);
-  const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+  const [startDate, setStartDate] = useState(getLocalDateStr(thirtyDaysAgo));
+  const [endDate, setEndDate] = useState(getLocalDateStr(new Date()));
   const [branchFilter, setBranchFilter] = useState('All');
   const [typeFilter, setTypeFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState('All');
@@ -33,7 +41,7 @@ export default function PaymentDetailsScreen({ user }: { user: any }) {
   const [showModal, setShowModal] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [formDate, setFormDate] = useState(new Date().toISOString().split('T')[0]);
+  const [formDate, setFormDate] = useState(getLocalDateStr(new Date()));
   const [formBranch, setFormBranch] = useState('');
   const [formShift, setFormShift] = useState('AM');
   const [formSupplier, setFormSupplier] = useState('');
@@ -99,7 +107,7 @@ export default function PaymentDetailsScreen({ user }: { user: any }) {
     } else {
       setIsEditMode(false);
       setEditingId(null);
-      setFormDate(new Date().toISOString().split('T')[0]);
+      setFormDate(getLocalDateStr(new Date()));
       setFormBranch(user.branch !== 'All' ? user.branch : (branches[0] || ''));
       setFormShift('AM');
       setFormSupplier('');

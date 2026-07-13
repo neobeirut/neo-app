@@ -554,11 +554,9 @@ export const api = {
       }
     }
     
-    const { data, error } = await query;
-    if (data && data.length > 0) {
-      return { success: true, data };
-    }
-
+    const { data: primaryData, error } = await query;
+    
+    let fallbackData: any[] = [];
     // Direct REST fetch fallback using explicit Bearer anon token if RLS session restricted rows
     try {
       const urlParams = new URLSearchParams();
@@ -587,14 +585,38 @@ export const api = {
       });
       if (rawRes.ok) {
         const rawData = await rawRes.json();
-        if (Array.isArray(rawData)) return { success: true, data: rawData };
+        if (Array.isArray(rawData)) {
+          fallbackData = rawData;
+        }
       }
     } catch (e) {
       console.warn('Fallback shift fetch failed:', e);
     }
 
-    if (error) return { success: false, error: error.message };
-    return { success: true, data: data || [] };
+    const mergedMap = new Map<string, any>();
+    if (primaryData) {
+      primaryData.forEach((item: any) => mergedMap.set(item.id, item));
+    }
+    fallbackData.forEach((item: any) => {
+      if (!mergedMap.has(item.id)) {
+        mergedMap.set(item.id, item);
+      }
+    });
+
+    const mergedList = Array.from(mergedMap.values());
+    mergedList.sort((a, b) => {
+      const dateA = a.date || '';
+      const dateB = b.date || '';
+      if (dateA !== dateB) {
+        return dateB.localeCompare(dateA); // desc
+      }
+      const createA = a.created_at || '';
+      const createB = b.created_at || '';
+      return createB.localeCompare(createA); // desc
+    });
+
+    if (error && mergedList.length === 0) return { success: false, error: error.message };
+    return { success: true, data: mergedList };
   },
 
   // Daily Payments
@@ -624,11 +646,9 @@ export const api = {
       }
     }
     
-    const { data, error } = await query;
-    if (data && data.length > 0) {
-      return { success: true, data };
-    }
+    const { data: primaryData, error } = await query;
 
+    let fallbackData: any[] = [];
     // Direct REST fetch fallback
     try {
       const urlParams = new URLSearchParams();
@@ -657,14 +677,38 @@ export const api = {
       });
       if (rawRes.ok) {
         const rawData = await rawRes.json();
-        if (Array.isArray(rawData)) return { success: true, data: rawData };
+        if (Array.isArray(rawData)) {
+          fallbackData = rawData;
+        }
       }
     } catch (e) {
       console.warn('Fallback payment fetch failed:', e);
     }
 
-    if (error) return { success: false, error: error.message };
-    return { success: true, data: data || [] };
+    const mergedMap = new Map<string, any>();
+    if (primaryData) {
+      primaryData.forEach((item: any) => mergedMap.set(item.id, item));
+    }
+    fallbackData.forEach((item: any) => {
+      if (!mergedMap.has(item.id)) {
+        mergedMap.set(item.id, item);
+      }
+    });
+
+    const mergedList = Array.from(mergedMap.values());
+    mergedList.sort((a, b) => {
+      const dateA = a.date || '';
+      const dateB = b.date || '';
+      if (dateA !== dateB) {
+        return dateB.localeCompare(dateA); // desc
+      }
+      const createA = a.created_at || '';
+      const createB = b.created_at || '';
+      return createB.localeCompare(createA); // desc
+    });
+
+    if (error && mergedList.length === 0) return { success: false, error: error.message };
+    return { success: true, data: mergedList };
   },
 
   createDailyPayment: async (payload: {
