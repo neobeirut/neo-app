@@ -21,7 +21,6 @@ const SECTIONS = [
   { key: 'client_orders', label: 'Client Orders', desc: 'B2B client orders, delivery reporting, and client database' },
   { key: 'reservations', label: 'Table Reservations', desc: 'Track table bookings and reservations log' },
   { key: 'checklists', label: 'Daily Checklists', desc: 'Complete daily checklist forms and review logs' },
-  { key: 'shift_submissions', label: 'Daily Shift Submissions', desc: 'Registry cash drop records and end of day logs' },
   { key: 'tasks', label: 'Task Manager', desc: 'Assign and track completion of operational tasks' },
   { key: 'catalog', label: 'Item Catalog', desc: 'Primary database catalog of items and recipes' },
   { key: 'purchasing', label: 'Purchasing & Procurement', desc: 'Supplier order logs and invoice uploads' },
@@ -31,6 +30,7 @@ const SECTIONS = [
   { key: 'missing_items', label: '86 Missing Items', desc: 'Realtime view and toggle of out-of-stock items' },
   { key: 'voids', label: 'Void Receipts', desc: 'Audit cashier voids and manager authorizations' },
   { key: 'employees', label: 'Employees', desc: 'Employee registry database, payroll details, and branches' },
+  { key: 'attendance', label: 'Attendance (Punch Clock)', desc: 'Punch in/out tracking, shift logs, and timesheets' },
   { key: 'tips', label: 'Tips Config', desc: 'Define tips pools, share distribution rates, and collections' },
   { key: 'permissions', label: 'Security Matrix', desc: 'Configure role-based department and screen privileges' },
   { key: 'signin_logs', label: 'Sign-In Logs', desc: 'Audit user logins, timestamps, and locations' },
@@ -104,6 +104,7 @@ export default function SuperAdminScreen() {
   const [editRName, setEditRName] = useState('');
   const [editRLogo, setEditRLogo] = useState('');
   const [editRColor, setEditRColor] = useState('#1e5c4f');
+  const [editUId, setEditUId] = useState('');
   const [editUName, setEditUName] = useState('');
   const [editUEmail, setEditUEmail] = useState('');
   const [editUPin, setEditUPin] = useState('');
@@ -162,6 +163,7 @@ export default function SuperAdminScreen() {
     setEditRLogo(r.logo_url || '');
     setEditRColor(r.primary_color || '#1e5c4f');
     setEditRIsVatSubscribed(r.settings?.is_vat_subscribed !== false);
+    setEditUId('');
     setEditUName('');
     setEditUEmail('');
     setEditUPin('');
@@ -169,6 +171,7 @@ export default function SuperAdminScreen() {
 
     const res = await api.getTenantAdmin(r.id);
     if (res.success && res.data) {
+      setEditUId(res.data.id || '');
       setEditUName(res.data.name || '');
       setEditUEmail(res.data.email || '');
       setEditUPin(res.data.pin || '');
@@ -187,6 +190,7 @@ export default function SuperAdminScreen() {
       name: editRName.trim(),
       logo_url: editRLogo.trim(),
       primary_color: editRColor,
+      admin_id: editUId,
       admin_name: editUName.trim(),
       admin_email: editUEmail.trim().toLowerCase(),
       admin_pin: editUPin.trim()
@@ -205,7 +209,13 @@ export default function SuperAdminScreen() {
       setEditModalResto(null);
       loadRestaurants();
     } else {
-      setEditErr(res.error || 'Failed to update restaurant details.');
+      let errMsg = res.error || 'Failed to update restaurant details.';
+      if (errMsg.includes('users_pin_resto_idx') || errMsg.includes('duplicate key') && errMsg.includes('pin')) {
+        errMsg = 'This Mobile PIN is already in use by another user. Please choose a different PIN.';
+      } else if (errMsg.includes('users_email_key') || errMsg.includes('duplicate key') && errMsg.includes('email')) {
+        errMsg = 'This email address is already in use by another user. Please choose a different email.';
+      }
+      setEditErr(errMsg);
     }
   };
 

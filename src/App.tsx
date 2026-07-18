@@ -115,7 +115,7 @@ import SuperAdminScreen from './screens/SuperAdminScreen';
         name: 'People',
         items: [
           { to: '/employees', label: 'Employees', icon: <Users size={18} />, visible: isPrivileged || !!permissions?.can_manage_hr, key: 'employees' },
-          { to: '/attendance', label: 'Attendance & Punch', icon: <ClipboardList size={18} />, visible: isPrivileged || !!permissions?.can_punch_clock, key: 'employees' },
+          { to: '/attendance', label: 'Attendance & Punch', icon: <ClipboardList size={18} />, visible: isPrivileged || !!permissions?.can_punch_clock, key: 'attendance' },
           { to: '/tips', label: 'Tips Config', icon: <DollarSign size={18} />, visible: isPrivileged || !!permissions?.can_manage_tips, key: 'tips' },
           { to: '/permissions', label: 'Security & Matrix', icon: <Shield size={18} />, visible: isPrivileged, key: 'permissions' },
           { to: '/signin-logs', label: 'Sign-In Logs', icon: <History size={18} />, visible: !!permissions?.can_view_signin_logs, key: 'signin_logs' }
@@ -342,8 +342,10 @@ function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () 
                 <Route path="/employees" element={<EmployeesScreen user={user} />} />
                 <Route path="/employees/new" element={<EmployeeFormScreen user={user} />} />
                 <Route path="/employees/edit/:id" element={<EmployeeFormScreen user={user} />} />
-                <Route path="/attendance" element={<AttendanceDashboardScreen user={user} permissions={permissions} />} />
               </>
+            )}
+            {isSectionEnabled('attendance') && (
+              <Route path="/attendance" element={<AttendanceDashboardScreen user={user} permissions={permissions} />} />
             )}
             {isSectionEnabled('tips') && (
               <>
