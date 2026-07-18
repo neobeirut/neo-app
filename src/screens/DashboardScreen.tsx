@@ -27,75 +27,17 @@ interface DashboardScreenProps {
     branch?: string;
   };
   permissions?: any;
-  employee: any;
-  isClockedIn: boolean;
-  activeLog: any;
-  refreshPunchStatus: () => Promise<void>;
 }
 
 export default function DashboardScreen({ 
   user, 
-  permissions,
-  employee,
-  isClockedIn,
-  activeLog,
-  refreshPunchStatus
+  permissions
 }: DashboardScreenProps) {
   const navigate = useNavigate();
   const isAdmin = user.role === 'Admin';
-  const [punchActionLoading, setPunchActionLoading] = useState(false);
 
   const roleLower = (user?.role || '').toString().toLowerCase().trim();
   const isPrivileged = roleLower === 'admin' || roleLower === 'manager' || roleLower === 'superadmin';
-  const canPunch = isPrivileged || !!permissions?.can_punch_clock;
-
-  const handlePunch = async () => {
-    if (!employee) {
-      alert('No linked employee profile found for your account. Please contact an admin.');
-      return;
-    }
-
-    setPunchActionLoading(true);
-    try {
-      if (isClockedIn && activeLog) {
-        // Clock Out
-        const notes = prompt('Enter clock out notes (optional):') || '';
-        const updatedLog = {
-          id: activeLog.id,
-          punch_out: new Date().toISOString(),
-          punch_out_notes: notes || null
-        };
-        const res = await api.saveAttendanceLog(updatedLog);
-        if (res.success) {
-          alert('Clocked out successfully!');
-          await refreshPunchStatus();
-        } else {
-          alert(res.error || 'Failed to clock out');
-        }
-      } else {
-        // Clock In
-        const notes = prompt('Enter clock in notes (optional):') || '';
-        const newLog = {
-          employee_id: employee.employee_id,
-          branch: user.branch && user.branch !== 'All' ? user.branch : (employee.branch || 'Badaro'),
-          punch_in: new Date().toISOString(),
-          punch_in_notes: notes || null,
-          device_id: 'Web Portal'
-        };
-        const res = await api.saveAttendanceLog(newLog);
-        if (res.success) {
-          alert('Clocked in successfully!');
-          await refreshPunchStatus();
-        } else {
-          alert(res.error || 'Failed to clock in');
-        }
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setPunchActionLoading(false);
-    }
-  };
 
   // Filters State
   const [selectedBranch, setSelectedBranch] = useState<string>('');
@@ -360,58 +302,6 @@ export default function DashboardScreen({
         </div>
       </div>
 
-      {/* Attendance Punch Card */}
-      {canPunch && employee && (
-        <div style={{
-          background: 'white',
-          border: '1px solid var(--border)',
-          borderRadius: '16px',
-          padding: '20px',
-          marginBottom: '24px',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
-        }}>
-          <div>
-            <h3 style={{ margin: '0 0 4px 0', fontSize: '16px', fontWeight: 700, color: '#1f2937' }}>
-              Shift Attendance
-            </h3>
-            <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-muted)' }}>
-              Current Status: {isClockedIn ? (
-                <span style={{ color: '#10b981', fontWeight: 600 }}>● Clocked In</span>
-              ) : (
-                <span style={{ color: '#ef4444', fontWeight: 600 }}>○ Clocked Out</span>
-              )}
-              {isClockedIn && activeLog?.punch_in && (
-                <> (Since {new Date(activeLog.punch_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})</>
-              )}
-            </p>
-          </div>
-          <button
-            onClick={handlePunch}
-            disabled={punchActionLoading}
-            style={{
-              height: '42px',
-              padding: '0 24px',
-              borderRadius: '8px',
-              border: 'none',
-              fontWeight: 700,
-              cursor: 'pointer',
-              backgroundColor: isClockedIn ? '#ef4444' : '#10b981',
-              color: 'white',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
-              transition: 'background-color 0.2s'
-            }}
-          >
-            {punchActionLoading ? <Loader2 className="spin" size={16} /> : <Clock size={16} />}
-            {isClockedIn ? 'Punch Out' : 'Punch In'}
-          </button>
-        </div>
-      )}
 
       {migrationNeeded && (
         <div style={{

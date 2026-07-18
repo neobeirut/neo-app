@@ -45,11 +45,10 @@ import BranchManagementScreen from './screens/BranchManagementScreen';
 import ReelCreditScreen from './screens/ReelCreditScreen';
 import SuperAdminScreen from './screens/SuperAdminScreen';
 
-  function Sidebar({ onLogout, permissions, user, employee, isClockedIn, activeLog, refreshPunchStatus }: { onLogout: () => void; permissions: any; user: any; employee: any; isClockedIn: boolean; activeLog: any; refreshPunchStatus: () => Promise<void> }) {
+  function Sidebar({ onLogout, permissions, user }: { onLogout: () => void; permissions: any; user: any }) {
     const location = useLocation();
     const roleLower = (user?.role || '').toString().toLowerCase().trim();
     const isPrivileged = roleLower === 'admin' || roleLower === 'manager' || roleLower === 'superadmin';
-    const canPunch = isPrivileged || !!permissions?.can_punch_clock;
 
     const [collapsedGroups, setCollapsedGroups] = useState<{ [key: string]: boolean }>({
       Operations: false,
@@ -59,56 +58,6 @@ import SuperAdminScreen from './screens/SuperAdminScreen';
       Analytics: false,
       Administration: false,
     });
-
-    const [punchActionLoading, setPunchActionLoading] = useState(false);
-
-    const handlePunch = async () => {
-      if (!employee) {
-        alert('No linked employee profile found for your account. Please contact an admin.');
-        return;
-      }
-
-      setPunchActionLoading(true);
-      try {
-        if (isClockedIn && activeLog) {
-          // Clock Out
-          const notes = prompt('Enter clock out notes (optional):') || '';
-          const updatedLog = {
-            id: activeLog.id,
-            punch_out: new Date().toISOString(),
-            punch_out_notes: notes || null
-          };
-          const res = await api.saveAttendanceLog(updatedLog);
-          if (res.success) {
-            alert('Clocked out successfully!');
-            await refreshPunchStatus();
-          } else {
-            alert(res.error || 'Failed to clock out');
-          }
-        } else {
-          // Clock In
-          const notes = prompt('Enter clock in notes (optional):') || '';
-          const newLog = {
-            employee_id: employee.employee_id,
-            branch: user.branch && user.branch !== 'All' ? user.branch : (employee.branch || 'Badaro'),
-            punch_in: new Date().toISOString(),
-            punch_in_notes: notes || null,
-            device_id: 'Web Portal'
-          };
-          const res = await api.saveAttendanceLog(newLog);
-          if (res.success) {
-            alert('Clocked in successfully!');
-            await refreshPunchStatus();
-          } else {
-            alert(res.error || 'Failed to clock in');
-          }
-        }
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setPunchActionLoading(false);
-      }
-    };
 
     const toggleGroup = (name: string) => {
       setCollapsedGroups(prev => ({
@@ -278,31 +227,6 @@ import SuperAdminScreen from './screens/SuperAdminScreen';
           })}
         </div>
         <div style={{ borderTop: '1px solid var(--border)', padding: '16px', display: 'flex', gap: '8px', alignItems: 'center' }}>
-          {canPunch && (
-            <button 
-              onClick={handlePunch}
-              disabled={punchActionLoading}
-              title={isClockedIn ? 'Punch Out' : 'Punch In'}
-              style={{
-                flex: 1,
-                height: '40px',
-                borderRadius: '8px',
-                border: 'none',
-                fontWeight: 'bold',
-                cursor: 'pointer',
-                backgroundColor: isClockedIn ? '#ef4444' : '#10b981',
-                color: 'white',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '6px',
-                transition: 'all 0.2s'
-              }}
-            >
-              {punchActionLoading ? <Loader2 className="spin" size={16} /> : <Clock size={16} />}
-              {isClockedIn ? 'Out' : 'In'}
-            </button>
-          )}
           <button 
             onClick={onLogout} 
             title="Logout"
@@ -348,29 +272,6 @@ function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () 
     can_manage_tasks: isPrivileged
   });
   const [branchesList, setBranchesList] = useState<string[]>([]);
-  const [employee, setEmployee] = useState<any>(null);
-  const [isClockedIn, setIsClockedIn] = useState(false);
-  const [activeLog, setActiveLog] = useState<any>(null);
-
-  const refreshPunchStatus = async () => {
-    if (!user?.id) return;
-    const empRes = await api.getEmployeeByUserId(user.id);
-    if (empRes.success && empRes.data) {
-      setEmployee(empRes.data);
-      const logRes = await api.getActivePunchLog(empRes.data.employee_id);
-      if (logRes.success && logRes.data) {
-        setIsClockedIn(true);
-        setActiveLog(logRes.data);
-      } else {
-        setIsClockedIn(false);
-        setActiveLog(null);
-      }
-    }
-  };
-
-  useEffect(() => {
-    refreshPunchStatus();
-  }, [user]);
 
   useEffect(() => {
     api.getBranchesList().then(res => {
@@ -394,10 +295,6 @@ function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () 
         onLogout={onLogout} 
         permissions={permissions} 
         user={user} 
-        employee={employee}
-        isClockedIn={isClockedIn}
-        activeLog={activeLog}
-        refreshPunchStatus={refreshPunchStatus}
       />
       <div className="main-content">
         <div className="top-bar">
@@ -431,10 +328,6 @@ function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () 
                 <DashboardScreen 
                   user={user} 
                   permissions={permissions} 
-                  employee={employee}
-                  isClockedIn={isClockedIn}
-                  activeLog={activeLog}
-                  refreshPunchStatus={refreshPunchStatus}
                 />
               } 
             />
