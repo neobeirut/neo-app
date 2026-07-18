@@ -47,7 +47,7 @@ import SuperAdminScreen from './screens/SuperAdminScreen';
 
   function Sidebar({ onLogout, permissions, user }: { onLogout: () => void; permissions: any; user: any }) {
     const location = useLocation();
-    const roleLower = user.role?.toLowerCase();
+    const roleLower = (user?.role || '').toString().toLowerCase().trim();
     const isPrivileged = roleLower === 'admin' || roleLower === 'manager' || roleLower === 'superadmin';
 
     const [collapsedGroups, setCollapsedGroups] = useState<{ [key: string]: boolean }>({
@@ -72,6 +72,15 @@ import SuperAdminScreen from './screens/SuperAdminScreen';
       return enabledSections.includes(key);
     };
 
+    console.log('[Sidebar Navigation DEBUG]', {
+      userRole: user?.role,
+      roleLower,
+      isPrivileged,
+      canPunchClock: permissions?.can_punch_clock,
+      isEmployeesEnabled: isSectionEnabled('employees'),
+      visibleAttendance: isPrivileged || !!permissions?.can_punch_clock
+    });
+
     const menuGroups: any[] = [
       {
         name: 'Dashboard',
@@ -83,10 +92,10 @@ import SuperAdminScreen from './screens/SuperAdminScreen';
         name: 'Operations',
         items: [
           { to: '/orders', label: 'Branch Orders', icon: <ShoppingBag size={18} />, key: 'orders' },
-          { to: '/client-orders', label: 'Client Orders', icon: <Briefcase size={18} />, visible: permissions?.can_view_client_orders, key: 'client_orders' },
+          { to: '/client-orders', label: 'Client Orders', icon: <Briefcase size={18} />, visible: !!permissions?.can_view_client_orders, key: 'client_orders' },
           { to: '/reservations', label: 'Table Reservations', icon: <Calendar size={18} />, key: 'reservations' },
           { to: '/checklists', label: 'Daily Checklists', icon: <ClipboardList size={18} />, key: 'checklists' },
-          { to: '/tasks', label: 'Task Manager', icon: <CheckSquare size={18} />, visible: permissions?.can_manage_tasks, key: 'tasks' }
+          { to: '/tasks', label: 'Task Manager', icon: <CheckSquare size={18} />, visible: !!permissions?.can_manage_tasks, key: 'tasks' }
         ]
       },
       {
@@ -99,17 +108,17 @@ import SuperAdminScreen from './screens/SuperAdminScreen';
           { to: '/waste', label: 'Waste Management', icon: <Trash2 size={18} />, key: 'waste' },
           { to: '/86', label: '86 Missing Items', icon: <AlertTriangle size={18} />, key: 'missing_items' },
           { to: '/inventory-reporting', label: 'Inventory Reporting (to be added)', icon: <TrendingUp size={18} />, key: 'inventory_reporting' },
-          { to: '/voids', label: 'Void Receipts', icon: <Receipt size={18} />, visible: permissions?.can_view_voids, key: 'voids' }
+          { to: '/voids', label: 'Void Receipts', icon: <Receipt size={18} />, visible: !!permissions?.can_view_voids, key: 'voids' }
         ]
       },
       {
         name: 'People',
         items: [
-          { to: '/employees', label: 'Employees', icon: <Users size={18} />, visible: isPrivileged || permissions?.can_manage_hr, key: 'employees' },
-          { to: '/attendance', label: 'Attendance & Punch', icon: <ClipboardList size={18} />, visible: isPrivileged || permissions?.can_punch_clock, key: 'employees' },
-          { to: '/tips', label: 'Tips Config', icon: <DollarSign size={18} />, visible: isPrivileged || permissions?.can_manage_tips, key: 'tips' },
+          { to: '/employees', label: 'Employees', icon: <Users size={18} />, visible: isPrivileged || !!permissions?.can_manage_hr, key: 'employees' },
+          { to: '/attendance', label: 'Attendance & Punch', icon: <ClipboardList size={18} />, visible: isPrivileged || !!permissions?.can_punch_clock, key: 'employees' },
+          { to: '/tips', label: 'Tips Config', icon: <DollarSign size={18} />, visible: isPrivileged || !!permissions?.can_manage_tips, key: 'tips' },
           { to: '/permissions', label: 'Security & Matrix', icon: <Shield size={18} />, visible: isPrivileged, key: 'permissions' },
-          { to: '/signin-logs', label: 'Sign-In Logs', icon: <History size={18} />, visible: permissions?.can_view_signin_logs, key: 'signin_logs' }
+          { to: '/signin-logs', label: 'Sign-In Logs', icon: <History size={18} />, visible: !!permissions?.can_view_signin_logs, key: 'signin_logs' }
         ]
       },
       {
