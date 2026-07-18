@@ -9,6 +9,7 @@ import {
   Platform,
   BackHandler,
   PanResponder,
+  Alert,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
@@ -53,6 +54,72 @@ export default function HomeScreen() {
   const { colors, statusBarStyle } = useTheme();
   const { selectedBranch, setSelectedBranch } = useBranchStore();
   const { isAuthenticated, isReady } = useAuth();
+
+  const [isEmployee, setIsEmployee] = useState(false);
+  const [isClockedIn, setIsClockedIn] = useState(false);
+  const [activeLog, setActiveLog] = useState(null);
+  const [employee, setEmployee] = useState(null);
+  const [punchActionLoading, setPunchActionLoading] = useState(false);
+
+  const fetchPunchStatus = async () => {
+    try {
+      const res = await apiFetch("/api/employee/status");
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.isEmployee) {
+          setIsEmployee(true);
+          setIsClockedIn(data.isClockedIn);
+          setActiveLog(data.activeLog);
+          setEmployee(data.employee);
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to fetch employee status:", e);
+    }
+  };
+
+  useEffect(() => {
+    fetchPunchStatus();
+  }, [isAuthenticated]);
+
+  const handlePunch = async () => {
+    if (!employee) return;
+    setPunchActionLoading(true);
+    try {
+      if (isClockedIn) {
+        // Clock Out
+        const response = await apiFetch("/api/employee/punch", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "out", notes: "" })
+        });
+        if (response.ok) {
+          Alert.alert("Success", "Clocked out successfully!");
+          await fetchPunchStatus();
+        } else {
+          Alert.alert("Error", "Failed to clock out");
+        }
+      } else {
+        // Clock In
+        const response = await apiFetch("/api/employee/punch", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "in", notes: "", branch: employee.branch || "Badaro" })
+        });
+        if (response.ok) {
+          Alert.alert("Success", "Clocked in successfully!");
+          await fetchPunchStatus();
+        } else {
+          Alert.alert("Error", "Failed to clock in");
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setPunchActionLoading(false);
+    }
+  };
+
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [menuVisible, setMenuVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -640,6 +707,57 @@ export default function HomeScreen() {
             <X size={16} color={colors.textSecondary} />
           </TouchableOpacity>
         </View>
+
+        {/* Employee Attendance Shift Status */}
+        {isEmployee && employee && (
+          <View
+            style={{
+              backgroundColor: colors.surface,
+              borderRadius: 12,
+              padding: 16,
+              marginBottom: 16,
+              borderWidth: 1,
+              borderColor: colors.separator,
+            }}
+          >
+            <Text
+              style={{
+                fontFamily: "Inter_600SemiBold",
+                fontSize: 14,
+                color: colors.text,
+                marginBottom: 8,
+              }}
+            >
+              Shift Attendance ({employee.first_name} {employee.last_name})
+            </Text>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <View>
+                <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: colors.textSecondary }}>
+                  Status: <Text style={{ fontFamily: "Inter_600SemiBold", color: isClockedIn ? "#10B981" : "#EF4444" }}>{isClockedIn ? "Clocked In" : "Clocked Out"}</Text>
+                </Text>
+                {isClockedIn && activeLog && (
+                  <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: colors.textSecondary, marginTop: 2 }}>
+                    Since: {new Date(activeLog.punch_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </Text>
+                )}
+              </View>
+              <TouchableOpacity
+                onPress={handlePunch}
+                disabled={punchActionLoading}
+                style={{
+                  backgroundColor: isClockedIn ? "#EF4444" : "#10B981",
+                  paddingHorizontal: 16,
+                  paddingVertical: 8,
+                  borderRadius: 8,
+                }}
+              >
+                <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 13, color: "white" }}>
+                  {isClockedIn ? "Punch Out" : "Punch In"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
 
         {isLoadingData ? (
           // Show inline loading indicator

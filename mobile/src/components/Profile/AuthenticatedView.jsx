@@ -23,6 +23,7 @@ import * as Haptics from "expo-haptics";
 import { phoneAuth } from "../../utils/auth/phoneAuth";
 import { useBranchStore } from "../../utils/branchStore";
 import { useQueryClient } from "@tanstack/react-query";
+import { apiFetch } from "../../utils/apiFetch";
 
 export default function AuthenticatedView({
   user,
@@ -39,6 +40,71 @@ export default function AuthenticatedView({
   const { clearBranch } = useBranchStore();
   const defaultAddress =
     addresses?.find((addr) => addr.is_default) || addresses?.[0];
+
+  const [isEmployee, setIsEmployee] = React.useState(false);
+  const [isClockedIn, setIsClockedIn] = React.useState(false);
+  const [activeLog, setActiveLog] = React.useState(null);
+  const [employee, setEmployee] = React.useState(null);
+  const [punchActionLoading, setPunchActionLoading] = React.useState(false);
+
+  const fetchPunchStatus = async () => {
+    try {
+      const res = await apiFetch("/api/employee/status");
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.isEmployee) {
+          setIsEmployee(true);
+          setIsClockedIn(data.isClockedIn);
+          setActiveLog(data.activeLog);
+          setEmployee(data.employee);
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to fetch employee status:", e);
+    }
+  };
+
+  React.useEffect(() => {
+    fetchPunchStatus();
+  }, [user]);
+
+  const handlePunch = async () => {
+    if (!employee) return;
+    setPunchActionLoading(true);
+    try {
+      if (isClockedIn) {
+        // Clock Out
+        const response = await apiFetch("/api/employee/punch", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "out", notes: "" })
+        });
+        if (response.ok) {
+          Alert.alert("Success", "Clocked out successfully!");
+          await fetchPunchStatus();
+        } else {
+          Alert.alert("Error", "Failed to clock out");
+        }
+      } else {
+        // Clock In
+        const response = await apiFetch("/api/employee/punch", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "in", notes: "", branch: employee.branch || "Badaro" })
+        });
+        if (response.ok) {
+          Alert.alert("Success", "Clocked in successfully!");
+          await fetchPunchStatus();
+        } else {
+          Alert.alert("Error", "Failed to clock in");
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setPunchActionLoading(false);
+    }
+  };
 
   const handleDeleteAccount = async () => {
     await Haptics.selectionAsync();
@@ -560,32 +626,63 @@ export default function AuthenticatedView({
           <ChevronRight size={20} color={colors.textSecondary} />
         </TouchableOpacity>
 
-        {/* Sign Out Button */}
-        <TouchableOpacity
-          onPress={onSignOut}
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 8,
-            backgroundColor: colors.surface,
-            paddingVertical: 14,
-            paddingHorizontal: 20,
-            borderRadius: 12,
-            marginTop: 4,
-          }}
-        >
-          <LogOut size={18} color={colors.text} />
-          <Text
-            style={{
-              fontFamily: "Inter_600SemiBold",
-              fontSize: 16,
-              color: colors.text,
-            }}
-          >
-            Sign Out
-          </Text>
-        </TouchableOpacity>
+        {/* Sign Out & Punch row */}
+        <View style={{ flexDirection: "row", gap: 8, marginTop: 4, width: '100%' }}>
+          {isEmployee ? (
+            <>
+              <TouchableOpacity
+                onPress={handlePunch}
+                disabled={punchActionLoading}
+                style={{
+                  flex: 1,
+                  height: 50,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: isClockedIn ? "#EF4444" : "#10B981",
+                  borderRadius: 12,
+                }}
+              >
+                <Text
+                  style={{
+                    fontFamily: "Inter_600SemiBold",
+                    fontSize: 16,
+                    color: "white",
+                    fontWeight: "bold"
+                  }}
+                >
+                  {isClockedIn ? "Out" : "In"}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={onSignOut}
+                style={{
+                  width: 50,
+                  height: 50,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: colors.surface,
+                  borderRadius: 12,
+                }}
+              >
+                <LogOut size={20} color={colors.error} />
+              </TouchableOpacity>
+            </>
+          ) : (
+            <TouchableOpacity
+              onPress={onSignOut}
+              style={{
+                flex: 1,
+                height: 50,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: colors.surface,
+                borderRadius: 12,
+              }}
+            >
+              <LogOut size={20} color={colors.error} />
+            </TouchableOpacity>
+          )}
+        </View>
 
         {/* Delete Account Button */}
         <TouchableOpacity
