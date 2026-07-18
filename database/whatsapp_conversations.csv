@@ -1,0 +1,3 @@
+"id","phone","customer_id","last_message","last_message_at","order_id","branch_id","unread_count","session_active","created_at","updated_at","branch_ids"
+"190aae30-8a78-40dd-91fc-c37538ede0df","447974904995",,"[UNSUPPORTED message]","2026-06-03T10:10:01.000Z",,,"2","true","2026-06-03T10:10:04.737Z","2026-06-03T10:10:04.737Z",""
+"a5907edd-efee-4c63-8577-ebe7b261c7ed","9613361515",,"Hello","2026-04-26T14:01:00.000Z",,,"0","true","2026-04-26T14:40:52.433Z","2026-04-29T04:36:56.814Z",""

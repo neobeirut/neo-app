@@ -1,0 +1,11 @@
+**/node_modules
+**/.expo
+**/build
+**/dist
+**/.react-router
+mobile/android
+mobile/ios
+store-mobile/android
+store-mobile/ios
+*.apk
+*.ipa

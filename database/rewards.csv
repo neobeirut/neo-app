@@ -1,0 +1,5 @@
+"id","title","description","points_cost","image_url","is_active","created_at","discount_amount","free_delivery"
+"1","Free Coffee","Any size, any blend","50","https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=400&h=300&fit=crop","true","2025-10-27T18:28:57.642Z",,"false"
+"2","Free Pastry","Choose any pastry from our selection","75","https://images.unsplash.com/photo-1509440159596-0249088772ff?w=400&h=300&fit=crop","true","2025-10-27T18:28:57.642Z",,"false"
+"3","Free Sandwich","Select from our gourmet sandwich menu","100","https://images.unsplash.com/photo-1539252554453-80ab65ce3586?w=400&h=300&fit=crop","true","2025-10-27T18:28:57.642Z",,"false"
+"9","Free Lunch Combo","Sandwich + drink + side for free","150","https://images.unsplash.com/photo-1565299624946-b28f40a0ca4b?w=400&h=300&fit=crop","false","2025-10-27T18:28:58.271Z",,"false"

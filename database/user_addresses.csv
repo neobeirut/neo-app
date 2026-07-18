@@ -1,0 +1,8 @@
+"id","user_id","address_line1","address_line2","city","state","zip_code","is_default","created_at","updated_at","latitude","longitude","building","is_deliverable","assigned_branch_id","delivery_distance_km","delivery_validated_at","company_name","label"
+"1","6","Badaro","","Beirut","Beirut Governorate",,"true","2026-01-19T13:20:51.644Z","2026-01-19T13:20:51.644Z","33.87647820","35.51728060","Uptoen","true","3","0.003","2026-01-31T11:25:39.759Z",,
+"2","6","Aramouni","","Beirut","Beirut Governorate",,"false","2026-01-19T13:23:57.531Z","2026-01-19T13:23:57.531Z","33.87647820","35.51728060","Jshshh",,,,,,
+"3","6","Bchara el khoury","Floor 1","Beirut","Beirut",,"false","2026-02-04T09:48:14.724Z","2026-02-04T09:48:14.724Z","33.89181871","35.50586137","BDD 1075","true","1","0.175","2026-02-04T09:48:14.722Z",,
+"4","11","President Elias Sarkis Street","First floor","Baabda","Baabda",,"false","2026-02-16T17:37:28.021Z","2026-02-16T17:37:28.021Z","33.83774408","35.54562144","Building aramouni","false",,,"2026-02-16T17:37:28.019Z",,
+"5","7","Bchara el khoury","Floor 1","Beirut","Beirut",,"false","2026-02-17T10:38:44.108Z","2026-02-17T10:38:44.108Z","33.89180289","35.50587450","BDD 1075","true","1","0.174","2026-02-17T10:38:44.103Z",,
+"6","13","Pharaon","Floor 5","Beirut","Beirut",,"true","2026-03-02T16:52:18.147Z","2026-03-02T16:52:18.147Z","33.89767829","35.52348443","Skyline tower","true","3","2.423","2026-03-02T16:53:20.837Z",,
+"8","3","Zero4","GF","Antelias","Mount Lebanon Governorate",,"false","2026-04-19T09:58:15.930Z","2026-04-19T09:58:15.930Z","33.91943300","35.59121990","Neo","true","2","0.009","2026-04-19T10:01:11.993Z","","Work"

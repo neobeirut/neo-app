@@ -1,0 +1,5 @@
+"id","name","email","password","branch_id","is_active","created_at","updated_at"
+"2","Freddy Khoury","freddykhoury@gmail.com","$argon2id$v=19$m=65536,t=3,p=2$Ef4IiWwCx8aPyOqzvYsZcg$4eAYB4EDJ08IaYakEiUNxYuUd5CWhi32DFvGF2m7Xmg",,"true","2026-01-10T04:43:48.306Z","2026-01-12T03:28:52.801Z"
+"4","BDD","bdd@neobeirut.com","$argon2id$v=19$m=65536,t=3,p=2$y8gnRKso4AkA2boefM43Tg$yAxkEJgEpkgcj0iWpPmbBlShm868J8EFaWDYSoW/JVs","1","true","2026-01-16T09:40:43.052Z","2026-02-15T04:37:51.542Z"
+"5","Badaro","badaro@neobeirut.com","$argon2id$v=19$m=65536,t=3,p=2$8yxj+tRAgWVHrkr/FSoxiw$KSK/t39WCpxqh5ifSmVQrA1fEwdKxa3buYIsxXrQiig","3","true","2026-01-16T11:29:23.548Z","2026-04-23T07:58:15.460Z"
+"6","zero4","zero4@neobeirut.com","$argon2id$v=19$m=65536,t=3,p=2$6snj2Jj6xRj1/kFvalcjDQ$nxRD1AKtrqkJkDwATNUxLNW9ta8Ul79xj5TZLsssFeE","2","true","2026-01-16T11:29:45.685Z","2026-04-19T08:02:37.782Z"

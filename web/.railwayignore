@@ -1,0 +1,14 @@
+.DS_Store
+.env.local
+.env.*.local
+*.log
+check-db*.js
+check-db*.mjs
+test-remote.mjs
+build/
+node_modules/
+
+.react-router
+.vitest
+.git
+tmp

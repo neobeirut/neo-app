@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "312806281873",
+    "project_id": "neo-push-b12e8",
+    "storage_bucket": "neo-push-b12e8.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:312806281873:android:3fd3c19dcaee9ccc74e530",
+        "android_client_info": {
+          "package_name": "com.neobeirut.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAz-f0s55G0IPPJU_OsGQZ068xW63na_J0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,0 +1,4 @@
+"id","name","address","phone","is_active","created_at","discount_percentage","location","image_url","delivery_radius_km","whatsapp_phone","display_order","opening_time","closing_time","delivery_start_time","delivery_end_time","orders_active"
+"1","BDD","Beirut Digital District","+96181288040","false","2025-12-30T08:09:53.752Z","0.00","33.890279457896554, 35.50544143909189","https://app.neobeirut.com/website/bdd.jpg","0.50",,"0","08:00:00","18:00:00","08:00:00","17:00:00","false"
+"2","Naccache","Zero4","+96171898641","true","2025-12-30T08:09:53.752Z","0.00","33.9194129727461, 35.591312816726074","https://app.neobeirut.com/website/zero4.jpg","5.00","+96171898641","1","09:00:00","23:59:00","09:30:00","22:00:00","true"
+"3","Badaro","Badaro Main Street","+9613501444","true","2025-12-30T08:09:53.752Z","0.00","33.87650317383626, 35.51727889403855","https://app.neobeirut.com/website/badaro.jpg","5.00",,"0","07:30:00","18:00:00","08:00:00","17:30:00","true"

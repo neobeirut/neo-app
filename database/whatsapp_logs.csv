@@ -1,0 +1,261 @@
+"id","order_id","branch_id","to_phone","message_text","status","provider_message_id","error","created_at"
+"24","22","3","+9613501444","[New Order Created]","logged",,,"2026-04-19T04:08:20.843Z"
+"25","23","3","+9613501444","[New Order Created]","logged",,,"2026-04-19T05:34:39.004Z"
+"26","24","3","+9613501444","[New Order Created]","logged",,,"2026-04-19T09:58:35.639Z"
+"27","25","2","+96171898641","[New Order Created]","logged",,,"2026-04-19T10:01:12.161Z"
+"28","25","2","+96171898641","🛵 *New Delivery Order #25*
+
+👤 Client: Freddy Khoury
+📞 Phone: +9613361515
+📍 Address: Zero4 — GF — Neo — Antelias, Mount Lebanon Governorate
+🗺 Location: https://www.google.com/maps?q=33.919433,35.5912199
+
+💰 Order Amount: $21.00
+🚚 Delivery: $3.00
+
+🕐 Placed: 13:01 – Apr 19, 2026
+
+
+
+— Néo Beirut Order System","failed",,"Infobip bad request (400). Bad request","2026-04-19T12:12:00.026Z"
+"29","26","2","+96171898641","[New Order Created]","logged",,,"2026-04-20T03:51:57.517Z"
+"30","24","3","+9613501444","🛵 *New Delivery Order #24*
+
+👤 Client: Freddy Khoury
+📞 Phone: +9613361515
+📍 Address: N/A
+🗺 Location: N/A
+
+💰 Order Amount: $4.00
+🚚 Delivery: $0.00
+
+🕐 Placed: 12:58 – Apr 19, 2026
+
+
+
+— Néo Beirut Order System","failed",,"Infobip bad request (400). Bad request | RAW_RESPONSE={""requestError"":{""serviceException"":{""messageId"":""BAD_REQUEST"",""text"":""Bad request"",""validationErrors"":{""from"":[""must not be null""]}}}}","2026-04-22T13:23:30.589Z"
+"31","26","2","+96171898641","🛵 *New Delivery Order #26*
+
+👤 Client: Freddy Khoury
+📞 Phone: +9613361515
+📍 Address: N/A
+🗺 Location: N/A
+
+💰 Order Amount: $18.00
+🚚 Delivery: $0.00
+
+🕐 Placed: 06:51 – Apr 20, 2026
+
+
+
+— Néo Beirut Order System","failed",,"Infobip bad request (400). Bad request | RAW_RESPONSE={""requestError"":{""serviceException"":{""messageId"":""BAD_REQUEST"",""text"":""Bad request"",""validationErrors"":{""from"":[""must not be null""]}}}}","2026-04-22T16:52:05.581Z"
+"32","27","2","+96171898641","🛵 *New Delivery Order #27*
+
+👤 Client: Freddy Khoury
+📞 Phone: +9613361515
+📍 Address: N/A
+🗺 Location: N/A
+
+💰 Order Amount: $4.00
+🚚 Delivery: $0.00
+
+🕐 Placed: 19:50 – Apr 22, 2026
+
+
+
+— Néo Beirut Order System","failed",,"Infobip bad request (400). Bad request | RAW_RESPONSE={""requestError"":{""serviceException"":{""messageId"":""BAD_REQUEST"",""text"":""Bad request"",""validationErrors"":{""from"":[""must not be null""]}}}}","2026-04-22T16:55:52.772Z"
+"33","24","3","+9613501444","🛵 *New Delivery Order #24*
+
+👤 Client: Freddy Khoury
+📞 Phone: +9613361515
+📍 Address: N/A
+🗺 Location: N/A
+
+💰 Order Amount: $4.00
+🚚 Delivery: $0.00
+
+🕐 Placed: 12:58 – Apr 19, 2026
+
+
+
+— Néo Beirut Order System","failed",,"Infobip bad request (400). Bad request | RAW_RESPONSE={""requestError"":{""serviceException"":{""messageId"":""BAD_REQUEST"",""text"":""Bad request"",""validationErrors"":{""from"":[""must not be null""]}}}}","2026-04-22T17:02:28.786Z"
+"34","24","3","+9613501444","🛵 *New Delivery Order #24*
+
+👤 Client: Freddy Khoury
+📞 Phone: +9613361515
+📍 Address: N/A
+🗺 Location: N/A
+
+💰 Order Amount: $4.00
+🚚 Delivery: $0.00
+
+🕐 Placed: 12:58 – Apr 19, 2026
+
+
+
+— Néo Beirut Order System","failed",,"Infobip bad request (400). Bad request | RAW_RESPONSE={""requestError"":{""serviceException"":{""messageId"":""BAD_REQUEST"",""text"":""Bad request"",""validationErrors"":{""from"":[""must not be null""]}}}}","2026-04-22T17:02:38.196Z"
+"35","25","2","+96171898641","🛵 *New Delivery Order #25*
+
+👤 Client: Freddy Khoury
+📞 Phone: +9613361515
+📍 Address: Zero4 — GF — Neo — Antelias, Mount Lebanon Governorate
+🗺 Location: https://www.google.com/maps?q=33.919433,35.5912199
+
+💰 Order Amount: $21.00
+🚚 Delivery: $3.00
+
+🕐 Placed: 13:01 – Apr 19, 2026
+
+
+
+— Néo Beirut Order System","failed",,"Infobip bad request (400). Bad request | RAW_RESPONSE={""requestError"":{""serviceException"":{""messageId"":""BAD_REQUEST"",""text"":""Bad request"",""validationErrors"":{""from"":[""must not be null""]}}}}","2026-04-22T17:05:26.343Z"
+"36","24","3","+9613501444","🛵 *New Delivery Order #24*
+
+👤 Client: Freddy Khoury
+📞 Phone: +9613361515
+📍 Address: N/A
+🗺 Location: N/A
+
+💰 Order Amount: $4.00
+🚚 Delivery: $0.00
+
+🕐 Placed: 12:58 – Apr 19, 2026
+
+
+
+— Néo Beirut Order System","failed",,"Infobip bad request (400). Bad request | RAW_RESPONSE={""requestError"":{""serviceException"":{""messageId"":""BAD_REQUEST"",""text"":""Bad request"",""validationErrors"":{""from"":[""must not be null""]}}}}","2026-04-22T17:16:16.722Z"
+"37","24","3","+9613501444","🛵 *New Delivery Order #24*
+
+👤 Client: Freddy Khoury
+📞 Phone: +9613361515
+📍 Address: N/A
+🗺 Location: N/A
+
+💰 Order Amount: $4.00
+🚚 Delivery: $0.00
+
+🕐 Placed: 12:58 – Apr 19, 2026
+
+
+
+— Néo Beirut Order System","failed",,"Infobip bad request (400). Bad request | RAW_RESPONSE={""requestError"":{""serviceException"":{""messageId"":""BAD_REQUEST"",""text"":""Bad request"",""validationErrors"":{""from"":[""must not be null""]}}}}","2026-04-22T17:19:15.736Z"
+"38","24","3","+9613501444","🛵 *New Delivery Order #24*
+
+👤 Client: Freddy Khoury
+📞 Phone: +9613361515
+📍 Address: N/A
+🗺 Location: N/A
+
+💰 Order Amount: $4.00
+🚚 Delivery: $0.00
+
+🕐 Placed: 12:58 – Apr 19, 2026
+
+
+
+— Néo Beirut Order System","failed",,"Infobip bad request (400). Bad request | RAW_RESPONSE={""requestError"":{""serviceException"":{""messageId"":""BAD_REQUEST"",""text"":""Bad request"",""validationErrors"":{""from"":[""must not be null""]}}}}","2026-04-22T17:27:32.135Z"
+"39","25","2","+96171898641","🛵 *New Delivery Order #25*
+
+👤 Client: Freddy Khoury
+📞 Phone: +9613361515
+📍 Address: Zero4 — GF — Neo — Antelias, Mount Lebanon Governorate
+🗺 Location: https://www.google.com/maps?q=33.919433,35.5912199
+
+💰 Order Amount: $21.00
+🚚 Delivery: $3.00
+
+🕐 Placed: 13:01 – Apr 19, 2026
+
+
+
+— Néo Beirut Order System","failed",,"Infobip bad request (400). Bad request | RAW_RESPONSE={""requestError"":{""serviceException"":{""messageId"":""BAD_REQUEST"",""text"":""Bad request"",""validationErrors"":{""from"":[""must not be null""]}}}}","2026-04-22T18:01:51.675Z"
+"40","27","2","+96171898641","🛵 *New Delivery Order #27*
+
+👤 Client: Freddy Khoury
+📞 Phone: +9613361515
+📍 Address: N/A
+🗺 Location: N/A
+
+💰 Order Amount: $4.00
+🚚 Delivery: $0.00
+
+🕐 Placed: 19:50 – Apr 22, 2026
+
+
+
+— Néo Beirut Order System","failed",,"Infobip bad request (400). Bad request | RAW_RESPONSE={""requestError"":{""serviceException"":{""messageId"":""BAD_REQUEST"",""text"":""Bad request"",""validationErrors"":{""from"":[""must not be null""]}}}}","2026-04-22T18:15:04.567Z"
+"41","27","2","+96171898641","🛵 *New Delivery Order #27*
+
+👤 Client: Freddy Khoury
+📞 Phone: +9613361515
+📍 Address: N/A
+🗺 Location: N/A
+
+💰 Order Amount: $4.00
+🚚 Delivery: $0.00
+
+🕐 Placed: 19:50 – Apr 22, 2026
+
+
+
+— Néo Beirut Order System","failed",,"Infobip bad request (400). Bad request | RAW_RESPONSE={""requestError"":{""serviceException"":{""messageId"":""BAD_REQUEST"",""text"":""Bad request"",""validationErrors"":{""from"":[""must not be null""]}}}}","2026-04-22T19:22:39.672Z"
+"42","27","2","+96171898641","🛵 *New Delivery Order #27*
+
+👤 Client: Freddy Khoury
+📞 Phone: +9613361515
+📍 Address: N/A
+🗺 Location: N/A
+
+💰 Order Amount: $4.00
+🚚 Delivery: $0.00
+
+🕐 Placed: 19:50 – Apr 22, 2026
+
+
+
+— Néo Beirut Order System","failed",,"Infobip bad request (400). Bad request | RAW_RESPONSE={""requestError"":{""serviceException"":{""messageId"":""BAD_REQUEST"",""text"":""Bad request"",""validationErrors"":{""from"":[""must not be null""]}}}}","2026-04-22T19:35:38.909Z"
+"43","27","2","+96171898641","🛵 *New Delivery Order #27*
+
+👤 Client: Freddy Khoury
+📞 Phone: +9613361515
+📍 Address: N/A
+🗺 Location: N/A
+
+💰 Order Amount: $4.00
+🚚 Delivery: $0.00
+
+🕐 Placed: 19:50 – Apr 22, 2026
+
+
+
+— Néo Beirut Order System","failed",,"Infobip bad request (400). Bad request | RAW_RESPONSE={""requestError"":{""serviceException"":{""messageId"":""BAD_REQUEST"",""text"":""Bad request"",""validationErrors"":{""from"":[""must not be null""]}}}}","2026-04-22T19:43:50.620Z"
+"44","27","2","+96171898641","🛵 *New Delivery Order #27*
+
+👤 Client: Freddy Khoury
+📞 Phone: +9613361515
+📍 Address: N/A
+🗺 Location: N/A
+
+💰 Order Amount: $4.00
+🚚 Delivery: $0.00
+
+🕐 Placed: 19:50 – Apr 22, 2026
+
+
+
+— Néo Beirut Order System","failed",,"Infobip bad request (400). Bad request | RAW_RESPONSE={""requestError"":{""serviceException"":{""messageId"":""BAD_REQUEST"",""text"":""Bad request"",""validationErrors"":{""from"":[""must not be null""]}}}}","2026-04-22T19:54:32.065Z"
+"45","27","2","+96171898641","🛵 *New Delivery Order #27*
+
+👤 Client: Freddy Khoury
+📞 Phone: +9613361515
+📍 Address: N/A
+🗺 Location: N/A
+
+💰 Order Amount: $4.00
+🚚 Delivery: $0.00
+
+🕐 Placed: 19:50 – Apr 22, 2026
+
+
+
+— Néo Beirut Order System","failed",,"Infobip bad request (400). Bad request | RAW_RESPONSE={""requestError"":{""serviceException"":{""messageId"":""BAD_REQUEST"",""text"":""Bad request"",""validationErrors"":{""from"":[""must not be null""]}}}}","2026-04-23T04:52:59.304Z"

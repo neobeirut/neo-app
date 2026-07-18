@@ -7,7 +7,9 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
+# Dependencies
+node_modules/
+bun.lockb
 dist
 dist-ssr
 *.local
@@ -23,5 +25,26 @@ dist-ssr
 *.sln
 *.sw?
 
-.vercel
+# Local environment files
+.env
 .env*
+
+# Build outputs
+/web/.react-router/
+/web/build/
+/mobile/.expo/
+/mobile/dist/
+/mobile/web-build/
+.vercel
+
+# Native build and key files
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.apk
+
+# System files
+.DS_Store
+Thumbs.db

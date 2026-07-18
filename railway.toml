@@ -1,0 +1,9 @@
+[build]
+builder = "nixpacks"
+installCommand = "cd web && npm install"
+buildCommand = "cd web && npm run build"
+
+[deploy]
+startCommand = "cd web && npm run start"
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
