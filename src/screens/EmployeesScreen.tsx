@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
-import { Search, Plus, Loader2, Users, ShieldAlert, KeyRound } from 'lucide-react';
+import { Search, Plus, Loader2, Users, ShieldAlert, KeyRound, ClipboardList } from 'lucide-react';
 import { decryptAES, getStoredDecryptionKey, ENCRYPTION_ENABLED } from '../utils/cryptoHelper';
 
 export default function EmployeesScreen({ user }: { user?: any }) {
@@ -9,6 +9,8 @@ export default function EmployeesScreen({ user }: { user?: any }) {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const navigate = useNavigate();
+  const roleLower = (user?.role || '').toString().toLowerCase().trim();
+  const isPrivileged = roleLower === 'admin' || roleLower === 'manager' || roleLower === 'superadmin';
 
   // Decryption Key States
   const [decryptionKey, setDecryptionKey] = useState<string>('');
@@ -112,6 +114,14 @@ export default function EmployeesScreen({ user }: { user?: any }) {
               style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', backgroundColor: '#f1f5f9', color: '#1e293b', border: '1px solid #cbd5e1', borderRadius: 'var(--radius)', fontWeight: 600, cursor: 'pointer' }}
             >
               <KeyRound size={18} /> Change Decryption Key
+            </button>
+          )}
+          {isPrivileged && (
+            <button 
+              onClick={() => navigate('/attendance')}
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', backgroundColor: '#f8fafc', color: '#0f172a', border: '1px solid #cbd5e1', borderRadius: 'var(--radius)', fontWeight: 600, cursor: 'pointer' }}
+            >
+              <ClipboardList size={18} /> Attendance & Timesheets
             </button>
           )}
           <button 

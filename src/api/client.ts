@@ -2866,5 +2866,26 @@ export const api = {
     if (error) return { success: false, error: error.message };
     return { success: true };
   },
+
+  getEmployeeByUserId: async (userId: string) => {
+    const { data, error } = await supabase
+      .from('employees')
+      .select('*')
+      .eq('app_user_id', userId)
+      .maybeSingle();
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  getActivePunchLog: async (employeeId: string) => {
+    const { data, error } = await supabase
+      .from('employee_attendance')
+      .select('*')
+      .eq('employee_id', employeeId)
+      .is('punch_out', null)
+      .maybeSingle();
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
 };
 

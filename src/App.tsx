@@ -13,7 +13,7 @@ import TipsDistributionScreen from './screens/TipsDistributionScreen';
 import PermissionsScreen from './screens/PermissionsScreen';
 import SOPsScreen from './screens/SOPsScreen';
 import SOPFormScreen from './screens/SOPFormScreen';
-import { LayoutDashboard, ChefHat, Users, LogOut, DollarSign, Shield, BookOpen, TrendingUp, MessageSquare, Newspaper, AlertTriangle, Sparkles, Trash2, History, Coins, Truck, ShoppingBag, Calendar, ClipboardList, Package, CheckSquare, Receipt, Briefcase, Store, ChevronDown, ChevronRight } from 'lucide-react';
+import { LayoutDashboard, ChefHat, Users, LogOut, DollarSign, Shield, BookOpen, TrendingUp, MessageSquare, Newspaper, AlertTriangle, Sparkles, Trash2, History, Coins, Truck, ShoppingBag, Calendar, ClipboardList, Package, CheckSquare, Receipt, Briefcase, Store, ChevronDown, ChevronRight, Loader2, Clock } from 'lucide-react';
 import { api } from './api/client';
 import FinanceDashboardScreen from './screens/FinanceDashboardScreen';
 import PaymentDetailsScreen from './screens/PaymentDetailsScreen';
@@ -45,10 +45,11 @@ import BranchManagementScreen from './screens/BranchManagementScreen';
 import ReelCreditScreen from './screens/ReelCreditScreen';
 import SuperAdminScreen from './screens/SuperAdminScreen';
 
-  function Sidebar({ onLogout, permissions, user }: { onLogout: () => void; permissions: any; user: any }) {
+  function Sidebar({ onLogout, permissions, user, employee, isClockedIn, activeLog, refreshPunchStatus }: { onLogout: () => void; permissions: any; user: any; employee: any; isClockedIn: boolean; activeLog: any; refreshPunchStatus: () => Promise<void> }) {
     const location = useLocation();
     const roleLower = (user?.role || '').toString().toLowerCase().trim();
     const isPrivileged = roleLower === 'admin' || roleLower === 'manager' || roleLower === 'superadmin';
+    const canPunch = isPrivileged || !!permissions?.can_punch_clock;
 
     const [collapsedGroups, setCollapsedGroups] = useState<{ [key: string]: boolean }>({
       Operations: false,
@@ -58,6 +59,56 @@ import SuperAdminScreen from './screens/SuperAdminScreen';
       Analytics: false,
       Administration: false,
     });
+
+    const [punchActionLoading, setPunchActionLoading] = useState(false);
+
+    const handlePunch = async () => {
+      if (!employee) {
+        alert('No linked employee profile found for your account. Please contact an admin.');
+        return;
+      }
+
+      setPunchActionLoading(true);
+      try {
+        if (isClockedIn && activeLog) {
+          // Clock Out
+          const notes = prompt('Enter clock out notes (optional):') || '';
+          const updatedLog = {
+            id: activeLog.id,
+            punch_out: new Date().toISOString(),
+            punch_out_notes: notes || null
+          };
+          const res = await api.saveAttendanceLog(updatedLog);
+          if (res.success) {
+            alert('Clocked out successfully!');
+            await refreshPunchStatus();
+          } else {
+            alert(res.error || 'Failed to clock out');
+          }
+        } else {
+          // Clock In
+          const notes = prompt('Enter clock in notes (optional):') || '';
+          const newLog = {
+            employee_id: employee.employee_id,
+            branch: user.branch && user.branch !== 'All' ? user.branch : (employee.branch || 'Badaro'),
+            punch_in: new Date().toISOString(),
+            punch_in_notes: notes || null,
+            device_id: 'Web Portal'
+          };
+          const res = await api.saveAttendanceLog(newLog);
+          if (res.success) {
+            alert('Clocked in successfully!');
+            await refreshPunchStatus();
+          } else {
+            alert(res.error || 'Failed to clock in');
+          }
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setPunchActionLoading(false);
+      }
+    };
 
     const toggleGroup = (name: string) => {
       setCollapsedGroups(prev => ({
@@ -71,15 +122,6 @@ import SuperAdminScreen from './screens/SuperAdminScreen';
       if (!enabledSections) return true; // Default to enabled if not configured
       return enabledSections.includes(key);
     };
-
-    console.log('[Sidebar Navigation DEBUG]', {
-      userRole: user?.role,
-      roleLower,
-      isPrivileged,
-      canPunchClock: permissions?.can_punch_clock,
-      isEmployeesEnabled: isSectionEnabled('employees'),
-      visibleAttendance: isPrivileged || !!permissions?.can_punch_clock
-    });
 
     const menuGroups: any[] = [
       {
@@ -115,7 +157,6 @@ import SuperAdminScreen from './screens/SuperAdminScreen';
         name: 'People',
         items: [
           { to: '/employees', label: 'Employees', icon: <Users size={18} />, visible: isPrivileged || !!permissions?.can_manage_hr, key: 'employees' },
-          { to: '/attendance', label: 'Attendance & Punch', icon: <ClipboardList size={18} />, visible: isPrivileged || !!permissions?.can_punch_clock, key: 'attendance' },
           { to: '/tips', label: 'Tips Config', icon: <DollarSign size={18} />, visible: isPrivileged || !!permissions?.can_manage_tips, key: 'tips' },
           { to: '/permissions', label: 'Security & Matrix', icon: <Shield size={18} />, visible: isPrivileged, key: 'permissions' },
           { to: '/signin-logs', label: 'Sign-In Logs', icon: <History size={18} />, visible: !!permissions?.can_view_signin_logs, key: 'signin_logs' }
@@ -236,9 +277,50 @@ import SuperAdminScreen from './screens/SuperAdminScreen';
             );
           })}
         </div>
-        <div className="nav-links" style={{ borderTop: '1px solid var(--border)' }}>
-          <button onClick={onLogout} className="nav-link" style={{ border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', textAlign: 'left', color: 'var(--danger)', width: '100%' }}>
-            <LogOut size={20} /> Logout
+        <div style={{ borderTop: '1px solid var(--border)', padding: '16px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+          {canPunch && (
+            <button 
+              onClick={handlePunch}
+              disabled={punchActionLoading}
+              title={isClockedIn ? 'Punch Out' : 'Punch In'}
+              style={{
+                flex: 1,
+                height: '40px',
+                borderRadius: '8px',
+                border: 'none',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                backgroundColor: isClockedIn ? '#ef4444' : '#10b981',
+                color: 'white',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+                transition: 'all 0.2s'
+              }}
+            >
+              {punchActionLoading ? <Loader2 className="spin" size={16} /> : <Clock size={16} />}
+              {isClockedIn ? 'Out' : 'In'}
+            </button>
+          )}
+          <button 
+            onClick={onLogout} 
+            title="Logout"
+            style={{ 
+              width: '40px',
+              height: '40px',
+              borderRadius: '8px',
+              border: '1px solid var(--border)',
+              backgroundColor: 'transparent',
+              color: 'var(--danger)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              transition: 'all 0.2s'
+            }}
+          >
+            <LogOut size={20} />
           </button>
         </div>
       </div>
@@ -266,6 +348,29 @@ function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () 
     can_manage_tasks: isPrivileged
   });
   const [branchesList, setBranchesList] = useState<string[]>([]);
+  const [employee, setEmployee] = useState<any>(null);
+  const [isClockedIn, setIsClockedIn] = useState(false);
+  const [activeLog, setActiveLog] = useState<any>(null);
+
+  const refreshPunchStatus = async () => {
+    if (!user?.id) return;
+    const empRes = await api.getEmployeeByUserId(user.id);
+    if (empRes.success && empRes.data) {
+      setEmployee(empRes.data);
+      const logRes = await api.getActivePunchLog(empRes.data.employee_id);
+      if (logRes.success && logRes.data) {
+        setIsClockedIn(true);
+        setActiveLog(logRes.data);
+      } else {
+        setIsClockedIn(false);
+        setActiveLog(null);
+      }
+    }
+  };
+
+  useEffect(() => {
+    refreshPunchStatus();
+  }, [user]);
 
   useEffect(() => {
     api.getBranchesList().then(res => {
@@ -285,7 +390,15 @@ function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () 
 
   return (
     <div className="app-layout">
-      <Sidebar onLogout={onLogout} permissions={permissions} user={user} />
+      <Sidebar 
+        onLogout={onLogout} 
+        permissions={permissions} 
+        user={user} 
+        employee={employee}
+        isClockedIn={isClockedIn}
+        activeLog={activeLog}
+        refreshPunchStatus={refreshPunchStatus}
+      />
       <div className="main-content">
         <div className="top-bar">
           <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
@@ -312,7 +425,19 @@ function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () 
         </div>
         <div className="content-area">
           <Routes>
-            <Route path="/" element={<DashboardScreen user={user} permissions={permissions} />} />
+            <Route 
+              path="/" 
+              element={
+                <DashboardScreen 
+                  user={user} 
+                  permissions={permissions} 
+                  employee={employee}
+                  isClockedIn={isClockedIn}
+                  activeLog={activeLog}
+                  refreshPunchStatus={refreshPunchStatus}
+                />
+              } 
+            />
             {isSectionEnabled('orders') && <Route path="/orders" element={<OrdersScreen user={user} />} />}
             {isSectionEnabled('purchasing') && <Route path="/purchasing" element={<PurchasingScreen user={user} />} />}
             {isSectionEnabled('catalog') && <Route path="/catalog" element={<ItemCatalogScreen user={user} />} />}
