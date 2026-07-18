@@ -48,7 +48,6 @@ export default function LoginScreen({ onLogin }: { onLogin: (user: any) => void 
   const [loading, setLoading] = useState(false);
 
   // Geolocation & Fallback modal states
-  const [gpsChecking, setGpsChecking] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [allowedBranches, setAllowedBranches] = useState<any[]>([]);
   const [tempUser, setTempUser] = useState<any>(null);
@@ -114,14 +113,11 @@ export default function LoginScreen({ onLogin }: { onLogin: (user: any) => void 
         }
 
         // 4. Check Geolocation
-        setGpsChecking(true);
         let userLocation: GeolocationPosition | null = null;
         try {
-          userLocation = await fetchLocationWithTimeout(5000);
+          userLocation = await fetchLocationWithTimeout(1500);
         } catch (err) {
           console.warn('Geolocation check failed or timed out:', err);
-        } finally {
-          setGpsChecking(false);
         }
 
         // 5. Match position against branches
@@ -149,15 +145,10 @@ export default function LoginScreen({ onLogin }: { onLogin: (user: any) => void 
           alert(`📍 Geolocation verified. Auto-locking to branch: ${matchedBranch.name}`);
           completeLogin(res.data, matchedBranch.name, true);
         } else {
-          if (userAllowedBranches.length === 1) {
-            const singleBranch = userAllowedBranches[0];
-            alert(`Location unverified. Logging in manually to branch: ${singleBranch.name}`);
-            completeLogin(res.data, singleBranch.name, false);
-          } else {
-            setTempUser(res.data);
-            setAllowedBranches(userAllowedBranches);
-            setShowModal(true);
-          }
+          // Location unverified: always display selection popup modal
+          setTempUser(res.data);
+          setAllowedBranches(userAllowedBranches);
+          setShowModal(true);
         }
       } else {
         setLoading(false);
@@ -181,36 +172,29 @@ export default function LoginScreen({ onLogin }: { onLogin: (user: any) => void 
           DB Ref: {import.meta.env.VITE_SUPABASE_URL ? import.meta.env.VITE_SUPABASE_URL.split('.')[0].split('//')[1] : 'dybtzulafvtyfuqwsvkk (Default)'}
         </p>
         
-        {gpsChecking ? (
-          <div style={{ padding: '20px 0' }}>
-            <p style={{ color: 'var(--text-muted)', marginBottom: '8px' }}>Verifying your location...</p>
-            <div style={{ border: '4px solid #f3f3f3', borderTop: '4px solid var(--primary)', borderRadius: '50%', width: '30px', height: '30px', margin: 'auto', animation: 'spin 1s linear infinite' }} />
-          </div>
-        ) : (
-          <form onSubmit={handleLogin}>
-            <input
-              type="email"
-              className="auth-input"
-              placeholder="Email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              autoFocus
-              disabled={loading}
-            />
-            <input
-              type="password"
-              className="auth-input"
-              placeholder="Password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              disabled={loading}
-            />
-            {error && <p style={{ color: 'var(--danger)', marginBottom: '16px', fontSize: '14px' }}>{error}</p>}
-            <button type="submit" className="auth-btn" disabled={loading}>
-              {loading ? 'Authenticating...' : 'Login'}
-            </button>
-          </form>
-        )}
+        <form onSubmit={handleLogin}>
+          <input
+            type="email"
+            className="auth-input"
+            placeholder="Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            autoFocus
+            disabled={loading}
+          />
+          <input
+            type="password"
+            className="auth-input"
+            placeholder="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            disabled={loading}
+          />
+          {error && <p style={{ color: 'var(--danger)', marginBottom: '16px', fontSize: '14px' }}>{error}</p>}
+          <button type="submit" className="auth-btn" disabled={loading}>
+            {loading ? 'Authenticating...' : 'Login'}
+          </button>
+        </form>
       </div>
 
       {showModal && (
