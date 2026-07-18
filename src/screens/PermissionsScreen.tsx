@@ -28,7 +28,6 @@ const DEFAULT_PERMISSIONS = {
   can_manage_reservations: false,
   can_access_settings: false,
   can_manage_daily_cash: false,
-  can_manage_missing_items: false,
   can_view_86: false,
   can_manage_86: false,
   can_view_complaints: false,
@@ -38,6 +37,13 @@ const DEFAULT_PERMISSIONS = {
   can_manage_tasks: false,
   can_view_voids: false,
   can_manage_voids: false,
+  can_punch_clock: false,
+  can_view_finance_dashboard: false,
+  can_view_signin_logs: false,
+  can_view_client_orders: false,
+  can_manage_client_orders: false,
+  can_view_client_reports: false,
+  can_manage_attendance: false,
   allowed_departments: ''
 };
 
@@ -116,6 +122,7 @@ const CATEGORIES = [
     icon: <Briefcase size={18} style={{ color: '#6f42c1' }} />,
     permissions: [
       { key: 'can_manage_hr', label: 'Manage Payroll' },
+      { key: 'can_punch_clock', label: 'Punch In / Out (Attendance)' },
     ]
   },
   {
@@ -300,8 +307,8 @@ export default function PermissionsScreen({ user, onUpdateUser }: { user?: UserP
         api.getDepartmentsList(),
         api.getAllUsers(),
         api.getGlobalNotificationSettings(),
-        api.getExchangeRate(),
-        api.getVatRate()
+        api.getExchangeRate(user?.restaurant_id),
+        api.getVatRate(user?.restaurant_id)
       ]);
       
       if (permRes.success && permRes.data) {
@@ -357,10 +364,7 @@ export default function PermissionsScreen({ user, onUpdateUser }: { user?: UserP
   const handleSaveSystemSettings = async () => {
     setSavingState('saving');
     try {
-      const promises: Promise<{ success: boolean; error?: string; rate?: number; data?: unknown }>[] = [
-        api.updateExchangeRate(exchangeRate),
-        api.updateVatRate(vatRate)
-      ];
+      const promises: Promise<{ success: boolean; error?: string; rate?: number; data?: unknown }>[] = [];
 
       const restId = user?.restaurant_id;
       if (restId) {
@@ -368,9 +372,16 @@ export default function PermissionsScreen({ user, onUpdateUser }: { user?: UserP
         const currentSettings = (restRes.success && restRes.data) ? (restRes.data.settings || {}) : (user.restaurants?.settings || {});
         const updatedSettings = {
           ...currentSettings,
-          is_vat_subscribed: isVatSubscribed
+          is_vat_subscribed: isVatSubscribed,
+          exchange_rate: exchangeRate,
+          vat_rate: vatRate
         };
         promises.push(api.updateRestaurantSettings(restId, updatedSettings));
+      } else {
+        promises.push(
+          api.updateExchangeRate(exchangeRate),
+          api.updateVatRate(vatRate)
+        );
       }
 
       const results = await Promise.all(promises);
@@ -1117,7 +1128,7 @@ export default function PermissionsScreen({ user, onUpdateUser }: { user?: UserP
                   <div className="global-header-card" style={{ background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', marginTop: '0', marginBottom: '20px' }}>
                     <h3>System Parameter Settings</h3>
                     <p>
-                      Configure global business constants like LBP exchange rate and Lebanese VAT percentage.
+                      Configure restaurant-specific business constants like LBP exchange rate and Lebanese VAT percentage.
                     </p>
                     
                     <div style={{ display: 'flex', gap: '20px', marginTop: '15px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
