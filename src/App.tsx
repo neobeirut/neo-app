@@ -6,6 +6,7 @@ import MenuManualScreen from './screens/MenuManualScreen';
 import MenuRecipeFormScreen from './screens/MenuRecipeFormScreen';
 import EmployeesScreen from './screens/EmployeesScreen';
 import EmployeeFormScreen from './screens/EmployeeFormScreen';
+import AttendanceDashboardScreen from './screens/AttendanceDashboardScreen';
 import TipsScreen from './screens/TipsScreen';
 import TipsCreateScreen from './screens/TipsCreateScreen';
 import TipsDistributionScreen from './screens/TipsDistributionScreen';
@@ -27,7 +28,6 @@ import ChefSpecialsScreen from './screens/ChefSpecialsScreen';
 import WasteScreen from './screens/WasteScreen';
 import { sessionLogger } from './utils/sessionLogger';
 import SignInLogsScreen from './screens/SignInLogsScreen';
-import DailyShiftSubmissionsScreen from './screens/DailyShiftSubmissionsScreen';
 import PurchasingScreen from './screens/PurchasingScreen';
 import OrdersScreen from './screens/OrdersScreen';
 import ReservationsScreen from './screens/ReservationsScreen';
@@ -39,6 +39,7 @@ import ClientOrdersScreen from './screens/ClientOrdersScreen';
 import ClientOrderFormScreen from './screens/ClientOrderFormScreen';
 import ClientOrdersReportsScreen from './screens/ClientOrdersReportsScreen';
 import SuppliersScreen from './screens/SuppliersScreen';
+import WalletsScreen from './screens/WalletsScreen';
 import SupplierPriceIntelligenceScreen from './screens/SupplierPriceIntelligenceScreen';
 import BranchManagementScreen from './screens/BranchManagementScreen';
 import ReelCreditScreen from './screens/ReelCreditScreen';
@@ -46,6 +47,8 @@ import SuperAdminScreen from './screens/SuperAdminScreen';
 
   function Sidebar({ onLogout, permissions, user }: { onLogout: () => void; permissions: any; user: any }) {
     const location = useLocation();
+    const roleLower = user.role?.toLowerCase();
+    const isPrivileged = roleLower === 'admin' || roleLower === 'manager' || roleLower === 'superadmin';
 
     const [collapsedGroups, setCollapsedGroups] = useState<{ [key: string]: boolean }>({
       Operations: false,
@@ -83,7 +86,6 @@ import SuperAdminScreen from './screens/SuperAdminScreen';
           { to: '/client-orders', label: 'Client Orders', icon: <Briefcase size={18} />, visible: permissions?.can_view_client_orders, key: 'client_orders' },
           { to: '/reservations', label: 'Table Reservations', icon: <Calendar size={18} />, key: 'reservations' },
           { to: '/checklists', label: 'Daily Checklists', icon: <ClipboardList size={18} />, key: 'checklists' },
-          { to: '/cash', label: 'Daily Shift Submissions', icon: <Coins size={18} />, visible: user.role?.toLowerCase() === 'admin' || user.role?.toLowerCase() === 'superadmin', key: 'shift_submissions' },
           { to: '/tasks', label: 'Task Manager', icon: <CheckSquare size={18} />, visible: permissions?.can_manage_tasks, key: 'tasks' }
         ]
       },
@@ -103,9 +105,10 @@ import SuperAdminScreen from './screens/SuperAdminScreen';
       {
         name: 'People',
         items: [
-          { to: '/employees', label: 'Employees', icon: <Users size={18} />, key: 'employees' },
-          { to: '/tips', label: 'Tips Config', icon: <DollarSign size={18} />, key: 'tips' },
-          { to: '/permissions', label: 'Security & Matrix', icon: <Shield size={18} />, key: 'permissions' },
+          { to: '/employees', label: 'Employees', icon: <Users size={18} />, visible: isPrivileged || permissions?.can_manage_hr, key: 'employees' },
+          { to: '/attendance', label: 'Attendance & Punch', icon: <ClipboardList size={18} />, visible: isPrivileged || permissions?.can_punch_clock, key: 'employees' },
+          { to: '/tips', label: 'Tips Config', icon: <DollarSign size={18} />, visible: isPrivileged || permissions?.can_manage_tips, key: 'tips' },
+          { to: '/permissions', label: 'Security & Matrix', icon: <Shield size={18} />, visible: isPrivileged, key: 'permissions' },
           { to: '/signin-logs', label: 'Sign-In Logs', icon: <History size={18} />, visible: permissions?.can_view_signin_logs, key: 'signin_logs' }
         ]
       },
@@ -128,10 +131,11 @@ import SuperAdminScreen from './screens/SuperAdminScreen';
         name: 'Administration',
         items: [
           { to: '/super-admin', label: 'Super Admin', icon: <Shield size={18} />, visible: user.role?.toLowerCase() === 'superadmin' },
-          { to: '/branch-management', label: 'Branch Management', icon: <Store size={18} />, key: 'branch_management' },
-          { to: '/news', label: 'News Management', icon: <Newspaper size={18} />, key: 'news' },
-          { to: '/sops', label: 'SOPs & Training', icon: <BookOpen size={18} />, key: 'sops' },
-          { to: '/menu', label: 'Menu Manual', icon: <ChefHat size={18} />, key: 'menu' }
+          { to: '/branch-management', label: 'Branch Management', icon: <Store size={18} />, visible: isPrivileged, key: 'branch_management' },
+          { to: '/wallets', label: 'Manage E-Wallets', icon: <Coins size={18} />, visible: isPrivileged, key: 'branch_management' },
+          { to: '/news', label: 'News Management', icon: <Newspaper size={18} />, visible: isPrivileged, key: 'news' },
+          { to: '/sops', label: 'SOPs & Training', icon: <BookOpen size={18} />, visible: isPrivileged, key: 'sops' },
+          { to: '/menu', label: 'Menu Manual', icon: <ChefHat size={18} />, visible: isPrivileged, key: 'menu' }
         ]
       }
     ];
@@ -305,7 +309,6 @@ function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () 
             {isSectionEnabled('catalog') && <Route path="/catalog" element={<ItemCatalogScreen user={user} />} />}
             {isSectionEnabled('waste') && <Route path="/waste" element={<WasteScreen user={user} />} />}
             {isSectionEnabled('reservations') && <Route path="/reservations" element={<ReservationsScreen user={user} />} />}
-            {isSectionEnabled('shift_submissions') && <Route path="/cash" element={<DailyShiftSubmissionsScreen user={user} />} />}
             {isSectionEnabled('voids') && (
               <Route 
                 path="/voids" 
@@ -330,6 +333,7 @@ function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () 
                 <Route path="/employees" element={<EmployeesScreen user={user} />} />
                 <Route path="/employees/new" element={<EmployeeFormScreen user={user} />} />
                 <Route path="/employees/edit/:id" element={<EmployeeFormScreen user={user} />} />
+                <Route path="/attendance" element={<AttendanceDashboardScreen user={user} permissions={permissions} />} />
               </>
             )}
             {isSectionEnabled('tips') && (
@@ -399,6 +403,7 @@ function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () 
               </>
             )}
             {isSectionEnabled('suppliers') && <Route path="/suppliers" element={<SuppliersScreen />} />}
+            {isSectionEnabled('branch_management') && <Route path="/wallets" element={<WalletsScreen user={user} />} />}
             {isSectionEnabled('price_intelligence') && <Route path="/price-intelligence" element={<SupplierPriceIntelligenceScreen user={user} />} />}
             {isSectionEnabled('inventory_reporting') && (
               <Route 
@@ -473,9 +478,9 @@ function App() {
       document.title = `${user.restaurants.name} Admin` || "NÉO Admin";
     } else {
       // Revert to default
-      document.documentElement.style.setProperty('--primary', '#1e5c4f');
-      document.documentElement.style.setProperty('--primary-hover', '#154238');
-      document.title = import.meta.env.VITE_APP_NAME || "NÉO Admin";
+      document.documentElement.style.setProperty('--primary', '#2563eb');
+      document.documentElement.style.setProperty('--primary-hover', '#1d4ed8');
+      document.title = import.meta.env.VITE_APP_NAME || "FLOW Admin";
     }
   }, [user]);
 
