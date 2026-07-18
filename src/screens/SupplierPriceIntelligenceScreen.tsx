@@ -364,7 +364,7 @@ export default function SupplierPriceIntelligenceScreen({ user }: { user?: any }
       const suppliersRes = await api.getSuppliers();
       const requestsRes = await api.getPurchasingRequests();
       const reqItemsRes = await api.getAllPurchasingRequestItems();
-      const vatRateRes = await api.getVatRate();
+      const vatRateRes = await api.getVatRate(user?.restaurant_id);
 
       const itemsList: CatalogItem[] = (itemsRes.success && itemsRes.data) ? (itemsRes.data as CatalogItem[]) : [];
       const suppliersList: Supplier[] = (suppliersRes.success && suppliersRes.data) ? (suppliersRes.data as Supplier[]) : [];

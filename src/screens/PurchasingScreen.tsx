@@ -75,7 +75,7 @@ export default function PurchasingScreen({ user }: { user: any }) {
         api.getDepartmentsList(),
         api.getSuppliers(),
         api.getAllCatalogItems(),
-        api.getVatRate()
+        api.getVatRate(user?.restaurant_id)
       ]);
       if (branchRes.success && branchRes.data) {
         setBranches(branchRes.data.map((b: any) => typeof b === 'string' ? b : b.name));

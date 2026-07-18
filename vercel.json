@@ -1,9 +1,14 @@
 {
-  "version": 2,
-  "builds": [
-    { "src": "package.json", "use": "@vercel/static-build", "config": { "distDir": "dist" } }
+  "cleanUrls": true,
+  "redirects": [
+    {
+      "source": "/admin",
+      "destination": "/admin/",
+      "permanent": true
+    }
   ],
   "routes": [
-    { "src": "/(?!assets/.*)", "dest": "/index.html" }
+    { "src": "/admin/(.*)", "dest": "/admin/index.html" },
+    { "src": "/(?!assets/.*|admin/.*).*", "dest": "/index.html" }
   ]
 }

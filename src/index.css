@@ -1,6 +1,6 @@
 :root {
-  --primary: #1e5c4f;
-  --primary-hover: #154238;
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
   --secondary: #64748b;
   --success: #10b981;
   --danger: #ef4444;
@@ -32,7 +32,7 @@ body {
   align-items: center;
   justify-content: center;
   height: 100vh;
-  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  background: linear-gradient(135deg, #e0e7ff 0%, #f3e8ff 100%);
 }
 
 .auth-card {
@@ -75,24 +75,27 @@ body {
 .auth-input:focus {
   outline: none;
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(30, 92, 79, 0.15);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
 }
 
 .auth-btn {
   width: 100%;
   padding: 12px;
-  background-color: var(--primary);
+  background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
   color: white;
   border: none;
   border-radius: var(--radius);
   font-size: 16px;
   font-weight: 600;
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
 }
 
 .auth-btn:hover {
-  background-color: var(--primary-hover);
+  background: linear-gradient(135deg, #1d4ed8 0%, #6d28d9 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.3);
 }
 
 /* Dashboard Layout */
@@ -412,11 +415,11 @@ button[style*="var(--success)"],
 }
 
 .web-modal-item-btn:hover {
-  background: #1e5c4f;
+  background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
   color: #ffffff;
-  border-color: #1e5c4f;
+  border-color: transparent;
   transform: translateY(-2px);
-  box-shadow: 0 4px 6px -1px rgba(30, 92, 79, 0.2);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
 }
 
 .web-modal-cancel-btn {
@@ -473,7 +476,7 @@ button[style*="var(--success)"],
 }
 
 .admin-branch-select:focus {
-  border-color: #1e5c4f;
+  border-color: var(--primary);
 }
 
 @keyframes fadeIn {

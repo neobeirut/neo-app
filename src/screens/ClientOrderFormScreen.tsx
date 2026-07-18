@@ -246,7 +246,7 @@ export default function ClientOrderFormScreen({ user, permissions, onUpdateUser 
 
   const loadVatRate = async () => {
     try {
-      const res = await api.getVatRate();
+      const res = await api.getVatRate(user?.restaurant_id);
       if (res.success && res.rate !== undefined) {
         setVatRate(res.rate);
       }

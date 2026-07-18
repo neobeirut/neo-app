@@ -505,13 +505,13 @@ export default function DashboardScreen({ user, permissions }: DashboardScreenPr
                 </div>
               </div>
 
-              {/* Card 7: Daily Cash Status */}
+              {/* Card 7: Daily Shift Submissions */}
               <div
                 className={`kpi-card ${getStatusClass(kpis.dailyCash.status)}`}
-                onClick={() => navigate('/cash')}
+                onClick={() => navigate('/finance')}
               >
                 <div className="kpi-card-header">
-                  <span className="kpi-card-title">Daily Cash Status</span>
+                  <span className="kpi-card-title">Daily Shift Submissions</span>
                   <div className="kpi-card-icon-wrapper">
                     <Coins size={22} />
                   </div>

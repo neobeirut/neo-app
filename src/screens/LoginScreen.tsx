@@ -173,9 +173,11 @@ export default function LoginScreen({ onLogin }: { onLogin: (user: any) => void 
   return (
     <div className="auth-container">
       <div className="auth-card">
-        <h1 className="auth-title">{import.meta.env.VITE_APP_NAME || "NÉO Admin"}</h1>
-        <p className="auth-subtitle">Secure Web Portal</p>
-        <p style={{ fontSize: '10px', color: 'gray', textAlign: 'center', marginTop: '-10px', marginBottom: '15px' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '16px' }}>
+          <img src="/flow-logo.png" alt="Flow Logo" style={{ height: '48px', objectFit: 'contain' }} />
+        </div>
+        <p className="auth-subtitle" style={{ marginTop: '0', marginBottom: '16px' }}>Secure Web Portal</p>
+        <p style={{ fontSize: '10px', color: 'var(--text-muted)', textAlign: 'center', marginTop: '-10px', marginBottom: '20px' }}>
           DB Ref: {import.meta.env.VITE_SUPABASE_URL ? import.meta.env.VITE_SUPABASE_URL.split('.')[0].split('//')[1] : 'dybtzulafvtyfuqwsvkk (Default)'}
         </p>
         

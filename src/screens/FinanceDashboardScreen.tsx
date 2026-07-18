@@ -25,6 +25,7 @@ export default function FinanceDashboardScreen({ user }: FinanceDashboardScreenP
   const [loading, setLoading] = useState(true);
   const [shiftData, setShiftData] = useState<any[]>([]);
   const [paymentData, setPaymentData] = useState<any[]>([]);
+  const [walletData, setWalletData] = useState<any[]>([]);
   const [reelCreditMap, setReelCreditMap] = useState<Record<string, number>>({});
   const [reelShiftDefs, setReelShiftDefs] = useState<any[]>([]);
   const [branches, setBranches] = useState<string[]>([]);
@@ -141,9 +142,10 @@ export default function FinanceDashboardScreen({ user }: FinanceDashboardScreenP
 
     setErrorMsg(null);
     if (activeTab === 'overview' || activeTab === 'available-cash') {
-      const [shiftRes, payRes] = await Promise.all([
+      const [shiftRes, payRes, walletRes] = await Promise.all([
         api.getShiftCashLogs({ startDate: fromDate, endDate: toDate, branch: branchFilter }),
-        api.getAllDailyPayments({ startDate: fromDate, endDate: toDate, branch: branchFilter })
+        api.getAllDailyPayments({ startDate: fromDate, endDate: toDate, branch: branchFilter }),
+        api.getShiftCashWalletsLogs({ startDate: fromDate, endDate: toDate, branch: branchFilter })
       ]);
 
       if (shiftRes.success && shiftRes.data) {
@@ -161,6 +163,9 @@ export default function FinanceDashboardScreen({ user }: FinanceDashboardScreenP
       }
       if (payRes.success && payRes.data) {
         setPaymentData(payRes.data);
+      }
+      if (walletRes.success && walletRes.data) {
+        setWalletData(walletRes.data);
       }
     } else {
       // Comparison tab needs 14 days ending on anchorDate
@@ -194,12 +199,24 @@ export default function FinanceDashboardScreen({ user }: FinanceDashboardScreenP
     let totalShortagesUsd = 0;
     let totalCashOutUsd = 0;
     let totalSupplierUsd = 0;
+    let totalWalletsUsd = 0;
 
     // Shift Performance Breakdown
     let amSalesUsd = 0;
     let pmSalesUsd = 0;
     let amShortagesUsd = 0;
     let pmShortagesUsd = 0;
+
+    const walletMap: Record<string, number> = {};
+    walletData.forEach(w => {
+      const shiftId = w.shift_cash_id;
+      if (!walletMap[shiftId]) {
+        walletMap[shiftId] = 0;
+      }
+      const rate = num(w.shift_cash?.rate) || 90000;
+      const usdAmount = num(w.amount_usd) + (num(w.amount_lbp) / rate);
+      walletMap[shiftId] += usdAmount;
+    });
 
     // Branch Ranking Map
     const branchMap: Record<string, { sales: number; card: number; cash: number; shortages: number }> = {};
@@ -257,6 +274,10 @@ export default function FinanceDashboardScreen({ user }: FinanceDashboardScreenP
       totalCardUsd += amCardUsd + pmCardUsd;
       totalCashUsd += amCashUsd + pmCashUsd;
       totalCashOutUsd += amCashOutUsd + pmCashOutUsd;
+      
+      const amWalletUsd = am ? (walletMap[am.id] || 0) : 0;
+      const pmWalletUsd = pm ? (walletMap[pm.id] || 0) : 0;
+      totalWalletsUsd += amWalletUsd + pmWalletUsd;
 
       let daySalesUsd = 0;
       let dayOnAccUsd = 0;
@@ -356,6 +377,7 @@ export default function FinanceDashboardScreen({ user }: FinanceDashboardScreenP
       totalCashOutUsd,
       totalSupplierUsd,
       totalUnpaidUsd,
+      totalWalletsUsd,
       amSalesUsd,
       pmSalesUsd,
       amShortagesUsd,
@@ -366,7 +388,7 @@ export default function FinanceDashboardScreen({ user }: FinanceDashboardScreenP
       dayAverages,
       branchList
     };
-  }, [shiftData, paymentData]);
+  }, [shiftData, paymentData, walletData]);
 
   // Top 5 worst shortages
   const topShortages = useMemo(() => {
@@ -460,14 +482,16 @@ export default function FinanceDashboardScreen({ user }: FinanceDashboardScreenP
   }, [shiftData, anchorDate, activeTab]);
 
   // Payment Mix Computations
-  const calculatedCashUsd = Math.max(0, overviewMetrics.totalSalesUsd - overviewMetrics.totalCardUsd - overviewMetrics.totalOnAccountUsd);
-  const totalMix = overviewMetrics.totalCardUsd + calculatedCashUsd + overviewMetrics.totalOnAccountUsd;
+  const calculatedCashUsd = Math.max(0, overviewMetrics.totalSalesUsd - overviewMetrics.totalCardUsd - overviewMetrics.totalOnAccountUsd - overviewMetrics.totalWalletsUsd);
+  const totalMix = overviewMetrics.totalCardUsd + calculatedCashUsd + overviewMetrics.totalOnAccountUsd + overviewMetrics.totalWalletsUsd;
   const cardPct = totalMix > 0 ? ((overviewMetrics.totalCardUsd / totalMix) * 100).toFixed(1) : '0.0';
   const cashPct = totalMix > 0 ? ((calculatedCashUsd / totalMix) * 100).toFixed(1) : '0.0';
   const accPct = totalMix > 0 ? ((overviewMetrics.totalOnAccountUsd / totalMix) * 100).toFixed(1) : '0.0';
+  const walletPct = totalMix > 0 ? ((overviewMetrics.totalWalletsUsd / totalMix) * 100).toFixed(1) : '0.0';
 
   const pieData = [
     { name: 'Card', pct: cardPct, amount: Number(overviewMetrics.totalCardUsd.toFixed(2)), color: '#3b82f6' }, // Blue-500
+    { name: 'Wallet', pct: walletPct, amount: Number(overviewMetrics.totalWalletsUsd.toFixed(2)), color: '#8b5cf6' }, // Violet-500
     { name: 'Cash', pct: cashPct, amount: Number(calculatedCashUsd.toFixed(2)), color: '#10b981' }, // Emerald-500
     { name: 'On Account', pct: accPct, amount: Number(overviewMetrics.totalOnAccountUsd.toFixed(2)), color: '#f59e0b' } // Amber-500
   ];
@@ -574,6 +598,14 @@ export default function FinanceDashboardScreen({ user }: FinanceDashboardScreenP
       const pmUnpaidUsd = pmPayments.filter(p => (p.type === 'Supplier' || p.type === 'Delivery') && p.status === 'Unpaid').reduce((sum, p) => sum + num(p.amount_usd), 0);
       const pmUnpaidLbp = pmPayments.filter(p => (p.type === 'Supplier' || p.type === 'Delivery') && p.status === 'Unpaid').reduce((sum, p) => sum + num(p.amount_lbp), 0);
 
+      // E-Wallet Aggregations
+      const dayWallets = walletData.filter(
+        w => w.shift_cash?.branch === branch && cleanDateStr(w.shift_cash?.date) === date
+      );
+      const totalWallets = dayWallets.reduce((sum, w) => sum + num(w.amount_usd) + (num(w.amount_lbp) / rate), 0);
+      const amWallets = dayWallets.filter(w => w.shift_cash?.shift === 'AM');
+      const pmWallets = dayWallets.filter(w => w.shift_cash?.shift === 'PM');
+
       // Variance
       const variance = num(AM?.difference_usd) + num(PM?.difference_usd);
 
@@ -610,6 +642,9 @@ export default function FinanceDashboardScreen({ user }: FinanceDashboardScreenP
         cashOutUsd,
         cashOutLbp,
         totalCashOut,
+        totalWallets,
+        amWallets,
+        pmWallets,
         variance,
         reelCreditAM,
         reelCreditPM,
@@ -633,7 +668,7 @@ export default function FinanceDashboardScreen({ user }: FinanceDashboardScreenP
         PM
       };
     }).sort((a, b) => b.date.localeCompare(a.date) || a.branch.localeCompare(b.branch));
-  }, [shiftData, paymentData, reelCreditMap, activeTab]);
+  }, [shiftData, paymentData, walletData, reelCreditMap, activeTab]);
 
   const dailyCashTotals = useMemo(() => {
     let totalOpeningUsd = 0;
@@ -647,6 +682,7 @@ export default function FinanceDashboardScreen({ user }: FinanceDashboardScreenP
     let totalCashInUsd = 0;
     let totalUnpaidUsd = 0;
     let totalReelCreditUsd = 0;
+    let totalWalletsUsd = 0;
 
     dailyAvailableCash.forEach(item => {
       totalOpeningUsd += item.totalOpening;
@@ -660,6 +696,7 @@ export default function FinanceDashboardScreen({ user }: FinanceDashboardScreenP
       totalCashInUsd += item.totalCashIn;
       totalUnpaidUsd += item.totalUnpaid;
       totalReelCreditUsd += item.totalReelCredit;
+      totalWalletsUsd += item.totalWallets;
     });
 
     return {
@@ -673,7 +710,8 @@ export default function FinanceDashboardScreen({ user }: FinanceDashboardScreenP
       totalVariance,
       totalCashInUsd,
       totalUnpaidUsd,
-      totalReelCreditUsd
+      totalReelCreditUsd,
+      totalWalletsUsd
     };
   }, [dailyAvailableCash]);
 
@@ -2055,6 +2093,7 @@ export default function FinanceDashboardScreen({ user }: FinanceDashboardScreenP
                       <th style={{ padding: '12px 8px', textAlign: 'right' }}>Delivery</th>
                       <th style={{ padding: '12px 8px', textAlign: 'right' }}>Cash out</th>
                       <th style={{ padding: '12px 8px', textAlign: 'right' }}>Credit Card</th>
+                      <th style={{ padding: '12px 8px', textAlign: 'right' }}>E-Wallet</th>
                       <th style={{ padding: '12px 8px', textAlign: 'right', color: '#0369a1' }}>💳 Reel Credit</th>
                       <th style={{ padding: '12px 8px', textAlign: 'right' }}>On Credit</th>
                       <th style={{ padding: '12px 8px', textAlign: 'right' }}>Variance (Short)</th>
@@ -2165,6 +2204,23 @@ export default function FinanceDashboardScreen({ user }: FinanceDashboardScreenP
                               )}
                             </td>
 
+                            {/* E-Wallet */}
+                            <td style={{ padding: '12px 8px', textAlign: 'right' }}>
+                              <div style={{ fontWeight: 600, color: item.totalWallets > 0 ? '#8b5cf6' : '#374151' }}>
+                                ${item.totalWallets.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </div>
+                              {item.totalWallets > 0 && (
+                                <div style={{ fontSize: '11px', color: '#6b7280', marginTop: '2px' }}>
+                                  {item.amWallets && item.amWallets.length > 0 && (
+                                    <div>AM: {item.amWallets.map((w: any) => `${w.e_wallets?.name || 'Wallet'}: $${(num(w.amount_usd) + num(w.amount_lbp)/item.rate).toFixed(1)}`).join(', ')}</div>
+                                  )}
+                                  {item.pmWallets && item.pmWallets.length > 0 && (
+                                    <div>PM: {item.pmWallets.map((w: any) => `${w.e_wallets?.name || 'Wallet'}: $${(num(w.amount_usd) + num(w.amount_lbp)/item.rate).toFixed(1)}`).join(', ')}</div>
+                                  )}
+                                </div>
+                              )}
+                            </td>
+
                             {/* Reel Credit */}
                             <td style={{ padding: '12px 8px', textAlign: 'right' }}>
                               <div style={{ fontWeight: 700, color: item.totalReelCredit > 0 ? '#0369a1' : '#374151' }}>
@@ -2225,7 +2281,7 @@ export default function FinanceDashboardScreen({ user }: FinanceDashboardScreenP
                           {/* Expanded Shifts Detail Row */}
                           {isExpanded && (
                             <tr>
-                              <td colSpan={14} style={{ padding: '0 0 16px 0', backgroundColor: '#f8fafc' }}>
+                              <td colSpan={15} style={{ padding: '0 0 16px 0', backgroundColor: '#f8fafc' }}>
                                 <div style={{ 
                                   margin: '12px 24px 12px 48px', 
                                   padding: '16px', 
@@ -2279,6 +2335,17 @@ export default function FinanceDashboardScreen({ user }: FinanceDashboardScreenP
                                           <span>Credit Card:</span>
                                           <span>${item.AM.credit_card_usd} / {num(item.AM.credit_card_lbp).toLocaleString()} LBP</span>
                                         </div>
+                                        {item.amWallets && item.amWallets.length > 0 && (
+                                          <div style={{ display: 'flex', flexDirection: 'column', fontSize: '11px', color: '#5b21b6', padding: '4px 0', borderBottom: '1px dashed #dbeafe', background: '#f5f3ff', paddingLeft: '6px', borderRadius: '4px' }}>
+                                            <span style={{ fontWeight: 600 }}>📱 E-Wallets:</span>
+                                            {item.amWallets.map((w: any, wIdx: number) => (
+                                              <div key={wIdx} style={{ display: 'flex', justifyContent: 'space-between', paddingRight: '6px', marginTop: '2px' }}>
+                                                <span>• {w.e_wallets?.name || 'Wallet'}:</span>
+                                                <span>${w.amount_usd} / {num(w.amount_lbp).toLocaleString()} LBP</span>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        )}
                                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11.5px', color: '#0369a1', padding: '4px 0', borderBottom: '1px dashed #dbeafe', fontWeight: 600 }}>
                                           <span>💳 Reel Credit (Cashed):</span>
                                           <span>${item.reelCreditAM.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
@@ -2356,6 +2423,17 @@ export default function FinanceDashboardScreen({ user }: FinanceDashboardScreenP
                                           <span>Credit Card:</span>
                                           <span>${item.PM.credit_card_usd} / {num(item.PM.credit_card_lbp).toLocaleString()} LBP</span>
                                         </div>
+                                        {item.pmWallets && item.pmWallets.length > 0 && (
+                                          <div style={{ display: 'flex', flexDirection: 'column', fontSize: '11px', color: '#5b21b6', padding: '4px 0', borderBottom: '1px dashed #ede9fe', background: '#f5f3ff', paddingLeft: '6px', borderRadius: '4px' }}>
+                                            <span style={{ fontWeight: 600 }}>📱 E-Wallets:</span>
+                                            {item.pmWallets.map((w: any, wIdx: number) => (
+                                              <div key={wIdx} style={{ display: 'flex', justifyContent: 'space-between', paddingRight: '6px', marginTop: '2px' }}>
+                                                <span>• {w.e_wallets?.name || 'Wallet'}:</span>
+                                                <span>${w.amount_usd} / {num(w.amount_lbp).toLocaleString()} LBP</span>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        )}
                                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11.5px', color: '#0369a1', padding: '4px 0', borderBottom: '1px dashed #ede9fe', fontWeight: 600 }}>
                                           <span>💳 Reel Credit (Cashed):</span>
                                           <span>${item.reelCreditPM.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
@@ -2438,11 +2516,33 @@ export default function FinanceDashboardScreen({ user }: FinanceDashboardScreenP
                                         </span>
                                       </div>
                                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11.5px', color: '#334155', padding: '4px 0', borderBottom: '1px dashed #a7f3d0' }}>
-                                        <span>Credit Card:</span>
-                                        <span>
-                                          ${(num(item.AM?.credit_card_usd) + num(item.PM?.credit_card_usd)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / {(num(item.AM?.credit_card_lbp) + num(item.PM?.credit_card_lbp)).toLocaleString()} LBP
-                                        </span>
-                                      </div>
+                                         <span>Credit Card:</span>
+                                         <span>
+                                           ${(num(item.AM?.credit_card_usd) + num(item.PM?.credit_card_usd)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / {(num(item.AM?.credit_card_lbp) + num(item.PM?.credit_card_lbp)).toLocaleString()} LBP
+                                         </span>
+                                       </div>
+                                       {item.totalWallets > 0 && (
+                                         <div style={{ display: 'flex', flexDirection: 'column', fontSize: '11px', color: '#065f46', padding: '4px 0', borderBottom: '1px dashed #a7f3d0', background: '#ecfdf5', paddingLeft: '6px', borderRadius: '4px' }}>
+                                           <span style={{ fontWeight: 600 }}>📱 E-Wallets Combined:</span>
+                                           {(() => {
+                                             const combined: Record<string, { usd: number, lbp: number }> = {};
+                                             const add = (w: any) => {
+                                               const name = w.e_wallets?.name || 'Wallet';
+                                               if (!combined[name]) combined[name] = { usd: 0, lbp: 0 };
+                                               combined[name].usd += num(w.amount_usd);
+                                               combined[name].lbp += num(w.amount_lbp);
+                                             };
+                                             (item.amWallets || []).forEach(add);
+                                             (item.pmWallets || []).forEach(add);
+                                             return Object.keys(combined).map(name => (
+                                               <div key={name} style={{ display: 'flex', justifyContent: 'space-between', paddingRight: '6px', marginTop: '2px' }}>
+                                                 <span>• {name}:</span>
+                                                 <span>${combined[name].usd} / {num(combined[name].lbp).toLocaleString()} LBP</span>
+                                               </div>
+                                             ));
+                                           })()}
+                                         </div>
+                                       )}
                                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11.5px', color: '#0369a1', padding: '4px 0', borderBottom: '1px dashed #a7f3d0', fontWeight: 700 }}>
                                         <span>💳 Reel Credit (Cashed):</span>
                                         <span>${item.totalReelCredit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>

@@ -17,7 +17,7 @@ import {
 import { api } from '../api/client';
 import './DashboardScreen.css';
 
-export default function ItemCatalogScreen({ user: _user }: { user: any }) {
+export default function ItemCatalogScreen({ user }: { user: any }) {
   const [activeTab, setActiveTab] = useState<'items' | 'categories'>('items');
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<any[]>([]);
@@ -25,6 +25,12 @@ export default function ItemCatalogScreen({ user: _user }: { user: any }) {
   const [departmentsList, setDepartmentsList] = useState<any[]>([]);
   const [departments, setDepartments] = useState<string[]>([]);
   const [subDepartments, setSubDepartments] = useState<any[]>([]);
+  const [inventoryLocations, setInventoryLocations] = useState<any[]>([]);
+
+  // Location Modal State
+  const [showLocationModal, setShowLocationModal] = useState(false);
+  const [editingLocation, setEditingLocation] = useState<any | null>(null);
+  const [locationFormName, setLocationFormName] = useState('');
 
   // Search & Filter State
   const [searchQuery, setSearchQuery] = useState('');
@@ -69,14 +75,7 @@ export default function ItemCatalogScreen({ user: _user }: { user: any }) {
   const [formPriceUsd, setFormPriceUsd] = useState('0.00');
   const [formVat, setFormVat] = useState<'yes' | 'no'>('no');
 
-  // Location suggestions by department
-  const locationSuggestions: { [key: string]: string[] } = {
-    Kitchen: ['Walk-in Fridge', 'Walk-in Freezer', 'Dry Storage', 'Prep Station', 'Sauce Fridge', 'Dishwashing Area'],
-    Bar: ['Bar Fridge', 'Back Bar Shelves', 'Bar Freezer', 'Under-counter Shelves'],
-    Pastry: ['Pastry Fridge', 'Pastry Freezer', 'Pastry Dry Storage', 'Display Fridge'],
-    Storage: ['Main Storage', 'Packaging Storage', 'Chemical Storage', 'Uniform Room'],
-    Supplies: ['Office Supplies', 'Cleaning Cabinet', 'Paper Storage']
-  };
+
 
   useEffect(() => {
     loadLookups();
@@ -85,10 +84,11 @@ export default function ItemCatalogScreen({ user: _user }: { user: any }) {
 
   const loadLookups = async () => {
     try {
-      const [deptRes, subDeptRes, suppliersRes] = await Promise.all([
+      const [deptRes, subDeptRes, suppliersRes, locationsRes] = await Promise.all([
         api.getDepartmentsList(),
         api.getSubDepartmentsList(),
-        api.getSuppliers()
+        api.getSuppliers(),
+        api.getInventoryLocationsList()
       ]);
       if (deptRes.success && deptRes.data) {
         setDepartmentsList(deptRes.data);
@@ -128,6 +128,17 @@ export default function ItemCatalogScreen({ user: _user }: { user: any }) {
         setSuppliers(suppliersRes.data);
       } else {
         setSuppliers([]);
+      }
+
+      if (locationsRes && locationsRes.success && locationsRes.data) {
+        setInventoryLocations(locationsRes.data);
+      } else {
+        setInventoryLocations([
+          { id: '1', name: 'Walk-in Fridge' },
+          { id: '2', name: 'Walk-in Freezer' },
+          { id: '3', name: 'Dry Storage' },
+          { id: '4', name: 'Prep Station' }
+        ]);
       }
     } catch (e) {
       console.error('Error loading lookups:', e);
@@ -258,7 +269,8 @@ export default function ItemCatalogScreen({ user: _user }: { user: any }) {
         inventory_location: formLocation.trim() || null,
         supplier_id: formSupplierId || null,
         price_usd: parseFloat(formPriceUsd) || 0,
-        vat: formVat
+        vat: formVat,
+        restaurant_id: user?.restaurant_id
       };
 
       if (isEditingItem && editItemId) {
@@ -300,9 +312,14 @@ export default function ItemCatalogScreen({ user: _user }: { user: any }) {
     }
     setSubmitting(true);
     try {
-      const payload: any = { name: deptFormName.trim() };
+      const payload: any = { 
+        name: deptFormName.trim(),
+        restaurant_id: user?.restaurant_id
+      };
       if (editingDept?.id) {
         payload.id = editingDept.id;
+      } else {
+        payload.id = Math.floor(Date.now() / 1000);
       }
       const res = await api.saveDepartment(payload);
       if (res.success) {
@@ -368,10 +385,13 @@ export default function ItemCatalogScreen({ user: _user }: { user: any }) {
     try {
       const payload: any = { 
         department_name: subDeptParentName,
-        name: subDeptFormName.trim()
+        name: subDeptFormName.trim(),
+        restaurant_id: user?.restaurant_id
       };
       if (editingSubDept?.id) {
         payload.id = editingSubDept.id;
+      } else {
+        payload.id = Math.floor(Date.now() / 1000);
       }
       const res = await api.saveSubDepartment(payload);
       if (res.success) {
@@ -402,6 +422,74 @@ export default function ItemCatalogScreen({ user: _user }: { user: any }) {
         await loadLookups();
       } else {
         alert('Error: ' + res.error);
+      }
+    } catch (e: any) {
+      alert('Error: ' + e.message);
+    }
+  };
+
+  // --- Location Actions ---
+  const openCreateLocationModal = () => {
+    setEditingLocation(null);
+    setLocationFormName('');
+    setShowLocationModal(true);
+  };
+
+  const openEditLocationModal = (loc: any) => {
+    setEditingLocation(loc);
+    setLocationFormName(loc.name);
+    setShowLocationModal(true);
+  };
+
+  const handleSaveLocation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!locationFormName.trim()) {
+      alert('Please enter a location name.');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const payload: any = { 
+        name: locationFormName.trim(),
+        restaurant_id: user?.restaurant_id
+      };
+      if (editingLocation?.id) {
+        payload.id = editingLocation.id;
+      }
+      const res = await api.saveInventoryLocation(payload);
+      if (res.success) {
+        alert('Location saved successfully.');
+        setShowLocationModal(false);
+        await loadLookups();
+      } else {
+        alert('Error saving location: ' + res.error);
+      }
+    } catch (e: any) {
+      alert('Error: ' + e.message);
+    }
+    setSubmitting(false);
+  };
+
+  const handleDeleteLocation = async (id: string, name: string) => {
+    const count = items.filter(item => {
+      const current = item.inventory_location ? item.inventory_location.split(',').map((s: string) => s.trim()) : [];
+      return current.includes(name);
+    }).length;
+
+    if (count > 0) {
+      alert(`Cannot delete location "${name}" because it is currently assigned to ${count} catalog items. Please reassign those items first.`);
+      return;
+    }
+
+    if (!window.confirm(`Are you sure you want to delete location "${name}"?`)) return;
+    
+    try {
+      const res = await api.deleteInventoryLocation(id);
+      if (res.success) {
+        alert('Location deleted successfully.');
+        await loadLookups();
+      } else {
+        alert('Error deleting location: ' + res.error);
       }
     } catch (e: any) {
       alert('Error: ' + e.message);
@@ -544,7 +632,7 @@ export default function ItemCatalogScreen({ user: _user }: { user: any }) {
               }}
               onClick={() => setActiveTab('categories')}
             >
-              Departments config
+              Departments & Locations
             </button>
           </div>
 
@@ -932,6 +1020,81 @@ export default function ItemCatalogScreen({ user: _user }: { user: any }) {
               </div>
             );
           })}
+
+          {/* Inventory Locations Card */}
+          <div style={{ 
+            backgroundColor: 'var(--surface)', 
+            borderRadius: '12px', 
+            border: '1px solid var(--border)', 
+            boxShadow: 'var(--shadow)',
+            padding: '20px',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+            minHeight: '220px'
+          }}>
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '12px', marginBottom: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <MapPin size={20} style={{ color: 'var(--primary)' }} />
+                  <h3 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-main)', margin: 0 }}>Inventory Locations</h3>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '180px', overflowY: 'auto' }}>
+                {inventoryLocations.map((loc) => (
+                  <div key={loc.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 8px', backgroundColor: '#f8fafc', borderRadius: '6px', fontSize: '13px' }}>
+                    <span style={{ color: 'var(--text-main)', fontWeight: 500 }}>{loc.name}</span>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <button
+                        onClick={() => openEditLocationModal(loc)}
+                        style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--primary)', padding: '2px' }}
+                      >
+                        <Edit size={12} />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteLocation(loc.id, loc.name)}
+                        style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--danger)', padding: '2px' }}
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {inventoryLocations.length === 0 && (
+                  <div style={{ fontSize: '12px', fontStyle: 'italic', color: 'var(--text-muted)', padding: '8px 0' }}>
+                    No inventory locations defined yet.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={openCreateLocationModal}
+              className="auth-btn"
+              style={{
+                marginTop: '16px',
+                height: '36px',
+                border: '1px dashed var(--primary)',
+                borderRadius: '8px',
+                backgroundColor: 'transparent',
+                color: 'var(--primary)',
+                fontSize: '13px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+                transition: 'all 0.2s',
+                width: '100%'
+              }}
+            >
+              <Plus size={14} /> Add Location
+            </button>
+          </div>
+
         </div>
       )}
 
@@ -1256,58 +1419,52 @@ export default function ItemCatalogScreen({ user: _user }: { user: any }) {
                 />
               </div>
 
-              {/* Inventory Location Input & Suggestions */}
+              {/* Inventory Location Checkbox Selector */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-main)' }}>Inventory Locations (Comma separated)</label>
-                <input 
-                  type="text"
-                  value={formLocation}
-                  onChange={(e) => setFormLocation(e.target.value)}
-                  placeholder="e.g. Dry Storage, Walk-in Fridge"
-                  style={{
-                    height: '42px',
-                    padding: '0 12px',
-                    border: '1px solid var(--border)',
-                    borderRadius: 'var(--radius)',
-                    fontSize: '14px'
-                  }}
-                />
-                
-                {/* Suggestion Badges */}
-                {locationSuggestions[formDept] && (
-                  <div style={{ marginTop: '4px' }}>
-                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '6px', fontWeight: 600 }}>Suggested for {formDept}:</span>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                      {locationSuggestions[formDept].map((sugg) => {
-                        const isSelected = formLocation
-                          .split(',')
-                          .map(s => s.trim())
-                          .filter(Boolean)
-                          .includes(sugg);
-                        return (
-                          <button
-                            key={sugg}
-                            type="button"
-                            onClick={() => handleToggleLocation(sugg)}
-                            style={{
-                              padding: '5px 10px',
-                              borderRadius: '12px',
-                              border: '1px solid var(--border)',
-                              fontSize: '11px',
-                              fontWeight: 600,
-                              cursor: 'pointer',
-                              backgroundColor: isSelected ? 'var(--primary)' : '#ffffff',
-                              color: isSelected ? '#ffffff' : 'var(--text-main)',
-                              transition: 'all 0.15s'
-                            }}
-                          >
-                            {isSelected ? '✓ ' : ''}{sugg}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
+                <label style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-main)' }}>Inventory Locations (Select to add)</label>
+                <div style={{ 
+                  display: 'flex', 
+                  flexWrap: 'wrap', 
+                  gap: '8px', 
+                  padding: '12px', 
+                  border: '1px solid var(--border)', 
+                  borderRadius: 'var(--radius)', 
+                  backgroundColor: '#f8fafc',
+                  minHeight: '60px',
+                  alignItems: 'center'
+                }}>
+                  {inventoryLocations.map((loc) => {
+                    const currentSelected = formLocation ? formLocation.split(',').map(s => s.trim()).filter(Boolean) : [];
+                    const isSelected = currentSelected.includes(loc.name);
+                    return (
+                      <button
+                        key={loc.id}
+                        type="button"
+                        onClick={() => handleToggleLocation(loc.name)}
+                        style={{
+                          padding: '6px 12px',
+                          borderRadius: '20px',
+                          border: '1px solid',
+                          borderColor: isSelected ? 'var(--primary)' : 'var(--border)',
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          backgroundColor: isSelected ? 'var(--primary)' : '#ffffff',
+                          color: isSelected ? '#ffffff' : 'var(--text-main)',
+                          boxShadow: isSelected ? '0 2px 4px rgba(30,92,79,0.1)' : 'none',
+                          transition: 'all 0.15s'
+                        }}
+                      >
+                        {isSelected ? '✓ ' : '+ '}{loc.name}
+                      </button>
+                    );
+                  })}
+                  {inventoryLocations.length === 0 && (
+                    <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                      No inventory locations defined yet. Create them in the Categories tab.
+                    </span>
+                  )}
+                </div>
               </div>
 
             </div>
@@ -1472,6 +1629,79 @@ export default function ItemCatalogScreen({ user: _user }: { user: any }) {
               <button
                 type="button"
                 onClick={() => setShowSubDeptModal(false)}
+                className="auth-btn"
+                style={{ width: 'auto', padding: '8px 16px', backgroundColor: '#ffffff', color: 'var(--text-main)', border: '1px solid var(--border)' }}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={submitting}
+                className="auth-btn"
+                style={{ width: 'auto', padding: '8px 16px', backgroundColor: 'var(--primary)', color: 'white' }}
+              >
+                Save
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Location Modal */}
+      {showLocationModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(15, 23, 42, 0.6)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          padding: '20px'
+        }}>
+          <form 
+            onSubmit={handleSaveLocation}
+            style={{
+              backgroundColor: '#ffffff',
+              borderRadius: '16px',
+              width: '100%',
+              maxWidth: '400px',
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)',
+              overflow: 'hidden'
+            }}
+          >
+            <div style={{ padding: '20px', borderBottom: '1px solid var(--border)' }}>
+              <h2 style={{ fontSize: '18px', fontWeight: 800, margin: 0 }}>{editingLocation ? 'Edit Location' : 'New Location'}</h2>
+            </div>
+            <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ fontSize: '13px', fontWeight: 700 }}>Location Name *</label>
+                <input 
+                  type="text"
+                  required
+                  value={locationFormName}
+                  onChange={(e) => setLocationFormName(e.target.value)}
+                  placeholder="e.g. Dry Storage, Walk-in Fridge"
+                  style={{
+                    height: '42px',
+                    padding: '0 12px',
+                    border: '1px solid var(--border)',
+                    borderRadius: 'var(--radius)',
+                    fontSize: '14px'
+                  }}
+                />
+              </div>
+            </div>
+            <div style={{ padding: '20px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: '12px', backgroundColor: '#f8fafc' }}>
+              <button
+                type="button"
+                onClick={() => setShowLocationModal(false)}
                 className="auth-btn"
                 style={{ width: 'auto', padding: '8px 16px', backgroundColor: '#ffffff', color: 'var(--text-main)', border: '1px solid var(--border)' }}
               >
