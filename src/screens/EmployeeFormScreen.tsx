@@ -35,6 +35,12 @@ export default function EmployeeFormScreen({ user }: { user?: any }) {
   const [resignationLetterUrl, setResignationLetterUrl] = useState('');
   const [isAppUser, setIsAppUser] = useState(false);
   const [productionAccess, setProductionAccess] = useState(false);
+  const [salaryType, setSalaryType] = useState('Monthly');
+  const [hourlyRate, setHourlyRate] = useState('');
+  const [appUserId, setAppUserId] = useState<string | null>(null);
+  const [pin, setPin] = useState('');
+  const [email, setEmail] = useState('');
+  const [role, setRole] = useState('User');
 
   // Reference Data
   const [allDepartments, setAllDepartments] = useState<any[]>([]);
@@ -101,6 +107,18 @@ export default function EmployeeFormScreen({ user }: { user?: any }) {
           setResignationLetterUrl(emp.resignation_letter_url || '');
           setIsAppUser(emp.is_app_user || false);
           setProductionAccess(emp.production_access || false);
+          setSalaryType(emp.salary_type || 'Monthly');
+          setHourlyRate(emp.hourly_rate?.toString() || '');
+          setAppUserId(emp.app_user_id || null);
+
+          if (emp.app_user_id) {
+            const userRes = await api.getUserById(emp.app_user_id);
+            if (userRes.success && userRes.data) {
+              setPin(userRes.data.pin || '');
+              setEmail(userRes.data.email || '');
+              setRole(userRes.data.role || 'User');
+            }
+          }
 
           const savedKey = getStoredDecryptionKey(user);
           let loaded = false;
@@ -160,8 +178,54 @@ export default function EmployeeFormScreen({ user }: { user?: any }) {
       return;
     }
 
+    if (isAppUser && !pin) {
+      alert('Mobile PIN is required when App User Access is enabled.');
+      return;
+    }
+
     const savedKey = getStoredDecryptionKey(user);
     setSaving(true);
+
+    let resolvedAppUserId = appUserId;
+
+    if (isAppUser) {
+      const userPayload: any = {
+        name: `${firstName} ${lastName}`.trim(),
+        pin: pin.trim(),
+        role: role,
+        branch: branch,
+        departments: department || 'All',
+        production_access: productionAccess,
+        email: email.trim() || null,
+        restaurant_id: user?.restaurant_id || null
+      };
+
+      if (resolvedAppUserId) {
+        userPayload.id = resolvedAppUserId;
+      }
+
+      const userRes = await api.saveUser(userPayload);
+      if (!userRes.success) {
+        setSaving(false);
+        let errMsg = userRes.error || 'Failed to save login credentials.';
+        if (errMsg.includes('users_pin_resto_idx') || (errMsg.includes('duplicate key') && errMsg.includes('pin'))) {
+          errMsg = 'This Mobile PIN is already in use. Please choose a different PIN.';
+        } else if (errMsg.includes('users_email_key') || (errMsg.includes('duplicate key') && errMsg.includes('email'))) {
+          errMsg = 'This email address is already in use. Please choose a different email.';
+        }
+        alert(errMsg);
+        return;
+      }
+
+      if (userRes.data?.id) {
+        resolvedAppUserId = userRes.data.id;
+      }
+    } else {
+      if (resolvedAppUserId) {
+        await api.deleteUser(resolvedAppUserId);
+        resolvedAppUserId = null;
+      }
+    }
 
     let securePayloadText: string | null = null;
     if (ENCRYPTION_ENABLED) {
@@ -193,7 +257,10 @@ export default function EmployeeFormScreen({ user }: { user?: any }) {
       discharge_url: dischargeUrl,
       resignation_letter_url: resignationLetterUrl,
       is_app_user: isAppUser,
+      app_user_id: resolvedAppUserId,
       production_access: productionAccess,
+      salary_type: salaryType,
+      hourly_rate: salaryType === 'Hourly' ? (hourlyRate ? Number(hourlyRate) : 0) : 0,
       secure_payload: securePayloadText,
       salary: ENCRYPTION_ENABLED ? null : (basicSalary ? Number(basicSalary) : null),
       transportation: ENCRYPTION_ENABLED ? null : (transportation ? Number(transportation) : null),
@@ -260,6 +327,45 @@ export default function EmployeeFormScreen({ user }: { user?: any }) {
           </div>
         </div>
 
+        {isAppUser && (
+          <div style={{ backgroundColor: '#f8fafc', padding: '20px', borderRadius: 'var(--radius)', border: '1px solid #e2e8f0', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px' }}>
+            <div style={{ gridColumn: '1 / -1', borderBottom: '1px solid #e2e8f0', paddingBottom: '8px', marginBottom: '4px' }}>
+              <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#334155', margin: 0 }}>App Login Credentials</h3>
+              <p style={{ color: 'var(--text-muted)', fontSize: '12px', margin: '4px 0 0 0' }}>Provide user login credentials. The user will be created/updated in the security database.</p>
+            </div>
+            <div>
+              <label style={labelStyle}>Mobile Login PIN *</label>
+              <input 
+                type="text" 
+                maxLength={6} 
+                placeholder="4-6 digits" 
+                style={inputStyle} 
+                value={pin} 
+                onChange={e => setPin(e.target.value.replace(/\D/g, ''))} 
+                required 
+              />
+            </div>
+            <div>
+              <label style={labelStyle}>User Role *</label>
+              <select style={inputStyle} value={role} onChange={e => setRole(e.target.value)} required>
+                <option value="User">User</option>
+                <option value="Manager">Manager</option>
+                <option value="Admin">Admin</option>
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>Login Email (Optional)</label>
+              <input 
+                type="email" 
+                placeholder="email@example.com" 
+                style={inputStyle} 
+                value={email} 
+                onChange={e => setEmail(e.target.value)} 
+              />
+            </div>
+          </div>
+        )}
+
         <div style={{ backgroundColor: 'var(--surface)', padding: '24px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
           <div style={{ gridColumn: '1 / -1' }}><h3 style={{ fontSize: '16px', marginBottom: '8px' }}>Personal Info</h3></div>
           
@@ -295,10 +401,25 @@ export default function EmployeeFormScreen({ user }: { user?: any }) {
             <input style={inputStyle} value={position} onChange={e => setPosition(e.target.value)} placeholder="e.g. Head Chef" />
           </div>
 
-          <div>
-            <label style={labelStyle}>Basic Salary ($)</label>
-            <input type="number" style={inputStyle} value={basicSalary} onChange={e => setBasicSalary(e.target.value)} />
+           <div>
+            <label style={labelStyle}>Salary Type</label>
+            <select style={inputStyle} value={salaryType} onChange={e => setSalaryType(e.target.value)}>
+              <option value="Monthly">Monthly Salary</option>
+              <option value="Hourly">Hourly Rate</option>
+            </select>
           </div>
+
+          {salaryType === 'Monthly' ? (
+            <div>
+              <label style={labelStyle}>Basic Salary ($)</label>
+              <input type="number" style={inputStyle} value={basicSalary} onChange={e => setBasicSalary(e.target.value)} />
+            </div>
+          ) : (
+            <div>
+              <label style={labelStyle}>Hourly Rate ($/hr)</label>
+              <input type="number" step="0.01" style={inputStyle} value={hourlyRate} onChange={e => setHourlyRate(e.target.value)} />
+            </div>
+          )}
           
           <div>
             <label style={labelStyle}>Transportation ($)</label>

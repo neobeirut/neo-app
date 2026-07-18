@@ -1,5 +1,47 @@
 import { supabase } from './supabase';
 
+let cachedRestaurantId: string | null = null;
+let cachedEmail: string | null = null;
+
+async function injectRestaurantId(payload: any) {
+  if (payload.restaurant_id) return payload;
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const cachedUserStr = window.localStorage.getItem('neo_admin_user');
+      if (cachedUserStr) {
+        const cachedUser = JSON.parse(cachedUserStr);
+        if (cachedUser?.restaurant_id) {
+          payload.restaurant_id = cachedUser.restaurant_id;
+          return payload;
+        }
+      }
+    }
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user || !user.email) return payload;
+    
+    if (cachedRestaurantId && cachedEmail === user.email) {
+      payload.restaurant_id = cachedRestaurantId;
+      return payload;
+    }
+    
+    const { data } = await supabase
+      .from('users')
+      .select('restaurant_id')
+      .eq('email', user.email)
+      .single();
+      
+    if (data?.restaurant_id) {
+      cachedRestaurantId = data.restaurant_id;
+      cachedEmail = user.email;
+      payload.restaurant_id = cachedRestaurantId;
+    }
+  } catch (e) {
+    console.error('Error auto-injecting restaurant_id:', e);
+  }
+  return payload;
+}
+
 export const api = {
   // Authentication
   login: async (emailOrPin: string, password?: string) => {
@@ -173,6 +215,29 @@ export const api = {
       res = await supabase.from('employees').insert(employee);
     }
     if (res.error) return { success: false, error: res.error.message };
+    return { success: true };
+  },
+
+  getUserById: async (id: string) => {
+    const { data, error } = await supabase.from('users').select('*').eq('id', id).single();
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  saveUser: async (user: any) => {
+    let res;
+    if (user.id) {
+      res = await supabase.from('users').update(user).eq('id', user.id).select().single();
+    } else {
+      res = await supabase.from('users').insert(user).select().single();
+    }
+    if (res.error) return { success: false, error: res.error.message };
+    return { success: true, data: res.data };
+  },
+
+  deleteUser: async (id: string) => {
+    const { error } = await supabase.from('users').delete().eq('id', id);
+    if (error) return { success: false, error: error.message };
     return { success: true };
   },
 
@@ -424,6 +489,7 @@ export const api = {
           can_log_waste: true, can_view_waste_report: true,
           can_manage_hr: true, can_manage_training: true, can_manage_reservations: true,
           can_access_settings: true, can_manage_daily_cash: true, can_manage_tips: true,
+          can_punch_clock: true,
           can_view_menu_manual: true, can_view_finance_dashboard: true,
           can_view_86: true, can_manage_86: true,
           can_view_complaints: true, can_manage_complaints: true,
@@ -468,6 +534,7 @@ export const api = {
           can_view_waste_report: acc.can_view_waste_report || curr.can_view_waste_report,
           can_manage_hr: acc.can_manage_hr || curr.can_manage_hr,
           can_manage_training: acc.can_manage_training || curr.can_manage_training,
+          can_punch_clock: acc.can_punch_clock || curr.can_punch_clock,
           can_manage_reservations: acc.can_manage_reservations || curr.can_manage_reservations,
           can_access_settings: acc.can_access_settings || curr.can_access_settings,
           can_manage_daily_cash: acc.can_manage_daily_cash || curr.can_manage_daily_cash,
@@ -495,6 +562,7 @@ export const api = {
           can_log_waste: false, can_view_waste_report: false,
           can_manage_hr: false, can_manage_training: false, can_manage_reservations: false,
           can_access_settings: false, can_manage_daily_cash: false, can_manage_tips: false,
+          can_punch_clock: false,
           can_view_menu_manual: false, can_view_finance_dashboard: false,
           can_view_86: false, can_manage_86: false,
           can_view_complaints: false, can_manage_complaints: false,
@@ -524,6 +592,7 @@ export const api = {
           can_log_waste: true, can_view_waste_report: true,
           can_manage_hr: false, can_manage_training: true, can_manage_reservations: true,
           can_access_settings: false, can_manage_daily_cash: true, can_manage_tips: true,
+          can_punch_clock: true,
           can_view_menu_manual: true, can_view_finance_dashboard: true,
           can_view_86: true, can_manage_86: true,
           can_view_complaints: true, can_manage_complaints: true,
@@ -539,7 +608,7 @@ export const api = {
       };
     }
 
-        return { success: true, data: { can_view_complaints: true, can_manage_complaints: true, can_view_voids: true, can_manage_voids: true } };
+        return { success: true, data: { can_view_complaints: true, can_manage_complaints: true, can_view_voids: true, can_manage_voids: true, can_punch_clock: false } };
   },
 
   // Activity / Audit Logs
@@ -598,10 +667,10 @@ export const api = {
           urlParams.append('date', `lt.${nextDayStr}`);
         }
       }
-      const rawRes = await fetch(`https://dybtzulafvtyfuqwsvkk.supabase.co/rest/v1/shift_cash?${urlParams.toString()}`, {
+      const rawRes = await fetch(`https://ibtbcgkkixkglnhhrrpu.supabase.co/rest/v1/shift_cash?${urlParams.toString()}`, {
         headers: {
-          'apikey': 'sb_publishable_hKaJMyrM0bQU7kRKgVplWg_bN2zzirF',
-          'Authorization': 'Bearer sb_publishable_hKaJMyrM0bQU7kRKgVplWg_bN2zzirF',
+          'apikey': 'sb_publishable_D4nQcvqUIxlRDDoMy_LDrg_18m5RIhm',
+          'Authorization': 'Bearer sb_publishable_D4nQcvqUIxlRDDoMy_LDrg_18m5RIhm',
           'Content-Type': 'application/json'
         }
       });
@@ -690,10 +759,10 @@ export const api = {
           urlParams.append('date', `lt.${nextDayStr}`);
         }
       }
-      const rawRes = await fetch(`https://dybtzulafvtyfuqwsvkk.supabase.co/rest/v1/daily_payments?${urlParams.toString()}`, {
+      const rawRes = await fetch(`https://ibtbcgkkixkglnhhrrpu.supabase.co/rest/v1/daily_payments?${urlParams.toString()}`, {
         headers: {
-          'apikey': 'sb_publishable_hKaJMyrM0bQU7kRKgVplWg_bN2zzirF',
-          'Authorization': 'Bearer sb_publishable_hKaJMyrM0bQU7kRKgVplWg_bN2zzirF',
+          'apikey': 'sb_publishable_D4nQcvqUIxlRDDoMy_LDrg_18m5RIhm',
+          'Authorization': 'Bearer sb_publishable_D4nQcvqUIxlRDDoMy_LDrg_18m5RIhm',
           'Content-Type': 'application/json'
         }
       });
@@ -1033,16 +1102,17 @@ export const api = {
   },
 
   savePurchasingItem: async (item: any) => {
-    if (item.id) {
-      const { error } = await supabase.from('items').update(item).eq('id', item.id);
+    const payload = await injectRestaurantId({ ...item });
+    if (payload.id) {
+      const { error } = await supabase.from('items').update(payload).eq('id', payload.id);
       if (error) return { success: false, error: error.message };
     } else {
       const defaultSubDepts: Record<string, string> = {
         Bar: 'Coffee', Kitchen: 'Other', Retail: 'Desserts', Supplies: 'Consumables'
       };
-      const sub_department = defaultSubDepts[item.department] || 'Other';
-      const payload = { ...item, purchasing: 'yes', order: 'no', sub_department };
-      const { error } = await supabase.from('items').insert([payload]);
+      const sub_department = defaultSubDepts[payload.department] || 'Other';
+      const insertPayload = { ...payload, purchasing: 'yes', order: 'no', sub_department };
+      const { error } = await supabase.from('items').insert([insertPayload]);
       if (error) return { success: false, error: error.message };
     }
     return { success: true };
@@ -1442,16 +1512,17 @@ export const api = {
   },
 
   saveOrderCatalogItem: async (item: any) => {
-    if (item.id) {
-      const { error } = await supabase.from('items').update(item).eq('id', item.id);
+    const payload = await injectRestaurantId({ ...item });
+    if (payload.id) {
+      const { error } = await supabase.from('items').update(payload).eq('id', payload.id);
       if (error) return { success: false, error: error.message };
     } else {
       const defaultSubDepts: Record<string, string> = {
         Bar: 'Coffee', Kitchen: 'Other', Retail: 'Desserts', Supplies: 'Consumables'
       };
-      const sub_department = defaultSubDepts[item.department] || 'Other';
-      const payload = { ...item, order: 'yes', purchasing: 'no', sub_department };
-      const { error } = await supabase.from('items').insert([payload]);
+      const sub_department = defaultSubDepts[payload.department] || 'Other';
+      const insertPayload = { ...payload, order: 'yes', purchasing: 'no', sub_department };
+      const { error } = await supabase.from('items').insert([insertPayload]);
       if (error) return { success: false, error: error.message };
     }
     return { success: true };
@@ -1477,7 +1548,8 @@ export const api = {
   },
 
   createClient: async (client: any) => {
-    const { data, error } = await supabase.from('clients').insert(client).select().single();
+    const payload = await injectRestaurantId({ ...client });
+    const { data, error } = await supabase.from('clients').insert(payload).select().single();
     if (error) return { success: false, error: error.message };
     return { success: true, data };
   },
@@ -1489,7 +1561,8 @@ export const api = {
   },
 
   saveBranch: async (capacity: any) => {
-    const { error } = await supabase.from('branches').upsert(capacity, { onConflict: 'name' });
+    const payload = await injectRestaurantId({ ...capacity });
+    const { error } = await supabase.from('branches').upsert(payload, { onConflict: 'name' });
     if (error) return { success: false, error: error.message };
     return { success: true };
   },
@@ -1601,7 +1674,8 @@ export const api = {
   },
 
   saveSupplier: async (supplier: any) => {
-    const { error } = await supabase.from('suppliers').upsert(supplier);
+    const payload = await injectRestaurantId({ ...supplier });
+    const { error } = await supabase.from('suppliers').upsert(payload);
     if (error) return { success: false, error: error.message };
     return { success: true };
   },
@@ -1660,7 +1734,8 @@ export const api = {
   },
 
   saveCatalogItem: async (item: any) => {
-    const { error } = await supabase.from('items').upsert(item);
+    const payload = await injectRestaurantId({ ...item });
+    const { error } = await supabase.from('items').upsert(payload);
     if (error) return { success: false, error: error.message };
     return { success: true };
   },
@@ -1672,7 +1747,8 @@ export const api = {
   },
 
   saveDepartment: async (dept: { id?: number, name: string }) => {
-    const { error } = await supabase.from('departments').upsert(dept);
+    const payload = await injectRestaurantId({ ...dept });
+    const { error } = await supabase.from('departments').upsert(payload);
     if (error) return { success: false, error: error.message };
     return { success: true };
   },
@@ -1684,7 +1760,8 @@ export const api = {
   },
 
   saveSubDepartment: async (subDept: { id?: number, department_name: string, name: string }) => {
-    const { error } = await supabase.from('sub_departments').upsert(subDept);
+    const payload = await injectRestaurantId({ ...subDept });
+    const { error } = await supabase.from('sub_departments').upsert(payload);
     if (error) return { success: false, error: error.message };
     return { success: true };
   },
@@ -1759,7 +1836,20 @@ export const api = {
     return { success: true };
   },
 
-  getExchangeRate: async () => {
+  getExchangeRate: async (restaurantId?: string) => {
+    if (restaurantId) {
+      const { data, error } = await supabase
+        .from('restaurants')
+        .select('settings')
+        .eq('id', restaurantId)
+        .single();
+      if (!error && data?.settings) {
+        const settings = data.settings as any;
+        if (settings.exchange_rate !== undefined) {
+          return { success: true, rate: parseFloat(settings.exchange_rate) };
+        }
+      }
+    }
     const { data, error } = await supabase
       .from('app_settings')
       .select('setting_value')
@@ -1781,7 +1871,20 @@ export const api = {
     return { success: true };
   },
 
-  getVatRate: async () => {
+  getVatRate: async (restaurantId?: string) => {
+    if (restaurantId) {
+      const { data, error } = await supabase
+        .from('restaurants')
+        .select('settings')
+        .eq('id', restaurantId)
+        .single();
+      if (!error && data?.settings) {
+        const settings = data.settings as any;
+        if (settings.vat_rate !== undefined) {
+          return { success: true, rate: parseFloat(settings.vat_rate) };
+        }
+      }
+    }
     const { data, error } = await supabase
       .from('app_settings')
       .select('setting_value')
@@ -1934,7 +2037,8 @@ export const api = {
 
   // CLIENT ORDERS CRM MODULE
   saveClient: async (client: any) => {
-    const { data, error } = await supabase.from('clients').upsert(client).select().single();
+    const payload = await injectRestaurantId({ ...client });
+    const { data, error } = await supabase.from('clients').upsert(payload).select().single();
     if (error) return { success: false, error: error.message };
     return { success: true, data };
   },
@@ -2037,7 +2141,8 @@ export const api = {
   },
 
   saveClientOrder: async (order: any, items: any[], tasks: any[] = [], attachments: any[] = []) => {
-    const { error: orderError } = await supabase.from('client_orders').upsert(order);
+    const orderPayload = await injectRestaurantId({ ...order });
+    const { error: orderError } = await supabase.from('client_orders').upsert(orderPayload);
     if (orderError) return { success: false, error: orderError.message };
 
     if (order.id) await supabase.from('client_order_items').delete().eq('order_id', order.id);
@@ -2466,12 +2571,24 @@ export const api = {
   },
 
   getTenantAdmin: async (restaurantId: string) => {
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('users')
-      .select('name, email, pin')
+      .select('id, name, email, pin')
       .eq('restaurant_id', restaurantId)
-      .order('created_at', { ascending: true })
+      .order('id', { ascending: true })
       .limit(1);
+
+    if (error && (error.message.includes('restaurant_id') || error.message.includes('relationship'))) {
+      // Fallback: get the first Admin/Manager user or just the first user
+      const fallback = await supabase
+        .from('users')
+        .select('id, name, email, pin')
+        .in('role', ['Admin', 'Manager'])
+        .order('id', { ascending: true })
+        .limit(1);
+      data = fallback.data;
+      error = fallback.error;
+    }
 
     if (error) return { success: false, error: error.message };
     return { success: true, data: data?.[0] || null };
@@ -2481,6 +2598,7 @@ export const api = {
     name: string;
     logo_url: string;
     primary_color: string;
+    admin_id?: string;
     admin_name?: string;
     admin_email?: string;
     admin_pin?: string;
@@ -2502,10 +2620,41 @@ export const api = {
       if (payload.admin_email) updateData.email = payload.admin_email.toLowerCase();
       if (payload.admin_pin) updateData.pin = payload.admin_pin;
 
-      await supabase
-        .from('users')
-        .update(updateData)
-        .eq('restaurant_id', id);
+      let userErr: any = null;
+      if (payload.admin_id) {
+        const res = await supabase
+          .from('users')
+          .update(updateData)
+          .eq('id', payload.admin_id);
+        userErr = res.error;
+      } else {
+        const res = await supabase
+          .from('users')
+          .update(updateData)
+          .eq('restaurant_id', id);
+        userErr = res.error;
+
+        if (userErr && (userErr.message.includes('restaurant_id') || userErr.message.includes('relationship'))) {
+          // Fallback for single-tenant databases: update the first Admin/Manager user
+          const { data: firstAdmin } = await supabase
+            .from('users')
+            .select('id')
+            .in('role', ['Admin', 'Manager'])
+            .order('id', { ascending: true })
+            .limit(1)
+            .maybeSingle();
+
+          if (firstAdmin) {
+            const res2 = await supabase
+              .from('users')
+              .update(updateData)
+              .eq('id', firstAdmin.id);
+            userErr = res2.error;
+          }
+        }
+      }
+
+      if (userErr) return { success: false, error: userErr.message };
     }
 
     return { success: true };
@@ -2559,14 +2708,15 @@ export const api = {
       'void_receipts',
       'activity_logs',
       'reel_credit_transactions',
-      'training_documents'
+      'training_documents',
+      'inventory_locations'
     ];
 
     for (const t of tables) {
       try {
         await supabase.from(t).delete().eq('restaurant_id', restaurantId);
       } catch (e) {
-        // ignore individual table deletion errors
+        // ignore errors for missing columns or tables
       }
     }
 
@@ -2598,6 +2748,123 @@ export const api = {
       // ignore log error
     }
     return { success: true, email: targetEmail };
+  },
+
+  getInventoryLocationsList: async () => {
+    const { data, error } = await supabase
+      .from('inventory_locations')
+      .select('*')
+      .order('name');
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  saveInventoryLocation: async (location: { id?: string, name: string }) => {
+    const payload = await injectRestaurantId({ ...location });
+    const { error } = await supabase.from('inventory_locations').upsert(payload);
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  },
+
+  deleteInventoryLocation: async (id: string) => {
+    const { error } = await supabase.from('inventory_locations').delete().eq('id', id);
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  },
+
+  getWallets: async () => {
+    const { data, error } = await supabase.from('e_wallets').select('*').order('name');
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  saveWallet: async (wallet: any) => {
+    const payload = await injectRestaurantId({ ...wallet });
+    const { error } = await supabase.from('e_wallets').upsert(payload);
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  },
+
+  deleteWallet: async (id: string) => {
+    const { error } = await supabase.from('e_wallets').delete().eq('id', id);
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  },
+
+  getShiftCashWallets: async (shiftCashId: string) => {
+    const { data, error } = await supabase
+      .from('shift_cash_wallets')
+      .select('*, e_wallets(*)')
+      .eq('shift_cash_id', shiftCashId);
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  saveShiftCashWallets: async (wallets: any[]) => {
+    const { error } = await supabase.from('shift_cash_wallets').upsert(wallets);
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  },
+
+  getShiftCashWalletsLogs: async (filters: { startDate?: string, endDate?: string, branch?: string }) => {
+    let query = supabase
+      .from('shift_cash_wallets')
+      .select('*, shift_cash!inner(*), e_wallets(*)');
+    if (filters.branch && filters.branch !== 'All') {
+      query = query.ilike('shift_cash.branch', `%${filters.branch.trim()}%`);
+    }
+    if (filters.startDate) {
+      const start = filters.startDate.split('T')[0].split(' ')[0];
+      query = query.gte('shift_cash.date', start);
+    }
+    if (filters.endDate) {
+      const endClean = filters.endDate.split('T')[0].split(' ')[0];
+      const parts = endClean.split('-');
+      if (parts.length === 3) {
+        const nextDayStr = new Date(Date.UTC(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10) + 1)).toISOString().split('T')[0];
+        query = query.lt('shift_cash.date', nextDayStr);
+      } else {
+        query = query.lte('shift_cash.date', `${endClean} 23:59:59`);
+      }
+    }
+    const { data, error } = await query;
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  getAttendanceLogs: async (filters: { employee_id?: string; branch?: string; startDate?: string; endDate?: string }) => {
+    let query = supabase.from('employee_attendance').select('*, employees(*)');
+    if (filters.employee_id && filters.employee_id !== 'All') query = query.eq('employee_id', filters.employee_id);
+    if (filters.branch && filters.branch !== 'All') query = query.eq('branch', filters.branch);
+    if (filters.startDate) query = query.gte('punch_in', filters.startDate);
+    if (filters.endDate) query = query.lte('punch_in', filters.endDate);
+    
+    const { data, error } = await query.order('punch_in', { ascending: false });
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  saveAttendanceLog: async (log: any) => {
+    let res;
+    if (log.id) {
+      res = await supabase.from('employee_attendance').update(log).eq('id', log.id);
+    } else {
+      res = await supabase.from('employee_attendance').insert([log]);
+    }
+    if (res.error) return { success: false, error: res.error.message };
+    return { success: true };
+  },
+
+  deleteAttendanceLog: async (id: string) => {
+    const { error } = await supabase.from('employee_attendance').delete().eq('id', id);
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  },
+
+  resetEmployeeDevice: async (employeeId: string) => {
+    const { error } = await supabase.from('employees').update({ device_id: null }).eq('employee_id', employeeId);
+    if (error) return { success: false, error: error.message };
+    return { success: true };
   },
 };
 
