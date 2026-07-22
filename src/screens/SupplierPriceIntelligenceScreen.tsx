@@ -123,7 +123,9 @@ const DEFAULT_WEIGHTS: Weights = {
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export default function SupplierPriceIntelligenceScreen({ user }: { user?: any }) {
+export default function SupplierPriceIntelligenceScreen({ user, permissions }: { user?: any; permissions?: any }) {
+  const isPrivileged = user?.role?.toLowerCase() === 'superadmin' || user?.role?.toLowerCase() === 'admin';
+  const canManage = isPrivileged || !!permissions?.can_manage_price_intelligence;
   const [activeTab, setActiveTab] = useState<'overview' | 'trends' | 'suppliers' | 'comparator' | 'import' | 'assistant' | 'config'>('overview');
   const [loading, setLoading] = useState(true);
   const [dbStatus, setDbStatus] = useState<'loading' | 'ready' | 'missing'>('loading');
@@ -2544,6 +2546,7 @@ CREATE POLICY "Enable write access for all authenticated users" ON public.item_d
 
               <button 
                 onClick={async () => {
+                  if (!canManage) return;
                   const total = Object.values(configWeights).reduce((sum: number, val: number) => sum + (val || 0), 0);
                   if (Math.round(total * 100) !== 100) {
                     alert('Error: The sum of weights must equal 100% before saving.');
@@ -2559,10 +2562,11 @@ CREATE POLICY "Enable write access for all authenticated users" ON public.item_d
                     showToast('Weights config updated in local storage state!');
                   }
                 }}
+                disabled={!canManage}
                 className="btn btn-primary"
-                style={{ padding: '12px', fontWeight: 600 }}
+                style={{ padding: '12px', fontWeight: 600, opacity: canManage ? 1 : 0.6, cursor: canManage ? 'pointer' : 'not-allowed' }}
               >
-                Save Weights Configuration
+                {canManage ? 'Save Weights Configuration' : 'Read-only Mode'}
               </button>
 
             </div>

@@ -17,7 +17,10 @@ import {
 import { api } from '../api/client';
 import './DashboardScreen.css';
 
-export default function ItemCatalogScreen({ user }: { user: any }) {
+export default function ItemCatalogScreen({ user, permissions }: { user: any; permissions?: any }) {
+  const isPrivileged = user?.role?.toLowerCase() === 'superadmin' || user?.role?.toLowerCase() === 'admin';
+  const canManage = isPrivileged || !!permissions?.can_manage_catalog;
+
   const [activeTab, setActiveTab] = useState<'items' | 'categories'>('items');
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<any[]>([]);
@@ -636,22 +639,24 @@ export default function ItemCatalogScreen({ user }: { user: any }) {
             </button>
           </div>
 
-          {activeTab === 'items' ? (
-            <button 
-              onClick={openCreateItemModal}
-              className="auth-btn"
-              style={{ width: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}
-            >
-              <Plus size={18} /> New Catalog Item
-            </button>
-          ) : (
-            <button 
-              onClick={openCreateDeptModal}
-              className="auth-btn"
-              style={{ width: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}
-            >
-              <Plus size={18} /> Add Department
-            </button>
+          {canManage && (
+            activeTab === 'items' ? (
+              <button 
+                onClick={openCreateItemModal}
+                className="auth-btn"
+                style={{ width: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}
+              >
+                <Plus size={18} /> New Catalog Item
+              </button>
+            ) : (
+              <button 
+                onClick={openCreateDeptModal}
+                className="auth-btn"
+                style={{ width: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}
+              >
+                <Plus size={18} /> Add Department
+              </button>
+            )
           )}
         </div>
       </div>
@@ -904,18 +909,28 @@ export default function ItemCatalogScreen({ user }: { user: any }) {
                               className="auth-btn"
                               style={{ width: 'auto', padding: '6px 12px', fontSize: '12px', backgroundColor: '#e2e8f0', color: 'var(--text-main)', border: 'none' }}
                             >
-                              <Edit size={12} /> Edit
+                              {canManage ? (
+                                <>
+                                  <Edit size={12} /> Edit
+                                </>
+                              ) : (
+                                <>
+                                  <FolderOpen size={12} /> View
+                                </>
+                              )}
                             </button>
-                            <button 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDeleteItem(item.id, item.name);
-                              }}
-                              className="auth-btn"
-                              style={{ width: 'auto', padding: '6px 12px', fontSize: '12px', backgroundColor: 'rgba(239, 68, 68, 0.1)', color: 'var(--danger)', border: 'none' }}
-                            >
-                              <Trash2 size={12} />
-                            </button>
+                            {canManage && (
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteItem(item.id, item.name);
+                                }}
+                                className="auth-btn"
+                                style={{ width: 'auto', padding: '6px 12px', fontSize: '12px', backgroundColor: 'rgba(239, 68, 68, 0.1)', color: 'var(--danger)', border: 'none' }}
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -1486,15 +1501,21 @@ export default function ItemCatalogScreen({ user }: { user: any }) {
               >
                 Cancel
               </button>
-              <button
-                type="submit"
-                disabled={submitting}
-                className="auth-btn"
-                style={{ width: 'auto', padding: '10px 18px', display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: 'var(--primary)', color: 'white' }}
-              >
-                {submitting && <RefreshCw className="spin" size={14} />}
-                {isEditingItem ? 'Save Changes' : 'Create Item'}
-              </button>
+              {canManage ? (
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="auth-btn"
+                  style={{ width: 'auto', padding: '10px 18px', display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: 'var(--primary)', color: 'white' }}
+                >
+                  {submitting && <RefreshCw className="spin" size={14} />}
+                  {isEditingItem ? 'Save Changes' : 'Create Item'}
+                </button>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', color: 'var(--text-muted)', fontSize: '13px', fontWeight: 600 }}>
+                  Read-only view
+                </div>
+              )}
             </div>
           </form>
         </div>

@@ -1,8 +1,9 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState, useEffect, useMemo } from 'react';
 import { api } from '../api/client';
 import { 
   Loader2, Clock, MapPin, Smartphone, RefreshCw, 
-  Trash2, Edit, Plus, Search, CheckCircle
+  Trash2, Edit, Plus, Search, CheckCircle, ChevronDown, ChevronUp
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -30,11 +31,14 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
   const [filterBranch, setFilterBranch] = useState('All');
   const [filterStartDate, setFilterStartDate] = useState('');
   const [filterEndDate, setFilterEndDate] = useState('');
+  const [filterMonth, setFilterMonth] = useState('');
+  const [filterYear, setFilterYear] = useState(String(new Date().getFullYear()));
 
   // Modals State
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedLog, setSelectedLog] = useState<any>(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [expandedEmployees, setExpandedEmployees] = useState<Record<string, boolean>>({});
 
   // Edit / Add Form State
   const [formEmployeeId, setFormEmployeeId] = useState('');
@@ -44,9 +48,19 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
   const [formPunchInNotes, setFormPunchInNotes] = useState('');
   const [formPunchOutNotes, setFormPunchOutNotes] = useState('');
 
-  useEffect(() => {
-    loadInitialData();
-  }, []);
+  const loadAttendanceLogs = async () => {
+    setRefreshing(true);
+    const res = await api.getAttendanceLogs({
+      employee_id: filterEmployee,
+      branch: filterBranch,
+      startDate: filterStartDate ? new Date(filterStartDate).toISOString() : undefined,
+      endDate: filterEndDate ? new Date(filterEndDate + 'T23:59:59').toISOString() : undefined
+    });
+    if (res.success) {
+      setAttendanceLogs(res.data || []);
+    }
+    setRefreshing(false);
+  };
 
   const loadInitialData = async () => {
     setLoading(true);
@@ -65,18 +79,29 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
     setLoading(false);
   };
 
-  const loadAttendanceLogs = async () => {
-    setRefreshing(true);
-    const res = await api.getAttendanceLogs({
-      employee_id: filterEmployee,
-      branch: filterBranch,
-      startDate: filterStartDate ? new Date(filterStartDate).toISOString() : undefined,
-      endDate: filterEndDate ? new Date(filterEndDate + 'T23:59:59').toISOString() : undefined
+  useEffect(() => {
+    Promise.resolve().then(() => {
+      loadInitialData();
     });
-    if (res.success) {
-      setAttendanceLogs(res.data || []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleMonthYearChange = (month: string, year: string) => {
+    setFilterMonth(month);
+    setFilterYear(year);
+
+    if (!month) {
+      setFilterStartDate('');
+      setFilterEndDate('');
+      return;
     }
-    setRefreshing(false);
+
+    const firstDay = `${year}-${month}-01`;
+    const lastDay = new Date(parseInt(year, 10), parseInt(month, 10), 0).getDate();
+    const lastDayStr = `${year}-${month}-${String(lastDay).padStart(2, '0')}`;
+
+    setFilterStartDate(firstDay);
+    setFilterEndDate(lastDayStr);
   };
 
   const handleFilter = (e: React.FormEvent) => {
@@ -89,6 +114,8 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
     setFilterBranch('All');
     setFilterStartDate('');
     setFilterEndDate('');
+    setFilterMonth('');
+    setFilterYear(String(new Date().getFullYear()));
     // We fetch logs with cleared params immediately
     api.getAttendanceLogs({}).then(res => {
       if (res.success) setAttendanceLogs(res.data || []);
@@ -100,10 +127,83 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
     return attendanceLogs.filter(log => !log.punch_out);
   }, [attendanceLogs]);
 
-  // Derived state: completed timesheets
-  const timesheetRecords = useMemo(() => {
-    return attendanceLogs.filter(log => log.punch_out);
+  // Derived state: grouped timesheets for expandable accordion view
+  const groupedTimesheets = useMemo(() => {
+    const groups: Record<string, {
+      employee: any;
+      logs: any[];
+      totalContractHours: number;
+      totalActualHours: number;
+      totalEarnings: number;
+    }> = {};
+
+    attendanceLogs.forEach(log => {
+      const emp = log.employees;
+      if (!emp) return; // Skip if no employee info
+      const empId = emp.employee_id;
+      
+      if (!groups[empId]) {
+        groups[empId] = {
+          employee: emp,
+          logs: [],
+          totalContractHours: 0,
+          totalActualHours: 0,
+          totalEarnings: 0
+        };
+      }
+
+      // Calculate hourly wage for this employee
+      const wage = emp.salary_type === 'Hourly' 
+        ? (parseFloat(emp.hourly_rate) || 0)
+        : (parseFloat(emp.salary) || 0) / ((parseFloat(emp.working_days_per_week) || 6) * 4.333 * (parseFloat(emp.default_daily_hours) || 9));
+
+      const contractHours = parseFloat(emp.default_daily_hours) || 9;
+      
+      // Calculate actual hours worked for this punch
+      const actualHours = log.punch_out
+        ? (parseFloat(log.hours_worked) || 0)
+        : Math.max(0, Math.round(((new Date().getTime() - new Date(log.punch_in).getTime()) / 3600000) * 100) / 100);
+
+      // Calculate earnings for this punch
+      const shiftEarnings = actualHours * wage;
+
+      groups[empId].logs.push({
+        ...log,
+        computedWage: wage,
+        contractHours,
+        actualHours,
+        shiftEarnings
+      });
+
+      groups[empId].totalContractHours += contractHours;
+      groups[empId].totalActualHours += actualHours;
+      groups[empId].totalEarnings += shiftEarnings;
+    });
+
+    // Return as array sorted by employee first name
+    return Object.values(groups).sort((a, b) => {
+      const nameA = `${a.employee.first_name || ''} ${a.employee.last_name || ''}`.toLowerCase();
+      const nameB = `${b.employee.first_name || ''} ${b.employee.last_name || ''}`.toLowerCase();
+      return nameA.localeCompare(nameB);
+    });
   }, [attendanceLogs]);
+
+  const toggleEmployeeExpanded = (employeeId: string) => {
+    setExpandedEmployees(prev => ({
+      ...prev,
+      [employeeId]: !prev[employeeId]
+    }));
+  };
+
+  const toggleAllExpanded = (expand: boolean) => {
+    const nextState: Record<string, boolean> = {};
+    if (expand) {
+      groupedTimesheets.forEach(g => {
+        nextState[g.employee.employee_id] = true;
+      });
+    }
+    setExpandedEmployees(nextState);
+  };
 
   const handleResetDevice = async (employeeId: string, employeeName: string) => {
     if (!window.confirm(`Are you sure you want to reset the registered device for ${employeeName}? This allows them to link a new phone.`)) return;
@@ -144,13 +244,43 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
     e.preventDefault();
     if (!selectedLog) return;
 
+    let finalPunchOutNotes = formPunchOutNotes || null;
+    const empName = selectedLog.employees 
+      ? `${selectedLog.employees.first_name || ''} ${selectedLog.employees.last_name || ''}` 
+      : 'Unknown Employee';
+
+    // Detect manual clock out addition or updates
+    if (!selectedLog.punch_out && formPunchOut) {
+      const logMsg = `[System] Clock out manually added by ${user.name || 'Manager'} on ${new Date().toLocaleString()}`;
+      finalPunchOutNotes = formPunchOutNotes 
+        ? `${formPunchOutNotes}\n${logMsg}`
+        : logMsg;
+
+      await api.logActivity(
+        user.name || 'Manager',
+        'Manual Clock Out Added',
+        `Added clock out for ${empName} on shift ${selectedLog.id}. Clock out time: ${new Date(formPunchOut).toLocaleString()}`
+      );
+    } else if (selectedLog.punch_out && formPunchOut && new Date(selectedLog.punch_out).getTime() !== new Date(formPunchOut).getTime()) {
+      const logMsg = `[System] Clock out manually updated by ${user.name || 'Manager'} on ${new Date().toLocaleString()}`;
+      finalPunchOutNotes = formPunchOutNotes 
+        ? `${formPunchOutNotes}\n${logMsg}`
+        : logMsg;
+
+      await api.logActivity(
+        user.name || 'Manager',
+        'Manual Clock Out Updated',
+        `Updated clock out for ${empName} on shift ${selectedLog.id} from ${new Date(selectedLog.punch_out).toLocaleString()} to ${new Date(formPunchOut).toLocaleString()}`
+      );
+    }
+
     const updatedLog = {
       id: selectedLog.id,
       branch: formBranch,
       punch_in: new Date(formPunchIn).toISOString(),
       punch_out: formPunchOut ? new Date(formPunchOut).toISOString() : null,
       punch_in_notes: formPunchInNotes || null,
-      punch_out_notes: formPunchOutNotes || null
+      punch_out_notes: finalPunchOutNotes
     };
 
     const res = await api.saveAttendanceLog(updatedLog);
@@ -179,13 +309,38 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
       return;
     }
 
+    const logMsg = `[System] Shift manually created by ${user.name || 'Manager'} on ${new Date().toLocaleString()}`;
+    const finalPunchInNotes = formPunchInNotes 
+      ? `${formPunchInNotes}\n${logMsg}`
+      : logMsg;
+
+    let finalPunchOutNotes = formPunchOutNotes || null;
+    if (formPunchOut) {
+      finalPunchOutNotes = formPunchOutNotes 
+        ? `${formPunchOutNotes}\n${logMsg}`
+        : logMsg;
+    }
+
+    const selectedEmp = employees.find(e => e.employee_id === formEmployeeId);
+    const empName = selectedEmp 
+      ? `${selectedEmp.first_name || ''} ${selectedEmp.last_name || ''}`
+      : 'Unknown Employee';
+
+    const detailsStr = `Manually created shift for ${empName} on branch ${formBranch}. Clock In: ${new Date(formPunchIn).toLocaleString()}${formPunchOut ? `, Clock Out: ${new Date(formPunchOut).toLocaleString()}` : ''}`;
+
+    await api.logActivity(
+      user.name || 'Manager',
+      'Manual Shift Created',
+      detailsStr
+    );
+
     const newLog = {
       employee_id: formEmployeeId,
       branch: formBranch,
       punch_in: new Date(formPunchIn).toISOString(),
       punch_out: formPunchOut ? new Date(formPunchOut).toISOString() : null,
-      punch_in_notes: formPunchInNotes || null,
-      punch_out_notes: formPunchOutNotes || null,
+      punch_in_notes: finalPunchInNotes,
+      punch_out_notes: finalPunchOutNotes,
       device_id: 'Manual Entry'
     };
 
@@ -202,15 +357,30 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
     const dataToExport = attendanceLogs.map(log => {
       const emp = log.employees || {};
       const empName = `${emp.first_name || ''} ${emp.last_name || ''}`;
+
+      const wage = emp.salary_type === 'Hourly' 
+        ? (parseFloat(emp.hourly_rate) || 0)
+        : (parseFloat(emp.salary) || 0) / ((parseFloat(emp.working_days_per_week) || 6) * 4.333 * (parseFloat(emp.default_daily_hours) || 9));
+
+      const contractHours = parseFloat(emp.default_daily_hours) || 9;
+      
+      const actualHours = log.punch_out
+        ? (parseFloat(log.hours_worked) || 0)
+        : Math.max(0, Math.round(((new Date().getTime() - new Date(log.punch_in).getTime()) / 3600000) * 100) / 100);
+
+      const shiftEarnings = actualHours * wage;
+
       return {
         'Employee ID': emp.employee_id || '',
         'Employee Name': empName,
+        'Position': emp.position || '',
         'Branch': log.branch || '',
         'Clock In': log.punch_in ? new Date(log.punch_in).toLocaleString() : '',
         'Clock Out': log.punch_out ? new Date(log.punch_out).toLocaleString() : 'Active Shift',
-        'Hours Worked': log.hours_worked || 0,
-        'Hourly Rate ($)': emp.hourly_rate || 0,
-        'Earnings ($)': log.shift_earnings || 0,
+        'Hourly Wage ($/hr)': parseFloat(wage.toFixed(2)),
+        'Contract Daily Hours': parseFloat(contractHours.toFixed(2)),
+        'Hours Worked (Actual)': parseFloat(actualHours.toFixed(2)),
+        'Earnings ($)': parseFloat(shiftEarnings.toFixed(2)),
         'Clock In Notes': log.punch_in_notes || '',
         'Clock Out Notes': log.punch_out_notes || '',
         'Device ID': log.device_id || ''
@@ -296,7 +466,7 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
           onClick={() => setActiveTab('timesheets')} 
           style={{ ...tabStyle, borderBottom: activeTab === 'timesheets' ? '2px solid var(--primary)' : 'none', color: activeTab === 'timesheets' ? 'var(--primary)' : 'var(--text-muted)' }}
         >
-          Timesheet Logs ({timesheetRecords.length})
+          Timesheet Logs ({attendanceLogs.length})
         </button>
         <button 
           onClick={() => setActiveTab('employees')} 
@@ -323,13 +493,64 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
               {branches.map(b => <option key={b.name} value={b.name}>{b.name}</option>)}
             </select>
           </div>
-          <div style={{ width: '150px' }}>
-            <label style={filterLabelStyle}>Start Date</label>
-            <input type="date" style={filterInputStyle} value={filterStartDate} onChange={e => setFilterStartDate(e.target.value)} />
+          <div style={{ flex: 1, minWidth: '150px' }}>
+            <label style={filterLabelStyle}>Month</label>
+            <select 
+              style={filterInputStyle} 
+              value={filterMonth} 
+              onChange={e => handleMonthYearChange(e.target.value, filterYear)}
+            >
+              <option value="">Custom / Date Range...</option>
+              <option value="01">January</option>
+              <option value="02">February</option>
+              <option value="03">March</option>
+              <option value="04">April</option>
+              <option value="05">May</option>
+              <option value="06">June</option>
+              <option value="07">July</option>
+              <option value="08">August</option>
+              <option value="09">September</option>
+              <option value="10">October</option>
+              <option value="11">November</option>
+              <option value="12">December</option>
+            </select>
           </div>
-          <div style={{ width: '150px' }}>
+          <div style={{ width: '100px' }}>
+            <label style={filterLabelStyle}>Year</label>
+            <select 
+              style={filterInputStyle} 
+              value={filterYear} 
+              onChange={e => handleMonthYearChange(filterMonth, e.target.value)}
+            >
+              <option value="2024">2024</option>
+              <option value="2025">2025</option>
+              <option value="2026">2026</option>
+              <option value="2027">2027</option>
+            </select>
+          </div>
+          <div style={{ width: '140px' }}>
+            <label style={filterLabelStyle}>Start Date</label>
+            <input 
+              type="date" 
+              style={filterInputStyle} 
+              value={filterStartDate} 
+              onChange={e => {
+                setFilterStartDate(e.target.value);
+                setFilterMonth('');
+              }} 
+            />
+          </div>
+          <div style={{ width: '140px' }}>
             <label style={filterLabelStyle}>End Date</label>
-            <input type="date" style={filterInputStyle} value={filterEndDate} onChange={e => setFilterEndDate(e.target.value)} />
+            <input 
+              type="date" 
+              style={filterInputStyle} 
+              value={filterEndDate} 
+              onChange={e => {
+                setFilterEndDate(e.target.value);
+                setFilterMonth('');
+              }} 
+            />
           </div>
           <div style={{ display: 'flex', gap: '8px' }}>
             <button type="submit" style={{ padding: '10px 20px', backgroundColor: 'var(--primary)', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -424,87 +645,262 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
 
       {/* TAB CONTENT: TIMESHEET LOGS */}
       {activeTab === 'timesheets' && (
-        <div style={{ backgroundColor: 'var(--surface)', borderRadius: '12px', border: '1px solid var(--border)', overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px' }}>
-            <thead>
-              <tr style={{ borderBottom: '1px solid var(--border)', backgroundColor: 'var(--background)', color: 'var(--text-muted)', fontWeight: 600 }}>
-                <th style={{ padding: '16px' }}>Employee</th>
-                <th style={{ padding: '16px' }}>Branch</th>
-                <th style={{ padding: '16px' }}>Clock In</th>
-                <th style={{ padding: '16px' }}>Clock Out</th>
-                <th style={{ padding: '16px' }}>Hours</th>
-                <th style={{ padding: '16px' }}>Wages</th>
-                <th style={{ padding: '16px' }}>Device</th>
-                <th style={{ padding: '16px' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {timesheetRecords.length === 0 ? (
-                <tr>
-                  <td colSpan={8} style={{ padding: '32px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                    No completed timesheet records found.
-                  </td>
-                </tr>
-              ) : (
-                timesheetRecords.map(log => {
-                  const emp = log.employees || {};
-                  const empName = `${emp.first_name || ''} ${emp.last_name || ''}`;
-                  return (
-                    <tr key={log.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                      <td style={{ padding: '16px' }}>
-                        <div>
-                          <div style={{ fontWeight: 600, color: 'var(--text-main)' }}>{empName}</div>
-                          <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{emp.position}</div>
-                        </div>
-                      </td>
-                      <td style={{ padding: '16px', color: 'var(--text-main)' }}>{log.branch}</td>
-                      <td style={{ padding: '16px', color: 'var(--text-main)' }}>
-                        <div>{new Date(log.punch_in).toLocaleDateString()}</div>
-                        <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{new Date(log.punch_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
-                      </td>
-                      <td style={{ padding: '16px', color: 'var(--text-main)' }}>
-                        <div>{new Date(log.punch_out).toLocaleDateString()}</div>
-                        <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{new Date(log.punch_out).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
-                      </td>
-                      <td style={{ padding: '16px', fontWeight: 600 }}>{log.hours_worked || 0} hrs</td>
-                      <td style={{ padding: '16px' }}>
-                        {emp.salary_type === 'Hourly' ? (
-                          <span style={{ color: '#137333', fontWeight: 600 }}>${log.shift_earnings || 0}</span>
-                        ) : (
-                          <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>Salaried ({emp.salary_type})</span>
-                        )}
-                      </td>
-                      <td style={{ padding: '16px', color: 'var(--text-muted)', fontSize: '12px', fontFamily: 'monospace' }}>
-                        {log.device_id === 'Manual Entry' ? 'Manual Entry' : (log.device_id ? log.device_id.substring(0, 8) + '...' : 'N/A')}
-                      </td>
-                      <td style={{ padding: '16px' }}>
-                        {canManage ? (
-                          <div style={{ display: 'flex', gap: '8px' }}>
-                            <button 
-                              onClick={() => openEditModal(log)} 
-                              style={tableIconBtnStyle}
-                              title="Edit Record"
-                            >
-                              <Edit size={14} />
-                            </button>
-                            <button 
-                              onClick={() => handleDeleteLog(log.id)} 
-                              style={{ ...tableIconBtnStyle, color: 'var(--danger)' }}
-                              title="Delete Record"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        ) : (
-                          <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>Read Only</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {/* Controls bar */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '12px' }}>
+            <div style={{ fontSize: '14px', color: 'var(--text-muted)' }}>
+              Showing {groupedTimesheets.length} employee{groupedTimesheets.length !== 1 ? 's' : ''} with punch records.
+            </div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button 
+                type="button" 
+                onClick={() => toggleAllExpanded(true)}
+                style={{ padding: '8px 16px', fontSize: '13px', border: '1px solid var(--border)', borderRadius: '8px', backgroundColor: 'white', cursor: 'pointer', fontWeight: 600, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '4px' }}
+              >
+                Expand All
+              </button>
+              <button 
+                type="button" 
+                onClick={() => toggleAllExpanded(false)}
+                style={{ padding: '8px 16px', fontSize: '13px', border: '1px solid var(--border)', borderRadius: '8px', backgroundColor: 'white', cursor: 'pointer', fontWeight: 600, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '4px' }}
+              >
+                Collapse All
+              </button>
+            </div>
+          </div>
+
+          {/* Grouped Accordion List */}
+          {groupedTimesheets.length === 0 ? (
+            <div style={emptyCardStyle}>
+              <Clock size={40} style={{ color: 'var(--text-muted)', marginBottom: '12px' }} />
+              <h3 style={{ margin: 0, fontSize: '18px', color: 'var(--text-main)' }}>No Records Found</h3>
+              <p style={{ color: 'var(--text-muted)', fontSize: '14px', margin: '4px 0 0 0' }}>No timesheet records match the selected filters.</p>
+            </div>
+          ) : (
+            groupedTimesheets.map(group => {
+              const emp = group.employee;
+              const empName = `${emp.first_name || ''} ${emp.last_name || ''}`;
+              const isExpanded = !!expandedEmployees[emp.employee_id];
+              const initials = `${emp.first_name?.[0] || ''}${emp.last_name?.[0] || ''}`.toUpperCase();
+
+              return (
+                <div 
+                  key={emp.employee_id} 
+                  style={{ 
+                    backgroundColor: 'var(--surface)', 
+                    borderRadius: '12px', 
+                    border: '1px solid var(--border)', 
+                    overflow: 'hidden',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+                    transition: 'all 0.2s ease',
+                    marginBottom: '12px'
+                  }}
+                >
+                  {/* Header Accordion Bar */}
+                  <div 
+                    onClick={() => toggleEmployeeExpanded(emp.employee_id)}
+                    style={{ 
+                      padding: '16px 20px', 
+                      display: 'flex', 
+                      justifyContent: 'space-between', 
+                      alignItems: 'center', 
+                      cursor: 'pointer',
+                      userSelect: 'none',
+                      backgroundColor: isExpanded ? '#f8fafc' : 'var(--surface)',
+                      borderBottom: isExpanded ? '1px solid var(--border)' : 'none',
+                      transition: 'background-color 0.2s',
+                      flexWrap: 'wrap',
+                      gap: '16px'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: '1 1 300px' }}>
+                      {isExpanded ? <ChevronUp size={20} color="#64748b" /> : <ChevronDown size={20} color="#64748b" />}
+                      
+                      {/* Initials Badge */}
+                      <div style={initialsBadgeStyle}>
+                        {initials}
+                      </div>
+
+                      <div>
+                        <h4 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: 'var(--text-main)' }}>{empName}</h4>
+                        <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 500 }}>
+                          {emp.position || 'No Position'} • {emp.branch || 'No Branch'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Stats Grid */}
+                    <div style={{ display: 'flex', gap: '20px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                      <div style={statBoxStyle}>
+                        <span style={statLabelStyle}>Punches</span>
+                        <span style={statValueStyle}>{group.logs.length}</span>
+                      </div>
+                      <div style={statBoxStyle}>
+                        <span style={statLabelStyle}>Contract Hours</span>
+                        <span style={statValueStyle}>{group.totalContractHours.toFixed(2)} hrs</span>
+                      </div>
+                      <div style={statBoxStyle}>
+                        <span style={statLabelStyle}>Actual Hours</span>
+                        <span style={statValueStyle}>{group.totalActualHours.toFixed(2)} hrs</span>
+                      </div>
+                      <div style={statBoxStyle}>
+                        <span style={statLabelStyle}>Actual Earnings</span>
+                        <span style={{ ...statValueStyle, color: '#137333', fontWeight: 700 }}>
+                          ${group.totalEarnings.toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Expanded Table Details */}
+                  {isExpanded && (
+                    <div style={{ overflowX: 'auto', borderTop: '1px solid var(--border)' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
+                        <thead>
+                          <tr style={{ borderBottom: '1px solid var(--border)', backgroundColor: 'var(--background)', color: 'var(--text-muted)', fontWeight: 600 }}>
+                            <th style={{ padding: '12px 16px' }}>Employee</th>
+                            <th style={{ padding: '12px 16px' }}>Date</th>
+                            <th style={{ padding: '12px 16px' }}>Branch</th>
+                            <th style={{ padding: '12px 16px' }}>Position</th>
+                            <th style={{ padding: '12px 16px' }}>Shift</th>
+                            <th style={{ padding: '12px 16px' }}>IN</th>
+                            <th style={{ padding: '12px 16px' }}>OUT</th>
+                            <th style={{ padding: '12px 16px' }}>Wage</th>
+                            <th style={{ padding: '12px 16px' }}>Total (from employee data)</th>
+                            <th style={{ padding: '12px 16px' }}>Total (total from In/Out)</th>
+                            <th style={{ padding: '12px 16px' }}>Sum</th>
+                            <th style={{ padding: '12px 16px' }}>Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {group.logs.map(log => {
+                            const logDateStr = new Date(log.punch_in).toLocaleDateString();
+                            const punchInTimeStr = new Date(log.punch_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                            const punchOutTimeStr = log.punch_out 
+                              ? new Date(log.punch_out).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                              : '';
+                            const punchOutDateStr = log.punch_out
+                              ? new Date(log.punch_out).toLocaleDateString()
+                              : '';
+
+                            return (
+                              <tr key={log.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                                <td style={{ padding: '12px 16px', fontWeight: 600, color: 'var(--text-main)' }}>{empName}</td>
+                                <td style={{ padding: '12px 16px' }}>{logDateStr}</td>
+                                <td style={{ padding: '12px 16px' }}>{log.branch}</td>
+                                <td style={{ padding: '12px 16px' }}>{emp.position || '-'}</td>
+                                <td style={{ padding: '12px 16px', color: 'var(--text-muted)' }}>-</td>
+                                <td style={{ padding: '12px 16px' }}>
+                                  <div>{punchInTimeStr}</div>
+                                  <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{logDateStr}</div>
+                                </td>
+                                <td style={{ padding: '12px 16px' }}>
+                                  {log.punch_out ? (
+                                    <>
+                                      <div>{punchOutTimeStr}</div>
+                                      <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{punchOutDateStr}</div>
+                                    </>
+                                  ) : (
+                                    (() => {
+                                      const isPastDate = new Date(log.punch_in).toDateString() !== new Date().toDateString();
+                                      if (isPastDate) {
+                                        return (
+                                          <button
+                                            type="button"
+                                            onClick={(e) => { e.stopPropagation(); openEditModal(log); }}
+                                            style={{
+                                              padding: '4px 10px',
+                                              backgroundColor: '#fee2e2',
+                                              color: '#991b1b',
+                                              border: '1px solid #fca5a5',
+                                              borderRadius: '6px',
+                                              fontSize: '11px',
+                                              fontWeight: 700,
+                                              cursor: 'pointer',
+                                              transition: 'all 0.2s',
+                                              outline: 'none'
+                                            }}
+                                            title="Missing clock out. Click to add manually."
+                                          >
+                                            OUT
+                                          </button>
+                                        );
+                                      }
+                                      return (
+                                        <button
+                                          type="button"
+                                          onClick={(e) => { e.stopPropagation(); openEditModal(log); }}
+                                          style={{
+                                            padding: '4px 10px',
+                                            backgroundColor: '#e6f4ea',
+                                            color: '#137333',
+                                            border: '1px solid #c2e7d9',
+                                            borderRadius: '6px',
+                                            fontSize: '11px',
+                                            fontWeight: 700,
+                                            cursor: 'pointer',
+                                            transition: 'all 0.2s',
+                                            outline: 'none'
+                                          }}
+                                          title="Employee currently clocked in. Click to edit/clock out."
+                                        >
+                                          Active
+                                        </button>
+                                      );
+                                    })()
+                                  )}
+                                </td>
+                                <td style={{ padding: '12px 16px', fontWeight: 500 }}>
+                                  ${log.computedWage.toFixed(2)}/hr
+                                  <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>({emp.salary_type})</div>
+                                </td>
+                                <td style={{ padding: '12px 16px' }}>{log.contractHours.toFixed(2)} hrs</td>
+                                <td style={{ padding: '12px 16px', fontWeight: 600 }}>{log.actualHours.toFixed(2)} hrs</td>
+                                <td style={{ padding: '12px 16px', fontWeight: 700, color: '#137333' }}>
+                                  ${log.shiftEarnings.toFixed(2)}
+                                </td>
+                                <td style={{ padding: '12px 16px' }}>
+                                  {canManage ? (
+                                    <div style={{ display: 'flex', gap: '6px' }}>
+                                      <button 
+                                        onClick={(e) => { e.stopPropagation(); openEditModal(log); }} 
+                                        style={tableIconBtnStyle}
+                                        title="Edit Record"
+                                      >
+                                        <Edit size={13} />
+                                      </button>
+                                      <button 
+                                        onClick={(e) => { e.stopPropagation(); handleDeleteLog(log.id); }} 
+                                        style={{ ...tableIconBtnStyle, color: 'var(--danger)' }}
+                                        title="Delete Record"
+                                      >
+                                        <Trash2 size={13} />
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>Read Only</span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                        <tfoot>
+                          <tr style={{ backgroundColor: '#f8fafc', fontWeight: 700, borderTop: '2px solid var(--border)' }}>
+                            <td colSpan={8} style={{ padding: '12px 16px', textAlign: 'right' }}>Total:</td>
+                            <td style={{ padding: '12px 16px' }}>{group.totalContractHours.toFixed(2)} hrs</td>
+                            <td style={{ padding: '12px 16px' }}>{group.totalActualHours.toFixed(2)} hrs</td>
+                            <td style={{ padding: '12px 16px', color: '#137333', fontSize: '14px' }}>${group.totalEarnings.toFixed(2)}</td>
+                            <td></td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
         </div>
       )}
 
@@ -516,8 +912,8 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
               <tr style={{ borderBottom: '1px solid var(--border)', backgroundColor: 'var(--background)', color: 'var(--text-muted)', fontWeight: 600 }}>
                 <th style={{ padding: '16px' }}>Employee</th>
                 <th style={{ padding: '16px' }}>Salary Type</th>
-                <th style={{ padding: '16px' }}>Hourly Rate</th>
-                <th style={{ padding: '16px' }}>Device Pairing ID</th>
+                <th style={{ padding: '16px' }}>Wage / Salary Details</th>
+                <th style={{ padding: '16px' }}>Pairing Status</th>
                 <th style={{ padding: '16px' }}>Actions</th>
               </tr>
             </thead>
@@ -531,6 +927,10 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
               ) : (
                 employees.map(emp => {
                   const empName = `${emp.first_name || ''} ${emp.last_name || ''}`;
+                  const computedWage = emp.salary_type === 'Hourly' 
+                    ? (parseFloat(emp.hourly_rate) || 0)
+                    : (parseFloat(emp.salary) || 0) / ((parseFloat(emp.working_days_per_week) || 6) * 4.333 * (parseFloat(emp.default_daily_hours) || 9));
+
                   return (
                     <tr key={emp.employee_id} style={{ borderBottom: '1px solid var(--border)' }}>
                       <td style={{ padding: '16px' }}>
@@ -544,14 +944,27 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
                           {emp.salary_type || 'Monthly'}
                         </span>
                       </td>
-                      <td style={{ padding: '16px', fontWeight: 600, color: emp.salary_type === 'Hourly' ? 'var(--text-main)' : 'var(--text-muted)' }}>
-                        {emp.salary_type === 'Hourly' ? `$${emp.hourly_rate || 0}/hr` : 'N/A'}
-                      </td>
-                      <td style={{ padding: '16px', fontFamily: 'monospace', fontSize: '13px', color: emp.device_id ? 'var(--text-main)' : 'var(--text-muted)' }}>
-                        {emp.device_id ? (
-                          <span style={{ color: '#2563eb', fontWeight: 600 }}>{emp.device_id}</span>
+                      <td style={{ padding: '16px', color: 'var(--text-main)' }}>
+                        {emp.salary_type === 'Hourly' ? (
+                          <div style={{ fontWeight: 600 }}>${(parseFloat(emp.hourly_rate) || 0).toFixed(2)}/hr</div>
                         ) : (
-                          'Not paired (will pair on first punch)'
+                          <div>
+                            <div style={{ fontWeight: 600 }}>${(parseFloat(emp.salary) || 0).toFixed(2)}/mo</div>
+                            <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                              Equiv: ${computedWage.toFixed(2)}/hr
+                            </div>
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ padding: '16px' }}>
+                        {emp.device_id ? (
+                          <span style={{ padding: '4px 8px', backgroundColor: '#e0f2fe', color: '#0369a1', borderRadius: '6px', fontSize: '12px', fontWeight: 600 }}>
+                            Active Pairing
+                          </span>
+                        ) : (
+                          <span style={{ padding: '4px 8px', backgroundColor: '#f1f5f9', color: '#64748b', borderRadius: '6px', fontSize: '12px', fontWeight: 500 }}>
+                            Not Paired (Sync on first punch)
+                          </span>
                         )}
                       </td>
                       <td style={{ padding: '16px' }}>
@@ -585,10 +998,19 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
               </div>
               <div>
                 <label style={filterLabelStyle}>Branch *</label>
-                <select style={filterInputStyle} value={formBranch} onChange={e => setFormBranch(e.target.value)} required>
+                <select 
+                  style={{ ...filterInputStyle, backgroundColor: '#f1f5f9' }} 
+                  value={formBranch} 
+                  onChange={e => setFormBranch(e.target.value)} 
+                  required
+                  disabled={true}
+                >
                   <option value="">Select Branch...</option>
                   {branches.map(b => <option key={b.name} value={b.name}>{b.name}</option>)}
                 </select>
+                <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: '4px 0 0 0' }}>
+                  Branch cannot be changed for existing punch logs.
+                </p>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
@@ -634,10 +1056,21 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
               </div>
               <div>
                 <label style={filterLabelStyle}>Branch *</label>
-                <select style={filterInputStyle} value={formBranch} onChange={e => setFormBranch(e.target.value)} required>
+                <select 
+                  style={{ ...filterInputStyle, backgroundColor: formPunchOut ? '#f1f5f9' : 'white' }} 
+                  value={formBranch} 
+                  onChange={e => setFormBranch(e.target.value)} 
+                  required
+                  disabled={!!formPunchOut}
+                >
                   <option value="">Select Branch...</option>
                   {branches.map(b => <option key={b.name} value={b.name}>{b.name}</option>)}
                 </select>
+                {formPunchOut && (
+                  <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: '4px 0 0 0' }}>
+                    Branch cannot be changed for clocked-out shifts.
+                  </p>
+                )}
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
@@ -781,4 +1214,39 @@ const modalContentStyle = {
   boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
   maxHeight: '90vh',
   overflowY: 'auto' as const
+};
+
+const initialsBadgeStyle = {
+  width: '36px',
+  height: '36px',
+  borderRadius: '50%',
+  background: 'linear-gradient(135deg, var(--primary) 0%, #3b82f6 100%)',
+  color: 'white',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  fontWeight: 600,
+  fontSize: '14px',
+  boxShadow: '0 2px 4px rgba(59, 130, 246, 0.2)'
+};
+
+const statBoxStyle = {
+  display: 'flex',
+  flexDirection: 'column' as const,
+  alignItems: 'flex-start',
+  minWidth: '90px'
+};
+
+const statLabelStyle = {
+  fontSize: '10px',
+  color: 'var(--text-muted)',
+  textTransform: 'uppercase' as const,
+  letterSpacing: '0.5px',
+  marginBottom: '2px'
+};
+
+const statValueStyle = {
+  fontSize: '13px',
+  fontWeight: 600,
+  color: 'var(--text-main)'
 };

@@ -42,6 +42,21 @@ async function injectRestaurantId(payload: any) {
   return payload;
 }
 
+export function getRestaurantId(): string | null {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const cachedUserStr = window.localStorage.getItem('neo_admin_user');
+      if (cachedUserStr) {
+        const cachedUser = JSON.parse(cachedUserStr);
+        if (cachedUser?.restaurant_id) {
+          return cachedUser.restaurant_id;
+        }
+      }
+    }
+  } catch {}
+  return cachedRestaurantId;
+}
+
 export const api = {
   // Authentication
   login: async (emailOrPin: string, password?: string) => {
@@ -105,19 +120,26 @@ export const api = {
 
   // Menu Manual
   getMenuSections: async () => {
-    const { data, error } = await supabase.from('menu_sections').select('*').order('display_order');
+    const rid = getRestaurantId();
+    let query = supabase.from('menu_sections').select('*').order('display_order');
+    if (rid) query = query.eq('restaurant_id', rid);
+    const { data, error } = await query;
     if (error) return { success: false, error: error.message };
     return { success: true, data };
   },
 
   getMenuRecipes: async (sectionId?: number) => {
+    const rid = getRestaurantId();
     let query = supabase.from('menu_recipes').select('*').order('item_name');
     if (sectionId) query = query.eq('section_id', sectionId);
+    if (rid) query = query.eq('restaurant_id', rid);
     
     const { data: recipes, error: recipesError } = await query;
     if (recipesError) return { success: false, error: recipesError.message };
 
-    const { data: sections, error: sectionsError } = await supabase.from('menu_sections').select('*');
+    let sectionsQuery = supabase.from('menu_sections').select('*');
+    if (rid) sectionsQuery = sectionsQuery.eq('restaurant_id', rid);
+    const { data: sections, error: sectionsError } = await sectionsQuery;
     if (sectionsError) return { success: false, error: sectionsError.message };
 
     const sectionsMap = new Map();
@@ -136,19 +158,16 @@ export const api = {
   },
 
   getMenuRecipeById: async (id: string) => {
-    const { data: recipe, error: recipeError } = await supabase
-      .from('menu_recipes')
-      .select('*')
-      .eq('id', id)
-      .single();
+    const rid = getRestaurantId();
+    let query = supabase.from('menu_recipes').select('*').eq('id', id);
+    if (rid) query = query.eq('restaurant_id', rid);
+    const { data: recipe, error: recipeError } = await query.single();
     if (recipeError) return { success: false, error: recipeError.message };
 
     if (recipe && recipe.section_id) {
-      const { data: section } = await supabase
-        .from('menu_sections')
-        .select('*')
-        .eq('id', recipe.section_id)
-        .maybeSingle();
+      let secQuery = supabase.from('menu_sections').select('*').eq('id', recipe.section_id);
+      if (rid) secQuery = secQuery.eq('restaurant_id', rid);
+      const { data: section } = await secQuery.maybeSingle();
 
       return {
         success: true,
@@ -163,7 +182,8 @@ export const api = {
   },
 
   saveMenuRecipe: async (recipe: any) => {
-    const { error } = await supabase.from('menu_recipes').upsert(recipe);
+    const payload = await injectRestaurantId({ ...recipe });
+    const { error } = await supabase.from('menu_recipes').upsert(payload);
     if (error) return { success: false, error: error.message };
     return { success: true };
   },
@@ -177,59 +197,79 @@ export const api = {
 
   // Branches, Departments and Users for Access Control Dropdowns
   getBranchesList: async () => {
-    const { data, error } = await supabase.from('branches').select('*').order('name');
+    const rid = getRestaurantId();
+    let query = supabase.from('branches').select('*').order('name');
+    if (rid) query = query.eq('restaurant_id', rid);
+    const { data, error } = await query;
     if (error) return { success: false, error: error.message };
     return { success: true, data };
   },
 
   getDepartmentsList: async () => {
-    const { data, error } = await supabase.from('departments').select('*').order('name');
+    const rid = getRestaurantId();
+    let query = supabase.from('departments').select('*').order('name');
+    if (rid) query = query.eq('restaurant_id', rid);
+    const { data, error } = await query;
     if (error) return { success: false, error: error.message };
     return { success: true, data };
   },
 
   getAllUsers: async () => {
-    const { data, error } = await supabase.from('users').select('*').order('name');
+    const rid = getRestaurantId();
+    let query = supabase.from('users').select('*').order('name');
+    if (rid) query = query.eq('restaurant_id', rid);
+    const { data, error } = await query;
     if (error) return { success: false, error: error.message };
     return { success: true, data };
   },
 
   // HR & Employees
   getEmployees: async () => {
-    const { data, error } = await supabase.from('employees').select('*').order('first_name');
+    const rid = getRestaurantId();
+    let query = supabase.from('employees').select('*').order('first_name');
+    if (rid) query = query.eq('restaurant_id', rid);
+    const { data, error } = await query;
     if (error) return { success: false, error: error.message };
     return { success: true, data };
   },
 
   getEmployeeById: async (id: string) => {
-    const { data, error } = await supabase.from('employees').select('*').eq('employee_id', id).single();
+    const rid = getRestaurantId();
+    let query = supabase.from('employees').select('*').eq('employee_id', id);
+    if (rid) query = query.eq('restaurant_id', rid);
+    const { data, error } = await query.single();
     if (error) return { success: false, error: error.message };
     return { success: true, data };
   },
 
   saveEmployee: async (employee: any) => {
+    const payload = await injectRestaurantId({ ...employee });
     let res;
-    if (employee.employee_id) {
-      res = await supabase.from('employees').update(employee).eq('employee_id', employee.employee_id);
+    if (payload.employee_id) {
+      res = await supabase.from('employees').update(payload).eq('employee_id', payload.employee_id);
     } else {
-      res = await supabase.from('employees').insert(employee);
+      res = await supabase.from('employees').insert(payload);
     }
     if (res.error) return { success: false, error: res.error.message };
     return { success: true };
   },
 
   getUserById: async (id: string) => {
-    const { data, error } = await supabase.from('users').select('*').eq('id', id).single();
+    const rid = getRestaurantId();
+    let query = supabase.from('users').select('*').eq('id', id);
+    if (rid) query = query.eq('restaurant_id', rid);
+    const { data, error } = await query.single();
     if (error) return { success: false, error: error.message };
     return { success: true, data };
   },
 
   saveUser: async (user: any) => {
+    const payload = await injectRestaurantId({ ...user });
     let res;
-    if (user.id) {
-      res = await supabase.from('users').update(user).eq('id', user.id).select().single();
+    if (payload.id) {
+      res = await supabase.from('users').update(payload).eq('id', payload.id).select().single();
     } else {
-      res = await supabase.from('users').insert(user).select().single();
+      res = await supabase.from('users').insert(payload).select().single();
     }
     if (res.error) return { success: false, error: res.error.message };
     return { success: true, data: res.data };
@@ -276,36 +316,44 @@ export const api = {
   // --------------------------------------------------------------------------
 
   getTipsSettings: async (branch?: string) => {
+    const rid = getRestaurantId();
     let query = supabase.from('tips_settings').select('*');
     if (branch) query = query.eq('branch', branch);
+    if (rid) query = query.eq('restaurant_id', rid);
     const { data, error } = await query;
     if (error) return { success: false, error: error.message };
     return { success: true, data };
   },
 
   saveTipsSettings: async (settings: any) => {
-    const { error } = await supabase.from('tips_settings').upsert(settings, { onConflict: 'branch' });
+    const payload = await injectRestaurantId({ ...settings });
+    const { error } = await supabase.from('tips_settings').upsert(payload, { onConflict: 'branch' });
     if (error) return { success: false, error: error.message };
     return { success: true };
   },
 
   getEmployeesForTips: async (branch: string) => {
-    const { data, error } = await supabase
-      .from('employees')
-      .select('*')
-      .eq('branch', branch)
-      .in('status', ['Active']);
+    const rid = getRestaurantId();
+    let query = supabase.from('employees').select('*').eq('branch', branch).in('status', ['Active']);
+    if (rid) query = query.eq('restaurant_id', rid);
+    const { data, error } = await query;
     if (error) return { success: false, error: error.message };
     return { success: true, data };
   },
 
   createTipsCollection: async (collection: any, distribution: any[]) => {
     // 1. Insert collection
-    const { data: colData, error: colError } = await supabase.from('tips_collections').insert(collection).select().single();
+    const payload = await injectRestaurantId({ ...collection });
+    const { data: colData, error: colError } = await supabase.from('tips_collections').insert(payload).select().single();
     if (colError) return { success: false, error: colError.message };
 
     // 2. Insert distribution with the new collection ID
-    const distData = distribution.map(d => ({ ...d, tips_collection_id: colData.id }));
+    const rid = colData.restaurant_id || getRestaurantId();
+    const distData = distribution.map(d => ({ 
+      ...d, 
+      tips_collection_id: colData.id,
+      ...(rid ? { restaurant_id: rid } : {})
+    }));
     const { error: distError } = await supabase.from('tips_distribution').insert(distData);
     if (distError) {
       // rollback collection if distribution fails
@@ -317,13 +365,19 @@ export const api = {
   },
 
   updateTipsCollectionAndDistribution: async (collectionId: string, collectionUpdates: any, distribution: any[]) => {
-    const { error: colError } = await supabase.from('tips_collections').update(collectionUpdates).eq('id', collectionId);
+    const payload = await injectRestaurantId({ ...collectionUpdates });
+    const { error: colError } = await supabase.from('tips_collections').update(payload).eq('id', collectionId);
     if (colError) return { success: false, error: colError.message };
 
     // Delete old distribution and insert new
     await supabase.from('tips_distribution').delete().eq('tips_collection_id', collectionId);
     
-    const distData = distribution.map(d => ({ ...d, tips_collection_id: collectionId }));
+    const rid = payload.restaurant_id || getRestaurantId();
+    const distData = distribution.map(d => ({ 
+      ...d, 
+      tips_collection_id: collectionId,
+      ...(rid ? { restaurant_id: rid } : {})
+    }));
     const { error: distError } = await supabase.from('tips_distribution').insert(distData);
     if (distError) return { success: false, error: distError.message };
 
@@ -331,10 +385,12 @@ export const api = {
   },
 
   getTipsCollections: async (branch?: string, status?: string, department?: string) => {
+    const rid = getRestaurantId();
     let query = supabase.from('tips_collections').select('*').order('created_at', { ascending: false });
     if (branch && branch !== 'All') query = query.eq('branch', branch);
     if (status && status !== 'All') query = query.eq('status', status);
     if (department && department !== 'All') query = query.eq('department', department);
+    if (rid) query = query.eq('restaurant_id', rid);
     
     const { data, error } = await query;
     if (error) return { success: false, error: error.message };
@@ -349,7 +405,10 @@ export const api = {
 
   // Auth & Security (App Permissions)
   getAllAppPermissions: async () => {
-    const { data, error } = await supabase.from('app_permissions').select('*');
+    const rid = getRestaurantId();
+    let query = supabase.from('app_permissions').select('*');
+    if (rid) query = query.eq('restaurant_id', rid);
+    const { data, error } = await query;
     if (error) return { success: false, error: error.message };
     return { success: true, data };
   },
@@ -364,7 +423,10 @@ export const api = {
   // SOPs & Training API
   // --------------------------------------------------------------------------
   getTrainingCategories: async () => {
-    const { data, error } = await supabase.from('training_categories').select('*').order('name');
+    const rid = getRestaurantId();
+    let query = supabase.from('training_categories').select('*').order('name');
+    if (rid) query = query.eq('restaurant_id', rid);
+    const { data, error } = await query;
     if (error) return { success: false, error: error.message };
     return { success: true, data };
   },
@@ -387,8 +449,10 @@ export const api = {
   },
 
   getSubcategories: async (department?: string) => {
+    const rid = getRestaurantId();
     let query = supabase.from('training_subcategories').select('*').order('name');
     if (department) query = query.eq('department', department);
+    if (rid) query = query.eq('restaurant_id', rid);
     const { data, error } = await query;
     if (error) return { success: false, error: error.message };
     return { success: true, data };
@@ -411,14 +475,18 @@ export const api = {
   },
 
   getTrainingDocuments: async (categoryId?: string, department?: string) => {
+    const rid = getRestaurantId();
     let query = supabase.from('training_documents').select('*').order('created_at', { ascending: false });
     if (categoryId) query = query.eq('category_id', categoryId);
     if (department && department !== 'All') query = query.eq('department', department);
+    if (rid) query = query.eq('restaurant_id', rid);
     
     const { data: docs, error: docsError } = await query;
     if (docsError) return { success: false, error: docsError.message };
 
-    const { data: cats, error: catsError } = await supabase.from('training_categories').select('*');
+    let catsQuery = supabase.from('training_categories').select('*');
+    if (rid) catsQuery = catsQuery.eq('restaurant_id', rid);
+    const { data: cats, error: catsError } = await catsQuery;
     if (catsError) return { success: false, error: catsError.message };
 
     const catsMap = new Map();
@@ -500,7 +568,13 @@ export const api = {
           can_manage_voids: true,
           can_view_client_orders: true,
           can_manage_client_orders: true,
-          can_view_client_reports: true
+          can_view_client_reports: true,
+          can_view_catalog: true,
+          can_manage_catalog: true,
+          can_view_suppliers: true,
+          can_manage_suppliers: true,
+          can_view_price_intelligence: true,
+          can_manage_price_intelligence: true
         }
       };
     }
@@ -552,7 +626,13 @@ export const api = {
           can_manage_voids: acc.can_manage_voids || curr.can_manage_voids,
           can_view_client_orders: acc.can_view_client_orders || curr.can_view_client_orders,
           can_manage_client_orders: acc.can_manage_client_orders || curr.can_manage_client_orders,
-          can_view_client_reports: acc.can_view_client_reports || curr.can_view_client_reports
+          can_view_client_reports: acc.can_view_client_reports || curr.can_view_client_reports,
+          can_view_catalog: acc.can_view_catalog || curr.can_view_catalog,
+          can_manage_catalog: acc.can_manage_catalog || curr.can_manage_catalog,
+          can_view_suppliers: acc.can_view_suppliers || curr.can_view_suppliers,
+          can_manage_suppliers: acc.can_manage_suppliers || curr.can_manage_suppliers,
+          can_view_price_intelligence: acc.can_view_price_intelligence || curr.can_view_price_intelligence,
+          can_manage_price_intelligence: acc.can_manage_price_intelligence || curr.can_manage_price_intelligence
         }), { 
           can_create_orders: false, can_send_orders: false, 
           can_receive_orders: false, can_edit_all_orders: false, 
@@ -573,7 +653,13 @@ export const api = {
           can_manage_voids: false,
           can_view_client_orders: false,
           can_manage_client_orders: false,
-          can_view_client_reports: false
+          can_view_client_reports: false,
+          can_view_catalog: false,
+          can_manage_catalog: false,
+          can_view_suppliers: false,
+          can_manage_suppliers: false,
+          can_view_price_intelligence: false,
+          can_manage_price_intelligence: false
         });
         return { success: true, data: merged };
       }
@@ -603,7 +689,13 @@ export const api = {
           can_manage_voids: false,
           can_view_client_orders: true,
           can_manage_client_orders: true,
-          can_view_client_reports: true
+          can_view_client_reports: true,
+          can_view_catalog: true,
+          can_manage_catalog: true,
+          can_view_suppliers: true,
+          can_manage_suppliers: true,
+          can_view_price_intelligence: true,
+          can_manage_price_intelligence: true
         }
       };
     }
@@ -645,6 +737,11 @@ export const api = {
       }
     }
     
+    const rid = getRestaurantId();
+    if (rid) {
+      query = query.eq('restaurant_id', rid);
+    }
+    
     const { data: primaryData, error } = await query;
     
     let fallbackData: any[] = [];
@@ -666,6 +763,9 @@ export const api = {
           const nextDayStr = new Date(Date.UTC(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10) + 1)).toISOString().split('T')[0];
           urlParams.append('date', `lt.${nextDayStr}`);
         }
+      }
+      if (rid) {
+        urlParams.append('restaurant_id', `eq.${rid}`);
       }
       const rawRes = await fetch(`https://ibtbcgkkixkglnhhrrpu.supabase.co/rest/v1/shift_cash?${urlParams.toString()}`, {
         headers: {
@@ -736,6 +836,11 @@ export const api = {
         query = query.lte('date', `${endClean} 23:59:59`);
       }
     }
+
+    const rid = getRestaurantId();
+    if (rid) {
+      query = query.eq('restaurant_id', rid);
+    }
     
     const { data: primaryData, error } = await query;
 
@@ -758,6 +863,9 @@ export const api = {
           const nextDayStr = new Date(Date.UTC(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10) + 1)).toISOString().split('T')[0];
           urlParams.append('date', `lt.${nextDayStr}`);
         }
+      }
+      if (rid) {
+        urlParams.append('restaurant_id', `eq.${rid}`);
       }
       const rawRes = await fetch(`https://ibtbcgkkixkglnhhrrpu.supabase.co/rest/v1/daily_payments?${urlParams.toString()}`, {
         headers: {
@@ -839,9 +947,13 @@ export const api = {
 
   // "86" Daily Missing Items
   get86Logs: async (date: string, branch?: string) => {
+    const rid = getRestaurantId();
     let query = supabase.from('menu_86').select('*').eq('date', date);
     if (branch && branch !== 'All') {
       query = query.eq('branch', branch);
+    }
+    if (rid) {
+      query = query.eq('restaurant_id', rid);
     }
     const { data, error } = await query.order('branch');
     if (error) return { success: false, error: error.message };
@@ -875,10 +987,12 @@ export const api = {
 
   // Dashboard & KPI Analytics RPC call
   getDashboardKpis: async (filters: { date: string; branch: string; department: string }) => {
+    const rid = getRestaurantId();
     const { data, error } = await supabase.rpc('get_dashboard_kpis', {
       p_date: filters.date,
       p_branch: filters.branch,
-      p_dept: filters.department
+      p_dept: filters.department,
+      p_restaurant_id: rid || null
     });
     if (error) return { success: false, error: error.message };
     return { success: true, data };
@@ -886,13 +1000,15 @@ export const api = {
 
   // Chef Specials / Upsell & Limited QTY API
   getTodaySpecials: async (branch: string) => {
+    const rid = getRestaurantId();
     const todayStr = new Date().toISOString().split('T')[0];
-    const { data, error } = await supabase
+    let query = supabase
       .from('chef_specials')
       .select('*')
       .eq('branch', branch)
-      .eq('date', todayStr)
-      .order('recipe_name');
+      .eq('date', todayStr);
+    if (rid) query = query.eq('restaurant_id', rid);
+    const { data, error } = await query.order('recipe_name');
     if (error) return { success: false, error: error.message };
     return { success: true, data };
   },
@@ -910,17 +1026,19 @@ export const api = {
   },
 
   getSpecialsHistory: async (startDate: string, endDate: string, branch?: string) => {
+    const rid = getRestaurantId();
     let query = supabase
       .from('chef_specials')
       .select('*')
       .gte('date', startDate)
-      .lte('date', endDate)
-      .order('date', { ascending: false })
-      .order('recipe_name');
+      .lte('date', endDate);
     if (branch && branch !== 'All') {
       query = query.eq('branch', branch);
     }
-    const { data, error } = await query;
+    if (rid) {
+      query = query.eq('restaurant_id', rid);
+    }
+    const { data, error } = await query.order('date', { ascending: false }).order('recipe_name');
     if (error) return { success: false, error: error.message };
     return { success: true, data };
   },
@@ -936,6 +1054,7 @@ export const api = {
   },
 
   getWasteLogs: async (filters: { branch?: string, department?: string, source?: string, date?: string }) => {
+    const rid = getRestaurantId();
     let query = supabase.from('waste_logs').select('*').order('date', { ascending: false });
     
     if (filters.branch && filters.branch !== 'All') {
@@ -950,6 +1069,9 @@ export const api = {
     if (filters.date) {
       query = query.gte('date', `${filters.date}T00:00:00.000Z`).lte('date', `${filters.date}T23:59:59.999Z`);
     }
+    if (rid) {
+      query = query.eq('restaurant_id', rid);
+    }
 
     const { data, error } = await query;
     if (error) return { success: false, error: error.message };
@@ -957,6 +1079,7 @@ export const api = {
   },
 
   getVoidReceipts: async (filters: { branch?: string; date?: string }) => {
+    const rid = getRestaurantId();
     let query = supabase.from('void_receipts').select('*').order('created_at', { ascending: false });
     
     if (filters.branch && filters.branch !== 'All') {
@@ -964,6 +1087,9 @@ export const api = {
     }
     if (filters.date) {
       query = query.eq('receipt_date', filters.date);
+    }
+    if (rid) {
+      query = query.eq('restaurant_id', rid);
     }
 
     const { data, error } = await query;
@@ -981,8 +1107,12 @@ export const api = {
     status?: string;
     deviceType?: string;
   }) => {
+    const rid = getRestaurantId();
     let query = supabase.from('login_logs').select('*').order('LoginTime', { ascending: false });
     
+    if (rid) {
+      query = query.eq('restaurant_id', rid);
+    }
     if (filters) {
       if (filters.startDate) query = query.gte('Date', filters.startDate);
       if (filters.endDate) query = query.lte('Date', filters.endDate);
@@ -1005,11 +1135,14 @@ export const api = {
     toDate: string;
   }) => {
     try {
+      const rid = getRestaurantId();
       let branches: string[] = [];
       if (filters.branch && filters.branch !== 'All') {
         branches = [filters.branch];
       } else {
-        const { data: branchData, error: branchError } = await supabase.from('branches').select('name').order('name');
+        let bQuery = supabase.from('branches').select('name').order('name');
+        if (rid) bQuery = bQuery.eq('restaurant_id', rid);
+        const { data: branchData, error: branchError } = await bQuery;
         if (branchError) return { success: false, error: branchError.message };
         branches = (branchData || []).map((b: any) => b.name);
       }
@@ -1048,6 +1181,7 @@ export const api = {
 
       if (filters.branch && filters.branch !== 'All') query = query.eq('branch', filters.branch);
       if (filters.shift && filters.shift !== 'All') query = query.eq('shift', filters.shift);
+      if (rid) query = query.eq('restaurant_id', rid);
 
       const { data: actualData, error: actualError } = await query;
       if (actualError) return { success: false, error: actualError.message };
@@ -1090,7 +1224,9 @@ export const api = {
 
   // Purchasing Module API
   getPurchasingItems: async (queryStr?: string, department?: string) => {
+    const rid = getRestaurantId();
     let query = supabase.from('items').select('*').eq('purchasing', 'yes').order('name');
+    if (rid) query = query.eq('restaurant_id', rid);
     if (queryStr) query = query.ilike('name', `%${queryStr}%`);
     if (department && department !== 'All') {
       const deptList = department.split(',').map((d: string) => d.trim()).filter(Boolean);
@@ -1125,7 +1261,9 @@ export const api = {
   },
 
   getPurchasingRequests: async (statusFilter?: string | string[], departmentsFilter?: string) => {
+    const rid = getRestaurantId();
     let query = supabase.from('purchasing_requests').select('*').order('created_at', { ascending: false });
+    if (rid) query = query.eq('restaurant_id', rid);
     
     if (statusFilter) {
       if (Array.isArray(statusFilter)) {
@@ -1146,13 +1284,19 @@ export const api = {
   },
 
   getPurchasingRequestItems: async (requestId: string) => {
-    const { data, error } = await supabase.from('purchasing_request_items').select('*').eq('purchasing_request_id', requestId).order('item_name');
+    const rid = getRestaurantId();
+    let query = supabase.from('purchasing_request_items').select('*').eq('purchasing_request_id', requestId);
+    if (rid) query = query.eq('restaurant_id', rid);
+    const { data, error } = await query.order('item_name');
     if (error) return { success: false, error: error.message };
     return { success: true, data };
   },
 
   getAllPurchasingRequestItems: async () => {
-    const { data, error } = await supabase.from('purchasing_request_items').select('*');
+    const rid = getRestaurantId();
+    let query = supabase.from('purchasing_request_items').select('*');
+    if (rid) query = query.eq('restaurant_id', rid);
+    const { data, error } = await query;
     if (error) return { success: false, error: error.message };
     return { success: true, data };
   },
@@ -1346,7 +1490,9 @@ export const api = {
 
   // Ordering Module API
   getOrders: async (filters: { branch?: string; to_branch?: string; status?: string | string[]; urgent?: boolean }) => {
+    const rid = getRestaurantId();
     let query = supabase.from('orders').select('*');
+    if (rid) query = query.eq('restaurant_id', rid);
     
     if (filters.branch && filters.branch !== 'All') query = query.eq('branch', filters.branch);
     if (filters.to_branch && filters.to_branch !== 'All') query = query.eq('to_branch', filters.to_branch);
@@ -1371,10 +1517,9 @@ export const api = {
     }
 
     const orderIds = orders.map(o => o.id);
-    const { data: items, error: itemsError } = await supabase
-      .from('order_items')
-      .select('*')
-      .in('order_id', orderIds);
+    let itemsQuery = supabase.from('order_items').select('*').in('order_id', orderIds);
+    if (rid) itemsQuery = itemsQuery.eq('restaurant_id', rid);
+    const { data: items, error: itemsError } = await itemsQuery;
     
     if (itemsError) return { success: false, error: itemsError.message };
 
@@ -1457,11 +1602,15 @@ export const api = {
 
   getItemSentToBranchHistory: async (itemName: string, toBranch: string) => {
     try {
-      const { data: orders, error: ordersError } = await supabase
+      const rid = getRestaurantId();
+      let query = supabase
         .from('orders')
         .select('*')
         .eq('to_branch', toBranch)
         .in('status', ['Sent', 'Received']);
+      if (rid) query = query.eq('restaurant_id', rid);
+
+      const { data: orders, error: ordersError } = await query;
 
       if (ordersError) return { success: false, error: ordersError.message };
 
@@ -1470,12 +1619,14 @@ export const api = {
       }
 
       const orderIds = orders.map(o => o.id);
-      const { data: items, error: itemsError } = await supabase
+      let itemsQuery = supabase
         .from('order_items')
         .select('*')
         .eq('item_name', itemName)
         .gt('qty_sent', 0)
         .in('order_id', orderIds);
+      if (rid) itemsQuery = itemsQuery.eq('restaurant_id', rid);
+      const { data: items, error: itemsError } = await itemsQuery;
 
       if (itemsError) return { success: false, error: itemsError.message };
 
@@ -1500,7 +1651,9 @@ export const api = {
   },
 
   getOrderCatalogItems: async (queryStr?: string, department?: string) => {
+    const rid = getRestaurantId();
     let query = supabase.from('items').select('*').eq('order', 'yes').order('name');
+    if (rid) query = query.eq('restaurant_id', rid);
     if (queryStr) query = query.ilike('name', `%${queryStr}%`);
     if (department && department !== 'All') {
       const deptList = department.split(',').map((d: string) => d.trim()).filter(Boolean);
@@ -1536,13 +1689,20 @@ export const api = {
 
   // Reservations Module API
   getClients: async () => {
-    const { data, error } = await supabase.from('clients').select('*').order('name');
+    const rid = getRestaurantId();
+    let query = supabase.from('clients').select('*').order('name');
+    if (rid) query = query.eq('restaurant_id', rid);
+    const { data, error } = await query;
     if (error) return { success: false, error: error.message };
     return { success: true, data };
   },
 
   searchClients: async (query: string) => {
-    const { data, error } = await supabase.from('clients').select('*').or(`name.ilike.%${query}%,phone.ilike.%${query}%`).limit(10);
+    const rid = getRestaurantId();
+    let qBuilder = supabase.from('clients').select('*');
+    if (rid) qBuilder = qBuilder.eq('restaurant_id', rid);
+    qBuilder = qBuilder.or(`name.ilike.%${query}%,phone.ilike.%${query}%`).limit(10);
+    const { data, error } = await qBuilder;
     if (error) return { success: false, error: error.message };
     return { success: true, data };
   },
@@ -1555,7 +1715,10 @@ export const api = {
   },
 
   getBranches: async () => {
-    const { data, error } = await supabase.from('branches').select('*');
+    const rid = getRestaurantId();
+    let query = supabase.from('branches').select('*');
+    if (rid) query = query.eq('restaurant_id', rid);
+    const { data, error } = await query;
     if (error) return { success: false, error: error.message };
     return { success: true, data };
   },
@@ -1575,12 +1738,14 @@ export const api = {
 
   // ── Branch Shifts ──
   getBranchShifts: async (branch?: string) => {
+    const rid = getRestaurantId();
     let q = supabase
       .from('branch_shifts')
       .select('*')
       .order('branch')
       .order('start_time');
     if (branch && branch !== 'All') q = q.eq('branch', branch);
+    if (rid) q = q.eq('restaurant_id', rid);
     const { data, error } = await q;
     if (error) return { success: false, error: error.message };
     return { success: true, data };
@@ -1613,12 +1778,14 @@ export const api = {
   },
 
   getReservations: async (branch: string, date: string) => {
-    const { data: reservations, error: reservationsError } = await supabase
+    const rid = getRestaurantId();
+    let resQuery = supabase
       .from('reservations')
       .select('*')
       .eq('branch', branch)
-      .eq('reservation_date', date)
-      .order('reservation_time');
+      .eq('reservation_date', date);
+    if (rid) resQuery = resQuery.eq('restaurant_id', rid);
+    const { data: reservations, error: reservationsError } = await resQuery.order('reservation_time');
     
     if (reservationsError) return { success: false, error: reservationsError.message };
 
@@ -1629,10 +1796,12 @@ export const api = {
     const clientIds = reservations.map(r => r.client_id).filter(Boolean);
     let clients: any[] = [];
     if (clientIds.length > 0) {
-      const { data: clientsData, error: clientsError } = await supabase
+      let clientsQuery = supabase
         .from('clients')
         .select('*')
         .in('id', clientIds);
+      if (rid) clientsQuery = clientsQuery.eq('restaurant_id', rid);
+      const { data: clientsData, error: clientsError } = await clientsQuery;
       if (clientsError) return { success: false, error: clientsError.message };
       clients = clientsData || [];
     }
@@ -1668,7 +1837,10 @@ export const api = {
 
   // Supplier Module API
   getSuppliers: async () => {
-    const { data, error } = await supabase.from('suppliers').select('*').order('name');
+    const rid = getRestaurantId();
+    let query = supabase.from('suppliers').select('*').order('name');
+    if (rid) query = query.eq('restaurant_id', rid);
+    const { data, error } = await query;
     if (error) return { success: false, error: error.message };
     return { success: true, data };
   },
@@ -1688,7 +1860,10 @@ export const api = {
 
   // Daily Checklists API
   getChecklists: async () => {
-    const { data, error } = await supabase.from('checklists').select('*').order('created_at', { ascending: false });
+    const rid = getRestaurantId();
+    let query = supabase.from('checklists').select('*').order('created_at', { ascending: false });
+    if (rid) query = query.eq('restaurant_id', rid);
+    const { data, error } = await query;
     if (error) return { success: false, error: error.message };
     return { success: true, data };
   },
@@ -1711,24 +1886,31 @@ export const api = {
   },
 
   getChecklistSubmissions: async (branchFilter?: string, departmentFilter?: string) => {
+    const rid = getRestaurantId();
     let query = supabase.from('checklist_submissions').select('*').order('date_submitted', { ascending: false });
     if (branchFilter && branchFilter !== 'All') query = query.eq('branch', branchFilter);
     if (departmentFilter && departmentFilter !== 'All') query = query.eq('department', departmentFilter);
+    if (rid) query = query.eq('restaurant_id', rid);
     const { data, error } = await query;
     if (error) return { success: false, error: error.message };
     return { success: true, data };
   },
 
   getSubDepartmentsList: async (departmentName?: string) => {
+    const rid = getRestaurantId();
     let query = supabase.from('sub_departments').select('id, department_name, name').order('name');
     if (departmentName) query = query.eq('department_name', departmentName);
+    if (rid) query = query.eq('restaurant_id', rid);
     const { data, error } = await query;
     if (error) return { success: false, error: error.message };
     return { success: true, data };
   },
 
   getAllCatalogItems: async () => {
-    const { data, error } = await supabase.from('items').select('*').order('name');
+    const rid = getRestaurantId();
+    let query = supabase.from('items').select('*').order('name');
+    if (rid) query = query.eq('restaurant_id', rid);
+    const { data, error } = await query;
     if (error) return { success: false, error: error.message };
     return { success: true, data };
   },
@@ -1774,7 +1956,10 @@ export const api = {
 
   // TASK MANAGEMENT / MANAGER TO-DO API
   getTasks: async () => {
-    const { data, error } = await supabase.from('tasks').select('*').order('created_at', { ascending: false });
+    const rid = getRestaurantId();
+    let query = supabase.from('tasks').select('*').order('created_at', { ascending: false });
+    if (rid) query = query.eq('restaurant_id', rid);
+    const { data, error } = await query;
     if (error) return { success: false, error: error.message };
     return { success: true, data };
   },
@@ -1815,11 +2000,13 @@ export const api = {
   },
 
   getGlobalNotificationSettings: async () => {
-    const { data, error } = await supabase
+    const rid = getRestaurantId();
+    let query = supabase
       .from('app_settings')
       .select('*')
-      .eq('setting_key', 'notifications')
-      .single();
+      .eq('setting_key', 'notifications');
+    if (rid) query = query.eq('restaurant_id', rid);
+    const { data, error } = await query.single();
     if (error) return { success: false, error: error.message };
     return { success: true, data };
   },
@@ -1908,7 +2095,9 @@ export const api = {
 
   // Complaints Module API
   getComplaints: async (filters?: { branch?: string; status?: string; category?: string; startDate?: string; endDate?: string }) => {
+    const rid = getRestaurantId();
     let query = supabase.from('ClientComplaints').select('*').order('DateCreated', { ascending: false });
+    if (rid) query = query.eq('restaurant_id', rid);
     if (filters) {
       if (filters.branch && filters.branch !== 'All') query = query.eq('Branch', filters.branch);
       if (filters.status && filters.status !== 'All') query = query.eq('Status', filters.status);
@@ -1922,7 +2111,10 @@ export const api = {
   },
 
   getComplaintById: async (id: string) => {
-    const { data, error } = await supabase.from('ClientComplaints').select('*').eq('id', id).single();
+    const rid = getRestaurantId();
+    let query = supabase.from('ClientComplaints').select('*').eq('id', id);
+    if (rid) query = query.eq('restaurant_id', rid);
+    const { data, error } = await query.single();
     if (error) return { success: false, error: error.message };
     return { success: true, data };
   },
@@ -1956,7 +2148,10 @@ export const api = {
 
   // News Management API
   getNews: async () => {
-    const { data, error } = await supabase.from('news').select('*').order('created_at', { ascending: false });
+    const rid = getRestaurantId();
+    let query = supabase.from('news').select('*').order('created_at', { ascending: false });
+    if (rid) query = query.eq('restaurant_id', rid);
+    const { data, error } = await query;
     if (error) return { success: false, error: error.message };
     return { success: true, data };
   },
@@ -2044,7 +2239,9 @@ export const api = {
   },
 
   getClientOrders: async (filters?: { startDate?: string; endDate?: string; branch?: string; category?: string; status?: string; salesperson?: string; clientId?: string }) => {
+    const rid = getRestaurantId();
     let query = supabase.from('client_orders').select('*').order('created_at', { ascending: false });
+    if (rid) query = query.eq('restaurant_id', rid);
     
     if (filters) {
       if (filters.branch && filters.branch !== 'All') query = query.eq('branch', filters.branch);
@@ -2066,10 +2263,12 @@ export const api = {
     const clientIds = orders.map(o => o.client_id).filter(Boolean);
     let clients: any[] = [];
     if (clientIds.length > 0) {
-      const { data: clientsData, error: clientsError } = await supabase
+      let clientsQuery = supabase
         .from('clients')
         .select('*')
         .in('id', clientIds);
+      if (rid) clientsQuery = clientsQuery.eq('restaurant_id', rid);
+      const { data: clientsData, error: clientsError } = await clientsQuery;
       if (clientsError) return { success: false, error: clientsError.message };
       clients = clientsData || [];
     }
@@ -2086,23 +2285,46 @@ export const api = {
   },
 
   getClientOrderDetails: async (orderId: string) => {
+    const rid = getRestaurantId();
+    let orderQuery = supabase.from('client_orders').select('*').eq('id', orderId);
+    let itemsQuery = supabase.from('client_order_items').select('*').eq('order_id', orderId);
+    let tasksQuery = supabase.from('client_order_tasks').select('*').eq('order_id', orderId);
+    let attachmentsQuery = supabase.from('client_order_attachments').select('*').eq('order_id', orderId);
+
+    if (rid) {
+      orderQuery = orderQuery.eq('restaurant_id', rid);
+      itemsQuery = itemsQuery.eq('restaurant_id', rid);
+      tasksQuery = tasksQuery.eq('restaurant_id', rid);
+      attachmentsQuery = attachmentsQuery.eq('restaurant_id', rid);
+    }
+
     const [orderRes, itemsRes, tasksRes, attachmentsRes] = await Promise.all([
-      supabase.from('client_orders').select('*').eq('id', orderId).single(),
-      supabase.from('client_order_items').select('*').eq('order_id', orderId),
-      supabase.from('client_order_tasks').select('*').eq('order_id', orderId),
-      supabase.from('client_order_attachments').select('*').eq('order_id', orderId)
+      orderQuery.single(),
+      itemsQuery,
+      attachmentsQuery.then(async att => {
+        // Wait, attachments doesn't strictly need tasksRes inside it, we group tasksRes together.
+        return att;
+      }),
+      tasksQuery
     ]);
+
+    // To preserve original array indices from Promise.all (orderRes, itemsRes, tasksRes, attachmentsRes):
+    // orderRes is index 0. itemsRes is index 1. tasksRes is index 3. attachmentsRes is index 2.
+    // Let's write this cleanly:
+    const tasksData = tasksRes.data || [];
+    const attachmentsData = attachmentsRes.data || [];
 
     if (orderRes.error) return { success: false, error: orderRes.error.message };
 
     const order = orderRes.data;
     let client = null;
     if (order && order.client_id) {
-      const { data: clientData } = await supabase
+      let clientQuery = supabase
         .from('clients')
         .select('*')
-        .eq('id', order.client_id)
-        .maybeSingle();
+        .eq('id', order.client_id);
+      if (rid) clientQuery = clientQuery.eq('restaurant_id', rid);
+      const { data: clientData } = await clientQuery.maybeSingle();
       client = clientData;
     }
 
@@ -2111,13 +2333,15 @@ export const api = {
       clients: client
     };
 
-    const fetchedTasks = tasksRes.data || [];
+    const fetchedTasks = tasksData;
     for (let i = 0; i < fetchedTasks.length; i++) {
       const task = fetchedTasks[i];
-      const { data: managerTasks } = await supabase
+      let managerTasksQuery = supabase
         .from('tasks')
         .select('status')
         .like('description', `%CRM Task Ref: ${task.id}%`);
+      if (rid) managerTasksQuery = managerTasksQuery.eq('restaurant_id', rid);
+      const { data: managerTasks } = await managerTasksQuery;
       
       if (managerTasks && managerTasks.length > 0) {
         const managerStatus = managerTasks[0].status;
@@ -2135,7 +2359,7 @@ export const api = {
         order: orderWithClient,
         items: itemsRes.data || [],
         tasks: fetchedTasks,
-        attachments: attachmentsRes.data || []
+        attachments: attachmentsData
       }
     };
   },
@@ -2751,10 +2975,10 @@ export const api = {
   },
 
   getInventoryLocationsList: async () => {
-    const { data, error } = await supabase
-      .from('inventory_locations')
-      .select('*')
-      .order('name');
+    const rid = getRestaurantId();
+    let query = supabase.from('inventory_locations').select('*');
+    if (rid) query = query.eq('restaurant_id', rid);
+    const { data, error } = await query.order('name');
     if (error) return { success: false, error: error.message };
     return { success: true, data };
   },
@@ -2773,7 +2997,10 @@ export const api = {
   },
 
   getWallets: async () => {
-    const { data, error } = await supabase.from('e_wallets').select('*').order('name');
+    const rid = getRestaurantId();
+    let query = supabase.from('e_wallets').select('*');
+    if (rid) query = query.eq('restaurant_id', rid);
+    const { data, error } = await query.order('name');
     if (error) return { success: false, error: error.message };
     return { success: true, data };
   },
@@ -2807,9 +3034,13 @@ export const api = {
   },
 
   getShiftCashWalletsLogs: async (filters: { startDate?: string, endDate?: string, branch?: string }) => {
+    const rid = getRestaurantId();
     let query = supabase
       .from('shift_cash_wallets')
       .select('*, shift_cash!inner(*), e_wallets(*)');
+    if (rid) {
+      query = query.eq('shift_cash.restaurant_id', rid);
+    }
     if (filters.branch && filters.branch !== 'All') {
       query = query.ilike('shift_cash.branch', `%${filters.branch.trim()}%`);
     }
@@ -2833,11 +3064,13 @@ export const api = {
   },
 
   getAttendanceLogs: async (filters: { employee_id?: string; branch?: string; startDate?: string; endDate?: string }) => {
+    const rid = getRestaurantId();
     let query = supabase.from('employee_attendance').select('*, employees(*)');
     if (filters.employee_id && filters.employee_id !== 'All') query = query.eq('employee_id', filters.employee_id);
     if (filters.branch && filters.branch !== 'All') query = query.eq('branch', filters.branch);
     if (filters.startDate) query = query.gte('punch_in', filters.startDate);
     if (filters.endDate) query = query.lte('punch_in', filters.endDate);
+    if (rid) query = query.eq('restaurant_id', rid);
     
     const { data, error } = await query.order('punch_in', { ascending: false });
     if (error) return { success: false, error: error.message };
@@ -2868,22 +3101,26 @@ export const api = {
   },
 
   getEmployeeByUserId: async (userId: string) => {
-    const { data, error } = await supabase
+    const rid = getRestaurantId();
+    let query = supabase
       .from('employees')
       .select('*')
-      .eq('app_user_id', userId)
-      .maybeSingle();
+      .eq('app_user_id', userId);
+    if (rid) query = query.eq('restaurant_id', rid);
+    const { data, error } = await query.maybeSingle();
     if (error) return { success: false, error: error.message };
     return { success: true, data };
   },
 
   getActivePunchLog: async (employeeId: string) => {
-    const { data, error } = await supabase
+    const rid = getRestaurantId();
+    let query = supabase
       .from('employee_attendance')
       .select('*')
       .eq('employee_id', employeeId)
-      .is('punch_out', null)
-      .maybeSingle();
+      .is('punch_out', null);
+    if (rid) query = query.eq('restaurant_id', rid);
+    const { data, error } = await query.maybeSingle();
     if (error) return { success: false, error: error.message };
     return { success: true, data };
   },

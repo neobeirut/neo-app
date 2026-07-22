@@ -13,8 +13,7 @@ import {
   AlertCircle,
   Loader2,
   LayoutDashboard,
-  Users,
-  Clock
+  Users
 } from 'lucide-react';
 import { supabase } from '../api/supabase';
 import './DashboardScreen.css';
@@ -35,9 +34,6 @@ export default function DashboardScreen({
 }: DashboardScreenProps) {
   const navigate = useNavigate();
   const isAdmin = user.role === 'Admin';
-
-  const roleLower = (user?.role || '').toString().toLowerCase().trim();
-  const isPrivileged = roleLower === 'admin' || roleLower === 'manager' || roleLower === 'superadmin';
 
   // Filters State
   const [selectedBranch, setSelectedBranch] = useState<string>('');
@@ -142,10 +138,22 @@ export default function DashboardScreen({
     let isMounted = true;
     async function fetchUserActivity() {
       try {
+        const saved = localStorage.getItem('neo_admin_user');
+        let rid: string | null = null;
+        if (saved) {
+          try {
+            rid = JSON.parse(saved)?.restaurant_id || null;
+          } catch {}
+        }
+
         let query = supabase
           .from('login_logs')
           .select('UserID, Status, LoginTime, Date')
           .eq('Branch', selectedBranch);
+
+        if (rid) {
+          query = query.eq('restaurant_id', rid);
+        }
 
         if (selectedDept !== 'All') {
           query = query.eq('Department', selectedDept);
@@ -204,12 +212,24 @@ export default function DashboardScreen({
     async function fetchOverdueCrmTasks() {
       try {
         const todayStr = new Date().toISOString().split('T')[0];
+        const saved = localStorage.getItem('neo_admin_user');
+        let rid: string | null = null;
+        if (saved) {
+          try {
+            rid = JSON.parse(saved)?.restaurant_id || null;
+          } catch {}
+        }
+
         let query = supabase
           .from('client_order_tasks')
           .select('*, client_orders!inner(*, clients(*))')
           .eq('status', 'Pending')
           .lt('due_date', todayStr)
           .eq('client_orders.branch', selectedBranch);
+
+        if (rid) {
+          query = query.eq('restaurant_id', rid);
+        }
         
         const { data, error } = await query;
         if (error) {

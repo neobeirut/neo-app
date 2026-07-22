@@ -5,7 +5,9 @@ import { Search, Plus, Edit, Trash2, User, Phone, Calendar, Clock, X, Check, Ale
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const TIME_OPTIONS = ['Same day', 'Next day', '48h', '72h', '1 Week'];
 
-export default function SuppliersScreen() {
+export default function SuppliersScreen({ user, permissions }: { user?: any; permissions?: any } = {}) {
+  const isPrivileged = user?.role?.toLowerCase() === 'superadmin' || user?.role?.toLowerCase() === 'admin';
+  const canManage = isPrivileged || !!permissions?.can_manage_suppliers;
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -235,12 +237,14 @@ CREATE POLICY "Enable write access for all authenticated users" ON public.suppli
           <h1 style={{ margin: 0, fontSize: '26px', fontWeight: 800 }}>Suppliers</h1>
           <p style={{ margin: '4px 0 0', color: 'var(--text-muted)' }}>Manage supplier profiles, contact numbers, delivery days, and logistics lead times.</p>
         </div>
-        <button 
-          onClick={() => handleOpenModal()} 
-          style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', backgroundColor: 'var(--primary)', color: 'white', border: 'none', padding: '10px 16px', borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}
-        >
-          <Plus size={18} /> Add Supplier
-        </button>
+        {canManage && (
+          <button 
+            onClick={() => handleOpenModal()} 
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', backgroundColor: 'var(--primary)', color: 'white', border: 'none', padding: '10px 16px', borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}
+          >
+            <Plus size={18} /> Add Supplier
+          </button>
+        )}
       </div>
 
       {/* Filters Card */}
@@ -323,20 +327,22 @@ CREATE POLICY "Enable write access for all authenticated users" ON public.suppli
                 </div>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', borderTop: '1px solid #f1f5f9', paddingTop: '12px', marginTop: '4px' }}>
-                <button 
-                  onClick={() => handleOpenModal(supplier)}
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'transparent', border: '1px solid #cbd5e1', padding: '6px 12px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer', fontWeight: 600 }}
-                >
-                  <Edit size={14} /> Edit
-                </button>
-                <button 
-                  onClick={() => handleDelete(supplier.id, supplier.name)}
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'transparent', border: '1px solid #fecdd3', color: '#be123c', padding: '6px 12px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer', fontWeight: 600 }}
-                >
-                  <Trash2 size={14} /> Delete
-                </button>
-              </div>
+              {canManage && (
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', borderTop: '1px solid #f1f5f9', paddingTop: '12px', marginTop: '4px' }}>
+                  <button 
+                    onClick={() => handleOpenModal(supplier)}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'transparent', border: '1px solid #cbd5e1', padding: '6px 12px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer', fontWeight: 600 }}
+                  >
+                    <Edit size={14} /> Edit
+                  </button>
+                  <button 
+                    onClick={() => handleDelete(supplier.id, supplier.name)}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'transparent', border: '1px solid #fecdd3', color: '#be123c', padding: '6px 12px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer', fontWeight: 600 }}
+                  >
+                    <Trash2 size={14} /> Delete
+                  </button>
+                </div>
+              )}
             </div>
           ))}
         </div>

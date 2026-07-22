@@ -4,7 +4,7 @@ import {
   Loader2, Shield, Search, User, Users, Check, AlertCircle, 
   ShoppingCart, ClipboardList, ChefHat, DollarSign, Trash2, 
   TrendingUp, Briefcase, GraduationCap, Calendar, Lock, Sliders, CheckCircle2,
-  Sparkles, CheckSquare, Receipt, FolderOpen
+  Sparkles, CheckSquare, Receipt, FolderOpen, Package
 } from 'lucide-react';
 
 const DEFAULT_PERMISSIONS = {
@@ -44,6 +44,12 @@ const DEFAULT_PERMISSIONS = {
   can_manage_client_orders: false,
   can_view_client_reports: false,
   can_manage_attendance: false,
+  can_view_catalog: false,
+  can_manage_catalog: false,
+  can_view_suppliers: false,
+  can_manage_suppliers: false,
+  can_view_price_intelligence: false,
+  can_manage_price_intelligence: false,
   allowed_departments: ''
 };
 
@@ -69,6 +75,19 @@ const CATEGORIES = [
       { key: 'can_create_purchasing', label: 'Create Purchasing' },
       { key: 'can_order_purchasing', label: 'Order Purchasing' },
       { key: 'can_receive_purchasing', label: 'Receive Purchasing' },
+    ]
+  },
+  {
+    id: 'inventory',
+    title: 'Inventory & Catalog',
+    icon: <Package size={18} style={{ color: '#0d6efd' }} />,
+    permissions: [
+      { key: 'can_view_catalog', label: 'View Item Catalog' },
+      { key: 'can_manage_catalog', label: 'Manage Item Catalog (Add/Edit/Delete)' },
+      { key: 'can_view_suppliers', label: 'View Suppliers' },
+      { key: 'can_manage_suppliers', label: 'Manage Suppliers (Add/Edit/Delete)' },
+      { key: 'can_view_price_intelligence', label: 'View Supplier Price Intelligence' },
+      { key: 'can_manage_price_intelligence', label: 'Manage Price Intelligence Settings' }
     ]
   },
   {
@@ -443,7 +462,8 @@ export default function PermissionsScreen({ user, onUpdateUser }: { user?: UserP
       ...DEFAULT_PERMISSIONS,
       id: selectedEntityId,
       type: type as 'department' | 'user',
-      name: name
+      name: name,
+      restaurant_id: user?.restaurant_id
     };
   };
 

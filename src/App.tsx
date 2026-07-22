@@ -13,7 +13,7 @@ import TipsDistributionScreen from './screens/TipsDistributionScreen';
 import PermissionsScreen from './screens/PermissionsScreen';
 import SOPsScreen from './screens/SOPsScreen';
 import SOPFormScreen from './screens/SOPFormScreen';
-import { LayoutDashboard, ChefHat, Users, LogOut, DollarSign, Shield, BookOpen, TrendingUp, MessageSquare, Newspaper, AlertTriangle, Sparkles, Trash2, History, Coins, Truck, ShoppingBag, Calendar, ClipboardList, Package, CheckSquare, Receipt, Briefcase, Store, ChevronDown, ChevronRight, Loader2, Clock } from 'lucide-react';
+import { LayoutDashboard, ChefHat, Users, LogOut, DollarSign, Shield, BookOpen, TrendingUp, MessageSquare, Newspaper, AlertTriangle, Sparkles, Trash2, History, Coins, Truck, ShoppingBag, Calendar, ClipboardList, Package, CheckSquare, Receipt, Briefcase, Store, ChevronDown, ChevronRight } from 'lucide-react';
 import { api } from './api/client';
 import FinanceDashboardScreen from './screens/FinanceDashboardScreen';
 import PaymentDetailsScreen from './screens/PaymentDetailsScreen';
@@ -49,6 +49,7 @@ import SuperAdminScreen from './screens/SuperAdminScreen';
     const location = useLocation();
     const roleLower = (user?.role || '').toString().toLowerCase().trim();
     const isPrivileged = roleLower === 'admin' || roleLower === 'manager' || roleLower === 'superadmin';
+    const isAdminOrSuper = roleLower === 'admin' || roleLower === 'superadmin';
 
     const [collapsedGroups, setCollapsedGroups] = useState<{ [key: string]: boolean }>({
       Operations: false,
@@ -92,10 +93,10 @@ import SuperAdminScreen from './screens/SuperAdminScreen';
       {
         name: 'Inventory',
         items: [
-          { to: '/catalog', label: 'Item Catalog', icon: <Package size={18} />, key: 'catalog' },
+          {to: '/catalog', label: 'Item Catalog', icon: <Package size={18} />, visible: isAdminOrSuper || !!permissions?.can_view_catalog, key: 'catalog' },
           { to: '/purchasing', label: 'Purchasing & Procurement', icon: <Truck size={18} />, key: 'purchasing' },
-          { to: '/suppliers', label: 'Supplier Management', icon: <Store size={18} />, key: 'suppliers' },
-          { to: '/price-intelligence', label: 'Supplier Price Intelligence', icon: <TrendingUp size={18} />, key: 'price_intelligence' },
+          { to: '/suppliers', label: 'Supplier Management', icon: <Store size={18} />, visible: isAdminOrSuper || !!permissions?.can_view_suppliers, key: 'suppliers' },
+          { to: '/price-intelligence', label: 'Supplier Price Intelligence', icon: <TrendingUp size={18} />, visible: isAdminOrSuper || !!permissions?.can_view_price_intelligence, key: 'price_intelligence' },
           { to: '/waste', label: 'Waste Management', icon: <Trash2 size={18} />, key: 'waste' },
           { to: '/86', label: '86 Missing Items', icon: <AlertTriangle size={18} />, key: 'missing_items' },
           { to: '/inventory-reporting', label: 'Inventory Reporting (to be added)', icon: <TrendingUp size={18} />, key: 'inventory_reporting' },
@@ -261,6 +262,7 @@ function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () 
 
   const roleLower = user.role?.toLowerCase();
   const isPrivileged = roleLower === 'admin' || roleLower === 'manager' || roleLower === 'superadmin';
+  const isAdminOrSuper = roleLower === 'admin' || roleLower === 'superadmin';
   const [permissions, setPermissions] = useState<any>({
     can_view_finance_dashboard: isPrivileged,
     can_view_complaints: isPrivileged,
@@ -305,6 +307,12 @@ function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () 
                 className="admin-branch-select"
                 value={user.branch || 'All'}
                 onChange={(e) => onUpdateUser({ ...user, branch: e.target.value })}
+                disabled={!isAdminOrSuper && Boolean(user.branch) && user.branch !== 'All'}
+                title={!isAdminOrSuper && Boolean(user.branch) && user.branch !== 'All' ? "Branch selection is locked for your role" : ""}
+                style={{
+                  cursor: (!isAdminOrSuper && Boolean(user.branch) && user.branch !== 'All') ? 'not-allowed' : 'pointer',
+                  opacity: (!isAdminOrSuper && Boolean(user.branch) && user.branch !== 'All') ? 0.75 : 1
+                }}
               >
                 <option value="All">All Branches</option>
                 {branchesList.map(b => (
@@ -333,7 +341,16 @@ function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () 
             />
             {isSectionEnabled('orders') && <Route path="/orders" element={<OrdersScreen user={user} />} />}
             {isSectionEnabled('purchasing') && <Route path="/purchasing" element={<PurchasingScreen user={user} />} />}
-            {isSectionEnabled('catalog') && <Route path="/catalog" element={<ItemCatalogScreen user={user} />} />}
+            {isSectionEnabled('catalog') && (
+              <Route 
+                path="/catalog" 
+                element={
+                  isAdminOrSuper || permissions?.can_view_catalog !== false 
+                    ? <ItemCatalogScreen user={user} permissions={permissions} />
+                    : <Navigate to="/" replace />
+                } 
+              />
+            )}
             {isSectionEnabled('waste') && <Route path="/waste" element={<WasteScreen user={user} />} />}
             {isSectionEnabled('reservations') && <Route path="/reservations" element={<ReservationsScreen user={user} />} />}
             {isSectionEnabled('voids') && (
@@ -431,9 +448,27 @@ function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () 
                 <Route path="/client-orders/reports" element={<ClientOrdersReportsScreen user={user} permissions={permissions} />} />
               </>
             )}
-            {isSectionEnabled('suppliers') && <Route path="/suppliers" element={<SuppliersScreen />} />}
+            {isSectionEnabled('suppliers') && (
+              <Route 
+                path="/suppliers" 
+                element={
+                  isAdminOrSuper || permissions?.can_view_suppliers !== false 
+                    ? <SuppliersScreen user={user} permissions={permissions} />
+                    : <Navigate to="/" replace />
+                } 
+              />
+            )}
             {isSectionEnabled('branch_management') && <Route path="/wallets" element={<WalletsScreen user={user} />} />}
-            {isSectionEnabled('price_intelligence') && <Route path="/price-intelligence" element={<SupplierPriceIntelligenceScreen user={user} />} />}
+            {isSectionEnabled('price_intelligence') && (
+              <Route 
+                path="/price-intelligence" 
+                element={
+                  isAdminOrSuper || permissions?.can_view_price_intelligence !== false 
+                    ? <SupplierPriceIntelligenceScreen user={user} permissions={permissions} />
+                    : <Navigate to="/" replace />
+                } 
+              />
+            )}
             {isSectionEnabled('inventory_reporting') && (
               <Route 
                 path="/inventory-reporting" 
