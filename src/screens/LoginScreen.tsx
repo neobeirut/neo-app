@@ -28,9 +28,7 @@ export default function LoginScreen({ onLogin }: { onLogin: (user: any) => void 
 
       if (res.success && res.data) {
         setLoading(false);
-        const rawBranch = res.data.branch || 'All';
-        const initialBranch = rawBranch.includes(',') ? rawBranch.split(',')[0].trim() : rawBranch;
-        completeLogin(res.data, initialBranch || 'All', false);
+        completeLogin(res.data, 'All', false);
       } else {
         setLoading(false);
         setError(res.error || 'Login failed');

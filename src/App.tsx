@@ -307,12 +307,6 @@ function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () 
                 className="admin-branch-select"
                 value={user.branch || 'All'}
                 onChange={(e) => onUpdateUser({ ...user, branch: e.target.value })}
-                disabled={!isAdminOrSuper && Boolean(user.branch) && user.branch !== 'All'}
-                title={!isAdminOrSuper && Boolean(user.branch) && user.branch !== 'All' ? "Branch selection is locked for your role" : ""}
-                style={{
-                  cursor: (!isAdminOrSuper && Boolean(user.branch) && user.branch !== 'All') ? 'not-allowed' : 'pointer',
-                  opacity: (!isAdminOrSuper && Boolean(user.branch) && user.branch !== 'All') ? 0.75 : 1
-                }}
               >
                 <option value="All">All Branches</option>
                 {branchesList.map(b => (
