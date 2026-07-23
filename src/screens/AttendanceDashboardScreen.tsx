@@ -87,26 +87,17 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
       async (position) => {
         const { latitude, longitude } = position.coords;
 
-        let verifiedBranchName = gpsTargetBranch;
-        let matched = false;
-        let minDistance = Infinity;
+        const branchObj = branches.find((b: any) => (typeof b === 'string' ? b : b.name) === gpsTargetBranch);
 
-        for (const b of branches) {
-          if (typeof b === 'object' && b.latitude != null && b.longitude != null) {
-            const dist = calculateDistance(latitude, longitude, Number(b.latitude), Number(b.longitude));
-            const allowedRadius = b.radius_meters || 200;
-            if (dist <= allowedRadius && dist < minDistance) {
-              minDistance = dist;
-              verifiedBranchName = b.name;
-              matched = true;
-            }
+        if (branchObj && typeof branchObj === 'object' && branchObj.latitude != null && branchObj.longitude != null) {
+          const dist = calculateDistance(latitude, longitude, Number(branchObj.latitude), Number(branchObj.longitude));
+          const allowedRadius = branchObj.radius_meters || 200;
+
+          if (dist > allowedRadius) {
+            setGpsPunching(false);
+            alert(`Access Denied: Location verification Failed.\n\nYou are ${Math.round(dist)}m away from ${gpsTargetBranch}. You must be within ${allowedRadius}m of the branch to punch shift.`);
+            return;
           }
-        }
-
-        if (!matched && branches.some((b: any) => typeof b === 'object' && b.latitude != null)) {
-          setGpsPunching(false);
-          alert(`Access Denied: Location verification Failed.\n\nYou are not physically present at any branch location.`);
-          return;
         }
 
         const now = new Date().toISOString();
@@ -131,12 +122,12 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
         } else {
           const res = await api.saveAttendanceLog({
             employee_id: gpsEmployeeId,
-            branch: verifiedBranchName,
+            branch: gpsTargetBranch,
             punch_in: now,
             punch_in_notes: `GPS Verified (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`
           });
           if (res.success) {
-            alert(`📍 GPS Verified! Punch In recorded for ${verifiedBranchName}.`);
+            alert(`📍 GPS Verified! Punch In recorded for ${gpsTargetBranch}.`);
             setShowGpsModal(false);
             loadAttendanceLogs();
           } else {
