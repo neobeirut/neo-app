@@ -34,17 +34,20 @@ export async function POST(request) {
     }
 
     const employee = employees[0];
-    const targetBranch = branch || employee.branch || 'Badaro';
+    let targetBranch = branch || employee.branch || 'Badaro';
 
-    // Verify GPS Geofence for Punch if coordinates provided
+    // Verify GPS Geofence for Punch against any valid active branch location
     if (latitude != null && longitude != null) {
-      const branchRows = await sql`
-        SELECT latitude, longitude, radius_meters FROM branches WHERE name = ${targetBranch} LIMIT 1
+      const allBranches = await sql`
+        SELECT name, latitude, longitude, radius_meters FROM branches WHERE is_active = true OR is_active IS NULL
       `;
-      if (branchRows.length > 0) {
-        const b = branchRows[0];
+
+      const R = 6371000;
+      let matchedBranchName = null;
+      let minDistance = Infinity;
+
+      for (const b of allBranches) {
         if (b.latitude != null && b.longitude != null) {
-          const R = 6371000;
           const dLat = ((Number(b.latitude) - Number(latitude)) * Math.PI) / 180;
           const dLon = ((Number(b.longitude) - Number(longitude)) * Math.PI) / 180;
           const a =
@@ -57,13 +60,22 @@ export async function POST(request) {
           const dist = R * c;
           const radius = b.radius_meters || 200;
 
-          if (dist > radius) {
-            return corsJson(Response.json({
-              success: false,
-              error: `Access Denied: Location verification Failed. You are ${Math.round(dist)}m away from ${targetBranch}. Must be within ${radius}m.`
-            }, { status: 403 }));
+          if (dist <= radius && dist < minDistance) {
+            minDistance = dist;
+            matchedBranchName = b.name;
           }
         }
+      }
+
+      // If user is at a valid branch location (e.g. Badaro), accept punch for that location!
+      if (matchedBranchName) {
+        targetBranch = matchedBranchName;
+      } else if (allBranches.some(b => b.latitude != null)) {
+        // GPS coordinates provided but user is not at any branch location
+        return corsJson(Response.json({
+          success: false,
+          error: `Access Denied: Location verification Failed. You are not physically present at any branch location.`
+        }, { status: 403 }));
       }
     }
 
