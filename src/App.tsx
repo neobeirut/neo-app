@@ -248,7 +248,7 @@ import SuperAdminScreen from './screens/SuperAdminScreen';
             <LogOut size={18} />
           </button>
           <div style={{ fontSize: '11px', color: 'var(--text-muted)', textAlign: 'right' }}>
-            <div style={{ fontWeight: 600, color: 'var(--text-main)' }}>Flow Admin v1.0.5</div>
+            <div style={{ fontWeight: 600, color: 'var(--text-main)' }}>Flow Admin v1.0.6</div>
             <div style={{ fontSize: '10px' }}>Build: July 23, 2026</div>
           </div>
         </div>
@@ -325,7 +325,7 @@ function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () 
               <span style={{ fontSize: '12px', background: '#eef2f5', color: 'var(--primary)', padding: '4px 8px', borderRadius: '12px' }}>{user.role}</span>
               <span style={{ fontSize: '11px', background: '#dcfce7', color: '#15803d', padding: '3px 8px', borderRadius: '12px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
                 <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#22c55e' }} />
-                v1.0.5 • Updated
+                v1.0.6 • GPS Punch Module
               </span>
             </div>
           </div>

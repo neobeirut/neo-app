@@ -48,6 +48,102 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
   const [formPunchInNotes, setFormPunchInNotes] = useState('');
   const [formPunchOutNotes, setFormPunchOutNotes] = useState('');
 
+  // GPS Punch State
+  const [showGpsModal, setShowGpsModal] = useState(false);
+  const [gpsPunching, setGpsPunching] = useState(false);
+  const [gpsEmployeeId, setGpsEmployeeId] = useState('');
+  const [gpsTargetBranch, setGpsTargetBranch] = useState('');
+
+  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+    const R = 6371000; // Earth radius in meters
+    const dLat = ((lat2 - lat1) * Math.PI) / 180;
+    const dLon = ((lon2 - lon1) * Math.PI) / 180;
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos((lat1 * Math.PI) / 180) *
+        Math.cos((lat2 * Math.PI) / 180) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  };
+
+  const handleExecuteGpsPunch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!gpsEmployeeId || !gpsTargetBranch) {
+      alert('Please select an employee and target branch.');
+      return;
+    }
+
+    setGpsPunching(true);
+
+    if (!navigator.geolocation) {
+      setGpsPunching(false);
+      alert('Access Denied: Geolocation is not supported by your browser.');
+      return;
+    }
+
+    const branchObj = branches.find((b: any) => (typeof b === 'string' ? b : b.name) === gpsTargetBranch);
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const { latitude, longitude } = position.coords;
+
+        if (branchObj && typeof branchObj === 'object' && branchObj.latitude != null && branchObj.longitude != null) {
+          const dist = calculateDistance(latitude, longitude, Number(branchObj.latitude), Number(branchObj.longitude));
+          const allowedRadius = branchObj.radius_meters || 200;
+
+          if (dist > allowedRadius) {
+            setGpsPunching(false);
+            alert(`Access Denied: Location verification Failed.\n\nYou are ${Math.round(dist)}m away from ${gpsTargetBranch}. You must be within ${allowedRadius}m of the branch to punch shift.`);
+            return;
+          }
+        }
+
+        const now = new Date().toISOString();
+        const activeShift = attendanceLogs.find(l => l.employee_id === gpsEmployeeId && !l.punch_out);
+
+        if (activeShift) {
+          const res = await api.saveAttendanceLog({
+            id: activeShift.id,
+            employee_id: gpsEmployeeId,
+            branch: activeShift.branch,
+            punch_in: activeShift.punch_in,
+            punch_out: now,
+            punch_out_notes: `GPS Verified (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`
+          });
+          if (res.success) {
+            alert(`📍 GPS Verified! Punch Out recorded for ${gpsTargetBranch}.`);
+            setShowGpsModal(false);
+            loadAttendanceLogs();
+          } else {
+            alert(`Failed to punch out: ${res.error}`);
+          }
+        } else {
+          const res = await api.saveAttendanceLog({
+            employee_id: gpsEmployeeId,
+            branch: gpsTargetBranch,
+            punch_in: now,
+            punch_in_notes: `GPS Verified (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`
+          });
+          if (res.success) {
+            alert(`📍 GPS Verified! Punch In recorded for ${gpsTargetBranch}.`);
+            setShowGpsModal(false);
+            loadAttendanceLogs();
+          } else {
+            alert(`Failed to punch in: ${res.error}`);
+          }
+        }
+        setGpsPunching(false);
+      },
+      (error) => {
+        setGpsPunching(false);
+        alert(`Access Denied: Location verification Failed (${error.message}). Please allow GPS location permissions in your browser.`);
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+
   const loadAttendanceLogs = async () => {
     setRefreshing(true);
     const res = await api.getAttendanceLogs({
@@ -429,7 +525,17 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
             Monitor active shifts, manage employee timesheets, configure hourly rates, and reset phone pairings.
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '12px' }}>
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+          <button 
+            onClick={() => {
+              setGpsEmployeeId(user.employee_id || (employees.length > 0 ? employees[0].employee_id : ''));
+              setGpsTargetBranch(user.branch && user.branch !== 'All' ? user.branch : 'Badaro');
+              setShowGpsModal(true);
+            }}
+            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 18px', backgroundColor: '#0284c7', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}
+          >
+            <MapPin size={18} /> GPS Verified Punch
+          </button>
           {canManage && (
             <button 
               onClick={openAddModal}
@@ -1095,6 +1201,69 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '8px' }}>
                 <button type="button" onClick={() => setShowAddModal(false)} style={{ padding: '8px 16px', backgroundColor: '#e2e8f0', color: '#475569', border: 'none', borderRadius: '6px', fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
                 <button type="submit" style={{ padding: '8px 16px', backgroundColor: 'var(--primary)', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 600, cursor: 'pointer' }}>Add Log</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* GPS PUNCH MODAL */}
+      {showGpsModal && (
+        <div style={modalBackdropStyle}>
+          <div style={modalContentStyle}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+              <div style={{ padding: '8px', backgroundColor: '#e0f2fe', borderRadius: '8px', color: '#0284c7' }}>
+                <MapPin size={24} />
+              </div>
+              <div>
+                <h2 style={{ fontSize: '18px', fontWeight: 700, margin: 0 }}>GPS Verified Shift Punch</h2>
+                <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: '2px 0 0 0' }}>
+                  Location verification is active. Your GPS position will be checked against branch coordinates.
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={handleExecuteGpsPunch} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div>
+                <label style={filterLabelStyle}>Select Employee *</label>
+                <select style={filterInputStyle} value={gpsEmployeeId} onChange={e => setGpsEmployeeId(e.target.value)} required>
+                  <option value="">Choose Employee...</option>
+                  {employees.map(e => <option key={e.employee_id} value={e.employee_id}>{e.first_name} {e.last_name} ({e.position})</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label style={filterLabelStyle}>Target Branch Location *</label>
+                <select style={filterInputStyle} value={gpsTargetBranch} onChange={e => setGpsTargetBranch(e.target.value)} required>
+                  <option value="">Select Branch...</option>
+                  {branches.map((b: any) => {
+                    const name = typeof b === 'string' ? b : b.name;
+                    return <option key={name} value={name}>{name}</option>;
+                  })}
+                </select>
+              </div>
+
+              <div style={{ backgroundColor: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '12px', color: '#475569' }}>
+                📍 <strong>GPS Check Rule:</strong> When you click <em>Verify GPS & Punch</em>, your browser will request your live position. If your distance is within the branch geofence (200m), the punch will be recorded.
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '8px' }}>
+                <button 
+                  type="button" 
+                  onClick={() => setShowGpsModal(false)} 
+                  disabled={gpsPunching}
+                  style={{ padding: '8px 16px', backgroundColor: '#e2e8f0', color: '#475569', border: 'none', borderRadius: '6px', fontWeight: 600, cursor: 'pointer' }}
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit" 
+                  disabled={gpsPunching}
+                  style={{ padding: '8px 18px', backgroundColor: '#0284c7', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+                >
+                  {gpsPunching ? <Loader2 size={16} className="spin" /> : <MapPin size={16} />}
+                  {gpsPunching ? 'Verifying Location...' : 'Verify GPS & Punch'}
+                </button>
               </div>
             </form>
           </div>
