@@ -227,13 +227,13 @@ import SuperAdminScreen from './screens/SuperAdminScreen';
             );
           })}
         </div>
-        <div style={{ borderTop: '1px solid var(--border)', padding: '16px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+        <div style={{ borderTop: '1px solid var(--border)', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <button 
             onClick={onLogout} 
             title="Logout"
             style={{ 
-              width: '40px',
-              height: '40px',
+              width: '36px',
+              height: '36px',
               borderRadius: '8px',
               border: '1px solid var(--border)',
               backgroundColor: 'transparent',
@@ -245,8 +245,12 @@ import SuperAdminScreen from './screens/SuperAdminScreen';
               transition: 'all 0.2s'
             }}
           >
-            <LogOut size={20} />
+            <LogOut size={18} />
           </button>
+          <div style={{ fontSize: '11px', color: 'var(--text-muted)', textAlign: 'right' }}>
+            <div style={{ fontWeight: 600, color: 'var(--text-main)' }}>Flow Admin v1.0.5</div>
+            <div style={{ fontSize: '10px' }}>Build: July 23, 2026</div>
+          </div>
         </div>
       </div>
     );
@@ -319,6 +323,10 @@ function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () 
               <Users size={18} color="var(--text-muted)" />
               <span style={{ fontWeight: 600, fontSize: '14px' }}>{user.name}</span>
               <span style={{ fontSize: '12px', background: '#eef2f5', color: 'var(--primary)', padding: '4px 8px', borderRadius: '12px' }}>{user.role}</span>
+              <span style={{ fontSize: '11px', background: '#dcfce7', color: '#15803d', padding: '3px 8px', borderRadius: '12px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#22c55e' }} />
+                v1.0.5 • Updated
+              </span>
             </div>
           </div>
         </div>
