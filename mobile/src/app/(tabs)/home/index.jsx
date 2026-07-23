@@ -16,6 +16,7 @@ import { StatusBar } from "expo-status-bar";
 import { useRouter } from "expo-router";
 import { ChevronLeft, Search, Home, X } from "lucide-react-native";
 import * as Haptics from "expo-haptics";
+import * as Location from "expo-location";
 import { useTheme } from "../../../utils/theme";
 import { useBranchStore } from "../../../utils/branchStore";
 import { useAuth } from "../../../utils/auth/useAuth";
@@ -86,35 +87,61 @@ export default function HomeScreen() {
     if (!employee) return;
     setPunchActionLoading(true);
     try {
+      let latitude = null;
+      let longitude = null;
+
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === 'granted') {
+          const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+          if (loc?.coords) {
+            latitude = loc.coords.latitude;
+            longitude = loc.coords.longitude;
+          }
+        } else {
+          Alert.alert("Access Denied", "Location verification Failed. Permission to access location was denied.");
+          setPunchActionLoading(false);
+          return;
+        }
+      } catch (locErr) {
+        console.warn("GPS lookup failed:", locErr);
+        Alert.alert("Access Denied", "Location verification Failed. Could not retrieve your GPS coordinates.");
+        setPunchActionLoading(false);
+        return;
+      }
+
       if (isClockedIn) {
         // Clock Out
         const response = await apiFetch("/api/employee/punch", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "out", notes: "" })
+          body: JSON.stringify({ action: "out", notes: "", latitude, longitude })
         });
-        if (response.ok) {
+        const resData = await response.json().catch(() => ({}));
+        if (response.ok && resData.success) {
           Alert.alert("Success", "Clocked out successfully!");
           await fetchPunchStatus();
         } else {
-          Alert.alert("Error", "Failed to clock out");
+          Alert.alert("Access Denied", resData.error || "Location verification Failed");
         }
       } else {
         // Clock In
         const response = await apiFetch("/api/employee/punch", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "in", notes: "", branch: employee.branch || "Badaro" })
+          body: JSON.stringify({ action: "in", notes: "", branch: employee.branch || "Badaro", latitude, longitude })
         });
-        if (response.ok) {
+        const resData = await response.json().catch(() => ({}));
+        if (response.ok && resData.success) {
           Alert.alert("Success", "Clocked in successfully!");
           await fetchPunchStatus();
         } else {
-          Alert.alert("Error", "Failed to clock in");
+          Alert.alert("Access Denied", resData.error || "Location verification Failed");
         }
       }
     } catch (e) {
       console.error(e);
+      Alert.alert("Error", "An unexpected error occurred during punch.");
     } finally {
       setPunchActionLoading(false);
     }

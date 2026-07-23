@@ -13,7 +13,7 @@ export async function POST(request) {
     }
 
     const body = await request.json();
-    const { action, notes, branch } = body;
+    const { action, notes, branch, latitude, longitude } = body;
 
     const cleanPhone = '+' + phone.replace(/[^0-9]/g, "");
 
@@ -34,6 +34,38 @@ export async function POST(request) {
     }
 
     const employee = employees[0];
+    const targetBranch = branch || employee.branch || 'Badaro';
+
+    // Verify GPS Geofence for Punch if coordinates provided
+    if (latitude != null && longitude != null) {
+      const branchRows = await sql`
+        SELECT latitude, longitude, radius_meters FROM branches WHERE name = ${targetBranch} LIMIT 1
+      `;
+      if (branchRows.length > 0) {
+        const b = branchRows[0];
+        if (b.latitude != null && b.longitude != null) {
+          const R = 6371000;
+          const dLat = ((Number(b.latitude) - Number(latitude)) * Math.PI) / 180;
+          const dLon = ((Number(b.longitude) - Number(longitude)) * Math.PI) / 180;
+          const a =
+            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos((Number(latitude) * Math.PI) / 180) *
+              Math.cos((Number(b.latitude) * Math.PI) / 180) *
+              Math.sin(dLon / 2) *
+              Math.sin(dLon / 2);
+          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+          const dist = R * c;
+          const radius = b.radius_meters || 200;
+
+          if (dist > radius) {
+            return corsJson(Response.json({
+              success: false,
+              error: `Access Denied: Location verification Failed. You are ${Math.round(dist)}m away from ${targetBranch}. Must be within ${radius}m.`
+            }, { status: 403 }));
+          }
+        }
+      }
+    }
 
     if (action === 'out') {
       const activeLogs = await sql`
