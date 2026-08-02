@@ -1,9 +1,9 @@
 [build]
 builder = "nixpacks"
-installCommand = "cd ovrload-web && npm install"
-buildCommand = "cd ovrload-web && npm run build"
+installCommand = "npm install"
+buildCommand = "npm run build"
 
 [deploy]
-startCommand = "cd ovrload-web && npm run start"
+startCommand = "npm run start"
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
