@@ -1,5 +1,3 @@
-import { openOrderApp } from "@/utils/deviceDetection";
-
 export function MobileMenu({ isOpen, scrollToSection }) {
   if (!isOpen) return null;
 
@@ -31,12 +29,12 @@ export function MobileMenu({ isOpen, scrollToSection }) {
           Contact
         </button>
 
-        <button
-          onClick={(e) => openOrderApp(e)}
-          className="bg-[#2D5F5D] text-white px-6 py-3 font-semibold text-center hover:bg-[#1f4342] transition-colors rounded-lg cursor-pointer"
+        <a
+          href="/shop"
+          className="bg-[#2D5F5D] text-white px-6 py-3 font-semibold text-center hover:bg-[#1f4342] transition-colors rounded-lg cursor-pointer block"
         >
           Order Now
-        </button>
+        </a>
       </div>
     </div>
   );

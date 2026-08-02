@@ -3,10 +3,11 @@ import { View, ActivityIndicator } from "react-native";
 import { Redirect } from "expo-router";
 import { useBranchStore } from "../utils/branchStore";
 import { useAuth } from "../utils/auth/useAuth";
+import { apiFetch } from "../utils/apiFetch";
 
 export default function Index() {
   const { isReady } = useAuth();
-  const { selectedBranch, loadSelectedBranch } = useBranchStore();
+  const { selectedBranch, loadSelectedBranch, setSelectedBranch } = useBranchStore();
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
@@ -14,11 +15,27 @@ export default function Index() {
 
     const run = async () => {
       try {
-        // IMPORTANT: do NOT clear the selected branch here.
-        // We want branch + cart to persist through sign-in.
         await loadSelectedBranch();
+
+        // Always fetch branches on startup to update cached branch details (name, etc) or auto-select if only 1 branch
+        const currentBranch = useBranchStore.getState().selectedBranch;
+        const response = await apiFetch("/api/branches");
+        if (response.ok) {
+          const data = await response.json();
+          const activeBranches = (data.branches || []).filter((b) => b.is_active);
+          useBranchStore.getState().setBranches(activeBranches);
+          
+          if (currentBranch?.id) {
+            const updatedBranch = activeBranches.find((b) => b.id === currentBranch.id);
+            if (updatedBranch && mounted) {
+              await setSelectedBranch(updatedBranch);
+            }
+          } else if (activeBranches.length === 1 && mounted) {
+            await setSelectedBranch(activeBranches[0]);
+          }
+        }
       } catch (error) {
-        console.error("[INDEX] Error loading saved branch:", error);
+        console.error("[INDEX] Error loading branch:", error);
       } finally {
         if (mounted) {
           setHydrated(true);

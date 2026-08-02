@@ -566,37 +566,6 @@ export default function AuthenticatedView({
           </View>
         </View>
 
-        {/* Wellness Bar History */}
-        <TouchableOpacity
-          onPress={async () => {
-            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-            router.push("/wellness-bar");
-          }}
-          style={{
-            backgroundColor: colors.card,
-            borderRadius: 12,
-            padding: 16,
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "space-between",
-            marginTop: 12,
-          }}
-        >
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-            <Leaf size={20} color={colors.primary} />
-            <Text
-              style={{
-                fontFamily: "Inter_600SemiBold",
-                fontSize: 16,
-                color: colors.text,
-              }}
-            >
-              Wellness Bar
-            </Text>
-          </View>
-          <ChevronRight size={20} color={colors.textSecondary} />
-        </TouchableOpacity>
-
         {/* Notification Settings */}
         <TouchableOpacity
           onPress={handleNotificationSettings}

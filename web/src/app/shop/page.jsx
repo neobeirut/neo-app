@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import useUser from "@/utils/useUser";
+import { openOrderApp } from "@/utils/deviceDetection";
 
 export default function ShopPage() {
   const { user, loading: userLoading } = useUser();
@@ -103,44 +104,8 @@ export default function ShopPage() {
     setShowBranchModal(false);
   };
 
-  const handleAddToCart = async (product) => {
-    if (!user) {
-      if (confirm("You need to sign in to add items to cart. Sign in now?")) {
-        window.location.href =
-          "/account/signin?callbackUrl=" +
-          encodeURIComponent(window.location.pathname);
-      }
-      return;
-    }
-
-    if (!selectedBranch) {
-      alert("Please select a branch first");
-      return;
-    }
-
-    try {
-      const response = await fetch("/api/cart", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include", // ✅ Include cookies for JWT auth
-        body: JSON.stringify({
-          product_id: product.id,
-          branch_id: selectedBranch.id,
-          quantity: 1,
-        }),
-      });
-
-      if (response.ok) {
-        fetchCart();
-        alert("Added to cart!");
-      } else {
-        const error = await response.json();
-        alert(error.error || "Failed to add to cart");
-      }
-    } catch (error) {
-      console.error("Error adding to cart:", error);
-      alert("Failed to add to cart");
-    }
+  const handleAddToCart = (product) => {
+    openOrderApp();
   };
 
   return (
@@ -390,6 +355,7 @@ export default function ShopPage() {
                         handleAddToCart(product);
                       }}
                       className="p-2 bg-[#235b4e] text-white rounded-lg hover:bg-[#2B6B5C] transition-colors"
+                      title="Order on App"
                     >
                       <svg
                         className="w-5 h-5"
@@ -581,7 +547,7 @@ export default function ShopPage() {
                 }}
                 className="w-full bg-[#235b4e] text-white px-6 py-4 rounded-lg hover:bg-[#2B6B5C] transition-colors font-medium text-lg"
               >
-                Add to Cart - ${selectedProduct.price}
+                Order on App - ${selectedProduct.price}
               </button>
             </div>
           </div>

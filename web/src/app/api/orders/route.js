@@ -312,6 +312,36 @@ export async function POST(request) {
       );
     }
 
+    // Load the user from the database to check if they have completed profile registration
+    const [user] = await sql`
+      SELECT name, first_name, last_name, phone 
+      FROM auth_users 
+      WHERE id = ${userId}
+    `;
+
+    if (!user) {
+      return corsJson(
+        request,
+        { error: "User account not found" },
+        { status: 404 },
+      );
+    }
+
+    const clientName =
+      user.name ||
+      [user.first_name, user.last_name].filter(Boolean).join(" ");
+
+    const hasName = clientName && clientName.trim().length > 0;
+    const hasPhone = user.phone && user.phone.trim().length > 0;
+
+    if (!hasName || !hasPhone) {
+      return corsJson(
+        request,
+        { error: "Please complete your profile registration (name and phone number are required) before placing an order." },
+        { status: 400 },
+      );
+    }
+
     // Validate basic order requirements
     const basicValidation = validateOrderBasics({
       request,

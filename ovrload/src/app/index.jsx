@@ -17,16 +17,20 @@ export default function Index() {
       try {
         await loadSelectedBranch();
 
-        // If no branch was previously saved, fetch branches. If only 1 branch exists, auto-select it.
+        // Always fetch branches on startup to update cached branch details (name, etc) or auto-select if only 1 branch
         const currentBranch = useBranchStore.getState().selectedBranch;
-        if (!currentBranch?.id) {
-          const response = await apiFetch("/api/branches");
-          if (response.ok) {
-            const data = await response.json();
-            const activeBranches = (data.branches || []).filter((b) => b.is_active);
-            if (activeBranches.length === 1 && mounted) {
-              await setSelectedBranch(activeBranches[0]);
+        const response = await apiFetch("/api/branches");
+        if (response.ok) {
+          const data = await response.json();
+          const activeBranches = (data.branches || []).filter((b) => b.is_active);
+          
+          if (currentBranch?.id) {
+            const updatedBranch = activeBranches.find((b) => b.id === currentBranch.id);
+            if (updatedBranch && mounted) {
+              await setSelectedBranch(updatedBranch);
             }
+          } else if (activeBranches.length === 1 && mounted) {
+            await setSelectedBranch(activeBranches[0]);
           }
         }
       } catch (error) {

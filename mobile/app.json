@@ -61,7 +61,12 @@
                                      }
                                  ],
                                  "expo-asset",
-                                 "expo-audio",
+                                 [
+                                     "expo-audio",
+                                     {
+                                         "enableBackgroundPlayback": false
+                                     }
+                                 ],
                                  "expo-build-properties",
                                  "expo-font",
                                  "expo-image",
