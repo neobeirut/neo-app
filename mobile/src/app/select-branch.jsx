@@ -405,6 +405,19 @@ export default function SelectBranchScreen() {
   const branches = branchesData?.branches || [];
   const activeBranches = branches.filter((branch) => branch.is_active);
 
+  useEffect(() => {
+    if (!branchesLoading && activeBranches.length === 1) {
+      const singleBranch = activeBranches[0];
+      if (selectedBranch?.id !== singleBranch.id) {
+        setSelectedBranch(singleBranch);
+      }
+      const timer = setTimeout(() => {
+        router.replace("/(tabs)/home");
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [branchesLoading, activeBranches, selectedBranch, setSelectedBranch, router]);
+
   const handleBranchSelect = async (branch) => {
     await Haptics.selectionAsync();
 

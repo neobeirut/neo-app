@@ -6,6 +6,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import { getImageSource } from "@/utils/apiFetch";
+import { useBranchStore } from "@/utils/branchStore";
 
 export function HomeHeader({
   colors,
@@ -21,6 +22,9 @@ export function HomeHeader({
 }) {
   const router = useRouter();
   const [logoSrcOverride, setLogoSrcOverride] = useState(null);
+  
+  const branches = useBranchStore((state) => state.branches) || [];
+  const isSingleBranch = branches.filter((b) => b.is_active).length === 1;
 
   const withVersionParam = (url, updatedAt) => {
     if (!url) {
@@ -56,7 +60,7 @@ export function HomeHeader({
   }, [logoData]);
 
   const logoUrlToRender = logoSrcOverride || preferredLogoUrl;
-  const logoSource = logoUrlToRender ? getImageSource(logoUrlToRender) : null;
+  const logoSource = logoUrlToRender ? getImageSource(logoUrlToRender) : require("../../../assets/images/icon.png");
 
   const handleLogoError = () => {
     if (logoSrcOverride) {
@@ -116,41 +120,57 @@ export function HomeHeader({
           paddingHorizontal: 24,
         }}
       >
-        {/* Left: Hamburger Menu or Back Button */}
-        {showBackButton ? (
-          <TouchableOpacity
-            onPress={onBackPress}
-            style={{
-              padding: 8,
-            }}
-          >
-            <Ionicons name="chevron-back" size={24} color={colors.text} />
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            onPress={onMenuPress}
-            style={{
-              padding: 8,
-            }}
-          >
-            <Menu size={24} color={colors.text} />
-          </TouchableOpacity>
-        )}
+        {/* Left: Hamburger Menu or Back Button + Logo */}
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          {showBackButton ? (
+            <TouchableOpacity
+              onPress={onBackPress}
+              style={{
+                padding: 8,
+              }}
+            >
+              <Ionicons name="chevron-back" size={24} color={colors.text} />
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              onPress={onMenuPress}
+              style={{
+                padding: 8,
+              }}
+            >
+              <Menu size={24} color={colors.text} />
+            </TouchableOpacity>
+          )}
 
-        {/* Center: Logo (always centered) */}
-        <View
-          pointerEvents="none"
-          style={{
-            position: "absolute",
-            left: 0,
-            right: 0,
-            top: 0,
-            bottom: 0,
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          {logoSource?.uri ? (
+          {!isSingleBranch && (logoSource?.uri || logoSource) ? (
+            <Image
+              source={logoSource}
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 8,
+              }}
+              contentFit="contain"
+              transition={200}
+              onError={handleLogoError}
+            />
+          ) : null}
+        </View>
+
+        {/* Center Logo if Single Branch */}
+        {isSingleBranch && (logoSource?.uri || logoSource) ? (
+          <View
+            pointerEvents="none"
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              top: 0,
+              bottom: 0,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
             <Image
               source={logoSource}
               style={{
@@ -162,12 +182,12 @@ export function HomeHeader({
               transition={200}
               onError={handleLogoError}
             />
-          ) : null}
-        </View>
+          </View>
+        ) : null}
 
         {/* Right: Branch name (clickable) + Cart */}
         <View style={{ flexDirection: "row", alignItems: "center", gap: 1 }}>
-          {branchName ? (
+          {!isSingleBranch && branchName ? (
             <TouchableOpacity
               onPress={handleBranchPress}
               activeOpacity={0.8}
