@@ -312,6 +312,25 @@ export default function SelectBranchScreen() {
     },
   });
 
+  const branches = branchesData?.branches || [];
+  const activeBranches = useMemo(
+    () => branches.filter((branch) => branch.is_active),
+    [branches],
+  );
+
+  useEffect(() => {
+    if (!branchesLoading && activeBranches.length === 1) {
+      const singleBranch = activeBranches[0];
+      if (selectedBranch?.id !== singleBranch.id) {
+        setSelectedBranch(singleBranch);
+      }
+      const timer = setTimeout(() => {
+        router.replace("/(tabs)/home");
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [branchesLoading, activeBranches, selectedBranch, setSelectedBranch, router]);
+
   if (!loaded || branchesLoading) {
     return (
       <View
@@ -401,26 +420,6 @@ export default function SelectBranchScreen() {
       </View>
     );
   }
-
-  const branches = branchesData?.branches || [];
-  const activeBranches = useMemo(
-    () => branches.filter((branch) => branch.is_active),
-    [branches],
-  );
-
-  // If there is only 1 branch active, auto-select it and skip branch selection directly to Home
-  useEffect(() => {
-    if (!branchesLoading && activeBranches.length === 1) {
-      const singleBranch = activeBranches[0];
-      if (selectedBranch?.id !== singleBranch.id) {
-        setSelectedBranch(singleBranch);
-      }
-      const timer = setTimeout(() => {
-        router.replace("/(tabs)/home");
-      }, 50);
-      return () => clearTimeout(timer);
-    }
-  }, [branchesLoading, activeBranches, selectedBranch, setSelectedBranch, router]);
 
   const handleBranchSelect = async (branch) => {
     await Haptics.selectionAsync();
