@@ -23,6 +23,7 @@ export default function Index() {
         if (response.ok) {
           const data = await response.json();
           const activeBranches = (data.branches || []).filter((b) => b.is_active);
+          useBranchStore.getState().setBranches(activeBranches);
           
           if (currentBranch?.id) {
             const updatedBranch = activeBranches.find((b) => b.id === currentBranch.id);
