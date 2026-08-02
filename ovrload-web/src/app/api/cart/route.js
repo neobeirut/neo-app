@@ -1,4 +1,4 @@
-﻿import sql from "@/app/api/utils/sql";
+import sql from "@/app/api/utils/sql";
 import { corsJson, corsOptions } from "@/app/api/utils/cors";
 
 const CART_ROUTE_VERSION = "2026-08-02-cart-schema-aligned-v1";
