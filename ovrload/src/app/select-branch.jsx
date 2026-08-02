@@ -312,8 +312,7 @@ export default function SelectBranchScreen() {
     },
   });
 
-  const activeBranchesCount = (branchesData?.branches || []).filter((b) => b.is_active).length;
-  if (!loaded || branchesLoading || (activeBranchesCount === 1 && !branchesError)) {
+  if (!loaded || branchesLoading) {
     return (
       <View
         style={{
