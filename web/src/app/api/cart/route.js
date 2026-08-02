@@ -1,8 +1,8 @@
-// BUILD_CACHE_BUSTER: 1785664862764
+// BUILD_CACHE_BUSTER: 1785670672262
 ﻿import sql from "@/app/api/utils/sql";
 import { corsJson, corsOptions } from "@/app/api/utils/cors";
 
-const CART_ROUTE_VERSION = "2026-08-02-cart-schema-aligned-v1";
+const CART_ROUTE_VERSION = "2026-08-02-cart-schema-v2";
 
 export async function OPTIONS(request) {
   return corsOptions(request);
