@@ -225,7 +225,7 @@ export default function CheckoutScreen() {
     PlayfairDisplay_500Medium,
   });
 
-  if (!loaded || !isReady || !isAuthenticated) {
+  if (!loaded) {
     return null;
   }
 

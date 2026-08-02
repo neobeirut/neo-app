@@ -5,8 +5,6 @@ import { phoneAuth } from "@/utils/auth/phoneAuth";
 import { localCartStore } from "@/utils/localCartStore";
 import { serverCartBackupStore } from "@/utils/serverCartBackupStore";
 import { apiFetch } from "@/utils/apiFetch";
-import { useAuth } from "@/utils/auth/useAuth";
-import { useRedirectStore } from "@/utils/redirectStore";
 
 async function safeSelectionHaptic() {
   if (Platform.OS === "web") return;
@@ -44,8 +42,6 @@ export function useCartActions(
   isMutating,
 ) {
   const queryClient = useQueryClient();
-  const { signIn } = useAuth();
-  const { setRedirect } = useRedirectStore();
 
   const handleCloseCart = async () => {
     await safeSelectionHaptic();
@@ -62,20 +58,6 @@ export function useCartActions(
 
     if (!cartData?.cart_items || cartData.cart_items.length === 0) {
       Alert.alert("Empty Cart", "Please add items to your cart first");
-      return;
-    }
-
-    if (!isAuthenticated) {
-      setRedirect("/checkout");
-      Alert.alert(
-        "Sign In Required",
-        "Please sign in or create an account to proceed to checkout.",
-        [
-          { text: "Cancel", style: "cancel" },
-          { text: "Sign In", onPress: () => signIn() },
-        ],
-        { cancelable: false },
-      );
       return;
     }
 
