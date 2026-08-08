@@ -10,6 +10,7 @@ NullishQueryFunction.transaction = () => {
     'No database connection string was provided. Please configure DATABASE_URL in your environment variables.'
   );
 };
+NullishQueryFunction.unsafe = NullishQueryFunction;
 
 // LazyQuery wraps query execution so that queries are only run when awaited
 // or executed together inside a transaction block.
@@ -63,6 +64,10 @@ if (process.env.DATABASE_URL) {
       finalValues = values[0];
     }
     return new LazyQuery(db, stringsOrQuery, finalValues);
+  };
+
+  sql.unsafe = (stringsOrQuery, ...values) => {
+    return sql(stringsOrQuery, ...values);
   };
 
   sql.transaction = async (queriesOrFn) => {
