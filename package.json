@@ -10,7 +10,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "postinstall": "cd ovrload-web && npm install"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.105.4",
