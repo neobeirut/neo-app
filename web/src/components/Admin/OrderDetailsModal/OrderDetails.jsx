@@ -10,8 +10,7 @@ export function OrderDetails({ order }) {
         <div>
           <p className="text-sm text-gray-600">Scheduled</p>
           <p className="font-medium">
-            {new Date(order.scheduled_date).toLocaleDateString()} at{" "}
-            {order.scheduled_time}
+            {order.scheduled_date ? `${new Date(order.scheduled_date).toLocaleDateString()} at ${order.scheduled_time || ''}` : 'ASAP'}
           </p>
         </div>
         {order.delivery_address && (

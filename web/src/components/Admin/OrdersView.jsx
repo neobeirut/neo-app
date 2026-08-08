@@ -175,14 +175,14 @@ export default function OrdersView({
                     </td>
                     <td className="px-3 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-gray-900">
-                        {order.customer_name || "Guest"}
+                        {order.customer_name || (order.special_instructions?.match(/Name:\s*([^\n]+)/i)?.[1]?.trim()) || "Guest"}
                       </div>
                       <div className="text-sm text-gray-500">
                         {order.customer_email}
                       </div>
-                      {order.customer_phone && (
+                      {(order.customer_phone || order.special_instructions?.match(/Phone:\s*([^\n]+)/i)?.[1]?.trim()) && (
                         <div className="text-sm text-gray-500">
-                          {order.customer_phone}
+                          {order.customer_phone || order.special_instructions?.match(/Phone:\s*([^\n]+)/i)?.[1]?.trim()}
                         </div>
                       )}
                     </td>

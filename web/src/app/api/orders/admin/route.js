@@ -30,9 +30,9 @@ export async function GET(request) {
         o.*,
         b.name as branch_name,
         b.address as branch_address,
-        au.name as customer_name,
+        COALESCE(au.name, o.customer_name) as customer_name,
         au.email as customer_email,
-        au.phone as customer_phone,
+        COALESCE(au.phone, o.customer_phone) as customer_phone,
         ua.address_line1,
         ua.building,
         ua.company_name,
@@ -78,7 +78,7 @@ export async function GET(request) {
 
     ordersQuery += ` ORDER BY o.created_at DESC`;
 
-    const orders = await sql(ordersQuery, params);
+    const orders = await sql.unsafe(ordersQuery, params);
 
     // Get order IDs
     const orderIds = orders.map((o) => o.id);
