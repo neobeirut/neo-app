@@ -7,6 +7,12 @@ import { openOrderApp } from "@/utils/deviceDetection";
 export default function ShopPage() {
   const { user, loading: userLoading } = useUser();
   const [selectedBranch, setSelectedBranch] = useState(null);
+  const [orderType, setOrderType] = useState(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("orderType") || "pickup";
+    }
+    return "pickup";
+  });
   const [branches, setBranches] = useState([]);
   const [categories, setCategories] = useState([]);
   const [products, setProducts] = useState([]);
@@ -131,6 +137,44 @@ export default function ShopPage() {
 
             {/* Branch Selector and Cart */}
             <div className="flex items-center gap-4 ml-auto">
+              {/* Pickup / Delivery Toggle */}
+              <div className="hidden sm:flex items-center bg-[#F0F5F3] p-1 rounded-xl border border-[#E0E0E0]">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOrderType("pickup");
+                    if (typeof window !== "undefined") localStorage.setItem("orderType", "pickup");
+                  }}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    orderType === "pickup"
+                      ? "bg-[#235b4e] text-white shadow-sm"
+                      : "text-[#666666] hover:text-[#1A1A1A]"
+                  }`}
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+                  </svg>
+                  Pickup
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOrderType("delivery");
+                    if (typeof window !== "undefined") localStorage.setItem("orderType", "delivery");
+                  }}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    orderType === "delivery"
+                      ? "bg-[#235b4e] text-white shadow-sm"
+                      : "text-[#666666] hover:text-[#1A1A1A]"
+                  }`}
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                  </svg>
+                  Delivery
+                </button>
+              </div>
+
               <button
                 onClick={() => setShowBranchModal(true)}
                 className="hidden md:flex items-center gap-2 px-4 py-2 border-2 border-[#235b4e] text-[#235b4e] rounded-lg hover:bg-[#F0F5F3] transition-colors"

@@ -5,11 +5,18 @@ import { useState, useEffect } from "react";
 export default function CheckoutPage() {
   const [selectedBranch, setSelectedBranch] = useState(null);
   const [cartItems, setCartItems] = useState([]);
-  const [orderType, setOrderType] = useState("delivery");
+  const [orderType, setOrderType] = useState(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("orderType") || "pickup";
+    }
+    return "pickup";
+  });
   const [selectedDate, setSelectedDate] = useState("");
   const [selectedTime, setSelectedTime] = useState("");
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [specialInstructions, setSpecialInstructions] = useState("");
+  const [calculatedDeliveryFee, setCalculatedDeliveryFee] = useState(0);
+  const [isCalculatingFee, setIsCalculatingFee] = useState(false);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
@@ -40,6 +47,38 @@ export default function CheckoutPage() {
     }
   }, [selectedBranch]);
 
+  // Calculate delivery fee dynamically when location/address changes
+  useEffect(() => {
+    if (orderType !== "delivery" || !deliveryAddress.trim() || !selectedBranch) {
+      setCalculatedDeliveryFee(0);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setIsCalculatingFee(true);
+      try {
+        const res = await fetch("/api/delivery/calculate-cost", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            branchId: selectedBranch.id,
+            address: deliveryAddress.trim(),
+          }),
+        });
+        const data = await res.json();
+        if (data.deliveryCost !== undefined) {
+          setCalculatedDeliveryFee(data.deliveryCost);
+        }
+      } catch (err) {
+        console.error("Error calculating delivery cost:", err);
+      } finally {
+        setIsCalculatingFee(false);
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [deliveryAddress, selectedBranch, orderType]);
+
   const fetchCart = async () => {
     setLoading(true);
     try {
@@ -66,7 +105,7 @@ export default function CheckoutPage() {
     return sum + itemTotal + addonsTotal;
   }, 0);
 
-  const deliveryFee = orderType === "delivery" ? 5.0 : 0;
+  const deliveryFee = orderType === "delivery" ? calculatedDeliveryFee : 0;
   const total = subtotal + deliveryFee;
 
   const handlePlaceOrder = async (e) => {
@@ -234,33 +273,13 @@ export default function CheckoutPage() {
               Order Type
             </h2>
             <div className="grid grid-cols-2 gap-4">
+              {/* Pickup Button on the LEFT */}
               <button
                 type="button"
-                onClick={() => setOrderType("delivery")}
-                className={`p-6 rounded-xl border-2 transition-all ${
-                  orderType === "delivery"
-                    ? "border-[#235b4e] bg-[#F0F5F3]"
-                    : "border-[#E0E0E0] hover:border-[#235b4e]"
-                }`}
-              >
-                <svg
-                  className="w-8 h-8 mx-auto mb-2 text-[#235b4e]"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"
-                  />
-                </svg>
-                <div className="font-semibold text-[#1A1A1A]">Delivery</div>
-              </button>
-              <button
-                type="button"
-                onClick={() => setOrderType("pickup")}
+                onClick={() => {
+                  setOrderType("pickup");
+                  if (typeof window !== "undefined") localStorage.setItem("orderType", "pickup");
+                }}
                 className={`p-6 rounded-xl border-2 transition-all ${
                   orderType === "pickup"
                     ? "border-[#235b4e] bg-[#F0F5F3]"
@@ -281,6 +300,37 @@ export default function CheckoutPage() {
                   />
                 </svg>
                 <div className="font-semibold text-[#1A1A1A]">Pickup</div>
+                <div className="text-xs text-[#666666] mt-1">Location not required • Free</div>
+              </button>
+
+              {/* Delivery Button on the RIGHT */}
+              <button
+                type="button"
+                onClick={() => {
+                  setOrderType("delivery");
+                  if (typeof window !== "undefined") localStorage.setItem("orderType", "delivery");
+                }}
+                className={`p-6 rounded-xl border-2 transition-all ${
+                  orderType === "delivery"
+                    ? "border-[#235b4e] bg-[#F0F5F3]"
+                    : "border-[#E0E0E0] hover:border-[#235b4e]"
+                }`}
+              >
+                <svg
+                  className="w-8 h-8 mx-auto mb-2 text-[#235b4e]"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"
+                  />
+                </svg>
+                <div className="font-semibold text-[#1A1A1A]">Delivery</div>
+                <div className="text-xs text-[#666666] mt-1">Calculated when location selected</div>
               </button>
             </div>
           </div>
@@ -294,11 +344,17 @@ export default function CheckoutPage() {
               <textarea
                 value={deliveryAddress}
                 onChange={(e) => setDeliveryAddress(e.target.value)}
-                placeholder="Enter your delivery address"
+                placeholder="Enter your delivery address to calculate fee"
                 rows={3}
                 required={orderType === "delivery"}
                 className="w-full px-4 py-3 border border-[#E0E0E0] rounded-lg focus:outline-none focus:border-[#235b4e]"
               />
+              {isCalculatingFee && (
+                <p className="text-xs text-[#235b4e] mt-2 font-medium flex items-center gap-1.5">
+                  <span className="w-3 h-3 border-2 border-[#235b4e] border-t-transparent rounded-full animate-spin"></span>
+                  Calculating delivery fee for location...
+                </p>
+              )}
             </div>
           )}
 
@@ -357,12 +413,18 @@ export default function CheckoutPage() {
                 <span>Subtotal</span>
                 <span>${subtotal.toFixed(2)}</span>
               </div>
-              {orderType === "delivery" && (
-                <div className="flex justify-between text-[#666666]">
-                  <span>Delivery Fee</span>
-                  <span>${deliveryFee.toFixed(2)}</span>
-                </div>
-              )}
+              <div className="flex justify-between text-[#666666]">
+                <span>Delivery Fee</span>
+                <span>
+                  {orderType === "pickup"
+                    ? "$0.00 (Pickup)"
+                    : isCalculatingFee
+                    ? "Calculating..."
+                    : deliveryAddress.trim()
+                    ? `$${calculatedDeliveryFee.toFixed(2)}`
+                    : "$0.00 (Select location)"}
+                </span>
+              </div>
               <div className="border-t border-[#E0E0E0] pt-3 flex justify-between">
                 <span className="text-lg font-bold text-[#1A1A1A]">Total</span>
                 <span className="text-2xl font-bold text-[#235b4e]">

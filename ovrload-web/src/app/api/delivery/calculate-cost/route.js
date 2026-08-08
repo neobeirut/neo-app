@@ -215,9 +215,35 @@ export async function POST(request) {
     } else if (latitude && longitude) {
       deliveryLat = parseFloat(latitude);
       deliveryLng = parseFloat(longitude);
+    } else if (body.address && body.address.trim()) {
+      // Address string provided without lat/lng - lookup branch delivery pricing rule or fallback
+      const [firstRule] = await sql`
+        SELECT delivery_cost
+        FROM delivery_pricing_rules
+        WHERE (branch_id = ${branchId} OR branch_id IS NULL)
+          AND is_active = true
+        ORDER BY display_order, id
+        LIMIT 1
+      `;
+      const [fallbackSetting] = await sql`
+        SELECT setting_value
+        FROM app_settings
+        WHERE setting_key = 'delivery_fallback_cost'
+      `;
+      const cost = firstRule?.delivery_cost
+        ? parseFloat(firstRule.delivery_cost)
+        : (fallbackSetting ? parseFloat(fallbackSetting.setting_value) : 3.0);
+
+      return Response.json({
+        distanceKm: null,
+        deliveryCost: cost,
+        isFreeDelivery: cost === 0,
+        inDeliveryZone: true,
+        calculationMethod: "address_text_lookup",
+      });
     } else {
       return Response.json(
-        { error: "Address coordinates are required" },
+        { error: "Address coordinates or address text are required" },
         { status: 400 },
       );
     }
