@@ -1,7 +1,6 @@
-# cache-buster: 1785669681892
 [build]
 builder = "nixpacks"
-installCommand = "cd ovrload-web && npm install"
+installCommand = "export PUPPETEER_SKIP_DOWNLOAD=true && cd ovrload-web && npm install"
 buildCommand = "cd ovrload-web && npm run build"
 
 [deploy]
