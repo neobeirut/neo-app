@@ -83,7 +83,7 @@ export async function GET(request) {
 
     ordersQuery += ` ORDER BY o.created_at DESC`;
 
-    const orders = await sql.unsafe(ordersQuery, params);
+    const orders = await sql(ordersQuery, params);
 
     // Get order IDs
     const orderIds = orders.map((o) => o.id);
