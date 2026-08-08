@@ -125,7 +125,7 @@ export async function getAdminWithRolesFromRequest(request) {
       FROM admin_users au
       LEFT JOIN branches b ON au.branch_id = b.id
       LEFT JOIN admin_user_roles aur ON au.id = aur.admin_user_id
-      WHERE au.id = ${adminId} AND au.is_active = true
+      WHERE au.id = ${adminId} AND COALESCE(au.is_active, true) = true
       GROUP BY au.id, au.name, au.email, au.branch_id, au.is_active, b.name
       LIMIT 1
     `;
