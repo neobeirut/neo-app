@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "react-router dev",
     "typecheck": "react-router typegen && tsc --noEmit",
-    "build": "node -e \"import('fs').then(f => ['build','.react-router','node_modules/.cache','node_modules/.vite'].forEach(d => f.rmSync(d, {recursive:true, force:true})))\" && react-router build",
+    "build": "node -e \"import('fs').then(f => ['build','.react-router','node_modules/.cache','node_modules/.vite'].forEach(d => { try { f.rmSync(d, {recursive:true, force:true}); } catch(e){} }))\" && react-router build",
     "start": "node ./build/server/index.js",
     "db:init": "node ./scripts/init-schema.js"
   },
