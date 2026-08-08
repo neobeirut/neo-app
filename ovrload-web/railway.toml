@@ -1,6 +1,6 @@
 [build]
 builder = "nixpacks"
-installCommand = "npm install"
+installCommand = "export PUPPETEER_SKIP_DOWNLOAD=true NPM_CONFIG_PRODUCTION=false && npm install --include=dev"
 buildCommand = "npm run build"
 
 [deploy]

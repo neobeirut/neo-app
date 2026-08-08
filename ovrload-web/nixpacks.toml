@@ -8,7 +8,7 @@ PUPPETEER_SKIP_DOWNLOAD = "true"
 nixPkgs = ["nodejs_22", "unzip"]
 
 [phases.install]
-cmds = ["export PUPPETEER_SKIP_DOWNLOAD=true && cd ovrload-web && npm install"]
+cmds = ["export PUPPETEER_SKIP_DOWNLOAD=true NPM_CONFIG_PRODUCTION=false && cd ovrload-web && npm install --include=dev"]
 
 [phases.build]
 cmds = ["cd ovrload-web && npm run build"]
