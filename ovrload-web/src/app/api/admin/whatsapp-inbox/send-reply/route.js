@@ -1,0 +1,205 @@
+import { getLastRequestBodyString } from "@/app/api/utils/infobipWhatsApp";
+import sql from "@/app/api/utils/sql";
+import { getAdminFromRequest } from "@/app/api/utils/adminAuth";
+import {
+  logWhatsAppMessage,
+  normalizePhone,
+  sendWhatsAppFreeForm,
+} from "@/app/api/utils/customerWhatsApp";
+
+/**
+ * POST /api/admin/whatsapp-inbox/send-reply
+ */
+export async function POST(request) {
+  try {
+    console.log("🔥🔥🔥 SEND-REPLY ROUTE HIT 🔥🔥🔥");
+
+    const adminUser = await getAdminFromRequest(request);
+
+    if (!adminUser) {
+      console.log("❌ Unauthorized request");
+      return Response.json(
+        { ok: false, error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const phone = String(body.phone || "").trim();
+    const message = String(body.message || "").trim();
+
+    console.log("📥 Incoming payload:", { phone, message });
+
+    if (!phone || !message) {
+      console.log("❌ Missing phone or message");
+      return Response.json(
+        { ok: false, error: "Phone and message are required" },
+        { status: 400 }
+      );
+    }
+
+    const cleanPhone = phone.replace("+", "").replace(/\s+/g, "");
+    console.log("Normalized phone:", cleanPhone);
+
+    const [conversation] = await sql`
+      SELECT 
+        customer_id,
+        order_id,
+        branch_id,
+        branch_ids,
+        session_active
+      FROM whatsapp_conversations
+      WHERE REPLACE(REPLACE(phone, ' ', ''), '+', '') = ${cleanPhone}
+         OR phone = ${phone}
+      LIMIT 1
+    `;
+
+    console.log("Conversation found:", conversation);
+
+    if (!conversation) {
+      return Response.json(
+        { ok: false, error: "Conversation not found" },
+        { status: 404 }
+      );
+    }
+
+    if (adminUser.branch_id) {
+      const isAllowed = 
+        conversation.branch_id === adminUser.branch_id ||
+        (conversation.branch_ids && conversation.branch_ids.includes(adminUser.branch_id)) ||
+        !conversation.branch_ids ||
+        conversation.branch_ids.length === 0;
+
+      if (!isAllowed) {
+        console.log("? Branch access denied");
+        return Response.json(
+          {
+            ok: false,
+            error:
+              "Access denied: This conversation belongs to a different branch",
+          },
+          { status: 403 }
+        );
+      }
+    }
+
+    // Verify session active status dynamically (Meta 24-hour customer care window)
+    const [user] = conversation.customer_id ? await sql`
+      SELECT last_whatsapp_inbound_at
+      FROM auth_users
+      WHERE id = ${conversation.customer_id}
+      LIMIT 1
+    ` : [null];
+
+    const [lastMsg] = await sql`
+      SELECT created_at
+      FROM customer_whatsapp_messages
+      WHERE (REPLACE(REPLACE(phone, ' ', ''), '+', '') = ${cleanPhone} OR phone = ${phone})
+        AND direction = 'inbound'
+        AND message_type != 'debug_raw_payload'
+      ORDER BY created_at DESC
+      LIMIT 1
+    `;
+
+    const lastInboundTime = user?.last_whatsapp_inbound_at 
+      ? new Date(user.last_whatsapp_inbound_at) 
+      : lastMsg?.created_at 
+        ? new Date(lastMsg.created_at) 
+        : null;
+
+    const isSessionActive = lastInboundTime 
+      ? (Date.now() - lastInboundTime.getTime()) / (1000 * 60 * 60) < 24 
+      : false;
+
+    if (!isSessionActive) {
+      console.log("? WhatsApp session expired");
+      return Response.json(
+        {
+          ok: false,
+          error:
+            "WhatsApp session expired (24h window). Customer must message first to reactivate.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const messageWithFooter = `${message}\n\n— Néo Beirut\nReply to this message if you need help.`;
+
+    console.log("📤 Final message:", messageWithFooter);
+
+    let infobipResponse;
+
+    try {
+      console.log("🚀 ABOUT TO CALL WHATSAPP SEND FUNCTION");
+
+      infobipResponse = await sendWhatsAppFreeForm(phone, messageWithFooter);
+      console.log("✅ WHATSAPP SEND FUNCTION FINISHED");
+      console.log("🔥 LAST REQUEST BODY STRING:");
+      console.log(getLastRequestBodyString());
+    } catch (error) {
+      console.error("❌ WhatsApp send failed:", error);
+
+      console.log("🔥 LAST REQUEST BODY STRING AFTER ERROR:");
+      console.log(getLastRequestBodyString());
+      await logWhatsAppMessage({
+        userId: conversation.customer_id,
+        orderId: conversation.order_id,
+        phone,
+        direction: "outbound",
+        messageType: "admin_reply",
+        messageText: messageWithFooter,
+        templateName: null,
+        birdMessageId: null,
+        status: "failed",
+        error: String(error?.message || error),
+      });
+
+      return Response.json(
+        { ok: false, error: String(error?.message || error) },
+        { status: 500 }
+      );
+    }
+
+    console.log("📝 Logging success to DB");
+
+    await logWhatsAppMessage({
+      userId: conversation.customer_id,
+      orderId: conversation.order_id,
+      phone,
+      direction: "outbound",
+      messageType: "admin_reply",
+      messageText: messageWithFooter,
+      templateName: null,
+      birdMessageId: infobipResponse?.id || null,
+      status: "sent",
+      error: null,
+    });
+
+    await sql`
+      UPDATE whatsapp_conversations
+      SET 
+        last_message = ${messageWithFooter},
+        last_message_at = now(),
+        unread_count = 0,
+        updated_at = now()
+      WHERE REPLACE(REPLACE(phone, ' ', ''), '+', '') = ${cleanPhone}
+         OR phone = ${phone}
+    `;
+
+    console.log("✅ Reply sent successfully");
+
+    return Response.json({
+      ok: true,
+      messageId: infobipResponse?.id || null,
+      message: "Reply sent successfully",
+      debugPayload: getLastRequestBodyString(), // 🔥 ADD THIS
+    });
+  } catch (error) {
+    console.error("[send-reply] Fatal error:", error);
+
+    return Response.json(
+      { ok: false, error: String(error?.message || error) },
+      { status: 500 }
+    );
+  }
+}

@@ -1,0 +1,47 @@
+export function CateringForm() {
+  return (
+    <div className="bg-white p-8 rounded-2xl shadow-lg">
+      <h3 className="text-2xl font-bold text-[#235b4e] mb-6">
+        Request a Quote
+      </h3>
+      <form className="space-y-4">
+        <input
+          type="text"
+          placeholder="Your Name"
+          className="w-full px-4 py-3 border border-[#E0E0E0] rounded-lg focus:outline-none focus:border-[#235b4e]"
+        />
+        <input
+          type="email"
+          placeholder="Email Address"
+          className="w-full px-4 py-3 border border-[#E0E0E0] rounded-lg focus:outline-none focus:border-[#235b4e]"
+        />
+        <input
+          type="tel"
+          placeholder="Phone Number"
+          className="w-full px-4 py-3 border border-[#E0E0E0] rounded-lg focus:outline-none focus:border-[#235b4e]"
+        />
+        <input
+          type="date"
+          placeholder="Event Date"
+          className="w-full px-4 py-3 border border-[#E0E0E0] rounded-lg focus:outline-none focus:border-[#235b4e]"
+        />
+        <input
+          type="number"
+          placeholder="Number of Guests"
+          className="w-full px-4 py-3 border border-[#E0E0E0] rounded-lg focus:outline-none focus:border-[#235b4e]"
+        />
+        <textarea
+          placeholder="Additional Details"
+          rows={4}
+          className="w-full px-4 py-3 border border-[#E0E0E0] rounded-lg focus:outline-none focus:border-[#235b4e]"
+        ></textarea>
+        <button
+          type="submit"
+          className="w-full bg-[#235b4e] text-white px-6 py-3 rounded-lg hover:bg-[#2B6B5C] transition-colors font-medium"
+        >
+          Submit Request
+        </button>
+      </form>
+    </div>
+  );
+}
