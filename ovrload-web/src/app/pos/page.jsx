@@ -958,29 +958,53 @@ export default function TabletPOSPage() {
                 </button>
               </div>
 
-              {/* Editable Discount Input & Unit Toggle (ONLY for Custom Discount) */}
+              {/* Editable Custom Discount Mode & Input */}
               {discountType === "custom" && (
-                <div className="flex items-center gap-2 pt-1 border-t border-[#262D3D]">
-                  <span className="text-[11px] font-bold text-gray-400 capitalize">
-                    Custom Discount:
-                  </span>
-                  <div className="flex-1 flex items-center bg-[#181C24] border border-[#262D3D] rounded-lg overflow-hidden px-2 py-1">
+                <div className="pt-2 border-t border-[#262D3D] space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-gray-400">
+                      Custom Discount Type:
+                    </span>
+                    <div className="flex bg-[#181C24] p-0.5 rounded-lg border border-[#262D3D]">
+                      <button
+                        type="button"
+                        onClick={() => setDiscountIsPercent(true)}
+                        className={`px-2.5 py-1 text-[10px] font-black rounded-md transition-all ${
+                          discountIsPercent
+                            ? "bg-[#eb660c] text-white shadow"
+                            : "text-gray-400 hover:text-white"
+                        }`}
+                      >
+                        % Percentage
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDiscountIsPercent(false)}
+                        className={`px-2.5 py-1 text-[10px] font-black rounded-md transition-all ${
+                          !discountIsPercent
+                            ? "bg-[#00C49F] text-black shadow"
+                            : "text-gray-400 hover:text-white"
+                        }`}
+                      >
+                        $ Amount (USD)
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center bg-[#181C24] border border-[#262D3D] rounded-lg px-3 py-1.5 focus-within:border-[#eb660c]">
+                    <span className="text-gray-400 font-extrabold text-xs mr-2">
+                      {discountIsPercent ? "%" : "$"}
+                    </span>
                     <input
                       type="number"
                       min="0"
                       step="0.01"
                       value={discountValInput}
                       onChange={(e) => setDiscountValInput(e.target.value)}
-                      className="w-full bg-transparent text-white font-black text-xs outline-none"
-                      placeholder="Amount"
+                      className="w-full bg-transparent text-white font-black text-sm outline-none"
+                      placeholder={discountIsPercent ? "Enter % e.g. 20" : "Enter $ e.g. 5.00"}
+                      autoFocus
                     />
-                    <button
-                      type="button"
-                      onClick={() => setDiscountIsPercent(!discountIsPercent)}
-                      className="px-1.5 py-0.5 bg-[#262D3D] text-[#eb660c] font-black text-[11px] rounded hover:bg-[#323B4E]"
-                    >
-                      {discountIsPercent ? "%" : "$"}
-                    </button>
                   </div>
                 </div>
               )}
