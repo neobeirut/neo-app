@@ -730,10 +730,10 @@ export default function TabletPOSPage() {
           </div>
         </div>
 
-        {/* RIGHT PANE: ACTIVE TICKET CART & CHECKOUT (35% width) */}
-        <div className="w-[35%] flex flex-col bg-[#181C24] border-l border-[#262D3D]">
-          {/* Order Header / Customer Info */}
-          <div className="p-4 border-b border-[#262D3D] bg-[#14171F]">
+        {/* RIGHT PANE: ACTIVE TICKET CART & CHECKOUT (35% width - Independent 100% Height) */}
+        <div className="w-[35%] h-full flex flex-col bg-[#181C24] border-l border-[#262D3D] overflow-hidden relative">
+          {/* Order Header / Customer Info (Fixed Top) */}
+          <div className="p-4 border-b border-[#262D3D] bg-[#14171F] flex-shrink-0">
             <div className="flex items-center justify-between mb-3">
               <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">
                 Current Ticket
@@ -801,8 +801,8 @@ export default function TabletPOSPage() {
             </div>
           </div>
 
-          {/* Ticket Items List */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-2.5">
+          {/* Ticket Items List (Scrollable Middle Section) */}
+          <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-2.5">
             {ticketItems.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-gray-500 gap-2 py-12">
                 <svg className="w-12 h-12 stroke-current" fill="none" viewBox="0 0 24 24">
@@ -885,8 +885,8 @@ export default function TabletPOSPage() {
             )}
           </div>
 
-          {/* Ticket Footer / Summary */}
-          <div className="p-4 border-t border-[#262D3D] bg-[#14171F] space-y-3">
+          {/* Ticket Footer / Summary (Fixed Bottom - Always Visible) */}
+          <div className="p-4 border-t border-[#262D3D] bg-[#14171F] space-y-3 flex-shrink-0 shadow-2xl">
             {/* Discount Selection Section */}
             <div className="bg-[#0F1115] p-2.5 rounded-xl border border-[#262D3D] space-y-2">
               <div className="flex items-center justify-between">
