@@ -597,35 +597,30 @@ export default function TabletPOSPage() {
             ))}
           </div>
 
-          {/* Product Grid (Descriptions Removed) */}
-          <div className="flex-1 overflow-y-auto p-4 grid grid-cols-3 gap-3.5 align-content-start">
+          {/* Product Grid (Compact, Fixed Card Height, Price between Options & Add) */}
+          <div className="flex-1 overflow-y-auto p-4 grid grid-cols-3 gap-3 align-content-start">
             {filteredProducts.map((product) => (
               <div
                 key={product.id}
                 onClick={() => handleOpenCustomization(product)}
-                className="bg-[#181C24] hover:bg-[#202632] border border-[#262D3D] hover:border-[#eb660c] rounded-2xl p-4 flex flex-col justify-between cursor-pointer transition-all active:scale-95 shadow-sm group"
+                className="h-[115px] bg-[#181C24] hover:bg-[#202632] border border-[#262D3D] hover:border-[#eb660c] rounded-xl p-3 flex flex-col justify-between cursor-pointer transition-all active:scale-95 shadow-sm group select-none"
               >
                 <div>
-                  <div className="flex justify-between items-start mb-2">
-                    <span className="text-xs font-bold text-[#eb660c] bg-[#eb660c]/10 px-2 py-0.5 rounded">
-                      {product.category_name}
-                    </span>
-                    <span className="text-base font-black text-white">
-                      ${(product.unit_price_usd || 0).toFixed(2)}
-                    </span>
-                  </div>
-                  <h3 className="font-extrabold text-sm text-white group-hover:text-[#eb660c] transition-colors line-clamp-2">
+                  <h3 className="font-extrabold text-sm text-white group-hover:text-[#eb660c] transition-colors line-clamp-2 leading-snug">
                     {product.name}
                   </h3>
                 </div>
 
-                <div className="mt-4 flex justify-between items-center border-t border-[#262D3D] pt-2.5">
-                  <span className="text-[10px] text-gray-400 font-medium">
+                <div className="flex items-center justify-between border-t border-[#262D3D] pt-2">
+                  <span className="text-[11px] text-gray-400 font-medium truncate max-w-[33%]">
                     {product.customizations?.length > 0
-                      ? `${product.customizations.length} options`
-                      : "Standard item"}
+                      ? `${product.customizations.length} opts`
+                      : "Standard"}
                   </span>
-                  <button className="px-3 py-1 bg-[#eb660c] group-hover:bg-[#d55909] text-white rounded-lg text-xs font-bold shadow">
+                  <span className="text-sm font-black text-white px-1">
+                    ${(product.unit_price_usd || 0).toFixed(2)}
+                  </span>
+                  <button className="px-2.5 py-1 bg-[#eb660c] group-hover:bg-[#d55909] text-white rounded-lg text-xs font-bold shadow">
                     + Add
                   </button>
                 </div>
