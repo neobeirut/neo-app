@@ -17,7 +17,12 @@ export default function TabletPOSPage() {
   const [customerPhone, setCustomerPhone] = useState("");
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [deliveryFee, setDeliveryFee] = useState(0);
-  const [discountAmount, setDiscountAmount] = useState(0);
+  
+  // Discount System States (15%, Toters, NokNok, Custom)
+  const [discountType, setDiscountType] = useState("none"); // "none", "15%", "toters", "noknok", "custom"
+  const [discountValInput, setDiscountValInput] = useState(15);
+  const [discountIsPercent, setDiscountIsPercent] = useState(true); // true = %, false = $ USD
+
   const [ticketItems, setTicketItems] = useState([]);
   const [editingOrderId, setEditingOrderId] = useState(null); // Track if editing an incoming WhatsApp order
 
@@ -238,8 +243,24 @@ export default function TabletPOSPage() {
     setActiveTabModal(null);
   };
 
-  // Totals Calculations
+  // Totals & Dynamic Discount Calculations
   const subtotal = ticketItems.reduce((sum, item) => sum + item.unit_price * item.qty, 0);
+
+  const calculatedDiscount = (() => {
+    if (discountType === "15%") {
+      return subtotal * 0.15;
+    }
+    if (discountType === "toters" || discountType === "noknok" || discountType === "custom") {
+      const val = parseFloat(discountValInput) || 0;
+      if (discountIsPercent) {
+        return subtotal * (val / 100);
+      }
+      return Math.min(subtotal, val);
+    }
+    return 0;
+  })();
+
+  const discountAmount = calculatedDiscount;
   const total = Math.max(0, subtotal + (orderType === "delivery" ? deliveryFee : 0) - discountAmount);
 
   // Validate Order Origin Selection
@@ -370,6 +391,9 @@ export default function TabletPOSPage() {
         setDeliveryAddress("");
         setSelectedChannel(null); // Reset origin
         setEditingOrderId(null);
+        setDiscountType("none");
+        setDiscountValInput(15);
+        setDiscountIsPercent(true);
         setActiveTabModal("receipt");
         fetchOrdersQueue();
       }
@@ -554,6 +578,11 @@ export default function TabletPOSPage() {
                 onClick={() => {
                   setSelectedChannel(channel.name);
                   setValidationError("");
+                  if (channel.name === "Toters") {
+                    setDiscountType("toters");
+                  } else if (channel.name === "NokNok") {
+                    setDiscountType("noknok");
+                  }
                 }}
                 className={`px-3.5 py-1.5 rounded-lg text-xs font-extrabold transition-all flex items-center gap-1.5 ${
                   selectedChannel === channel.name
@@ -844,11 +873,124 @@ export default function TabletPOSPage() {
 
           {/* Ticket Footer / Summary */}
           <div className="p-4 border-t border-[#262D3D] bg-[#14171F] space-y-3">
+            {/* Discount Selection Section */}
+            <div className="bg-[#0F1115] p-2.5 rounded-xl border border-[#262D3D] space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">
+                  🏷️ Discount Selector:
+                </span>
+                {discountType !== "none" && (
+                  <button
+                    type="button"
+                    onClick={() => setDiscountType("none")}
+                    className="text-[10px] text-red-400 hover:underline font-bold"
+                  >
+                    Clear Discount
+                  </button>
+                )}
+              </div>
+
+              {/* Discount Preset Buttons */}
+              <div className="grid grid-cols-4 gap-1">
+                <button
+                  type="button"
+                  onClick={() => setDiscountType("15%")}
+                  className={`py-1.5 px-1 rounded-lg text-[11px] font-extrabold border transition-all ${
+                    discountType === "15%"
+                      ? "bg-[#eb660c] border-[#eb660c] text-white shadow"
+                      : "bg-[#181C24] border-[#262D3D] text-gray-300 hover:text-white"
+                  }`}
+                >
+                  15% Off
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDiscountType("toters");
+                    if (discountType !== "toters") setDiscountValInput(15);
+                  }}
+                  className={`py-1.5 px-1 rounded-lg text-[11px] font-extrabold border transition-all ${
+                    discountType === "toters"
+                      ? "bg-[#00C49F] border-[#00C49F] text-black shadow"
+                      : "bg-[#181C24] border-[#262D3D] text-gray-300 hover:text-white"
+                  }`}
+                >
+                  Toters
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDiscountType("noknok");
+                    if (discountType !== "noknok") setDiscountValInput(15);
+                  }}
+                  className={`py-1.5 px-1 rounded-lg text-[11px] font-extrabold border transition-all ${
+                    discountType === "noknok"
+                      ? "bg-[#FF5A5F] border-[#FF5A5F] text-white shadow"
+                      : "bg-[#181C24] border-[#262D3D] text-gray-300 hover:text-white"
+                  }`}
+                >
+                  NokNok
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDiscountType("custom");
+                    if (discountType !== "custom") setDiscountValInput(10);
+                  }}
+                  className={`py-1.5 px-1 rounded-lg text-[11px] font-extrabold border transition-all ${
+                    discountType === "custom"
+                      ? "bg-[#3B82F6] border-[#3B82F6] text-white shadow"
+                      : "bg-[#181C24] border-[#262D3D] text-gray-300 hover:text-white"
+                  }`}
+                >
+                  Custom
+                </button>
+              </div>
+
+              {/* Editable Discount Input & Unit Toggle (Toters, NokNok, Custom) */}
+              {(discountType === "toters" || discountType === "noknok" || discountType === "custom") && (
+                <div className="flex items-center gap-2 pt-1 border-t border-[#262D3D]">
+                  <span className="text-[11px] font-bold text-gray-400 capitalize">
+                    {discountType} value:
+                  </span>
+                  <div className="flex-1 flex items-center bg-[#181C24] border border-[#262D3D] rounded-lg overflow-hidden px-2 py-1">
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={discountValInput}
+                      onChange={(e) => setDiscountValInput(e.target.value)}
+                      className="w-full bg-transparent text-white font-black text-xs outline-none"
+                      placeholder="Amount"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setDiscountIsPercent(!discountIsPercent)}
+                      className="px-1.5 py-0.5 bg-[#262D3D] text-[#eb660c] font-black text-[11px] rounded hover:bg-[#323B4E]"
+                    >
+                      {discountIsPercent ? "%" : "$"}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div className="space-y-1.5 text-xs text-gray-400">
               <div className="flex justify-between">
                 <span>Subtotal</span>
                 <span className="text-white font-bold">${subtotal.toFixed(2)}</span>
               </div>
+              {discountAmount > 0 && (
+                <div className="flex justify-between text-[#eb660c] font-extrabold">
+                  <span>
+                    Discount ({discountType === "15%" ? "15%" : `${discountType.toUpperCase()} ${discountValInput}${discountIsPercent ? "%" : "$"}`})
+                  </span>
+                  <span>-${discountAmount.toFixed(2)}</span>
+                </div>
+              )}
               {orderType === "delivery" && (
                 <div className="flex justify-between">
                   <span>Delivery Fee</span>
