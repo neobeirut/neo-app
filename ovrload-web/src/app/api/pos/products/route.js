@@ -57,7 +57,9 @@ export async function GET() {
       products: productsResult || [],
       settings: {
         toters_discount_percent: parseFloat(settingsObj.toters_discount_percent || "15"),
-        noknok_discount_percent: parseFloat(settingsObj.noknok_discount_percent || "15")
+        noknok_discount_percent: parseFloat(settingsObj.noknok_discount_percent || "15"),
+        print_server_ip:   settingsObj.print_server_ip   || "",
+        print_server_port: settingsObj.print_server_port || "9191",
       }
     });
   } catch (error) {

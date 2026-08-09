@@ -5,14 +5,14 @@ export async function GET() {
     const settings = await sql`
       SELECT setting_key, setting_value FROM app_settings
     `;
-    const settingsObj = {};
-    (settings || []).forEach((row) => {
-      settingsObj[row.setting_key] = row.setting_value;
-    });
+    const s = {};
+    (settings || []).forEach((row) => { s[row.setting_key] = row.setting_value; });
 
     return Response.json({
-      toters_discount_percent: parseFloat(settingsObj.toters_discount_percent || "15"),
-      noknok_discount_percent: parseFloat(settingsObj.noknok_discount_percent || "15")
+      toters_discount_percent: parseFloat(s.toters_discount_percent || "15"),
+      noknok_discount_percent: parseFloat(s.noknok_discount_percent || "15"),
+      print_server_ip:         s.print_server_ip   || "",
+      print_server_port:       s.print_server_port || "9191",
     });
   } catch (err) {
     console.error("Error in GET /api/admin/settings:", err);
@@ -23,24 +23,25 @@ export async function GET() {
 export async function POST(req) {
   try {
     const body = await req.json();
-    const { toters_discount_percent, noknok_discount_percent } = body;
 
-    if (toters_discount_percent !== undefined) {
-      await sql`
-        INSERT INTO app_settings (setting_key, setting_value, created_at, updated_at)
-        VALUES ('toters_discount_percent', ${String(toters_discount_percent)}, NOW(), NOW())
-        ON CONFLICT (setting_key) 
-        DO UPDATE SET setting_value = EXCLUDED.setting_value, updated_at = NOW()
-      `;
-    }
+    // Upsert each provided key generically
+    const allowed = [
+      "toters_discount_percent",
+      "noknok_discount_percent",
+      "print_server_ip",
+      "print_server_port",
+    ];
 
-    if (noknok_discount_percent !== undefined) {
-      await sql`
-        INSERT INTO app_settings (setting_key, setting_value, created_at, updated_at)
-        VALUES ('noknok_discount_percent', ${String(noknok_discount_percent)}, NOW(), NOW())
-        ON CONFLICT (setting_key) 
-        DO UPDATE SET setting_value = EXCLUDED.setting_value, updated_at = NOW()
-      `;
+    for (const key of allowed) {
+      if (body[key] !== undefined) {
+        const val = String(body[key]);
+        await sql`
+          INSERT INTO app_settings (setting_key, setting_value, created_at, updated_at)
+          VALUES (${key}, ${val}, NOW(), NOW())
+          ON CONFLICT (setting_key)
+          DO UPDATE SET setting_value = EXCLUDED.setting_value, updated_at = NOW()
+        `;
+      }
     }
 
     return Response.json({ success: true, message: "Settings updated successfully" });
@@ -49,3 +50,4 @@ export async function POST(req) {
     return Response.json({ error: err.message }, { status: 500 });
   }
 }
+

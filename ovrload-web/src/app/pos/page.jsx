@@ -27,6 +27,10 @@ export default function TabletPOSPage() {
   const [discountValInput, setDiscountValInput] = useState(10);
   const [discountIsPercent, setDiscountIsPercent] = useState(true); // true = %, false = $ USD
 
+  // Print Server Settings (configured in Admin → Settings → Printer)
+  const [printServerIP, setPrintServerIP] = useState("");
+  const [printServerPort, setPrintServerPort] = useState(9191);
+
   const [ticketItems, setTicketItems] = useState([]);
   const [editingOrderId, setEditingOrderId] = useState(null); // Track if editing an incoming WhatsApp order
 
@@ -66,6 +70,8 @@ export default function TabletPOSPage() {
       if (data.settings) {
         if (data.settings.toters_discount_percent !== undefined) setTotersDiscountPercent(data.settings.toters_discount_percent);
         if (data.settings.noknok_discount_percent !== undefined) setNoknokDiscountPercent(data.settings.noknok_discount_percent);
+        if (data.settings.print_server_ip)   setPrintServerIP(data.settings.print_server_ip);
+        if (data.settings.print_server_port) setPrintServerPort(Number(data.settings.print_server_port));
       }
     } catch (err) {
       console.error("Error fetching POS products:", err);
@@ -277,6 +283,39 @@ export default function TabletPOSPage() {
   const discountAmount = calculatedDiscount;
   const total = Math.max(0, subtotal + (orderType === "delivery" ? deliveryFee : 0) - discountAmount);
 
+  // Human-readable discount label for receipt
+  const discountLabel = (() => {
+    if (discountType === "15%")    return "15% Off";
+    if (discountType === "toters") return `Toters (${totersDiscountPercent}%)`;
+    if (discountType === "noknok") return `NokNok (${noknokDiscountPercent}%)`;
+    if (discountType === "custom") return discountIsPercent ? `Custom (${discountValInput}%)` : "Custom Discount";
+    return "Discount";
+  })();
+
+  // Send print job to local print server
+  const handlePrint = async (orderData) => {
+    if (!printServerIP) {
+      console.warn("Print server IP not configured. Set it in Admin → Settings → Printer.");
+      return;
+    }
+    const url = `http://${printServerIP}:${printServerPort}/print`;
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(orderData),
+        signal: AbortSignal.timeout(8000),
+      });
+      const result = await res.json();
+      if (result.success) {
+        const labels = (result.printed || []).join(" + ");
+        console.log(`Printed: ${labels}`);
+      }
+    } catch (err) {
+      console.warn("Print server unreachable:", err.message);
+    }
+  };
+
   // Validate Order Origin Selection
   const validateOrderOrigin = () => {
     if (!selectedChannel) {
@@ -394,10 +433,14 @@ export default function TabletPOSPage() {
           delivery_address: deliveryAddress,
           subtotal_amount: subtotal,
           delivery_fee: orderType === "delivery" ? deliveryFee : 0,
+          discount_amount: discountAmount,
+          discount_label: discountAmount > 0 ? discountLabel : null,
           total_amount: total,
           items: ticketItems,
           created_at: new Date().toISOString()
         };
+        // Fire print job (non-blocking — order saved regardless of print result)
+        handlePrint(completedOrderData);
         setLastCompletedOrder(completedOrderData);
         setTicketItems([]);
         setCustomerName("");
