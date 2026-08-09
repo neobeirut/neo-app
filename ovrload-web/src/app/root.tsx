@@ -476,57 +476,6 @@ export function Layout({ children }: { children: ReactNode }) {
                   });
                 });
               }
-
-              // Capture-phase error listener: catches script parse/load/runtime failures
-              // that window.onerror misses (e.g. <script type=module> parse errors)
-              (function() {
-                function showErr(msg) {
-                  var el = document.getElementById('pre-react-loading');
-                  if (el) {
-                    el.style.background = '#0F1115';
-                    el.innerHTML = '<div style="max-width:88%;text-align:center;padding:24px;font-family:sans-serif">' +
-                      '<div style="color:#eb660c;font-size:17px;margin-bottom:14px;letter-spacing:2px">OVR LOAD POS</div>' +
-                      '<div style="color:#ff7070;font-size:12px;word-break:break-all;line-height:1.6;background:rgba(200,0,0,0.15);padding:12px;border-radius:8px;border:1px solid rgba(255,80,80,0.35)">' +
-                      msg + '</div>' +
-                      '<div style="color:#666;font-size:11px;margin-top:12px">Please take a screenshot and share it</div>' +
-                      '</div>';
-                  }
-                }
-
-                // Catch all JS errors (runtime + syntax in classic scripts)
-                window.onerror = function(msg, src, line, col) {
-                  showErr('JS Error: ' + msg + '<br>Line ' + line + ':' + col + (src ? '<br>' + src.split('/').pop() : ''));
-                  return false;
-                };
-
-                // Catch promise rejections (module import failures, async errors)
-                window.addEventListener('unhandledrejection', function(e) {
-                  showErr('Promise Error:<br>' + (e.reason ? (e.reason.stack || e.reason.message || String(e.reason)) : 'Unknown rejection'));
-                });
-
-                // Capture-phase listener catches <script> and <link> load failures
-                document.addEventListener('error', function(e) {
-                  var t = e.target;
-                  if (t && (t.tagName === 'SCRIPT' || t.tagName === 'LINK')) {
-                    showErr('Failed to load resource:<br>' + (t.src || t.href || 'unknown'));
-                  }
-                }, true);
-
-                // 12-second fallback: if React never mounts, show a helpful message
-                setTimeout(function() {
-                  var el = document.getElementById('pre-react-loading');
-                  if (el) {
-                    el.style.background = '#0F1115';
-                    el.innerHTML = '<div style="max-width:88%;text-align:center;padding:24px;font-family:sans-serif">' +
-                      '<div style="color:#eb660c;font-size:17px;margin-bottom:14px;letter-spacing:2px">OVR LOAD POS</div>' +
-                      '<div style="color:#aaa;font-size:13px;line-height:1.7">' +
-                      'App failed to start on this device.<br>' +
-                      'Browser: ' + (navigator.userAgent.match(/(Chrome|Samsung|Firefox|Safari)\/[\d.]+/g) || ['unknown']).join(', ') + '<br><br>' +
-                      '<span style="color:#eb660c">Please take a screenshot and share it.</span>' +
-                      '</div></div>';
-                  }
-                }, 12000);
-              })();
             `
           }}
         />
