@@ -453,6 +453,9 @@ export function Layout({ children }: { children: ReactNode }) {
         {import.meta.env.DEV ? <script type="module" src="/src/__create/dev-error-overlay.js"></script> : null}
         <link rel="icon" href="/pwa-icon-192.png" />
         {LoadFontsSSR ? <LoadFontsSSR /> : null}
+        {/* FontAwesome — loaded in head so icons are ready before first paint */}
+        <link rel="preconnect" href="https://ka-p.fontawesome.com" crossOrigin="anonymous" />
+        <link rel="stylesheet" href="https://ka-p.fontawesome.com/releases/v6.3.0/css/pro.min.css?token=2c15cc0cc7" crossOrigin="anonymous" />
         <script
           dangerouslySetInnerHTML={{
             __html: `
@@ -468,13 +471,55 @@ export function Layout({ children }: { children: ReactNode }) {
         />
       </head>
       <body>
+        {/* Pre-React loading indicator — visible immediately on page load, hidden once React mounts */}
+        <div
+          id="pre-react-loading"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: '#0F1115',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            fontFamily: 'sans-serif',
+            color: '#eb660c',
+            fontSize: '18px',
+            letterSpacing: '3px',
+          }}
+        >
+          OVR LOAD POS…
+        </div>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                function hideLoader() {
+                  var el = document.getElementById('pre-react-loading');
+                  if (el) el.remove();
+                }
+                var attempts = 0;
+                function checkReady() {
+                  attempts++;
+                  if (attempts > 80) { hideLoader(); return; }
+                  if (document.body && document.body.children.length > 3) { hideLoader(); return; }
+                  setTimeout(checkReady, 100);
+                }
+                if (document.readyState === 'loading') {
+                  document.addEventListener('DOMContentLoaded', function() { setTimeout(checkReady, 300); });
+                } else {
+                  setTimeout(checkReady, 300);
+                }
+              })();
+            `
+          }}
+        />
         <ClientOnly loader={() => children} />
         <Toaster position={isMobile ? 'top-center' : 'bottom-right'} />
         <ScrollRestoration />
         <Scripts />
-        <link rel="preconnect" href="https://ka-p.fontawesome.com" crossOrigin="anonymous" />
-        <link rel="stylesheet" href="https://ka-p.fontawesome.com/releases/v6.3.0/css/pro.min.css?token=2c15cc0cc7" crossOrigin="anonymous" />
       </body>
+
     </html>
   );
 }

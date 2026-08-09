@@ -71,7 +71,8 @@ export default defineConfig({
     layoutWrapperPlugin(),
   ],
   build: {
-    target: 'esnext', // needed for top-level await in server entry
+    target: 'es2018', // es2018 = Chrome 63+ — required for tablet/older Android WebView compatibility
+    // Note: the server bundle (Node.js) natively supports top-level await regardless of this setting
   },
   resolve: {
     alias: {
