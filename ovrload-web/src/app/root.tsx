@@ -460,7 +460,7 @@ export function Layout({ children }: { children: ReactNode }) {
         <link rel="manifest" href="/manifest.json" />
         <Meta />
         <Links />
-        {import.meta.env.DEV ? <script type="module" src="/src/__create/dev-error-overlay.js"></script> : null}
+        {/* dev-error-overlay removed — it doesn't exist in production and causes silent script failures on some tablet browsers */}
         <link rel="icon" href="/pwa-icon-192.png" />
         {LoadFontsSSR ? <LoadFontsSSR /> : null}
         {/* FontAwesome — loaded in head so icons are ready before first paint */}
@@ -521,7 +521,7 @@ export function Layout({ children }: { children: ReactNode }) {
                       '<div style="color:#eb660c;font-size:17px;margin-bottom:14px;letter-spacing:2px">OVR LOAD POS</div>' +
                       '<div style="color:#aaa;font-size:13px;line-height:1.7">' +
                       'App failed to start on this device.<br>' +
-                      'Browser: ' + navigator.userAgent.match(/(Chrome|Samsung|Firefox|Safari)\/[\d.]+/g).join(', ') + '<br><br>' +
+                      'Browser: ' + (navigator.userAgent.match(/(Chrome|Samsung|Firefox|Safari)\/[\d.]+/g) || ['unknown']).join(', ') + '<br><br>' +
                       '<span style="color:#eb660c">Please take a screenshot and share it.</span>' +
                       '</div></div>';
                   }
