@@ -95,13 +95,33 @@ export default function TabletPOSPage() {
   const handleOpenCustomization = (product, itemIndex = null) => {
     setCurrentProduct(product);
     setEditingItemIndex(itemIndex);
+    setCustomizationError("");
+
     if (itemIndex !== null) {
       const existing = ticketItems[itemIndex];
       setSelectedCustomizations(existing.selectedCustomizations || []);
       setItemNote(existing.note || "");
       setCustomizationQty(existing.qty || 1);
     } else {
-      setSelectedCustomizations([]);
+      // Pre-select first option for required groups (e.g. Drinks)
+      const defaultSelections = [];
+      if (product.customizations?.length > 0) {
+        const grouped = product.customizations.reduce((acc, c) => {
+          const group = c.option_group_name || (c.customization_type === "remove" ? "Remove Ingredients" : "Custom Options");
+          if (!acc[group]) acc[group] = [];
+          acc[group].push(c);
+          return acc;
+        }, {});
+
+        Object.entries(grouped).forEach(([groupName, opts]) => {
+          const isReq = opts[0]?.is_required || groupName.toLowerCase().includes("drink");
+          if (isReq && opts.length > 0) {
+            defaultSelections.push(opts[0]); // Default to first drink/option
+          }
+        });
+      }
+
+      setSelectedCustomizations(defaultSelections);
       setItemNote("");
       setCustomizationQty(1);
     }
@@ -110,6 +130,7 @@ export default function TabletPOSPage() {
 
   // Toggle Customization Option
   const handleToggleOption = (custOption, isMultiSelect) => {
+    setCustomizationError("");
     if (isMultiSelect) {
       const exists = selectedCustomizations.some((c) => c.id === custOption.id);
       if (exists) {
@@ -124,9 +145,30 @@ export default function TabletPOSPage() {
     }
   };
 
-  // Save Customization to Ticket Cart
+  // Save Customization to Ticket Cart (Enforces Drinks/Required groups)
   const handleSaveCustomizationToCart = () => {
     if (!currentProduct) return;
+
+    // Validate Required Groups (e.g. Drinks)
+    if (currentProduct.customizations?.length > 0) {
+      const grouped = currentProduct.customizations.reduce((acc, c) => {
+        const group = c.option_group_name || (c.customization_type === "remove" ? "Remove Ingredients" : "Custom Options");
+        if (!acc[group]) acc[group] = [];
+        acc[group].push(c);
+        return acc;
+      }, {});
+
+      for (const [groupName, opts] of Object.entries(grouped)) {
+        const isReq = opts[0]?.is_required || groupName.toLowerCase().includes("drink");
+        if (isReq) {
+          const hasSelected = selectedCustomizations.some((c) => opts.some((o) => o.id === c.id));
+          if (!hasSelected) {
+            setCustomizationError(`⚠️ Selection for "${groupName}" is REQUIRED! Please choose one.`);
+            return;
+          }
+        }
+      }
+    }
 
     let extraCost = 0;
     selectedCustomizations.forEach((c) => {
@@ -155,6 +197,7 @@ export default function TabletPOSPage() {
 
     setActiveTabModal(null);
     setCurrentProduct(null);
+    setCustomizationError("");
   };
 
   // Change Quantity in Ticket
@@ -848,6 +891,13 @@ export default function TabletPOSPage() {
 
             {/* Options Body */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {customizationError && (
+                <div className="bg-red-600/90 text-white text-xs font-bold px-3 py-2 rounded-xl flex justify-between items-center animate-bounce">
+                  <span>{customizationError}</span>
+                  <button onClick={() => setCustomizationError("")} className="font-extrabold px-1">✕</button>
+                </div>
+              )}
+
               {currentProduct.customizations?.length > 0 ? (
                 Object.entries(
                   currentProduct.customizations.reduce((acc, c) => {
@@ -858,11 +908,21 @@ export default function TabletPOSPage() {
                   }, {})
                 ).map(([groupName, options]) => {
                   const isMultiSelect = options[0]?.is_multi_select || groupName === "Remove Ingredients";
+                  const isReq = options[0]?.is_required || groupName.toLowerCase().includes("drink");
                   return (
-                    <div key={groupName} className="bg-[#0F1115] border border-[#262D3D] rounded-xl p-3.5 space-y-2">
-                      <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">
-                        {groupName} {isMultiSelect ? "(Multi-select)" : "(Single choice)"}
-                      </h4>
+                    <div key={groupName} className={`bg-[#0F1115] border rounded-xl p-3.5 space-y-2 ${
+                      isReq ? "border-[#eb660c]/50" : "border-[#262D3D]"
+                    }`}>
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-xs font-bold text-gray-300 uppercase tracking-wider">
+                          {groupName} {isMultiSelect ? "(Multi-select)" : "(Single choice)"}
+                        </h4>
+                        {isReq && (
+                          <span className="text-[10px] font-extrabold text-[#eb660c] bg-[#eb660c]/10 px-2 py-0.5 rounded">
+                            REQUIRED *
+                          </span>
+                        )}
+                      </div>
                       <div className="grid grid-cols-2 gap-2">
                         {options.map((opt) => {
                           const isSelected = selectedCustomizations.some((c) => c.id === opt.id);
