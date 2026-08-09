@@ -1,6 +1,6 @@
-﻿import postgres from 'postgres';
+import postgres from 'postgres';
 
-const sql = postgres('postgresql://postgres.nigtjaiwnmjdnmjtdlof:FsDdHJhoYDv1GsxW@aws-1-ap-south-1.pooler.supabase.com:6543/postgres');
+const sql = postgres('postgresql://postgres.agznfhskhsazzhbeboth:KXL5417ZawC9V4Kd@aws-1-ap-northeast-2.pooler.supabase.com:5432/postgres');
 
 async function test() {
   try {

@@ -4,7 +4,7 @@ import postgres from 'postgres';
 import Papa from 'papaparse';
 
 // Get database url from environment
-const databaseUrl = process.env.DATABASE_URL || 'postgresql://postgres.agznfhskhsazzhbeboth:KXL5417ZawC9V4Kd@aws-1-ap-northeast-2.pooler.supabase.com:5432/postgres';
+const databaseUrl = process.env.DATABASE_URL || 'postgresql://postgres.nigtjaiwnmjdnmjtdlof:FsDdHJhoYDv1GsxW@aws-1-ap-south-1.pooler.supabase.com:6543/postgres';
 
 // Resolve database directory path
 const databaseDir = fs.existsSync('./database')

@@ -20,7 +20,7 @@ try {
   console.log('Error reading .env file:', e.message);
 }
 
-const connectionString = databaseUrl || 'postgresql://postgres.agznfhskhsazzhbeboth:KXL5417ZawC9V4Kd@aws-1-ap-northeast-2.pooler.supabase.com:5432/postgres';
+const connectionString = databaseUrl || 'postgresql://postgres.nigtjaiwnmjdnmjtdlof:FsDdHJhoYDv1GsxW@aws-1-ap-south-1.pooler.supabase.com:6543/postgres';
 
 console.log('Connecting to database...');
 const sql = postgres(connectionString, { ssl: { rejectUnauthorized: false } });

@@ -1,9 +1,9 @@
 [build]
 builder = "nixpacks"
-installCommand = "export PUPPETEER_SKIP_DOWNLOAD=true && cd ovrload-web && npm install"
-buildCommand = "cd ovrload-web && npm run build"
+installCommand = "export PUPPETEER_SKIP_DOWNLOAD=true && cd web && npm install"
+buildCommand = "cd web && npm run build"
 
 [deploy]
-startCommand = "cd ovrload-web && npm run start"
+startCommand = "cd web && npm run start"
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3

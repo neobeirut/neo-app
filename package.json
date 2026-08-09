@@ -11,7 +11,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "postinstall": "cd ovrload-web && npm install"
+    "postinstall": "cd web && npm install"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.105.4",
