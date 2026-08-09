@@ -43,9 +43,22 @@ export async function GET() {
       ORDER BY COALESCE(c.display_order, 9999) ASC, c.name ASC, p.sort_order ASC, p.name ASC
     `;
 
+    // Fetch app settings for channel discounts
+    const settingsResult = await sql`
+      SELECT setting_key, setting_value FROM app_settings
+    `;
+    const settingsObj = {};
+    (settingsResult || []).forEach((row) => {
+      settingsObj[row.setting_key] = row.setting_value;
+    });
+
     return Response.json({
       categories: categoriesResult || [],
-      products: productsResult || []
+      products: productsResult || [],
+      settings: {
+        toters_discount_percent: parseFloat(settingsObj.toters_discount_percent || "15"),
+        noknok_discount_percent: parseFloat(settingsObj.noknok_discount_percent || "15")
+      }
     });
   } catch (error) {
     console.error("Error in GET /api/pos/products:", error);

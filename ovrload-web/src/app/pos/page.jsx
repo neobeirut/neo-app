@@ -18,9 +18,13 @@ export default function TabletPOSPage() {
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [deliveryFee, setDeliveryFee] = useState(0);
   
-  // Discount System States (15%, Toters, NokNok, Custom)
+  // Admin Configured Channel Discounts (Fetched from admin settings)
+  const [totersDiscountPercent, setTotersDiscountPercent] = useState(15);
+  const [noknokDiscountPercent, setNoknokDiscountPercent] = useState(15);
+
+  // Discount Selection State
   const [discountType, setDiscountType] = useState("none"); // "none", "15%", "toters", "noknok", "custom"
-  const [discountValInput, setDiscountValInput] = useState(15);
+  const [discountValInput, setDiscountValInput] = useState(10);
   const [discountIsPercent, setDiscountIsPercent] = useState(true); // true = %, false = $ USD
 
   const [ticketItems, setTicketItems] = useState([]);
@@ -59,6 +63,10 @@ export default function TabletPOSPage() {
       const data = await res.json();
       if (data.categories) setCategories(data.categories);
       if (data.products) setProducts(data.products);
+      if (data.settings) {
+        if (data.settings.toters_discount_percent !== undefined) setTotersDiscountPercent(data.settings.toters_discount_percent);
+        if (data.settings.noknok_discount_percent !== undefined) setNoknokDiscountPercent(data.settings.noknok_discount_percent);
+      }
     } catch (err) {
       console.error("Error fetching POS products:", err);
     } finally {
@@ -243,14 +251,20 @@ export default function TabletPOSPage() {
     setActiveTabModal(null);
   };
 
-  // Totals & Dynamic Discount Calculations
+  // Totals & Dynamic Discount Calculations (Toters & NokNok rates managed by Admin)
   const subtotal = ticketItems.reduce((sum, item) => sum + item.unit_price * item.qty, 0);
 
   const calculatedDiscount = (() => {
     if (discountType === "15%") {
       return subtotal * 0.15;
     }
-    if (discountType === "toters" || discountType === "noknok" || discountType === "custom") {
+    if (discountType === "toters") {
+      return subtotal * (totersDiscountPercent / 100);
+    }
+    if (discountType === "noknok") {
+      return subtotal * (noknokDiscountPercent / 100);
+    }
+    if (discountType === "custom") {
       const val = parseFloat(discountValInput) || 0;
       if (discountIsPercent) {
         return subtotal * (val / 100);
@@ -906,32 +920,26 @@ export default function TabletPOSPage() {
 
                 <button
                   type="button"
-                  onClick={() => {
-                    setDiscountType("toters");
-                    if (discountType !== "toters") setDiscountValInput(15);
-                  }}
+                  onClick={() => setDiscountType("toters")}
                   className={`py-1.5 px-1 rounded-lg text-[11px] font-extrabold border transition-all ${
                     discountType === "toters"
                       ? "bg-[#00C49F] border-[#00C49F] text-black shadow"
                       : "bg-[#181C24] border-[#262D3D] text-gray-300 hover:text-white"
                   }`}
                 >
-                  Toters
+                  Toters ({totersDiscountPercent}%)
                 </button>
 
                 <button
                   type="button"
-                  onClick={() => {
-                    setDiscountType("noknok");
-                    if (discountType !== "noknok") setDiscountValInput(15);
-                  }}
+                  onClick={() => setDiscountType("noknok")}
                   className={`py-1.5 px-1 rounded-lg text-[11px] font-extrabold border transition-all ${
                     discountType === "noknok"
                       ? "bg-[#FF5A5F] border-[#FF5A5F] text-white shadow"
                       : "bg-[#181C24] border-[#262D3D] text-gray-300 hover:text-white"
                   }`}
                 >
-                  NokNok
+                  NokNok ({noknokDiscountPercent}%)
                 </button>
 
                 <button
@@ -950,11 +958,11 @@ export default function TabletPOSPage() {
                 </button>
               </div>
 
-              {/* Editable Discount Input & Unit Toggle (Toters, NokNok, Custom) */}
-              {(discountType === "toters" || discountType === "noknok" || discountType === "custom") && (
+              {/* Editable Discount Input & Unit Toggle (ONLY for Custom Discount) */}
+              {discountType === "custom" && (
                 <div className="flex items-center gap-2 pt-1 border-t border-[#262D3D]">
                   <span className="text-[11px] font-bold text-gray-400 capitalize">
-                    {discountType} value:
+                    Custom Discount:
                   </span>
                   <div className="flex-1 flex items-center bg-[#181C24] border border-[#262D3D] rounded-lg overflow-hidden px-2 py-1">
                     <input
@@ -986,7 +994,12 @@ export default function TabletPOSPage() {
               {discountAmount > 0 && (
                 <div className="flex justify-between text-[#eb660c] font-extrabold">
                   <span>
-                    Discount ({discountType === "15%" ? "15%" : `${discountType.toUpperCase()} ${discountValInput}${discountIsPercent ? "%" : "$"}`})
+                    Discount ({
+                      discountType === "15%" ? "15%" :
+                      discountType === "toters" ? `TOTERS ${totersDiscountPercent}%` :
+                      discountType === "noknok" ? `NOKNOK ${noknokDiscountPercent}%` :
+                      `CUSTOM ${discountValInput}${discountIsPercent ? "%" : "$"}`
+                    })
                   </span>
                   <span>-${discountAmount.toFixed(2)}</span>
                 </div>
