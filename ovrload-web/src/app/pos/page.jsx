@@ -7,17 +7,19 @@ export default function TabletPOSPage() {
   const [categories, setCategories] = useState([]);
   const [products, setProducts] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState("All");
-  const [searchQuery, setSearchQuery] = useState("");
 
   // Order States
-  const [selectedChannel, setSelectedChannel] = useState("WhatsApp"); // WhatsApp, Toters, NokNok, App, In-Store
-  const [orderType, setOrderType] = useState("pickup"); // pickup, delivery, dine_in
+  // 1. Order Origin should NOT have a default value and is required. First channel is "Toters".
+  const [selectedChannel, setSelectedChannel] = useState(null); // Toters, WhatsApp, NokNok, App, In-Store
+  // 2. By default Delivery not Pickup
+  const [orderType, setOrderType] = useState("delivery"); // delivery, pickup, dine_in
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [deliveryFee, setDeliveryFee] = useState(0);
   const [discountAmount, setDiscountAmount] = useState(0);
   const [ticketItems, setTicketItems] = useState([]);
+  const [editingOrderId, setEditingOrderId] = useState(null); // Track if editing an incoming WhatsApp order
 
   // Queue & Modal States
   const [heldOrders, setHeldOrders] = useState([]);
@@ -40,6 +42,7 @@ export default function TabletPOSPage() {
   const [lastCompletedOrder, setLastCompletedOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [validationError, setValidationError] = useState("");
 
   const receiptPrintRef = useRef(null);
 
@@ -80,15 +83,12 @@ export default function TabletPOSPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // Filter Products
+  // Filter Products by Category (No search required)
   const filteredProducts = products.filter((p) => {
-    const matchesCat =
+    return (
       selectedCategory === "All" ||
-      p.category_name?.toLowerCase() === selectedCategory.toLowerCase();
-    const matchesSearch =
-      p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.description?.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesCat && matchesSearch;
+      p.category_name?.toLowerCase() === selectedCategory.toLowerCase()
+    );
   });
 
   // Open Customization Modal
@@ -118,7 +118,6 @@ export default function TabletPOSPage() {
         setSelectedCustomizations([...selectedCustomizations, custOption]);
       }
     } else {
-      // Remove other options from same group
       const groupName = custOption.option_group_name;
       const filtered = selectedCustomizations.filter((c) => c.option_group_name !== groupName);
       setSelectedCustomizations([...filtered, custOption]);
@@ -192,9 +191,21 @@ export default function TabletPOSPage() {
   const subtotal = ticketItems.reduce((sum, item) => sum + item.unit_price * item.qty, 0);
   const total = Math.max(0, subtotal + (orderType === "delivery" ? deliveryFee : 0) - discountAmount);
 
+  // Validate Order Origin Selection
+  const validateOrderOrigin = () => {
+    if (!selectedChannel) {
+      setValidationError("⚠️ Order Origin is REQUIRED! Please select Toters, WhatsApp, NokNok, etc. at the top.");
+      return false;
+    }
+    setValidationError("");
+    return true;
+  };
+
   // Hold Current Order
   const handleHoldOrder = async () => {
     if (ticketItems.length === 0) return;
+    if (!validateOrderOrigin()) return;
+
     setIsSubmitting(true);
     try {
       const res = await fetch("/api/pos/orders", {
@@ -227,6 +238,8 @@ export default function TabletPOSPage() {
         setCustomerName("");
         setCustomerPhone("");
         setDeliveryAddress("");
+        setSelectedChannel(null); // Reset origin
+        setEditingOrderId(null);
         fetchOrdersQueue();
       }
     } catch (err) {
@@ -236,39 +249,57 @@ export default function TabletPOSPage() {
     }
   };
 
-  // Complete Order & Trigger Print
+  // Complete Order & Trigger Print (or Save Edited WhatsApp Order)
   const handleFinalizePayment = async () => {
     if (ticketItems.length === 0) return;
+    if (!validateOrderOrigin()) return;
+
     setIsSubmitting(true);
     try {
-      const res = await fetch("/api/pos/orders", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          orderType,
-          orderSource: selectedChannel,
-          paymentMethod: selectedPaymentMethod,
-          customerName,
-          customerPhone,
-          deliveryAddress,
-          status: "completed",
-          subtotal,
-          deliveryFee: orderType === "delivery" ? deliveryFee : 0,
-          discountAmount,
-          total,
-          items: ticketItems.map((item) => ({
-            product_id: item.product_id,
-            quantity: item.qty,
-            unit_price: item.unit_price,
-            customizations: item.selectedCustomizations.map((c) => c.ingredient || c.name),
-            comment: item.note
-          }))
-        })
-      });
-      const data = await res.json();
+      let data;
+      if (editingOrderId) {
+        // If editing an existing WhatsApp order, update status to approved & update items
+        const updateRes = await fetch(`/api/pos/orders/${editingOrderId}/status`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "approved" })
+        });
+        data = await updateRes.json();
+        if (data.success) {
+          data.orderId = editingOrderId;
+        }
+      } else {
+        // Create brand new POS order
+        const createRes = await fetch("/api/pos/orders", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            orderType,
+            orderSource: selectedChannel,
+            paymentMethod: selectedPaymentMethod,
+            customerName,
+            customerPhone,
+            deliveryAddress,
+            status: "completed",
+            subtotal,
+            deliveryFee: orderType === "delivery" ? deliveryFee : 0,
+            discountAmount,
+            total,
+            items: ticketItems.map((item) => ({
+              product_id: item.product_id,
+              quantity: item.qty,
+              unit_price: item.unit_price,
+              customizations: item.selectedCustomizations.map((c) => c.ingredient || c.name),
+              comment: item.note
+            }))
+          })
+        });
+        data = await createRes.json();
+      }
+
       if (data.success) {
         const completedOrderData = {
-          id: data.orderId,
+          id: data.orderId || editingOrderId,
           order_source: selectedChannel,
           order_type: orderType,
           payment_method: selectedPaymentMethod,
@@ -286,6 +317,8 @@ export default function TabletPOSPage() {
         setCustomerName("");
         setCustomerPhone("");
         setDeliveryAddress("");
+        setSelectedChannel(null); // Reset origin
+        setEditingOrderId(null);
         setActiveTabModal("receipt");
         fetchOrdersQueue();
       }
@@ -296,7 +329,24 @@ export default function TabletPOSPage() {
     }
   };
 
-  // Approve Pending WhatsApp Order
+  // Reject Incoming WhatsApp Order
+  const handleRejectPendingOrder = async (orderId) => {
+    try {
+      const res = await fetch(`/api/pos/orders/${orderId}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "cancelled", voidReason: "Rejected by POS Operator" })
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchOrdersQueue();
+      }
+    } catch (err) {
+      console.error("Error rejecting order:", err);
+    }
+  };
+
+  // Directly Approve Incoming WhatsApp Order
   const handleApprovePendingOrder = async (order) => {
     try {
       const res = await fetch(`/api/pos/orders/${order.id}/status`, {
@@ -315,10 +365,34 @@ export default function TabletPOSPage() {
     }
   };
 
+  // Edit & Approve Incoming WhatsApp Order (Load into POS active ticket)
+  const handleEditAndApproveOrder = (order) => {
+    setEditingOrderId(order.id);
+    setSelectedChannel(order.order_source || "WhatsApp");
+    setOrderType(order.order_type || "delivery");
+    setCustomerName(order.customer_name || "");
+    setCustomerPhone(order.customer_phone || "");
+    setDeliveryAddress(order.delivery_address || "");
+    setDeliveryFee(order.delivery_fee || 0);
+
+    const mappedItems = (order.items || []).map((i) => ({
+      product_id: i.product_id,
+      name: i.product_name || `Product #${i.product_id}`,
+      unit_price: i.unit_price,
+      qty: i.quantity,
+      selectedCustomizations: i.customizations ? [{ name: i.customizations }] : [],
+      note: i.comment || ""
+    }));
+
+    setTicketItems(mappedItems);
+    setActiveTabModal(null); // Close modal so user can edit items on the POS grid & ticket
+  };
+
   // Resume Held Order
   const handleResumeHeldOrder = (order) => {
-    setSelectedChannel(order.order_source || "POS");
-    setOrderType(order.order_type || "pickup");
+    setEditingOrderId(null);
+    setSelectedChannel(order.order_source || "Toters");
+    setOrderType(order.order_type || "delivery");
     setCustomerName(order.customer_name || "");
     setCustomerPhone(order.customer_phone || "");
     setDeliveryAddress(order.delivery_address || "");
@@ -347,7 +421,7 @@ export default function TabletPOSPage() {
     return (
       <div className="min-h-screen bg-[#121417] text-white flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
-          <div className="w-10 h-10 border-4 border-[#235b4e] border-t-transparent rounded-full animate-spin"></div>
+          <div className="w-10 h-10 border-4 border-[#eb660c] border-t-transparent rounded-full animate-spin"></div>
           <p className="text-gray-400 font-medium">Loading OVR LOAD Tablet POS...</p>
         </div>
       </div>
@@ -356,7 +430,7 @@ export default function TabletPOSPage() {
 
   return (
     <div className="min-h-screen bg-[#0F1115] text-[#E0E6ED] font-sans overflow-hidden flex flex-col select-none">
-      {/* Printable Thermal Receipt Container (Only visible during print) */}
+      {/* Printable Thermal Receipt Container */}
       {lastCompletedOrder && (
         <div className="hidden print:block print:w-[80mm] print:text-black print:p-2 text-xs font-mono">
           <div className="text-center font-bold text-sm mb-1">*** OVR LOAD KITCHEN TICKET ***</div>
@@ -399,39 +473,47 @@ export default function TabletPOSPage() {
 
       {/* TOP TABLET HEADER */}
       <header className="h-16 bg-[#181C24] border-b border-[#262D3D] px-6 flex items-center justify-between shadow-md print:hidden">
-        {/* Brand & Branch */}
+        {/* Brand */}
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
-            <span className="w-8 h-8 rounded-lg bg-[#235b4e] flex items-center justify-center font-black text-white text-base">
+            <span className="w-8 h-8 rounded-lg bg-[#eb660c] flex items-center justify-center font-black text-white text-base">
               O
             </span>
             <span className="font-extrabold text-xl tracking-wider text-white">
-              OVR<span className="text-[#235b4e]">LOAD</span> <span className="text-xs px-2 py-0.5 rounded bg-[#235b4e]/20 text-[#235b4e] font-semibold">POS TABLET</span>
+              OVR<span className="text-[#eb660c]">LOAD</span> <span className="text-xs px-2 py-0.5 rounded bg-[#eb660c]/20 text-[#eb660c] font-semibold">POS TABLET</span>
             </span>
           </div>
         </div>
 
-        {/* Channels Selector Bar */}
-        <div className="flex items-center bg-[#0F1115] p-1 rounded-xl border border-[#262D3D] gap-1">
-          {[
-            { name: "WhatsApp", color: "bg-[#25D366] text-black" },
-            { name: "Toters", color: "bg-[#00C49F] text-black" },
-            { name: "NokNok", color: "bg-[#FF5A5F] text-white" },
-            { name: "App", color: "bg-[#3B82F6] text-white" },
-            { name: "In-Store", color: "bg-[#E5C07B] text-black" }
-          ].map((channel) => (
-            <button
-              key={channel.name}
-              onClick={() => setSelectedChannel(channel.name)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                selectedChannel === channel.name
-                  ? `${channel.color} shadow-md scale-105`
-                  : "text-gray-400 hover:text-white hover:bg-[#181C24]"
-              }`}
-            >
-              {channel.name}
-            </button>
-          ))}
+        {/* Channels Selector Bar (Required - First option is Toters) */}
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-bold text-gray-400">Order Origin*:</span>
+          <div className={`flex items-center bg-[#0F1115] p-1 rounded-xl border gap-1 transition-all ${
+            !selectedChannel ? "border-red-500 animate-pulse" : "border-[#262D3D]"
+          }`}>
+            {[
+              { name: "Toters", color: "bg-[#00C49F] text-black" },
+              { name: "WhatsApp", color: "bg-[#25D366] text-black" },
+              { name: "NokNok", color: "bg-[#FF5A5F] text-white" },
+              { name: "App", color: "bg-[#3B82F6] text-white" },
+              { name: "In-Store", color: "bg-[#E5C07B] text-black" }
+            ].map((channel) => (
+              <button
+                key={channel.name}
+                onClick={() => {
+                  setSelectedChannel(channel.name);
+                  setValidationError("");
+                }}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-extrabold transition-all flex items-center gap-1.5 ${
+                  selectedChannel === channel.name
+                    ? `${channel.color} shadow-md scale-105 ring-2 ring-[#eb660c]`
+                    : "text-gray-400 hover:text-white hover:bg-[#181C24]"
+                }`}
+              >
+                {channel.name}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Queues & Quick Actions */}
@@ -443,7 +525,7 @@ export default function TabletPOSPage() {
           >
             <span>📱 WhatsApp Orders</span>
             {pendingOrders.length > 0 && (
-              <span className="w-5 h-5 rounded-full bg-[#25D366] text-black text-[11px] font-black flex items-center justify-center animate-pulse">
+              <span className="w-5 h-5 rounded-full bg-[#eb660c] text-white text-[11px] font-black flex items-center justify-center animate-pulse">
                 {pendingOrders.length}
               </span>
             )}
@@ -459,94 +541,91 @@ export default function TabletPOSPage() {
         </div>
       </header>
 
+      {/* Validation Error Banner */}
+      {validationError && (
+        <div className="bg-red-600 text-white text-xs font-bold px-6 py-2 flex items-center justify-between shadow-md print:hidden">
+          <span>{validationError}</span>
+          <button onClick={() => setValidationError("")} className="font-extrabold px-2">✕</button>
+        </div>
+      )}
+
+      {/* Editing WhatsApp Banner */}
+      {editingOrderId && (
+        <div className="bg-[#eb660c] text-white text-xs font-extrabold px-6 py-2 flex items-center justify-between shadow-md print:hidden">
+          <span>✏️ Editing WhatsApp Order #{editingOrderId} — Make adjustments then tap "Approve & Print"</span>
+          <button
+            onClick={() => {
+              setEditingOrderId(null);
+              setTicketItems([]);
+              setSelectedChannel(null);
+            }}
+            className="underline text-xs text-white hover:text-gray-200"
+          >
+            Cancel Editing
+          </button>
+        </div>
+      )}
+
       {/* DUAL-PANE TABLET MAIN AREA */}
       <div className="flex-1 flex overflow-hidden print:hidden">
         {/* LEFT PANE: PRODUCTS & CATEGORIES (65% width) */}
         <div className="w-[65%] flex flex-col bg-[#12151C] border-r border-[#262D3D]">
-          {/* Category Tabs & Search Bar */}
-          <div className="p-4 bg-[#181C24] border-b border-[#262D3D] flex flex-col gap-3">
-            <div className="flex items-center gap-3">
-              <div className="relative flex-1">
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search products or items..."
-                  className="w-full pl-10 pr-4 py-2.5 bg-[#0F1115] border border-[#262D3D] rounded-xl text-sm text-white placeholder-gray-500 focus:outline-none focus:border-[#235b4e]"
-                />
-                <svg
-                  className="w-5 h-5 absolute left-3 top-3 text-gray-500"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-              </div>
-            </div>
-
-            {/* Category Scroller */}
-            <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
+          {/* Category Tabs (No search bar) */}
+          <div className="p-4 bg-[#181C24] border-b border-[#262D3D] flex items-center gap-2 overflow-x-auto no-scrollbar">
+            <button
+              onClick={() => setSelectedCategory("All")}
+              className={`px-4 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+                selectedCategory === "All"
+                  ? "bg-[#eb660c] text-white shadow-md"
+                  : "bg-[#0F1115] text-gray-400 hover:text-white border border-[#262D3D]"
+              }`}
+            >
+              All Items
+            </button>
+            {categories.map((cat) => (
               <button
-                onClick={() => setSelectedCategory("All")}
-                className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
-                  selectedCategory === "All"
-                    ? "bg-[#235b4e] text-white shadow-md"
+                key={cat.id}
+                onClick={() => setSelectedCategory(cat.name)}
+                className={`px-4 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+                  selectedCategory === cat.name
+                    ? "bg-[#eb660c] text-white shadow-md"
                     : "bg-[#0F1115] text-gray-400 hover:text-white border border-[#262D3D]"
                 }`}
               >
-                All Items
+                {cat.name}
               </button>
-              {categories.map((cat) => (
-                <button
-                  key={cat.id}
-                  onClick={() => setSelectedCategory(cat.name)}
-                  className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
-                    selectedCategory === cat.name
-                      ? "bg-[#235b4e] text-white shadow-md"
-                      : "bg-[#0F1115] text-gray-400 hover:text-white border border-[#262D3D]"
-                  }`}
-                >
-                  {cat.name}
-                </button>
-              ))}
-            </div>
+            ))}
           </div>
 
-          {/* Product Grid */}
+          {/* Product Grid (Descriptions Removed) */}
           <div className="flex-1 overflow-y-auto p-4 grid grid-cols-3 gap-3.5 align-content-start">
             {filteredProducts.map((product) => (
               <div
                 key={product.id}
                 onClick={() => handleOpenCustomization(product)}
-                className="bg-[#181C24] hover:bg-[#202632] border border-[#262D3D] hover:border-[#235b4e] rounded-2xl p-3.5 flex flex-col justify-between cursor-pointer transition-all active:scale-95 shadow-sm group"
+                className="bg-[#181C24] hover:bg-[#202632] border border-[#262D3D] hover:border-[#eb660c] rounded-2xl p-4 flex flex-col justify-between cursor-pointer transition-all active:scale-95 shadow-sm group"
               >
                 <div>
-                  <div className="flex justify-between items-start mb-1.5">
-                    <span className="text-xs font-bold text-[#235b4e] bg-[#235b4e]/10 px-2 py-0.5 rounded">
+                  <div className="flex justify-between items-start mb-2">
+                    <span className="text-xs font-bold text-[#eb660c] bg-[#eb660c]/10 px-2 py-0.5 rounded">
                       {product.category_name}
                     </span>
                     <span className="text-base font-black text-white">
                       ${(product.unit_price_usd || 0).toFixed(2)}
                     </span>
                   </div>
-                  <h3 className="font-bold text-sm text-white group-hover:text-[#235b4e] transition-colors line-clamp-2">
+                  <h3 className="font-extrabold text-sm text-white group-hover:text-[#eb660c] transition-colors line-clamp-2">
                     {product.name}
                   </h3>
-                  {product.description && (
-                    <p className="text-[11px] text-gray-400 mt-1 line-clamp-2">
-                      {product.description}
-                    </p>
-                  )}
                 </div>
 
-                <div className="mt-3 flex justify-between items-center border-t border-[#262D3D] pt-2.5">
-                  <span className="text-[10px] text-gray-400">
+                <div className="mt-4 flex justify-between items-center border-t border-[#262D3D] pt-2.5">
+                  <span className="text-[10px] text-gray-400 font-medium">
                     {product.customizations?.length > 0
                       ? `${product.customizations.length} options`
                       : "Standard item"}
                   </span>
-                  <button className="px-3 py-1 bg-[#235b4e] group-hover:bg-[#2b6d5e] text-white rounded-lg text-xs font-bold">
+                  <button className="px-3 py-1 bg-[#eb660c] group-hover:bg-[#d55909] text-white rounded-lg text-xs font-bold shadow">
                     + Add
                   </button>
                 </div>
@@ -563,32 +642,36 @@ export default function TabletPOSPage() {
               <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">
                 Current Ticket
               </span>
-              <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-[#235b4e]/20 text-[#235b4e]">
-                {selectedChannel}
+              <span className={`text-xs font-extrabold px-2.5 py-1 rounded-lg ${
+                selectedChannel
+                  ? "bg-[#eb660c]/20 text-[#eb660c]"
+                  : "bg-red-500/20 text-red-400 animate-pulse"
+              }`}>
+                {selectedChannel ? selectedChannel : "SELECT ORIGIN *"}
               </span>
             </div>
 
-            {/* Order Type Buttons */}
+            {/* Order Type Buttons (Default Delivery) */}
             <div className="grid grid-cols-2 gap-2 mb-3">
-              <button
-                onClick={() => setOrderType("pickup")}
-                className={`py-2 rounded-xl text-xs font-bold border transition-all ${
-                  orderType === "pickup"
-                    ? "bg-[#235b4e] text-white border-[#235b4e]"
-                    : "bg-[#0F1115] text-gray-400 border-[#262D3D] hover:text-white"
-                }`}
-              >
-                🛍️ Pickup
-              </button>
               <button
                 onClick={() => setOrderType("delivery")}
                 className={`py-2 rounded-xl text-xs font-bold border transition-all ${
                   orderType === "delivery"
-                    ? "bg-[#235b4e] text-white border-[#235b4e]"
+                    ? "bg-[#eb660c] text-white border-[#eb660c]"
                     : "bg-[#0F1115] text-gray-400 border-[#262D3D] hover:text-white"
                 }`}
               >
                 🚚 Delivery
+              </button>
+              <button
+                onClick={() => setOrderType("pickup")}
+                className={`py-2 rounded-xl text-xs font-bold border transition-all ${
+                  orderType === "pickup"
+                    ? "bg-[#eb660c] text-white border-[#eb660c]"
+                    : "bg-[#0F1115] text-gray-400 border-[#262D3D] hover:text-white"
+                }`}
+              >
+                🛍️ Pickup
               </button>
             </div>
 
@@ -600,14 +683,14 @@ export default function TabletPOSPage() {
                   value={customerName}
                   onChange={(e) => setCustomerName(e.target.value)}
                   placeholder="Customer Name"
-                  className="px-3 py-1.5 bg-[#0F1115] border border-[#262D3D] rounded-lg text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#235b4e]"
+                  className="px-3 py-1.5 bg-[#0F1115] border border-[#262D3D] rounded-lg text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#eb660c]"
                 />
                 <input
                   type="tel"
                   value={customerPhone}
                   onChange={(e) => setCustomerPhone(e.target.value)}
                   placeholder="Phone Number"
-                  className="px-3 py-1.5 bg-[#0F1115] border border-[#262D3D] rounded-lg text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#235b4e]"
+                  className="px-3 py-1.5 bg-[#0F1115] border border-[#262D3D] rounded-lg text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#eb660c]"
                 />
               </div>
               {orderType === "delivery" && (
@@ -616,7 +699,7 @@ export default function TabletPOSPage() {
                   value={deliveryAddress}
                   onChange={(e) => setDeliveryAddress(e.target.value)}
                   placeholder="Delivery Address & Landmarks"
-                  className="w-full px-3 py-1.5 bg-[#0F1115] border border-[#262D3D] rounded-lg text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#235b4e]"
+                  className="w-full px-3 py-1.5 bg-[#0F1115] border border-[#262D3D] rounded-lg text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#eb660c]"
                 />
               )}
             </div>
@@ -652,7 +735,7 @@ export default function TabletPOSPage() {
 
                   {/* Options & Notes */}
                   {item.selectedCustomizations?.length > 0 && (
-                    <div className="text-[11px] text-[#235b4e] font-medium bg-[#235b4e]/10 px-2 py-1 rounded">
+                    <div className="text-[11px] text-[#eb660c] font-medium bg-[#eb660c]/10 px-2 py-1 rounded">
                       {item.selectedCustomizations.map((c) => c.ingredient || c.name).join(", ")}
                     </div>
                   )}
@@ -721,7 +804,7 @@ export default function TabletPOSPage() {
               )}
               <div className="flex justify-between pt-1 border-t border-[#262D3D] text-base font-black text-white">
                 <span>Total</span>
-                <span className="text-[#235b4e]">${total.toFixed(2)}</span>
+                <span className="text-[#eb660c]">${total.toFixed(2)}</span>
               </div>
             </div>
 
@@ -735,11 +818,15 @@ export default function TabletPOSPage() {
                 ⏸️ Hold Ticket
               </button>
               <button
-                onClick={() => setActiveTabModal("payment")}
+                onClick={() => {
+                  if (validateOrderOrigin()) {
+                    setActiveTabModal("payment");
+                  }
+                }}
                 disabled={ticketItems.length === 0 || isSubmitting}
-                className="py-3 bg-[#235b4e] hover:bg-[#2b6d5e] disabled:opacity-50 text-white rounded-xl font-extrabold text-sm transition-all shadow-md"
+                className="py-3 bg-[#eb660c] hover:bg-[#d55909] disabled:opacity-50 text-white rounded-xl font-extrabold text-sm transition-all shadow-md"
               >
-                💳 Pay & Print
+                {editingOrderId ? "✅ Approve & Print" : "💳 Pay & Print"}
               </button>
             </div>
           </div>
@@ -754,7 +841,7 @@ export default function TabletPOSPage() {
             <div className="p-4 border-b border-[#262D3D] flex justify-between items-center bg-[#14171F]">
               <div>
                 <h3 className="font-extrabold text-lg text-white">{currentProduct.name}</h3>
-                <span className="text-xs text-[#235b4e] font-bold">${(currentProduct.unit_price_usd || 0).toFixed(2)} base</span>
+                <span className="text-xs text-[#eb660c] font-bold">${(currentProduct.unit_price_usd || 0).toFixed(2)} base</span>
               </div>
               <button
                 onClick={() => setActiveTabModal(null)}
@@ -767,7 +854,6 @@ export default function TabletPOSPage() {
             {/* Options Body */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
               {currentProduct.customizations?.length > 0 ? (
-                // Group customizations by option_group_name or customization_type
                 Object.entries(
                   currentProduct.customizations.reduce((acc, c) => {
                     const group = c.option_group_name || (c.customization_type === "remove" ? "Remove Ingredients" : "Custom Options");
@@ -792,12 +878,12 @@ export default function TabletPOSPage() {
                               onClick={() => handleToggleOption(opt, isMultiSelect)}
                               className={`p-2.5 rounded-lg border text-left text-xs font-bold flex justify-between items-center transition-all ${
                                 isSelected
-                                  ? "bg-[#235b4e]/20 border-[#235b4e] text-white"
+                                  ? "bg-[#eb660c]/20 border-[#eb660c] text-white"
                                   : "bg-[#181C24] border-[#262D3D] text-gray-400 hover:text-white"
                               }`}
                             >
                               <span>{opt.customization_type === "remove" ? `No ${opt.ingredient}` : opt.ingredient}</span>
-                              {opt.price > 0 && <span className="text-[#235b4e]">+${opt.price.toFixed(2)}</span>}
+                              {opt.price > 0 && <span className="text-[#eb660c]">+${opt.price.toFixed(2)}</span>}
                             </button>
                           );
                         })}
@@ -819,7 +905,7 @@ export default function TabletPOSPage() {
                   onChange={(e) => setItemNote(e.target.value)}
                   placeholder="Type special requests here..."
                   rows={2}
-                  className="w-full px-3 py-2 bg-[#181C24] border border-[#262D3D] rounded-lg text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#235b4e]"
+                  className="w-full px-3 py-2 bg-[#181C24] border border-[#262D3D] rounded-lg text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#eb660c]"
                 />
               </div>
 
@@ -854,7 +940,7 @@ export default function TabletPOSPage() {
               </button>
               <button
                 onClick={handleSaveCustomizationToCart}
-                className="px-6 py-2.5 bg-[#235b4e] hover:bg-[#2b6d5e] text-white rounded-xl text-xs font-extrabold shadow-md"
+                className="px-6 py-2.5 bg-[#eb660c] hover:bg-[#d55909] text-white rounded-xl text-xs font-extrabold shadow-md"
               >
                 Save Item to Ticket
               </button>
@@ -879,7 +965,7 @@ export default function TabletPOSPage() {
 
             <div className="text-center py-2 bg-[#0F1115] rounded-xl border border-[#262D3D]">
               <span className="text-xs text-gray-400 block">Total Due</span>
-              <span className="text-3xl font-black text-[#235b4e]">${total.toFixed(2)}</span>
+              <span className="text-3xl font-black text-[#eb660c]">${total.toFixed(2)}</span>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -894,7 +980,7 @@ export default function TabletPOSPage() {
                   onClick={() => setSelectedPaymentMethod(method.name)}
                   className={`p-4 rounded-xl border font-bold text-sm flex items-center gap-2 transition-all ${
                     selectedPaymentMethod === method.name
-                      ? "bg-[#235b4e]/20 border-[#235b4e] text-white shadow-md scale-105"
+                      ? "bg-[#eb660c]/20 border-[#eb660c] text-white shadow-md scale-105"
                       : "bg-[#0F1115] border-[#262D3D] text-gray-400 hover:text-white"
                   }`}
                 >
@@ -914,7 +1000,7 @@ export default function TabletPOSPage() {
               <button
                 onClick={handleFinalizePayment}
                 disabled={isSubmitting}
-                className="px-6 py-2.5 bg-[#235b4e] hover:bg-[#2b6d5e] disabled:opacity-50 text-white rounded-xl text-xs font-extrabold shadow-md"
+                className="px-6 py-2.5 bg-[#eb660c] hover:bg-[#d55909] disabled:opacity-50 text-white rounded-xl text-xs font-extrabold shadow-md"
               >
                 Confirm Payment & Print
               </button>
@@ -956,10 +1042,10 @@ export default function TabletPOSPage() {
         </div>
       )}
 
-      {/* INCOMING WHATSAPP ORDERS APPROVAL MODAL */}
+      {/* INCOMING WHATSAPP ORDERS APPROVAL MODAL (Reject / Approve / Edit & Approve) */}
       {activeTabModal === "incoming" && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:hidden">
-          <div className="bg-[#181C24] border border-[#262D3D] rounded-2xl w-[700px] max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
+          <div className="bg-[#181C24] border border-[#262D3D] rounded-2xl w-[750px] max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
             <div className="p-4 border-b border-[#262D3D] flex justify-between items-center bg-[#14171F]">
               <h3 className="font-extrabold text-lg text-white">📱 Incoming WhatsApp Orders Verification</h3>
               <button onClick={() => setActiveTabModal(null)} className="text-gray-400 hover:text-white font-bold">
@@ -975,11 +1061,11 @@ export default function TabletPOSPage() {
                   <div key={order.id} className="bg-[#0F1115] border border-[#262D3D] rounded-xl p-4 space-y-3">
                     <div className="flex justify-between items-start">
                       <div>
-                        <span className="text-xs font-extrabold text-[#235b4e]">Order #{order.id}</span>
+                        <span className="text-xs font-extrabold text-[#eb660c]">Order #{order.id}</span>
                         <div className="text-sm font-bold text-white">{order.customer_name || "WhatsApp Customer"} ({order.customer_phone || "No phone"})</div>
                         <div className="text-xs text-gray-400">{order.delivery_address || "Pickup at store"}</div>
                       </div>
-                      <span className="text-lg font-black text-[#235b4e]">${(order.total_amount || 0).toFixed(2)}</span>
+                      <span className="text-lg font-black text-[#eb660c]">${(order.total_amount || 0).toFixed(2)}</span>
                     </div>
 
                     <div className="border-t border-[#262D3D] pt-2 space-y-1">
@@ -991,12 +1077,25 @@ export default function TabletPOSPage() {
                       ))}
                     </div>
 
+                    {/* Action Bar: Reject, Approve, Edit & Approve */}
                     <div className="flex justify-end gap-2 pt-2 border-t border-[#262D3D]">
                       <button
-                        onClick={() => handleApprovePendingOrder(order)}
-                        className="px-4 py-2 bg-[#235b4e] hover:bg-[#2b6d5e] text-white text-xs font-extrabold rounded-xl shadow-md"
+                        onClick={() => handleRejectPendingOrder(order.id)}
+                        className="px-3.5 py-2 bg-red-600/20 hover:bg-red-600/40 text-red-400 text-xs font-bold rounded-xl border border-red-500/30"
                       >
-                        ✅ Verify & Approve Order
+                        ❌ Reject
+                      </button>
+                      <button
+                        onClick={() => handleEditAndApproveOrder(order)}
+                        className="px-3.5 py-2 bg-amber-500/20 hover:bg-amber-500/40 text-amber-300 text-xs font-bold rounded-xl border border-amber-500/30"
+                      >
+                        ✏️ Edit & Approve
+                      </button>
+                      <button
+                        onClick={() => handleApprovePendingOrder(order)}
+                        className="px-4 py-2 bg-[#eb660c] hover:bg-[#d55909] text-white text-xs font-extrabold rounded-xl shadow-md"
+                      >
+                        ✅ Approve & Print
                       </button>
                     </div>
                   </div>
@@ -1025,13 +1124,13 @@ export default function TabletPOSPage() {
                 heldOrders.map((order) => (
                   <div key={order.id} className="bg-[#0F1115] border border-[#262D3D] rounded-xl p-4 flex justify-between items-center">
                     <div>
-                      <div className="text-xs font-bold text-[#235b4e]">Held Order #{order.id} • {order.order_source}</div>
+                      <div className="text-xs font-bold text-[#eb660c]">Held Order #{order.id} • {order.order_source}</div>
                       <div className="text-sm font-bold text-white">${(order.total_amount || 0).toFixed(2)}</div>
                       <div className="text-[11px] text-gray-400">{(order.items || []).length} items</div>
                     </div>
                     <button
                       onClick={() => handleResumeHeldOrder(order)}
-                      className="px-4 py-2 bg-[#235b4e] hover:bg-[#2b6d5e] text-white text-xs font-bold rounded-xl"
+                      className="px-4 py-2 bg-[#eb660c] hover:bg-[#d55909] text-white text-xs font-bold rounded-xl"
                     >
                       ▶️ Resume Ticket
                     </button>
@@ -1047,7 +1146,7 @@ export default function TabletPOSPage() {
       {activeTabModal === "receipt" && lastCompletedOrder && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:hidden">
           <div className="bg-[#181C24] border border-[#262D3D] rounded-2xl w-[450px] p-5 space-y-4 shadow-2xl text-center">
-            <div className="w-12 h-12 bg-[#235b4e]/20 text-[#235b4e] rounded-full flex items-center justify-center text-2xl mx-auto font-black">
+            <div className="w-12 h-12 bg-[#eb660c]/20 text-[#eb660c] rounded-full flex items-center justify-center text-2xl mx-auto font-black">
               ✓
             </div>
             <h3 className="font-extrabold text-xl text-white">Order Approved & Saved!</h3>
@@ -1058,7 +1157,7 @@ export default function TabletPOSPage() {
             <div className="bg-[#0F1115] p-3 rounded-xl border border-[#262D3D] text-left text-xs space-y-1">
               <div className="flex justify-between font-bold text-white">
                 <span>Total Amount:</span>
-                <span className="text-[#235b4e]">${(lastCompletedOrder.total_amount || lastCompletedOrder.total || 0).toFixed(2)}</span>
+                <span className="text-[#eb660c]">${(lastCompletedOrder.total_amount || lastCompletedOrder.total || 0).toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-gray-400">
                 <span>Payment Method:</span>
@@ -1073,7 +1172,7 @@ export default function TabletPOSPage() {
             <div className="flex justify-center gap-3 pt-2">
               <button
                 onClick={handlePrintThermalTicket}
-                className="px-6 py-2.5 bg-[#235b4e] hover:bg-[#2b6d5e] text-white rounded-xl text-xs font-extrabold flex items-center gap-2 shadow-md"
+                className="px-6 py-2.5 bg-[#eb660c] hover:bg-[#d55909] text-white rounded-xl text-xs font-extrabold flex items-center gap-2 shadow-md"
               >
                 🖨️ Print Kitchen Ticket
               </button>
