@@ -953,7 +953,7 @@ export default function TabletPOSPage() {
               {/* Free-text Item Notes */}
               <div className="bg-[#0F1115] border border-[#262D3D] rounded-xl p-3.5 space-y-2">
                 <label className="text-xs font-bold text-amber-400 uppercase tracking-wider block">
-                  Item Kitchen Notes (e.g., "no onions", "extra crispy")
+                  Item Kitchen Notes
                 </label>
                 <textarea
                   value={itemNote}
