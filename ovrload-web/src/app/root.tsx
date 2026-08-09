@@ -434,6 +434,16 @@ export function Layout({ children }: { children: ReactNode }) {
       );
     }
   }, [pathname]);
+
+  // Remove the pre-React loading indicator as soon as React has mounted
+  useEffect(() => {
+    const el = document.getElementById('pre-react-loading');
+    if (el) {
+      el.style.transition = 'opacity 0.3s ease';
+      el.style.opacity = '0';
+      setTimeout(() => { if (el.parentNode) el.parentNode.removeChild(el); }, 320);
+    }
+  }, []);
   return (
     <html lang="en">
       <head>
