@@ -32,6 +32,7 @@ export default function TabletPOSPage() {
   const [selectedCustomizations, setSelectedCustomizations] = useState([]);
   const [itemNote, setItemNote] = useState("");
   const [customizationQty, setCustomizationQty] = useState(1);
+  const [customizationError, setCustomizationError] = useState("");
 
   // Void Reason State
   const [voidingItemIndex, setVoidingItemIndex] = useState(null);
@@ -585,14 +586,6 @@ export default function TabletPOSPage() {
 
         {/* Queues & Quick Actions */}
         <div className="flex items-center gap-3">
-          {/* Always Visible PWA Install Button */}
-          <button
-            onClick={handleInstallPWA}
-            className="px-3.5 py-2 bg-[#eb660c] hover:bg-[#d55909] text-white text-xs font-extrabold rounded-xl shadow flex items-center gap-1.5 transition-all"
-          >
-            <span>📥 Install App</span>
-          </button>
-
           {/* Pending WhatsApp Orders Queue Button */}
           <button
             onClick={() => setActiveTabModal("incoming")}
@@ -695,7 +688,14 @@ export default function TabletPOSPage() {
                   <span className="text-sm font-black text-white px-1">
                     ${(product.unit_price_usd || 0).toFixed(2)}
                   </span>
-                  <button className="px-2.5 py-1 bg-[#eb660c] group-hover:bg-[#d55909] text-white rounded-lg text-xs font-bold shadow">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleOpenCustomization(product);
+                    }}
+                    className="px-2.5 py-1 bg-[#eb660c] group-hover:bg-[#d55909] text-white rounded-lg text-xs font-bold shadow cursor-pointer"
+                  >
                     + Add
                   </button>
                 </div>
