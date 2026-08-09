@@ -1,0 +1,1092 @@
+"use client";
+
+import { useState, useEffect, useRef } from "react";
+
+export default function TabletPOSPage() {
+  // Data States
+  const [categories, setCategories] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [selectedCategory, setSelectedCategory] = useState("All");
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // Order States
+  const [selectedChannel, setSelectedChannel] = useState("WhatsApp"); // WhatsApp, Toters, NokNok, App, In-Store
+  const [orderType, setOrderType] = useState("pickup"); // pickup, delivery, dine_in
+  const [customerName, setCustomerName] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
+  const [deliveryAddress, setDeliveryAddress] = useState("");
+  const [deliveryFee, setDeliveryFee] = useState(0);
+  const [discountAmount, setDiscountAmount] = useState(0);
+  const [ticketItems, setTicketItems] = useState([]);
+
+  // Queue & Modal States
+  const [heldOrders, setHeldOrders] = useState([]);
+  const [pendingOrders, setPendingOrders] = useState([]);
+  const [activeTabModal, setActiveTabModal] = useState(null); // 'held', 'incoming', 'payment', 'customization', 'void_item', 'receipt'
+  
+  // Customization Modal State
+  const [currentProduct, setCurrentProduct] = useState(null);
+  const [editingItemIndex, setEditingItemIndex] = useState(null);
+  const [selectedCustomizations, setSelectedCustomizations] = useState([]);
+  const [itemNote, setItemNote] = useState("");
+  const [customizationQty, setCustomizationQty] = useState(1);
+
+  // Void Reason State
+  const [voidingItemIndex, setVoidingItemIndex] = useState(null);
+  const [voidReason, setVoidReason] = useState("");
+
+  // Payment State
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState("Cash");
+  const [lastCompletedOrder, setLastCompletedOrder] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const receiptPrintRef = useRef(null);
+
+  // Load Products & Categories
+  const fetchProducts = async () => {
+    try {
+      const res = await fetch("/api/pos/products");
+      const data = await res.json();
+      if (data.categories) setCategories(data.categories);
+      if (data.products) setProducts(data.products);
+    } catch (err) {
+      console.error("Error fetching POS products:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Load Pending WhatsApp & Held Orders
+  const fetchOrdersQueue = async () => {
+    try {
+      const [pendingRes, heldRes] = await Promise.all([
+        fetch("/api/pos/orders?type=pending"),
+        fetch("/api/pos/orders?type=held")
+      ]);
+      const pendingData = await pendingRes.json();
+      const heldData = await heldRes.json();
+      if (pendingData.orders) setPendingOrders(pendingData.orders);
+      if (heldData.orders) setHeldOrders(heldData.orders);
+    } catch (err) {
+      console.error("Error fetching orders queue:", err);
+    }
+  };
+
+  useEffect(() => {
+    fetchProducts();
+    fetchOrdersQueue();
+    const interval = setInterval(fetchOrdersQueue, 10000); // Polling pending orders every 10s
+    return () => clearInterval(interval);
+  }, []);
+
+  // Filter Products
+  const filteredProducts = products.filter((p) => {
+    const matchesCat =
+      selectedCategory === "All" ||
+      p.category_name?.toLowerCase() === selectedCategory.toLowerCase();
+    const matchesSearch =
+      p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      p.description?.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesCat && matchesSearch;
+  });
+
+  // Open Customization Modal
+  const handleOpenCustomization = (product, itemIndex = null) => {
+    setCurrentProduct(product);
+    setEditingItemIndex(itemIndex);
+    if (itemIndex !== null) {
+      const existing = ticketItems[itemIndex];
+      setSelectedCustomizations(existing.selectedCustomizations || []);
+      setItemNote(existing.note || "");
+      setCustomizationQty(existing.qty || 1);
+    } else {
+      setSelectedCustomizations([]);
+      setItemNote("");
+      setCustomizationQty(1);
+    }
+    setActiveTabModal("customization");
+  };
+
+  // Toggle Customization Option
+  const handleToggleOption = (custOption, isMultiSelect) => {
+    if (isMultiSelect) {
+      const exists = selectedCustomizations.some((c) => c.id === custOption.id);
+      if (exists) {
+        setSelectedCustomizations(selectedCustomizations.filter((c) => c.id !== custOption.id));
+      } else {
+        setSelectedCustomizations([...selectedCustomizations, custOption]);
+      }
+    } else {
+      // Remove other options from same group
+      const groupName = custOption.option_group_name;
+      const filtered = selectedCustomizations.filter((c) => c.option_group_name !== groupName);
+      setSelectedCustomizations([...filtered, custOption]);
+    }
+  };
+
+  // Save Customization to Ticket Cart
+  const handleSaveCustomizationToCart = () => {
+    if (!currentProduct) return;
+
+    let extraCost = 0;
+    selectedCustomizations.forEach((c) => {
+      if (c.price) extraCost += c.price;
+    });
+
+    const unitPrice = (currentProduct.unit_price_usd || 0) + extraCost;
+
+    const newItem = {
+      product_id: currentProduct.id,
+      name: currentProduct.name,
+      base_price: currentProduct.unit_price_usd,
+      unit_price: unitPrice,
+      qty: customizationQty,
+      selectedCustomizations,
+      note: itemNote.trim()
+    };
+
+    if (editingItemIndex !== null) {
+      const updated = [...ticketItems];
+      updated[editingItemIndex] = newItem;
+      setTicketItems(updated);
+    } else {
+      setTicketItems([...ticketItems, newItem]);
+    }
+
+    setActiveTabModal(null);
+    setCurrentProduct(null);
+  };
+
+  // Change Quantity in Ticket
+  const handleUpdateQty = (index, delta) => {
+    const updated = [...ticketItems];
+    const item = updated[index];
+    const newQty = item.qty + delta;
+    if (newQty <= 0) {
+      updated.splice(index, 1);
+    } else {
+      item.qty = newQty;
+    }
+    setTicketItems(updated);
+  };
+
+  // Open Void Item Dialog
+  const handlePromptVoid = (index) => {
+    setVoidingItemIndex(index);
+    setVoidReason("");
+    setActiveTabModal("void_item");
+  };
+
+  const handleConfirmVoidItem = () => {
+    if (voidingItemIndex === null) return;
+    const updated = [...ticketItems];
+    updated.splice(voidingItemIndex, 1);
+    setTicketItems(updated);
+    setVoidingItemIndex(null);
+    setVoidReason("");
+    setActiveTabModal(null);
+  };
+
+  // Totals Calculations
+  const subtotal = ticketItems.reduce((sum, item) => sum + item.unit_price * item.qty, 0);
+  const total = Math.max(0, subtotal + (orderType === "delivery" ? deliveryFee : 0) - discountAmount);
+
+  // Hold Current Order
+  const handleHoldOrder = async () => {
+    if (ticketItems.length === 0) return;
+    setIsSubmitting(true);
+    try {
+      const res = await fetch("/api/pos/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderType,
+          orderSource: selectedChannel,
+          paymentMethod: selectedPaymentMethod,
+          customerName,
+          customerPhone,
+          deliveryAddress,
+          status: "held",
+          subtotal,
+          deliveryFee: orderType === "delivery" ? deliveryFee : 0,
+          discountAmount,
+          total,
+          items: ticketItems.map((item) => ({
+            product_id: item.product_id,
+            quantity: item.qty,
+            unit_price: item.unit_price,
+            customizations: item.selectedCustomizations.map((c) => c.ingredient || c.name),
+            comment: item.note
+          }))
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setTicketItems([]);
+        setCustomerName("");
+        setCustomerPhone("");
+        setDeliveryAddress("");
+        fetchOrdersQueue();
+      }
+    } catch (err) {
+      console.error("Error holding order:", err);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Complete Order & Trigger Print
+  const handleFinalizePayment = async () => {
+    if (ticketItems.length === 0) return;
+    setIsSubmitting(true);
+    try {
+      const res = await fetch("/api/pos/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderType,
+          orderSource: selectedChannel,
+          paymentMethod: selectedPaymentMethod,
+          customerName,
+          customerPhone,
+          deliveryAddress,
+          status: "completed",
+          subtotal,
+          deliveryFee: orderType === "delivery" ? deliveryFee : 0,
+          discountAmount,
+          total,
+          items: ticketItems.map((item) => ({
+            product_id: item.product_id,
+            quantity: item.qty,
+            unit_price: item.unit_price,
+            customizations: item.selectedCustomizations.map((c) => c.ingredient || c.name),
+            comment: item.note
+          }))
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        const completedOrderData = {
+          id: data.orderId,
+          order_source: selectedChannel,
+          order_type: orderType,
+          payment_method: selectedPaymentMethod,
+          customer_name: customerName,
+          customer_phone: customerPhone,
+          delivery_address: deliveryAddress,
+          subtotal_amount: subtotal,
+          delivery_fee: orderType === "delivery" ? deliveryFee : 0,
+          total_amount: total,
+          items: ticketItems,
+          created_at: new Date().toISOString()
+        };
+        setLastCompletedOrder(completedOrderData);
+        setTicketItems([]);
+        setCustomerName("");
+        setCustomerPhone("");
+        setDeliveryAddress("");
+        setActiveTabModal("receipt");
+        fetchOrdersQueue();
+      }
+    } catch (err) {
+      console.error("Error completing payment:", err);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Approve Pending WhatsApp Order
+  const handleApprovePendingOrder = async (order) => {
+    try {
+      const res = await fetch(`/api/pos/orders/${order.id}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "approved" })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setLastCompletedOrder(order);
+        setActiveTabModal("receipt");
+        fetchOrdersQueue();
+      }
+    } catch (err) {
+      console.error("Error approving order:", err);
+    }
+  };
+
+  // Resume Held Order
+  const handleResumeHeldOrder = (order) => {
+    setSelectedChannel(order.order_source || "POS");
+    setOrderType(order.order_type || "pickup");
+    setCustomerName(order.customer_name || "");
+    setCustomerPhone(order.customer_phone || "");
+    setDeliveryAddress(order.delivery_address || "");
+
+    const items = (order.items || []).map((i) => ({
+      product_id: i.product_id,
+      name: i.product_name || `Product #${i.product_id}`,
+      unit_price: i.unit_price,
+      qty: i.quantity,
+      selectedCustomizations: i.customizations ? [{ name: i.customizations }] : [],
+      note: i.comment || ""
+    }));
+
+    setTicketItems(items);
+    setActiveTabModal(null);
+  };
+
+  // Print Thermal Ticket
+  const handlePrintThermalTicket = () => {
+    if (typeof window !== "undefined") {
+      window.print();
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#121417] text-white flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 border-4 border-[#235b4e] border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-gray-400 font-medium">Loading OVR LOAD Tablet POS...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-[#0F1115] text-[#E0E6ED] font-sans overflow-hidden flex flex-col select-none">
+      {/* Printable Thermal Receipt Container (Only visible during print) */}
+      {lastCompletedOrder && (
+        <div className="hidden print:block print:w-[80mm] print:text-black print:p-2 text-xs font-mono">
+          <div className="text-center font-bold text-sm mb-1">*** OVR LOAD KITCHEN TICKET ***</div>
+          <div className="text-center mb-2">Order #{lastCompletedOrder.id} • {lastCompletedOrder.order_source}</div>
+          <hr className="border-black mb-2" />
+          <div>Type: {lastCompletedOrder.order_type?.toUpperCase()}</div>
+          <div>Payment: {lastCompletedOrder.payment_method}</div>
+          {lastCompletedOrder.customer_name && <div>Customer: {lastCompletedOrder.customer_name}</div>}
+          {lastCompletedOrder.customer_phone && <div>Phone: {lastCompletedOrder.customer_phone}</div>}
+          {lastCompletedOrder.delivery_address && <div>Addr: {lastCompletedOrder.delivery_address}</div>}
+          <hr className="border-black my-2" />
+          <div className="space-y-1">
+            {(lastCompletedOrder.items || []).map((item, idx) => (
+              <div key={idx}>
+                <div className="flex justify-between font-bold">
+                  <span>{item.qty || item.quantity}x {item.name || item.product_name}</span>
+                  <span>${((item.unit_price || 0) * (item.qty || item.quantity || 1)).toFixed(2)}</span>
+                </div>
+                {item.selectedCustomizations?.length > 0 && (
+                  <div className="pl-3 text-[10px] text-gray-700">
+                    {item.selectedCustomizations.map((c) => c.name || c.ingredient).join(", ")}
+                  </div>
+                )}
+                {item.note && (
+                  <div className="pl-3 text-[10px] text-black font-bold">
+                    NOTE: {item.note}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          <hr className="border-black my-2" />
+          <div className="flex justify-between font-bold text-sm">
+            <span>TOTAL:</span>
+            <span>${(lastCompletedOrder.total_amount || lastCompletedOrder.total || 0).toFixed(2)}</span>
+          </div>
+          <div className="text-center mt-3 text-[10px]">Thank you for ordering with OVR LOAD!</div>
+        </div>
+      )}
+
+      {/* TOP TABLET HEADER */}
+      <header className="h-16 bg-[#181C24] border-b border-[#262D3D] px-6 flex items-center justify-between shadow-md print:hidden">
+        {/* Brand & Branch */}
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <span className="w-8 h-8 rounded-lg bg-[#235b4e] flex items-center justify-center font-black text-white text-base">
+              O
+            </span>
+            <span className="font-extrabold text-xl tracking-wider text-white">
+              OVR<span className="text-[#235b4e]">LOAD</span> <span className="text-xs px-2 py-0.5 rounded bg-[#235b4e]/20 text-[#235b4e] font-semibold">POS TABLET</span>
+            </span>
+          </div>
+        </div>
+
+        {/* Channels Selector Bar */}
+        <div className="flex items-center bg-[#0F1115] p-1 rounded-xl border border-[#262D3D] gap-1">
+          {[
+            { name: "WhatsApp", color: "bg-[#25D366] text-black" },
+            { name: "Toters", color: "bg-[#00C49F] text-black" },
+            { name: "NokNok", color: "bg-[#FF5A5F] text-white" },
+            { name: "App", color: "bg-[#3B82F6] text-white" },
+            { name: "In-Store", color: "bg-[#E5C07B] text-black" }
+          ].map((channel) => (
+            <button
+              key={channel.name}
+              onClick={() => setSelectedChannel(channel.name)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                selectedChannel === channel.name
+                  ? `${channel.color} shadow-md scale-105`
+                  : "text-gray-400 hover:text-white hover:bg-[#181C24]"
+              }`}
+            >
+              {channel.name}
+            </button>
+          ))}
+        </div>
+
+        {/* Queues & Quick Actions */}
+        <div className="flex items-center gap-3">
+          {/* Pending WhatsApp Orders Queue Button */}
+          <button
+            onClick={() => setActiveTabModal("incoming")}
+            className="relative px-3.5 py-2 bg-[#262D3D] hover:bg-[#323B4E] rounded-xl text-xs font-bold text-white transition-all flex items-center gap-2 border border-[#3A455C]"
+          >
+            <span>📱 WhatsApp Orders</span>
+            {pendingOrders.length > 0 && (
+              <span className="w-5 h-5 rounded-full bg-[#25D366] text-black text-[11px] font-black flex items-center justify-center animate-pulse">
+                {pendingOrders.length}
+              </span>
+            )}
+          </button>
+
+          {/* Held Orders Queue Button */}
+          <button
+            onClick={() => setActiveTabModal("held")}
+            className="px-3.5 py-2 bg-[#262D3D] hover:bg-[#323B4E] rounded-xl text-xs font-bold text-white transition-all flex items-center gap-2 border border-[#3A455C]"
+          >
+            <span>⏸️ Held ({heldOrders.length})</span>
+          </button>
+        </div>
+      </header>
+
+      {/* DUAL-PANE TABLET MAIN AREA */}
+      <div className="flex-1 flex overflow-hidden print:hidden">
+        {/* LEFT PANE: PRODUCTS & CATEGORIES (65% width) */}
+        <div className="w-[65%] flex flex-col bg-[#12151C] border-r border-[#262D3D]">
+          {/* Category Tabs & Search Bar */}
+          <div className="p-4 bg-[#181C24] border-b border-[#262D3D] flex flex-col gap-3">
+            <div className="flex items-center gap-3">
+              <div className="relative flex-1">
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search products or items..."
+                  className="w-full pl-10 pr-4 py-2.5 bg-[#0F1115] border border-[#262D3D] rounded-xl text-sm text-white placeholder-gray-500 focus:outline-none focus:border-[#235b4e]"
+                />
+                <svg
+                  className="w-5 h-5 absolute left-3 top-3 text-gray-500"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </div>
+            </div>
+
+            {/* Category Scroller */}
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
+              <button
+                onClick={() => setSelectedCategory("All")}
+                className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+                  selectedCategory === "All"
+                    ? "bg-[#235b4e] text-white shadow-md"
+                    : "bg-[#0F1115] text-gray-400 hover:text-white border border-[#262D3D]"
+                }`}
+              >
+                All Items
+              </button>
+              {categories.map((cat) => (
+                <button
+                  key={cat.id}
+                  onClick={() => setSelectedCategory(cat.name)}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+                    selectedCategory === cat.name
+                      ? "bg-[#235b4e] text-white shadow-md"
+                      : "bg-[#0F1115] text-gray-400 hover:text-white border border-[#262D3D]"
+                  }`}
+                >
+                  {cat.name}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Product Grid */}
+          <div className="flex-1 overflow-y-auto p-4 grid grid-cols-3 gap-3.5 align-content-start">
+            {filteredProducts.map((product) => (
+              <div
+                key={product.id}
+                onClick={() => handleOpenCustomization(product)}
+                className="bg-[#181C24] hover:bg-[#202632] border border-[#262D3D] hover:border-[#235b4e] rounded-2xl p-3.5 flex flex-col justify-between cursor-pointer transition-all active:scale-95 shadow-sm group"
+              >
+                <div>
+                  <div className="flex justify-between items-start mb-1.5">
+                    <span className="text-xs font-bold text-[#235b4e] bg-[#235b4e]/10 px-2 py-0.5 rounded">
+                      {product.category_name}
+                    </span>
+                    <span className="text-base font-black text-white">
+                      ${(product.unit_price_usd || 0).toFixed(2)}
+                    </span>
+                  </div>
+                  <h3 className="font-bold text-sm text-white group-hover:text-[#235b4e] transition-colors line-clamp-2">
+                    {product.name}
+                  </h3>
+                  {product.description && (
+                    <p className="text-[11px] text-gray-400 mt-1 line-clamp-2">
+                      {product.description}
+                    </p>
+                  )}
+                </div>
+
+                <div className="mt-3 flex justify-between items-center border-t border-[#262D3D] pt-2.5">
+                  <span className="text-[10px] text-gray-400">
+                    {product.customizations?.length > 0
+                      ? `${product.customizations.length} options`
+                      : "Standard item"}
+                  </span>
+                  <button className="px-3 py-1 bg-[#235b4e] group-hover:bg-[#2b6d5e] text-white rounded-lg text-xs font-bold">
+                    + Add
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* RIGHT PANE: ACTIVE TICKET CART & CHECKOUT (35% width) */}
+        <div className="w-[35%] flex flex-col bg-[#181C24] border-l border-[#262D3D]">
+          {/* Order Header / Customer Info */}
+          <div className="p-4 border-b border-[#262D3D] bg-[#14171F]">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">
+                Current Ticket
+              </span>
+              <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-[#235b4e]/20 text-[#235b4e]">
+                {selectedChannel}
+              </span>
+            </div>
+
+            {/* Order Type Buttons */}
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              <button
+                onClick={() => setOrderType("pickup")}
+                className={`py-2 rounded-xl text-xs font-bold border transition-all ${
+                  orderType === "pickup"
+                    ? "bg-[#235b4e] text-white border-[#235b4e]"
+                    : "bg-[#0F1115] text-gray-400 border-[#262D3D] hover:text-white"
+                }`}
+              >
+                🛍️ Pickup
+              </button>
+              <button
+                onClick={() => setOrderType("delivery")}
+                className={`py-2 rounded-xl text-xs font-bold border transition-all ${
+                  orderType === "delivery"
+                    ? "bg-[#235b4e] text-white border-[#235b4e]"
+                    : "bg-[#0F1115] text-gray-400 border-[#262D3D] hover:text-white"
+                }`}
+              >
+                🚚 Delivery
+              </button>
+            </div>
+
+            {/* Customer Inputs */}
+            <div className="space-y-2">
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  type="text"
+                  value={customerName}
+                  onChange={(e) => setCustomerName(e.target.value)}
+                  placeholder="Customer Name"
+                  className="px-3 py-1.5 bg-[#0F1115] border border-[#262D3D] rounded-lg text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#235b4e]"
+                />
+                <input
+                  type="tel"
+                  value={customerPhone}
+                  onChange={(e) => setCustomerPhone(e.target.value)}
+                  placeholder="Phone Number"
+                  className="px-3 py-1.5 bg-[#0F1115] border border-[#262D3D] rounded-lg text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#235b4e]"
+                />
+              </div>
+              {orderType === "delivery" && (
+                <input
+                  type="text"
+                  value={deliveryAddress}
+                  onChange={(e) => setDeliveryAddress(e.target.value)}
+                  placeholder="Delivery Address & Landmarks"
+                  className="w-full px-3 py-1.5 bg-[#0F1115] border border-[#262D3D] rounded-lg text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#235b4e]"
+                />
+              )}
+            </div>
+          </div>
+
+          {/* Ticket Items List */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-2.5">
+            {ticketItems.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center text-gray-500 gap-2 py-12">
+                <svg className="w-12 h-12 stroke-current" fill="none" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+                </svg>
+                <p className="text-xs font-semibold">Ticket is empty</p>
+                <p className="text-[10px] text-gray-600">Select items from the left grid to add</p>
+              </div>
+            ) : (
+              ticketItems.map((item, idx) => (
+                <div
+                  key={idx}
+                  className="bg-[#0F1115] border border-[#262D3D] rounded-xl p-3 flex flex-col gap-2 relative group"
+                >
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <h4 className="font-bold text-sm text-white">{item.name}</h4>
+                      <div className="text-xs text-gray-400">
+                        ${item.unit_price.toFixed(2)} each
+                      </div>
+                    </div>
+                    <span className="font-black text-sm text-white">
+                      ${(item.unit_price * item.qty).toFixed(2)}
+                    </span>
+                  </div>
+
+                  {/* Options & Notes */}
+                  {item.selectedCustomizations?.length > 0 && (
+                    <div className="text-[11px] text-[#235b4e] font-medium bg-[#235b4e]/10 px-2 py-1 rounded">
+                      {item.selectedCustomizations.map((c) => c.ingredient || c.name).join(", ")}
+                    </div>
+                  )}
+
+                  {item.note && (
+                    <div className="text-[11px] text-amber-400 bg-amber-400/10 px-2 py-1 rounded flex items-center gap-1 font-medium">
+                      <span>✏️</span> {item.note}
+                    </div>
+                  )}
+
+                  {/* Controls Bar */}
+                  <div className="flex items-center justify-between border-t border-[#262D3D] pt-2 mt-1">
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleUpdateQty(idx, -1)}
+                        className="w-7 h-7 rounded-lg bg-[#262D3D] hover:bg-[#323B4E] text-white font-bold text-sm flex items-center justify-center"
+                      >
+                        -
+                      </button>
+                      <span className="font-extrabold text-sm text-white px-1">
+                        {item.qty}
+                      </span>
+                      <button
+                        onClick={() => handleUpdateQty(idx, 1)}
+                        className="w-7 h-7 rounded-lg bg-[#262D3D] hover:bg-[#323B4E] text-white font-bold text-sm flex items-center justify-center"
+                      >
+                        +
+                      </button>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          const prod = products.find((p) => p.id === item.product_id);
+                          if (prod) handleOpenCustomization(prod, idx);
+                        }}
+                        className="text-[11px] font-bold text-gray-400 hover:text-white px-2 py-1 bg-[#181C24] border border-[#262D3D] rounded-md"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handlePromptVoid(idx)}
+                        className="text-[11px] font-bold text-red-400 hover:text-red-300 px-2 py-1 bg-red-500/10 rounded-md"
+                      >
+                        Void
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Ticket Footer / Summary */}
+          <div className="p-4 border-t border-[#262D3D] bg-[#14171F] space-y-3">
+            <div className="space-y-1.5 text-xs text-gray-400">
+              <div className="flex justify-between">
+                <span>Subtotal</span>
+                <span className="text-white font-bold">${subtotal.toFixed(2)}</span>
+              </div>
+              {orderType === "delivery" && (
+                <div className="flex justify-between">
+                  <span>Delivery Fee</span>
+                  <span className="text-white font-bold">${deliveryFee.toFixed(2)}</span>
+                </div>
+              )}
+              <div className="flex justify-between pt-1 border-t border-[#262D3D] text-base font-black text-white">
+                <span>Total</span>
+                <span className="text-[#235b4e]">${total.toFixed(2)}</span>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={handleHoldOrder}
+                disabled={ticketItems.length === 0 || isSubmitting}
+                className="py-3 bg-[#262D3D] hover:bg-[#323B4E] disabled:opacity-50 text-white rounded-xl font-bold text-xs transition-all"
+              >
+                ⏸️ Hold Ticket
+              </button>
+              <button
+                onClick={() => setActiveTabModal("payment")}
+                disabled={ticketItems.length === 0 || isSubmitting}
+                className="py-3 bg-[#235b4e] hover:bg-[#2b6d5e] disabled:opacity-50 text-white rounded-xl font-extrabold text-sm transition-all shadow-md"
+              >
+                💳 Pay & Print
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* CUSTOMIZATION & NOTES MODAL */}
+      {activeTabModal === "customization" && currentProduct && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:hidden">
+          <div className="bg-[#181C24] border border-[#262D3D] rounded-2xl w-[600px] max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
+            {/* Modal Header */}
+            <div className="p-4 border-b border-[#262D3D] flex justify-between items-center bg-[#14171F]">
+              <div>
+                <h3 className="font-extrabold text-lg text-white">{currentProduct.name}</h3>
+                <span className="text-xs text-[#235b4e] font-bold">${(currentProduct.unit_price_usd || 0).toFixed(2)} base</span>
+              </div>
+              <button
+                onClick={() => setActiveTabModal(null)}
+                className="w-8 h-8 rounded-lg bg-[#262D3D] text-gray-400 hover:text-white flex items-center justify-center font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Options Body */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {currentProduct.customizations?.length > 0 ? (
+                // Group customizations by option_group_name or customization_type
+                Object.entries(
+                  currentProduct.customizations.reduce((acc, c) => {
+                    const group = c.option_group_name || (c.customization_type === "remove" ? "Remove Ingredients" : "Custom Options");
+                    if (!acc[group]) acc[group] = [];
+                    acc[group].push(c);
+                    return acc;
+                  }, {})
+                ).map(([groupName, options]) => {
+                  const isMultiSelect = options[0]?.is_multi_select || groupName === "Remove Ingredients";
+                  return (
+                    <div key={groupName} className="bg-[#0F1115] border border-[#262D3D] rounded-xl p-3.5 space-y-2">
+                      <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">
+                        {groupName} {isMultiSelect ? "(Multi-select)" : "(Single choice)"}
+                      </h4>
+                      <div className="grid grid-cols-2 gap-2">
+                        {options.map((opt) => {
+                          const isSelected = selectedCustomizations.some((c) => c.id === opt.id);
+                          return (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() => handleToggleOption(opt, isMultiSelect)}
+                              className={`p-2.5 rounded-lg border text-left text-xs font-bold flex justify-between items-center transition-all ${
+                                isSelected
+                                  ? "bg-[#235b4e]/20 border-[#235b4e] text-white"
+                                  : "bg-[#181C24] border-[#262D3D] text-gray-400 hover:text-white"
+                              }`}
+                            >
+                              <span>{opt.customization_type === "remove" ? `No ${opt.ingredient}` : opt.ingredient}</span>
+                              {opt.price > 0 && <span className="text-[#235b4e]">+${opt.price.toFixed(2)}</span>}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <p className="text-xs text-gray-500 italic">No predefined customization options for this item.</p>
+              )}
+
+              {/* Free-text Item Notes */}
+              <div className="bg-[#0F1115] border border-[#262D3D] rounded-xl p-3.5 space-y-2">
+                <label className="text-xs font-bold text-amber-400 uppercase tracking-wider block">
+                  Item Kitchen Notes (e.g., "no onions", "extra crispy")
+                </label>
+                <textarea
+                  value={itemNote}
+                  onChange={(e) => setItemNote(e.target.value)}
+                  placeholder="Type special requests here..."
+                  rows={2}
+                  className="w-full px-3 py-2 bg-[#181C24] border border-[#262D3D] rounded-lg text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#235b4e]"
+                />
+              </div>
+
+              {/* Quantity Selector */}
+              <div className="flex items-center justify-between bg-[#0F1115] p-3 rounded-xl border border-[#262D3D]">
+                <span className="text-xs font-bold text-white">Item Quantity</span>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => setCustomizationQty(Math.max(1, customizationQty - 1))}
+                    className="w-8 h-8 rounded-lg bg-[#262D3D] text-white font-bold flex items-center justify-center text-base"
+                  >
+                    -
+                  </button>
+                  <span className="font-black text-base text-white">{customizationQty}</span>
+                  <button
+                    onClick={() => setCustomizationQty(customizationQty + 1)}
+                    className="w-8 h-8 rounded-lg bg-[#262D3D] text-white font-bold flex items-center justify-center text-base"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-[#262D3D] bg-[#14171F] flex justify-end gap-2">
+              <button
+                onClick={() => setActiveTabModal(null)}
+                className="px-4 py-2.5 bg-[#262D3D] text-white rounded-xl text-xs font-bold hover:bg-[#323B4E]"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveCustomizationToCart}
+                className="px-6 py-2.5 bg-[#235b4e] hover:bg-[#2b6d5e] text-white rounded-xl text-xs font-extrabold shadow-md"
+              >
+                Save Item to Ticket
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PAYMENT METHOD SELECTION MODAL */}
+      {activeTabModal === "payment" && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:hidden">
+          <div className="bg-[#181C24] border border-[#262D3D] rounded-2xl w-[450px] p-5 space-y-4 shadow-2xl">
+            <div className="flex justify-between items-center border-b border-[#262D3D] pb-3">
+              <h3 className="font-extrabold text-lg text-white">Select Payment Method</h3>
+              <button
+                onClick={() => setActiveTabModal(null)}
+                className="text-gray-400 hover:text-white font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="text-center py-2 bg-[#0F1115] rounded-xl border border-[#262D3D]">
+              <span className="text-xs text-gray-400 block">Total Due</span>
+              <span className="text-3xl font-black text-[#235b4e]">${total.toFixed(2)}</span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                { name: "Cash", icon: "💵" },
+                { name: "Wish", icon: "🟣" },
+                { name: "Toters", icon: "🟢" },
+                { name: "NokNok", icon: "🔴" }
+              ].map((method) => (
+                <button
+                  key={method.name}
+                  onClick={() => setSelectedPaymentMethod(method.name)}
+                  className={`p-4 rounded-xl border font-bold text-sm flex items-center gap-2 transition-all ${
+                    selectedPaymentMethod === method.name
+                      ? "bg-[#235b4e]/20 border-[#235b4e] text-white shadow-md scale-105"
+                      : "bg-[#0F1115] border-[#262D3D] text-gray-400 hover:text-white"
+                  }`}
+                >
+                  <span>{method.icon}</span>
+                  <span>{method.name}</span>
+                </button>
+              ))}
+            </div>
+
+            <div className="pt-2 flex justify-end gap-2">
+              <button
+                onClick={() => setActiveTabModal(null)}
+                className="px-4 py-2.5 bg-[#262D3D] text-white rounded-xl text-xs font-bold"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleFinalizePayment}
+                disabled={isSubmitting}
+                className="px-6 py-2.5 bg-[#235b4e] hover:bg-[#2b6d5e] disabled:opacity-50 text-white rounded-xl text-xs font-extrabold shadow-md"
+              >
+                Confirm Payment & Print
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* VOID ITEM DIALOG */}
+      {activeTabModal === "void_item" && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:hidden">
+          <div className="bg-[#181C24] border border-[#262D3D] rounded-2xl w-[400px] p-5 space-y-4 shadow-2xl">
+            <h3 className="font-extrabold text-base text-red-400">Void Item Reason</h3>
+            <p className="text-xs text-gray-400">
+              Please enter the reason for removing this item from the active ticket:
+            </p>
+            <input
+              type="text"
+              value={voidReason}
+              onChange={(e) => setVoidReason(e.target.value)}
+              placeholder="e.g. Out of stock / Customer changed mind"
+              className="w-full px-3 py-2 bg-[#0F1115] border border-[#262D3D] rounded-lg text-xs text-white placeholder-gray-500 focus:outline-none focus:border-red-400"
+            />
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                onClick={() => setActiveTabModal(null)}
+                className="px-4 py-2 bg-[#262D3D] text-white rounded-xl text-xs font-bold"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmVoidItem}
+                className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-xl text-xs font-extrabold"
+              >
+                Confirm Void
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* INCOMING WHATSAPP ORDERS APPROVAL MODAL */}
+      {activeTabModal === "incoming" && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:hidden">
+          <div className="bg-[#181C24] border border-[#262D3D] rounded-2xl w-[700px] max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
+            <div className="p-4 border-b border-[#262D3D] flex justify-between items-center bg-[#14171F]">
+              <h3 className="font-extrabold text-lg text-white">📱 Incoming WhatsApp Orders Verification</h3>
+              <button onClick={() => setActiveTabModal(null)} className="text-gray-400 hover:text-white font-bold">
+                ✕
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {pendingOrders.length === 0 ? (
+                <div className="text-center py-12 text-gray-500 text-xs">No pending WhatsApp orders to verify</div>
+              ) : (
+                pendingOrders.map((order) => (
+                  <div key={order.id} className="bg-[#0F1115] border border-[#262D3D] rounded-xl p-4 space-y-3">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <span className="text-xs font-extrabold text-[#235b4e]">Order #{order.id}</span>
+                        <div className="text-sm font-bold text-white">{order.customer_name || "WhatsApp Customer"} ({order.customer_phone || "No phone"})</div>
+                        <div className="text-xs text-gray-400">{order.delivery_address || "Pickup at store"}</div>
+                      </div>
+                      <span className="text-lg font-black text-[#235b4e]">${(order.total_amount || 0).toFixed(2)}</span>
+                    </div>
+
+                    <div className="border-t border-[#262D3D] pt-2 space-y-1">
+                      {(order.items || []).map((item, i) => (
+                        <div key={i} className="text-xs text-gray-300 flex justify-between">
+                          <span>{item.quantity}x {item.product_name} {item.customizations ? `(${item.customizations})` : ""}</span>
+                          <span>${(item.total_price || 0).toFixed(2)}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="flex justify-end gap-2 pt-2 border-t border-[#262D3D]">
+                      <button
+                        onClick={() => handleApprovePendingOrder(order)}
+                        className="px-4 py-2 bg-[#235b4e] hover:bg-[#2b6d5e] text-white text-xs font-extrabold rounded-xl shadow-md"
+                      >
+                        ✅ Verify & Approve Order
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* HELD ORDERS MODAL */}
+      {activeTabModal === "held" && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:hidden">
+          <div className="bg-[#181C24] border border-[#262D3D] rounded-2xl w-[600px] max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
+            <div className="p-4 border-b border-[#262D3D] flex justify-between items-center bg-[#14171F]">
+              <h3 className="font-extrabold text-lg text-white">⏸️ Held / Draft Orders</h3>
+              <button onClick={() => setActiveTabModal(null)} className="text-gray-400 hover:text-white font-bold">
+                ✕
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {heldOrders.length === 0 ? (
+                <div className="text-center py-12 text-gray-500 text-xs">No held orders right now</div>
+              ) : (
+                heldOrders.map((order) => (
+                  <div key={order.id} className="bg-[#0F1115] border border-[#262D3D] rounded-xl p-4 flex justify-between items-center">
+                    <div>
+                      <div className="text-xs font-bold text-[#235b4e]">Held Order #{order.id} • {order.order_source}</div>
+                      <div className="text-sm font-bold text-white">${(order.total_amount || 0).toFixed(2)}</div>
+                      <div className="text-[11px] text-gray-400">{(order.items || []).length} items</div>
+                    </div>
+                    <button
+                      onClick={() => handleResumeHeldOrder(order)}
+                      className="px-4 py-2 bg-[#235b4e] hover:bg-[#2b6d5e] text-white text-xs font-bold rounded-xl"
+                    >
+                      ▶️ Resume Ticket
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* RECEIPT / PRINT SUCCESS MODAL */}
+      {activeTabModal === "receipt" && lastCompletedOrder && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:hidden">
+          <div className="bg-[#181C24] border border-[#262D3D] rounded-2xl w-[450px] p-5 space-y-4 shadow-2xl text-center">
+            <div className="w-12 h-12 bg-[#235b4e]/20 text-[#235b4e] rounded-full flex items-center justify-center text-2xl mx-auto font-black">
+              ✓
+            </div>
+            <h3 className="font-extrabold text-xl text-white">Order Approved & Saved!</h3>
+            <p className="text-xs text-gray-400">
+              Order #{lastCompletedOrder.id} has been recorded in the database.
+            </p>
+
+            <div className="bg-[#0F1115] p-3 rounded-xl border border-[#262D3D] text-left text-xs space-y-1">
+              <div className="flex justify-between font-bold text-white">
+                <span>Total Amount:</span>
+                <span className="text-[#235b4e]">${(lastCompletedOrder.total_amount || lastCompletedOrder.total || 0).toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-gray-400">
+                <span>Payment Method:</span>
+                <span className="text-white">{lastCompletedOrder.payment_method || "Cash"}</span>
+              </div>
+              <div className="flex justify-between text-gray-400">
+                <span>Channel:</span>
+                <span className="text-white">{lastCompletedOrder.order_source || "POS"}</span>
+              </div>
+            </div>
+
+            <div className="flex justify-center gap-3 pt-2">
+              <button
+                onClick={handlePrintThermalTicket}
+                className="px-6 py-2.5 bg-[#235b4e] hover:bg-[#2b6d5e] text-white rounded-xl text-xs font-extrabold flex items-center gap-2 shadow-md"
+              >
+                🖨️ Print Kitchen Ticket
+              </button>
+              <button
+                onClick={() => setActiveTabModal(null)}
+                className="px-4 py-2.5 bg-[#262D3D] text-white rounded-xl text-xs font-bold"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
