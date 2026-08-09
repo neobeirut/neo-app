@@ -71,8 +71,8 @@ export default defineConfig({
     layoutWrapperPlugin(),
   ],
   build: {
-    target: 'es2018', // es2018 = Chrome 63+ — required for tablet/older Android WebView compatibility
-    // Note: the server bundle (Node.js) natively supports top-level await regardless of this setting
+    target: 'es2015', // Maximum compatibility: Chrome 49+, covers all Android tablets
+    // esbuild transforms: async/await→generators, ?.→null checks, ??→ternary, #fields→WeakMap
   },
   resolve: {
     alias: {
