@@ -128,25 +128,8 @@ export default function TabletPOSPage() {
       setItemNote(existing.note || "");
       setCustomizationQty(existing.qty || 1);
     } else {
-      // Pre-select first option for required groups (e.g. Drinks)
-      const defaultSelections = [];
-      if (product.customizations?.length > 0) {
-        const grouped = product.customizations.reduce((acc, c) => {
-          const group = c.option_group_name || (c.customization_type === "remove" ? "Remove Ingredients" : "Custom Options");
-          if (!acc[group]) acc[group] = [];
-          acc[group].push(c);
-          return acc;
-        }, {});
-
-        Object.entries(grouped).forEach(([groupName, opts]) => {
-          const isReq = opts[0]?.is_required || groupName.toLowerCase().includes("drink");
-          if (isReq && opts.length > 0) {
-            defaultSelections.push(opts[0]); // Default to first drink/option
-          }
-        });
-      }
-
-      setSelectedCustomizations(defaultSelections);
+      // No default selection (Drinks & options start unselected and are required)
+      setSelectedCustomizations([]);
       setItemNote("");
       setCustomizationQty(1);
     }
