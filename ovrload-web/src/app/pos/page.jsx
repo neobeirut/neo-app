@@ -95,6 +95,8 @@ export default function TabletPOSPage() {
       if (choice.outcome === "accepted") {
         setDeferredInstallPrompt(null);
       }
+    } else {
+      setActiveTabModal("install_guide");
     }
   };
 
@@ -583,15 +585,13 @@ export default function TabletPOSPage() {
 
         {/* Queues & Quick Actions */}
         <div className="flex items-center gap-3">
-          {/* PWA Install Button */}
-          {deferredInstallPrompt && (
-            <button
-              onClick={handleInstallPWA}
-              className="px-3.5 py-2 bg-[#eb660c] hover:bg-[#d55909] text-white text-xs font-extrabold rounded-xl shadow flex items-center gap-1.5 animate-pulse"
-            >
-              <span>📥 Install App</span>
-            </button>
-          )}
+          {/* Always Visible PWA Install Button */}
+          <button
+            onClick={handleInstallPWA}
+            className="px-3.5 py-2 bg-[#eb660c] hover:bg-[#d55909] text-white text-xs font-extrabold rounded-xl shadow flex items-center gap-1.5 transition-all"
+          >
+            <span>📥 Install App</span>
+          </button>
 
           {/* Pending WhatsApp Orders Queue Button */}
           <button
@@ -1270,6 +1270,53 @@ export default function TabletPOSPage() {
                 Close
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* INSTALL APP GUIDE MODAL */}
+      {activeTabModal === "install_guide" && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:hidden">
+          <div className="bg-[#181C24] border border-[#262D3D] rounded-2xl w-full max-w-md p-6 space-y-5 text-white shadow-2xl">
+            <div className="flex justify-between items-center border-b border-[#262D3D] pb-3">
+              <div className="flex items-center gap-2.5">
+                <span className="text-2xl">📥</span>
+                <h3 className="font-extrabold text-lg">Install OVR LOAD POS App</h3>
+              </div>
+              <button
+                onClick={() => setActiveTabModal(null)}
+                className="text-gray-400 hover:text-white text-xl font-bold p-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs text-gray-300">
+              <div className="bg-[#0F1115] border border-[#262D3D] rounded-xl p-3.5 space-y-2">
+                <span className="font-extrabold text-[#eb660c] text-sm block">📱 Android Phone / Tablet (Chrome):</span>
+                <ol className="list-decimal list-inside space-y-1.5 text-gray-300 leading-relaxed">
+                  <li>Tap the <strong>3 dots menu (⋮)</strong> in the top right corner of Chrome.</li>
+                  <li>Tap <strong>"Install app"</strong> or <strong>"Add to Home screen"</strong>.</li>
+                  <li>Tap <strong>Install</strong> to add the App icon to your home screen!</li>
+                </ol>
+              </div>
+
+              <div className="bg-[#0F1115] border border-[#262D3D] rounded-xl p-3.5 space-y-2">
+                <span className="font-extrabold text-amber-400 text-sm block">🍏 iPhone / iPad (Safari / Chrome):</span>
+                <ol className="list-decimal list-inside space-y-1.5 text-gray-300 leading-relaxed">
+                  <li>Tap the <strong>Share button</strong> (square icon with an arrow pointing up).</li>
+                  <li>Scroll down and tap <strong>"Add to Home Screen"</strong>.</li>
+                  <li>Tap <strong>Add</strong> in the top right corner!</li>
+                </ol>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setActiveTabModal(null)}
+              className="w-full py-3 bg-[#eb660c] hover:bg-[#d55909] text-white font-extrabold rounded-xl transition-all shadow-lg"
+            >
+              Got It!
+            </button>
           </div>
         </div>
       )}
