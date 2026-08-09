@@ -438,12 +438,30 @@ export function Layout({ children }: { children: ReactNode }) {
     <html lang="en">
       <head>
         <meta charSet="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+        <meta name="theme-color" content="#eb660c" />
+        <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <link rel="manifest" href="/manifest.json" />
         <Meta />
         <Links />
         <script type="module" src="/src/__create/dev-error-overlay.js"></script>
         <link rel="icon" href="/src/__create/favicon.png" />
         {LoadFontsSSR ? <LoadFontsSSR /> : null}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              if ('serviceWorker' in navigator) {
+                window.addEventListener('load', function() {
+                  navigator.serviceWorker.register('/sw.js').catch(function(err) {
+                    console.log('SW registration error:', err);
+                  });
+                });
+              }
+            `
+          }}
+        />
       </head>
       <body>
         <ClientOnly loader={() => children} />

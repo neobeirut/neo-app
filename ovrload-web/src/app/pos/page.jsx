@@ -76,6 +76,28 @@ export default function TabletPOSPage() {
     }
   };
 
+  // PWA Install State
+  const [deferredInstallPrompt, setDeferredInstallPrompt] = useState(null);
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e) => {
+      e.preventDefault();
+      setDeferredInstallPrompt(e);
+    };
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+    return () => window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+  }, []);
+
+  const handleInstallPWA = async () => {
+    if (deferredInstallPrompt) {
+      deferredInstallPrompt.prompt();
+      const choice = await deferredInstallPrompt.userChoice;
+      if (choice.outcome === "accepted") {
+        setDeferredInstallPrompt(null);
+      }
+    }
+  };
+
   useEffect(() => {
     fetchProducts();
     fetchOrdersQueue();
@@ -561,6 +583,16 @@ export default function TabletPOSPage() {
 
         {/* Queues & Quick Actions */}
         <div className="flex items-center gap-3">
+          {/* PWA Install Button */}
+          {deferredInstallPrompt && (
+            <button
+              onClick={handleInstallPWA}
+              className="px-3.5 py-2 bg-[#eb660c] hover:bg-[#d55909] text-white text-xs font-extrabold rounded-xl shadow flex items-center gap-1.5 animate-pulse"
+            >
+              <span>📥 Install App</span>
+            </button>
+          )}
+
           {/* Pending WhatsApp Orders Queue Button */}
           <button
             onClick={() => setActiveTabModal("incoming")}
