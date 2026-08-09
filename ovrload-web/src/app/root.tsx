@@ -476,6 +476,29 @@ export function Layout({ children }: { children: ReactNode }) {
                   });
                 });
               }
+              // Global error catcher — shows error on loading screen so tablet users can report it
+              window.onerror = function(msg, src, line, col, err) {
+                var el = document.getElementById('pre-react-loading');
+                if (el) {
+                  el.innerHTML = '<div style="max-width:90%;text-align:center;padding:20px">' +
+                    '<div style="color:#eb660c;font-size:16px;margin-bottom:12px">OVR LOAD POS</div>' +
+                    '<div style="color:#ff6b6b;font-size:13px;word-break:break-all;background:rgba(255,0,0,0.1);padding:12px;border-radius:8px;border:1px solid rgba(255,100,100,0.3)">' +
+                    'JS Error: ' + msg + '<br>Line: ' + line + ' Col: ' + col +
+                    (src ? '<br>File: ' + src.split('/').pop() : '') +
+                    '</div></div>';
+                }
+                return false;
+              };
+              window.addEventListener('unhandledrejection', function(e) {
+                var el = document.getElementById('pre-react-loading');
+                if (el && !el.querySelector('.error-shown')) {
+                  el.innerHTML = '<div class="error-shown" style="max-width:90%;text-align:center;padding:20px">' +
+                    '<div style="color:#eb660c;font-size:16px;margin-bottom:12px">OVR LOAD POS</div>' +
+                    '<div style="color:#ff6b6b;font-size:13px;word-break:break-all;background:rgba(255,0,0,0.1);padding:12px;border-radius:8px;border:1px solid rgba(255,100,100,0.3)">' +
+                    'Promise Error: ' + (e.reason ? (e.reason.message || String(e.reason)) : 'Unknown') +
+                    '</div></div>';
+                }
+              });
             `
           }}
         />
