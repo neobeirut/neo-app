@@ -375,18 +375,11 @@ export default function TabletPOSPage() {
     }
   };
 
-  // Validate Order Origin & Delivery Fee ($0 delivery fee is blocked for delivery orders)
+  // Validate Order Origin
   const validateOrder = () => {
     if (!selectedChannel && !editingOrderId) {
       setValidationError("⚠️ Order Origin is REQUIRED! Please select Toters, WhatsApp, NokNok, etc. at the top.");
       return false;
-    }
-    if (orderType === "delivery") {
-      const fee = parseFloat(deliveryFee) || 0;
-      if (fee <= 0) {
-        setValidationError("⚠️ Delivery fee cannot be $0 for delivery orders. Please enter a delivery location or set the fee.");
-        return false;
-      }
     }
     setValidationError("");
     return true;
@@ -1127,9 +1120,9 @@ export default function TabletPOSPage() {
                 </button>
                 <button
                   onClick={() => {
-                    if (!validateOrderOrigin()) return;
-                    // For Toters & NokNok, payment is pre-set — bypass modal and complete order directly
-                    if (selectedChannel === "Toters" || selectedChannel === "NokNok") {
+                    if (!validateOrder()) return;
+                    // For Toters, NokNok, or Editing existing orders, bypass modal and finalize directly
+                    if (selectedChannel === "Toters" || selectedChannel === "NokNok" || editingOrderId) {
                       handleFinalizePayment();
                     } else {
                       setActiveTabModal("payment");
