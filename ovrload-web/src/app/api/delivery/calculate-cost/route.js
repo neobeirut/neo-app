@@ -87,6 +87,38 @@ async function calculateDistance(origin, destination) {
 }
 
 /**
+ * Convert address text or coordinate string into lat/lng
+ */
+async function geocodeAddress(addressText) {
+  if (!addressText) return null;
+
+  // Check if text itself contains lat,lng coordinates e.g. "33.8938, 35.5018"
+  const coordMatch = addressText.match(/(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)/);
+  if (coordMatch) {
+    return {
+      lat: parseFloat(coordMatch[1]),
+      lng: parseFloat(coordMatch[2]),
+    };
+  }
+
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+  if (!apiKey) return null;
+
+  try {
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(addressText)}&key=${apiKey}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.status === "OK" && data.results?.[0]?.geometry?.location) {
+      const loc = data.results[0].geometry.location;
+      return { lat: loc.lat, lng: loc.lng };
+    }
+  } catch (err) {
+    console.error("[GEOCODE ERROR]", err);
+  }
+  return null;
+}
+
+/**
  * Find active free delivery period for given branch and distance
  */
 async function findActiveFreeDelivery(branchId, distanceKm) {
@@ -216,31 +248,39 @@ export async function POST(request) {
       deliveryLat = parseFloat(latitude);
       deliveryLng = parseFloat(longitude);
     } else if (body.address && body.address.trim()) {
-      // Address string provided without lat/lng - lookup branch delivery pricing rule or fallback
-      const [firstRule] = await sql`
-        SELECT delivery_cost
-        FROM delivery_pricing_rules
-        WHERE (branch_id = ${branchId} OR branch_id IS NULL)
-          AND is_active = true
-        ORDER BY display_order, id
-        LIMIT 1
-      `;
-      const [fallbackSetting] = await sql`
-        SELECT setting_value
-        FROM app_settings
-        WHERE setting_key = 'delivery_fallback_cost'
-      `;
-      const cost = firstRule?.delivery_cost
-        ? parseFloat(firstRule.delivery_cost)
-        : (fallbackSetting ? parseFloat(fallbackSetting.setting_value) : 0);
+      const addressStr = body.address.trim();
 
-      return Response.json({
-        distanceKm: null,
-        deliveryCost: cost,
-        isFreeDelivery: cost === 0,
-        inDeliveryZone: true,
-        calculationMethod: "address_text_lookup",
-      });
+      // Check if address text explicitly specifies distance e.g. "5.1 km" or "5.1km"
+      const distMatch = addressStr.match(/(\d+\.?\d*)\s*km/i);
+      if (distMatch) {
+        const distanceKm = parseFloat(distMatch[1]);
+        const rule = await findDeliveryRule(branchId, distanceKm);
+        const cost = rule ? parseFloat(rule.delivery_cost) : 0;
+        return Response.json({
+          distanceKm,
+          deliveryCost: cost,
+          isFreeDelivery: cost === 0,
+          inDeliveryZone: !!rule,
+          calculationMethod: "address_text_distance_parse",
+        });
+      }
+
+      // Try geocoding the address text
+      const geocoded = await geocodeAddress(addressStr);
+      if (geocoded) {
+        deliveryLat = geocoded.lat;
+        deliveryLng = geocoded.lng;
+      } else {
+        return Response.json(
+          {
+            error: "Could not geocode delivery address to calculate distance. Please specify a valid address.",
+            distanceKm: null,
+            deliveryCost: 0,
+            inDeliveryZone: false,
+          },
+          { status: 400 }
+        );
+      }
     } else {
       return Response.json(
         { error: "Address coordinates or address text are required" },

@@ -4,29 +4,79 @@ import sql from "@/app/api/utils/sql";
  * Calculate driving distance between two points using Google Maps Distance Matrix API
  */
 async function calculateDistance(origin, destination) {
-  const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
   if (!apiKey) {
     throw new Error("Google Maps API key not configured");
   }
 
-  const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${origin.lat},${origin.lng}&destinations=${destination.lat},${destination.lng}&mode=driving&key=${apiKey}`;
+  try {
+    const url = `https://routes.googleapis.com/directions/v2:computeRoutes`;
+    const requestBody = {
+      origin: { location: { latLng: { latitude: origin.lat, longitude: origin.lng } } },
+      destination: { location: { latLng: { latitude: destination.lat, longitude: destination.lng } } },
+      travelMode: "DRIVE",
+      routingPreference: "TRAFFIC_AWARE",
+      computeAlternativeRoutes: false,
+      languageCode: "en-US",
+      units: "METRIC",
+    };
 
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": apiKey,
+        "X-Goog-FieldMask": "routes.distanceMeters,routes.duration",
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    const data = await response.json();
+    const route = data.routes?.[0];
+    if (route && route.distanceMeters) {
+      return route.distanceMeters / 1000;
+    }
+  } catch (err) {
+    console.warn("[ROUTES API FALLBACK TO DISTANCE MATRIX]", err.message);
+  }
+
+  // Fallback to Distance Matrix API
+  const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${origin.lat},${origin.lng}&destinations=${destination.lat},${destination.lng}&mode=driving&key=${apiKey}`;
   const response = await fetch(url);
   const data = await response.json();
+  const element = data.rows?.[0]?.elements?.[0];
 
-  if (data.status !== "OK") {
-    throw new Error(`Google Maps API error: ${data.status}`);
+  if (element && element.status === "OK") {
+    return element.distance.value / 1000;
   }
 
-  const element = data.rows[0]?.elements[0];
+  throw new Error("Unable to calculate distance");
+}
 
-  if (!element || element.status !== "OK") {
-    throw new Error("Unable to calculate distance");
+/**
+ * Convert address text or coordinate string into lat/lng
+ */
+async function geocodeAddress(addressText) {
+  if (!addressText) return null;
+  const coordMatch = addressText.match(/(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)/);
+  if (coordMatch) {
+    return { lat: parseFloat(coordMatch[1]), lng: parseFloat(coordMatch[2]) };
   }
-
-  // Return distance in kilometers
-  return element.distance.value / 1000;
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+  if (!apiKey) return null;
+  try {
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(addressText)}&key=${apiKey}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.status === "OK" && data.results?.[0]?.geometry?.location) {
+      const loc = data.results[0].geometry.location;
+      return { lat: loc.lat, lng: loc.lng };
+    }
+  } catch (err) {
+    console.error("[GEOCODE ERROR]", err);
+  }
+  return null;
 }
 
 /**
@@ -87,11 +137,6 @@ async function findDeliveryRule(branchId, distanceKm) {
 
 /**
  * Get delivery fee based on order type and distance
- * @param {string} order_type - The order type (delivery or pickup)
- * @param {object} options - Additional options
- * @param {number} options.addressId - The delivery address ID
- * @param {number} options.branchId - The branch ID
- * @returns {Promise<object>} Delivery fee and metadata
  */
 export async function getDeliveryFee(order_type, options = {}) {
   if (order_type !== "delivery") {
@@ -105,77 +150,46 @@ export async function getDeliveryFee(order_type, options = {}) {
     };
   }
 
-  const { addressId, branchId } = options;
+  const { addressId, branchId = 1, address: addressText, latitude, longitude } = options;
 
-  // If no address or branch, fall back to old behavior
-  if (!addressId || !branchId) {
-    try {
-      const [row] = await sql`
-        SELECT setting_value
-        FROM app_settings
-        WHERE setting_key = 'delivery_cost'
-      `;
-      const parsed = Number.parseFloat(row?.setting_value ?? "0");
-      return {
-        fee: Number.isFinite(parsed) ? parsed : 0,
-        distanceKm: null,
-        deliveryRuleId: null,
-        freeDeliveryPeriodId: null,
-        calculationMethod: "legacy_fallback",
-        inDeliveryZone: true,
-      };
-    } catch (e) {
-      return {
-        fee: 0,
-        distanceKm: null,
-        deliveryRuleId: null,
-        freeDeliveryPeriodId: null,
-        calculationMethod: "error",
-        inDeliveryZone: true,
-      };
-    }
-  }
+  let deliveryLat, deliveryLng;
 
-  try {
-    // Get branch location
-    const [branch] = await sql`
-      SELECT id, name, location
-      FROM branches
-      WHERE id = ${branchId}
-    `;
-
-    if (!branch) {
-      throw new Error("Branch not found");
-    }
-
-    // Parse branch coordinates from location field
-    let branchLat, branchLng;
-
-    if (branch.location) {
-      const coords = branch.location.match(/(-?\d+\.?\d*),\s*(-?\d+\.?\d*)/);
-      if (coords) {
-        branchLat = parseFloat(coords[1]);
-        branchLng = parseFloat(coords[2]);
-      }
-    }
-
-    if (!branchLat || !branchLng) {
-      throw new Error("Branch location not configured");
-    }
-
-    // Get delivery address coordinates
+  if (addressId) {
     const [address] = await sql`
       SELECT latitude, longitude
       FROM user_addresses
       WHERE id = ${addressId}
     `;
 
-    if (!address || !address.latitude || !address.longitude) {
-      throw new Error("Address coordinates not found");
+    if (address && address.latitude && address.longitude) {
+      deliveryLat = parseFloat(address.latitude);
+      deliveryLng = parseFloat(address.longitude);
     }
-
-    const deliveryLat = parseFloat(address.latitude);
-    const deliveryLng = parseFloat(address.longitude);
+  } else if (latitude && longitude) {
+    deliveryLat = parseFloat(latitude);
+    deliveryLng = parseFloat(longitude);
+  } else if (addressText && addressText.trim()) {
+    const addressStr = addressText.trim();
+    const distMatch = addressStr.match(/(\d+\.?\d*)\s*km/i);
+    if (distMatch) {
+      const distanceKm = parseFloat(distMatch[1]);
+      const rule = await findDeliveryRule(branchId, distanceKm);
+      const cost = rule ? parseFloat(rule.delivery_cost) : 0;
+      return {
+        fee: cost,
+        distanceKm,
+        deliveryRuleId: rule?.id || null,
+        freeDeliveryPeriodId: null,
+        calculationMethod: "address_text_distance_parse",
+        inDeliveryZone: !!rule,
+      };
+    }
+    const geocoded = await geocodeAddress(addressStr);
+    if (geocoded) {
+      deliveryLat = geocoded.lat;
+      deliveryLng = geocoded.lng;
+    }
+  }
 
     // Calculate distance using Google Maps
     const distanceKm = await calculateDistance(
