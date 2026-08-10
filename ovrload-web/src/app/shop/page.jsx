@@ -137,6 +137,9 @@ export default function ShopPage() {
 
             {/* Branch Selector and Cart */}
             <div className="flex items-center gap-4 ml-auto">
+              <span className="hidden lg:inline-block text-[10px] font-extrabold bg-[#235b4e] text-white px-2 py-0.5 rounded-full shadow-sm">
+                v2.5.4 (Aug 10 22:30)
+              </span>
               {/* Delivery / Pickup Toggle */}
               <div className="hidden sm:flex items-center bg-[#F0F5F3] p-1 rounded-xl border border-[#E0E0E0]">
                 <button

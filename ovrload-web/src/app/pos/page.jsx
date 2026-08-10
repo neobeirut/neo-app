@@ -841,7 +841,7 @@ export default function TabletPOSPage() {
               O
             </span>
             <span className="font-extrabold text-xl tracking-wider text-white">
-              OVR<span className="text-[#eb660c]">LOAD</span> <span className="text-xs px-2 py-0.5 rounded bg-[#eb660c]/20 text-[#eb660c] font-semibold">POS TABLET</span>
+              OVR<span className="text-[#eb660c]">LOAD</span> <span className="text-xs px-2 py-0.5 rounded bg-[#eb660c]/20 text-[#eb660c] font-semibold">POS TABLET v2.5.4</span>
             </span>
           </div>
         </div>

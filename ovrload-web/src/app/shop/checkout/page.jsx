@@ -317,7 +317,12 @@ export default function CheckoutPage() {
               Back
             </a>
 
-            <h1 className="text-2xl font-bold text-[#235b4e]">Checkout</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-bold text-[#235b4e]">Checkout</h1>
+              <span className="text-[10px] font-extrabold bg-[#235b4e] text-white px-2 py-0.5 rounded-full shadow-sm">
+                v2.5.4 (Aug 10 22:30)
+              </span>
+            </div>
             <div className="w-16"></div>
           </div>
         </div>
