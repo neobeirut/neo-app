@@ -7,22 +7,25 @@ export async function GET(request) {
     const startDateParam = searchParams.get("startDate");
     const endDateParam = searchParams.get("endDate");
 
-    let dateFilterSql = "";
+    let dateWhereClause = "";
 
     if (range === "today") {
-      dateFilterSql = "AND created_at >= CURRENT_DATE";
+      dateWhereClause = "AND created_at >= CURRENT_DATE";
     } else if (range === "yesterday") {
-      dateFilterSql = "AND created_at >= CURRENT_DATE - INTERVAL '1 day' AND created_at < CURRENT_DATE";
+      dateWhereClause = "AND created_at >= CURRENT_DATE - INTERVAL '1 day' AND created_at < CURRENT_DATE";
     } else if (range === "7days") {
-      dateFilterSql = "AND created_at >= CURRENT_DATE - INTERVAL '7 days'";
+      dateWhereClause = "AND created_at >= CURRENT_DATE - INTERVAL '7 days'";
     } else if (range === "thismonth") {
-      dateFilterSql = "AND created_at >= DATE_TRUNC('month', CURRENT_DATE)";
+      dateWhereClause = "AND created_at >= DATE_TRUNC('month', CURRENT_DATE)";
     } else if (range === "custom" && startDateParam && endDateParam) {
-      dateFilterSql = `AND created_at >= '${startDateParam} 00:00:00' AND created_at <= '${endDateParam} 23:59:59'`;
+      // Basic sanitization for dates YYYY-MM-DD
+      const cleanStart = startDateParam.replace(/[^0-9-]/g, "");
+      const cleanEnd = endDateParam.replace(/[^0-9-]/g, "");
+      dateWhereClause = `AND created_at >= '${cleanStart} 00:00:00' AND created_at <= '${cleanEnd} 23:59:59'`;
     }
 
     // 1. KPI Summary
-    const summaryRows = await sql`
+    const summaryRows = await sql.unsafe(`
       SELECT 
         COUNT(*)::int as total_orders,
         COALESCE(SUM(total_amount::float), 0) as total_revenue,
@@ -31,37 +34,37 @@ export async function GET(request) {
         COALESCE(SUM(delivery_fee::float), 0) as total_delivery_fees,
         COALESCE(AVG(total_amount::float), 0) as avg_order_value
       FROM orders
-      WHERE status = 'completed' ${dateFilterSql ? sql.raw(dateFilterSql) : sql.raw("")}
-    `;
+      WHERE status = 'completed' ${dateWhereClause}
+    `);
     const summary = summaryRows[0] || {};
 
     // 2. Sales Channel Breakdown
-    const channels = await sql`
+    const channels = await sql.unsafe(`
       SELECT 
         COALESCE(order_source, 'In-Store') as channel,
         COUNT(*)::int as order_count,
         COALESCE(SUM(total_amount::float), 0) as total_revenue,
         COALESCE(SUM(discount_amount::float), 0) as total_discount
       FROM orders
-      WHERE status = 'completed' ${dateFilterSql ? sql.raw(dateFilterSql) : sql.raw("")}
+      WHERE status = 'completed' ${dateWhereClause}
       GROUP BY COALESCE(order_source, 'In-Store')
       ORDER BY total_revenue DESC
-    `;
+    `);
 
     // 3. Payment Method Breakdown
-    const paymentMethods = await sql`
+    const paymentMethods = await sql.unsafe(`
       SELECT 
         COALESCE(payment_method, 'Cash') as method,
         COUNT(*)::int as order_count,
         COALESCE(SUM(total_amount::float), 0) as total_revenue
       FROM orders
-      WHERE status = 'completed' ${dateFilterSql ? sql.raw(dateFilterSql) : sql.raw("")}
+      WHERE status = 'completed' ${dateWhereClause}
       GROUP BY COALESCE(payment_method, 'Cash')
       ORDER BY total_revenue DESC
-    `;
+    `);
 
     // 4. Top Selling Products
-    const topProducts = await sql`
+    const topProducts = await sql.unsafe(`
       SELECT 
         oi.product_id,
         COALESCE(p.name, 'Unknown Item') as product_name,
@@ -72,14 +75,14 @@ export async function GET(request) {
       JOIN orders o ON oi.order_id = o.id
       LEFT JOIN products p ON oi.product_id = p.id
       LEFT JOIN categories c ON p.category_id = c.id
-      WHERE o.status = 'completed' ${dateFilterSql ? sql.raw(dateFilterSql) : sql.raw("")}
+      WHERE o.status = 'completed' ${dateWhereClause}
       GROUP BY oi.product_id, p.name, c.name
       ORDER BY total_qty DESC
       LIMIT 15
-    `;
+    `);
 
     // 5. Category Breakdown
-    const categories = await sql`
+    const categories = await sql.unsafe(`
       SELECT 
         COALESCE(c.name, 'Uncategorized') as category_name,
         SUM(oi.quantity)::int as total_qty,
@@ -88,21 +91,21 @@ export async function GET(request) {
       JOIN orders o ON oi.order_id = o.id
       LEFT JOIN products p ON oi.product_id = p.id
       LEFT JOIN categories c ON p.category_id = c.id
-      WHERE o.status = 'completed' ${dateFilterSql ? sql.raw(dateFilterSql) : sql.raw("")}
+      WHERE o.status = 'completed' ${dateWhereClause}
       GROUP BY c.name
       ORDER BY total_revenue DESC
-    `;
+    `);
 
     // 6. Voided Orders Log
-    const voidedSummaryRows = await sql`
+    const voidedSummaryRows = await sql.unsafe(`
       SELECT 
         COUNT(*)::int as void_count,
         COALESCE(SUM(total_amount::float), 0) as total_voided_amount
       FROM orders
-      WHERE status = 'voided' ${dateFilterSql ? sql.raw(dateFilterSql) : sql.raw("")}
-    `;
+      WHERE status = 'voided' ${dateWhereClause}
+    `);
 
-    const voidedOrders = await sql`
+    const voidedOrders = await sql.unsafe(`
       SELECT 
         id,
         COALESCE(order_source, 'In-Store') as order_source,
@@ -110,22 +113,22 @@ export async function GET(request) {
         void_reason,
         created_at
       FROM orders
-      WHERE status = 'voided' ${dateFilterSql ? sql.raw(dateFilterSql) : sql.raw("")}
+      WHERE status = 'voided' ${dateWhereClause}
       ORDER BY created_at DESC
       LIMIT 20
-    `;
+    `);
 
     // 7. Hourly Peak Sales Distribution
-    const hourlySales = await sql`
+    const hourlySales = await sql.unsafe(`
       SELECT 
         EXTRACT(HOUR FROM created_at)::int as hour,
         COUNT(*)::int as order_count,
         COALESCE(SUM(total_amount::float), 0) as total_revenue
       FROM orders
-      WHERE status = 'completed' ${dateFilterSql ? sql.raw(dateFilterSql) : sql.raw("")}
+      WHERE status = 'completed' ${dateWhereClause}
       GROUP BY EXTRACT(HOUR FROM created_at)
       ORDER BY hour ASC
-    `;
+    `);
 
     return Response.json({
       summary,
