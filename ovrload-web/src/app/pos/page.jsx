@@ -641,6 +641,8 @@ export default function TabletPOSPage() {
                     setDiscountType("toters");
                   } else if (channel.name === "NokNok") {
                     setDiscountType("noknok");
+                  } else {
+                    setDiscountType("none");
                   }
                 }}
                 className={`px-3.5 py-1.5 rounded-lg text-xs font-extrabold transition-all flex items-center gap-1.5 ${
@@ -778,19 +780,7 @@ export default function TabletPOSPage() {
         {/* RIGHT PANE: ACTIVE TICKET CART & CHECKOUT (35% width - Independent 100% Height) */}
         <div className="w-[35%] h-full flex flex-col bg-[#181C24] border-l border-[#262D3D] min-h-0 overflow-hidden relative">
           {/* Order Header / Customer Info (Fixed Top) */}
-          <div className="p-3.5 border-b border-[#262D3D] bg-[#14171F] flex-shrink-0">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">
-                Current Ticket
-              </span>
-              <span className={`text-xs font-extrabold px-2.5 py-1 rounded-lg ${
-                selectedChannel
-                  ? "bg-[#eb660c]/20 text-[#eb660c]"
-                  : "bg-red-500/20 text-red-400 animate-pulse"
-              }`}>
-                {selectedChannel ? selectedChannel : "SELECT ORIGIN *"}
-              </span>
-            </div>
+          <div className="p-3 border-b border-[#262D3D] bg-[#14171F] flex-shrink-0">
 
             {/* Order Type Buttons (Default Delivery) */}
             <div className="grid grid-cols-2 gap-2 mb-3">
@@ -930,181 +920,60 @@ export default function TabletPOSPage() {
             )}
           </div>
 
-          {/* Ticket Footer / Summary (Fixed Bottom - Always Visible) */}
-          <div className="p-3.5 border-t border-[#262D3D] bg-[#14171F] space-y-2.5 flex-shrink-0 shadow-2xl">
-            {/* Discount Selection Section */}
-            <div className="bg-[#0F1115] p-2.5 rounded-xl border border-[#262D3D] space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">
-                  🏷️ Discount Selector:
-                </span>
-                {discountType !== "none" && (
-                  <button
-                    type="button"
-                    onClick={() => setDiscountType("none")}
-                    className="text-[10px] text-red-400 hover:underline font-bold"
-                  >
-                    Clear Discount
-                  </button>
+          {/* Ticket Footer / Summary (Fixed Bottom - Side-by-Side Amounts & Actions) */}
+          <div className="p-3 border-t border-[#262D3D] bg-[#14171F] flex-shrink-0 shadow-2xl">
+            <div className="flex items-center justify-between gap-3">
+              {/* LEFT SIDE: Amounts Breakdown */}
+              <div className="flex-1 space-y-1 text-xs text-gray-400">
+                <div className="flex justify-between gap-2">
+                  <span>Subtotal</span>
+                  <span className="text-white font-bold">${subtotal.toFixed(2)}</span>
+                </div>
+                {discountAmount > 0 && (
+                  <div className="flex justify-between gap-2 text-[#eb660c] font-extrabold">
+                    <span>
+                      Discount ({
+                        discountType === "toters" ? `TOTERS ${totersDiscountPercent}%` :
+                        discountType === "noknok" ? `NOKNOK ${noknokDiscountPercent}%` :
+                        discountType === "15%" ? "15%" : "Custom"
+                      })
+                    </span>
+                    <span>-${discountAmount.toFixed(2)}</span>
+                  </div>
                 )}
+                {orderType === "delivery" && (
+                  <div className="flex justify-between gap-2">
+                    <span>Delivery</span>
+                    <span className="text-white font-bold">${deliveryFee.toFixed(2)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between gap-2 pt-1 border-t border-[#262D3D] text-sm font-black text-white">
+                  <span>Total</span>
+                  <span className="text-[#eb660c] text-base">${total.toFixed(2)}</span>
+                </div>
               </div>
 
-              {/* Discount Preset Buttons */}
-              <div className="grid grid-cols-4 gap-1">
+              {/* RIGHT SIDE: Action Buttons */}
+              <div className="flex flex-col gap-2 min-w-[140px]">
                 <button
-                  type="button"
-                  onClick={() => setDiscountType("15%")}
-                  className={`py-1.5 px-1 rounded-lg text-[11px] font-extrabold border transition-all ${
-                    discountType === "15%"
-                      ? "bg-[#eb660c] border-[#eb660c] text-white shadow"
-                      : "bg-[#181C24] border-[#262D3D] text-gray-300 hover:text-white"
-                  }`}
+                  onClick={handleHoldOrder}
+                  disabled={ticketItems.length === 0 || isSubmitting}
+                  className="py-2 px-3 bg-[#262D3D] hover:bg-[#323B4E] disabled:opacity-50 text-white rounded-xl font-bold text-xs transition-all whitespace-nowrap"
                 >
-                  15% Off
+                  ⏸️ Hold Ticket
                 </button>
-
                 <button
-                  type="button"
-                  onClick={() => setDiscountType("toters")}
-                  className={`py-1.5 px-1 rounded-lg text-[11px] font-extrabold border transition-all ${
-                    discountType === "toters"
-                      ? "bg-[#00C49F] border-[#00C49F] text-black shadow"
-                      : "bg-[#181C24] border-[#262D3D] text-gray-300 hover:text-white"
-                  }`}
-                >
-                  Toters ({totersDiscountPercent}%)
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setDiscountType("noknok")}
-                  className={`py-1.5 px-1 rounded-lg text-[11px] font-extrabold border transition-all ${
-                    discountType === "noknok"
-                      ? "bg-[#FF5A5F] border-[#FF5A5F] text-white shadow"
-                      : "bg-[#181C24] border-[#262D3D] text-gray-300 hover:text-white"
-                  }`}
-                >
-                  NokNok ({noknokDiscountPercent}%)
-                </button>
-
-                <button
-                  type="button"
                   onClick={() => {
-                    setDiscountType("custom");
-                    if (discountType !== "custom") setDiscountValInput(10);
+                    if (validateOrderOrigin()) {
+                      setActiveTabModal("payment");
+                    }
                   }}
-                  className={`py-1.5 px-1 rounded-lg text-[11px] font-extrabold border transition-all ${
-                    discountType === "custom"
-                      ? "bg-[#3B82F6] border-[#3B82F6] text-white shadow"
-                      : "bg-[#181C24] border-[#262D3D] text-gray-300 hover:text-white"
-                  }`}
+                  disabled={ticketItems.length === 0 || isSubmitting}
+                  className="py-2.5 px-3 bg-[#eb660c] hover:bg-[#d55909] disabled:opacity-50 text-white rounded-xl font-extrabold text-xs transition-all shadow-md whitespace-nowrap"
                 >
-                  Custom
+                  {editingOrderId ? "✅ Approve & Print" : "💳 Pay & Print"}
                 </button>
               </div>
-
-              {/* Editable Custom Discount Mode & Input */}
-              {discountType === "custom" && (
-                <div className="pt-2 border-t border-[#262D3D] space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold text-gray-400">
-                      Custom Discount Type:
-                    </span>
-                    <div className="flex bg-[#181C24] p-0.5 rounded-lg border border-[#262D3D]">
-                      <button
-                        type="button"
-                        onClick={() => setDiscountIsPercent(true)}
-                        className={`px-2.5 py-1 text-[10px] font-black rounded-md transition-all ${
-                          discountIsPercent
-                            ? "bg-[#eb660c] text-white shadow"
-                            : "text-gray-400 hover:text-white"
-                        }`}
-                      >
-                        % Percentage
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setDiscountIsPercent(false)}
-                        className={`px-2.5 py-1 text-[10px] font-black rounded-md transition-all ${
-                          !discountIsPercent
-                            ? "bg-[#00C49F] text-black shadow"
-                            : "text-gray-400 hover:text-white"
-                        }`}
-                      >
-                        $ Amount (USD)
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center bg-[#181C24] border border-[#262D3D] rounded-lg px-3 py-1.5 focus-within:border-[#eb660c]">
-                    <span className="text-gray-400 font-extrabold text-xs mr-2">
-                      {discountIsPercent ? "%" : "$"}
-                    </span>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={discountValInput}
-                      onChange={(e) => setDiscountValInput(e.target.value)}
-                      className="w-full bg-transparent text-white font-black text-sm outline-none"
-                      placeholder={discountIsPercent ? "Enter % e.g. 20" : "Enter $ e.g. 5.00"}
-                      autoFocus
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="space-y-1.5 text-xs text-gray-400">
-              <div className="flex justify-between">
-                <span>Subtotal</span>
-                <span className="text-white font-bold">${subtotal.toFixed(2)}</span>
-              </div>
-              {discountAmount > 0 && (
-                <div className="flex justify-between text-[#eb660c] font-extrabold">
-                  <span>
-                    Discount ({
-                      discountType === "15%" ? "15%" :
-                      discountType === "toters" ? `TOTERS ${totersDiscountPercent}%` :
-                      discountType === "noknok" ? `NOKNOK ${noknokDiscountPercent}%` :
-                      `CUSTOM ${discountValInput}${discountIsPercent ? "%" : "$"}`
-                    })
-                  </span>
-                  <span>-${discountAmount.toFixed(2)}</span>
-                </div>
-              )}
-              {orderType === "delivery" && (
-                <div className="flex justify-between">
-                  <span>Delivery Fee</span>
-                  <span className="text-white font-bold">${deliveryFee.toFixed(2)}</span>
-                </div>
-              )}
-              <div className="flex justify-between pt-1 border-t border-[#262D3D] text-base font-black text-white">
-                <span>Total</span>
-                <span className="text-[#eb660c]">${total.toFixed(2)}</span>
-              </div>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={handleHoldOrder}
-                disabled={ticketItems.length === 0 || isSubmitting}
-                className="py-3 bg-[#262D3D] hover:bg-[#323B4E] disabled:opacity-50 text-white rounded-xl font-bold text-xs transition-all"
-              >
-                ⏸️ Hold Ticket
-              </button>
-              <button
-                onClick={() => {
-                  if (validateOrderOrigin()) {
-                    setActiveTabModal("payment");
-                  }
-                }}
-                disabled={ticketItems.length === 0 || isSubmitting}
-                className="py-3 bg-[#eb660c] hover:bg-[#d55909] disabled:opacity-50 text-white rounded-xl font-extrabold text-sm transition-all shadow-md"
-              >
-                {editingOrderId ? "✅ Approve & Print" : "💳 Pay & Print"}
-              </button>
             </div>
           </div>
         </div>
