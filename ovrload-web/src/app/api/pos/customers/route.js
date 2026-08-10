@@ -16,8 +16,7 @@ export async function GET(request) {
         SELECT 
           name as customer_name,
           phone as customer_phone,
-          NULL as delivery_address,
-          created_at
+          NULL as delivery_address
         FROM auth_users
         WHERE (name ILIKE ${pattern} OR phone ILIKE ${pattern})
 
@@ -26,8 +25,7 @@ export async function GET(request) {
         SELECT 
           customer_name,
           customer_phone,
-          delivery_address,
-          created_at
+          delivery_address
         FROM orders
         WHERE (customer_name ILIKE ${pattern} OR customer_phone ILIKE ${pattern})
           AND (customer_name IS NOT NULL AND customer_name != '')
@@ -37,7 +35,7 @@ export async function GET(request) {
         customer_phone,
         delivery_address
       FROM combined
-      ORDER BY LOWER(COALESCE(NULLIF(customer_phone, ''), customer_name)), created_at DESC
+      ORDER BY LOWER(COALESCE(NULLIF(customer_phone, ''), customer_name)), delivery_address DESC NULLS LAST
       LIMIT 10
     `;
 

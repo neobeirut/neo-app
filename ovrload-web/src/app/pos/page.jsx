@@ -828,8 +828,8 @@ export default function TabletPOSPage() {
 
         {/* RIGHT PANE: ACTIVE TICKET CART & CHECKOUT (35% width - Independent 100% Height) */}
         <div className="w-[35%] h-full flex flex-col bg-[#181C24] border-l border-[#262D3D] min-h-0 overflow-hidden relative">
-          {/* Order Header / Customer Info (Fixed Top) */}
-          <div className="p-3 border-b border-[#262D3D] bg-[#14171F] flex-shrink-0">
+          {/* Order Header / Customer Info (Fixed Top - Z-30 for dropdown overflow) */}
+          <div className="p-3 border-b border-[#262D3D] bg-[#14171F] flex-shrink-0 relative z-30">
 
             {/* Order Type Buttons (Default Delivery) */}
             <div className="grid grid-cols-2 gap-2 mb-3">
