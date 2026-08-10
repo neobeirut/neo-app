@@ -392,7 +392,9 @@ export default function CheckoutPage() {
                 <div className="text-xs text-[#666666] mt-1">Calculated when location selected</div>
               </button>
             </div>
-          </di          {/* Delivery Address */}
+          </div>
+
+          {/* Delivery Address */}
           {orderType === "delivery" && (
             <div className="mb-8">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
@@ -578,7 +580,5 @@ export default function CheckoutPage() {
         </form>
       </main>
     </div>
-  );
-}iv>
   );
 }
