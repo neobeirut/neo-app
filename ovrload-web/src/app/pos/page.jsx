@@ -65,6 +65,11 @@ export default function TabletPOSPage() {
     return "";
   });
 
+  // Order History & Reprint State
+  const [completedOrdersHistory, setCompletedOrdersHistory] = useState([]);
+  const [historySearchQuery, setHistorySearchQuery] = useState("");
+  const [reprintSuccessMsg, setReprintSuccessMsg] = useState("");
+
   // Customer Search & Autocomplete State
   const [customerSearchResults, setCustomerSearchResults] = useState([]);
   const [isSearchingCustomers, setIsSearchingCustomers] = useState(false);
@@ -633,7 +638,48 @@ export default function TabletPOSPage() {
     }
   };
 
-  // Directly Approve Incoming WhatsApp Order
+  // Fetch Order History for POS
+  const fetchOrderHistory = async () => {
+    try {
+      const res = await fetch("/api/pos/orders?type=all");
+      const data = await res.json();
+      if (data.orders) {
+        setCompletedOrdersHistory(data.orders);
+      }
+    } catch (err) {
+      console.error("Error fetching order history:", err);
+    }
+  };
+
+  // Reprint Receipt for Past Order
+  const handleReprintOrder = (order) => {
+    const orderData = {
+      id: order.id,
+      order_source: order.order_source || "POS",
+      order_type: order.order_type || "pickup",
+      payment_method: order.payment_method || "Cash",
+      customer_name: order.customer_name || "",
+      customer_phone: order.customer_phone || "",
+      delivery_address: order.delivery_address || "",
+      subtotal_amount: order.subtotal_amount || 0,
+      delivery_fee: order.delivery_fee || 0,
+      discount_amount: order.discount_amount || 0,
+      total_amount: order.total_amount || 0,
+      items: (order.items || []).map((i) => ({
+        qty: i.quantity || i.qty || 1,
+        name: i.product_name || i.name || "Item",
+        unit_price: i.unit_price || 0,
+        selectedCustomizations: i.customizations ? [{ name: i.customizations }] : [],
+        note: i.comment || ""
+      })),
+      created_at: order.created_at || new Date().toISOString()
+    };
+
+    handlePrint(orderData);
+    setLastCompletedOrder(orderData);
+    setReprintSuccessMsg(`Order #${order.id} sent to thermal printer! 🖨️`);
+    setTimeout(() => setReprintSuccessMsg(""), 4000);
+  };
   const handleApprovePendingOrder = async (order) => {
     try {
       const res = await fetch(`/api/pos/orders/${order.id}/status`, {
@@ -831,6 +877,17 @@ export default function TabletPOSPage() {
             className="px-3.5 py-2 bg-[#262D3D] hover:bg-[#323B4E] rounded-xl text-xs font-bold text-white transition-all flex items-center gap-2 border border-[#3A455C]"
           >
             <span>⏸️ Held ({heldOrders.length})</span>
+          </button>
+
+          {/* Order History Button */}
+          <button
+            onClick={() => {
+              fetchOrderHistory();
+              setActiveTabModal("history");
+            }}
+            className="px-3.5 py-2 bg-[#262D3D] hover:bg-[#323B4E] rounded-xl text-xs font-bold text-white transition-all flex items-center gap-2 border border-[#3A455C]"
+          >
+            <span>📜 Order History</span>
           </button>
         </div>
       </header>
@@ -1694,6 +1751,155 @@ export default function TabletPOSPage() {
               <button
                 onClick={() => setActiveTabModal(null)}
                 className="px-4 py-2.5 bg-[#262D3D] text-white rounded-xl text-xs font-bold hover:bg-[#323B4E]"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ORDER HISTORY & REPRINT MODAL */}
+      {activeTabModal === "history" && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:hidden">
+          <div className="bg-[#181C24] border border-[#262D3D] rounded-3xl w-full max-w-4xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
+            {/* Header */}
+            <div className="p-4 border-b border-[#262D3D] flex justify-between items-center bg-[#14171F]">
+              <div className="flex items-center gap-2.5">
+                <span className="text-2xl">📜</span>
+                <div>
+                  <h3 className="font-extrabold text-lg text-white">POS Order History & Receipt Reprint</h3>
+                  <p className="text-xs text-gray-400">View recent orders, customer details, and reprint thermal receipts</p>
+                </div>
+              </div>
+              <button onClick={() => setActiveTabModal(null)} className="text-gray-400 hover:text-white font-bold text-xl p-1">
+                ✕
+              </button>
+            </div>
+
+            {/* Search & Feedback Banner */}
+            <div className="p-4 border-b border-[#262D3D] bg-[#0F1115] space-y-2">
+              {reprintSuccessMsg && (
+                <div className="bg-[#25D366]/20 border border-[#25D366]/40 text-[#25D366] px-3 py-1.5 rounded-xl text-xs font-bold flex items-center justify-between">
+                  <span>{reprintSuccessMsg}</span>
+                  <button onClick={() => setReprintSuccessMsg("")}>✕</button>
+                </div>
+              )}
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="🔍 Search history by Order #, Customer Name, Phone, or Channel..."
+                  value={historySearchQuery}
+                  onChange={(e) => setHistorySearchQuery(e.target.value)}
+                  className="w-full bg-[#181C24] border border-[#262D3D] rounded-xl px-4 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#eb660c]"
+                />
+                {historySearchQuery && (
+                  <button
+                    onClick={() => setHistorySearchQuery("")}
+                    className="absolute right-3 top-2.5 text-xs text-gray-400 hover:text-white"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Orders List */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {completedOrdersHistory.filter((o) => {
+                if (!historySearchQuery.trim()) return true;
+                const q = historySearchQuery.toLowerCase().trim();
+                return (
+                  String(o.id).includes(q) ||
+                  (o.customer_name || "").toLowerCase().includes(q) ||
+                  (o.customer_phone || "").toLowerCase().includes(q) ||
+                  (o.order_source || "").toLowerCase().includes(q)
+                );
+              }).length === 0 ? (
+                <div className="text-center py-16 text-gray-500 text-xs font-semibold">
+                  No orders found matching your search query
+                </div>
+              ) : (
+                completedOrdersHistory
+                  .filter((o) => {
+                    if (!historySearchQuery.trim()) return true;
+                    const q = historySearchQuery.toLowerCase().trim();
+                    return (
+                      String(o.id).includes(q) ||
+                      (o.customer_name || "").toLowerCase().includes(q) ||
+                      (o.customer_phone || "").toLowerCase().includes(q) ||
+                      (o.order_source || "").toLowerCase().includes(q)
+                    );
+                  })
+                  .map((order) => (
+                    <div key={order.id} className="bg-[#0F1115] border border-[#262D3D] rounded-2xl p-4 space-y-3 hover:border-[#3A455C] transition-all">
+                      {/* Top Row: Order ID, Channel, Date & Total */}
+                      <div className="flex justify-between items-start border-b border-[#262D3D]/50 pb-2">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-black text-white text-base">Order #{order.id}</span>
+                            <span className={`px-2.5 py-0.5 rounded-lg text-[11px] font-extrabold ${
+                              order.order_source === "Toters" ? "bg-[#00C49F] text-black" :
+                              order.order_source === "WhatsApp" ? "bg-[#25D366] text-black" :
+                              order.order_source === "NokNok" ? "bg-[#FF5A5F] text-white" :
+                              order.order_source === "App" ? "bg-[#3B82F6] text-white" :
+                              "bg-[#E5C07B] text-black"
+                            }`}>
+                              {order.order_source || "In-Store"}
+                            </span>
+                            <span className="text-[10px] bg-[#262D3D] text-gray-300 px-2 py-0.5 rounded-md font-bold uppercase">
+                              {order.order_type || "pickup"}
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-gray-400 font-medium">
+                            {order.created_at ? new Date(order.created_at).toLocaleString() : "Date N/A"} • Payment: <strong className="text-white">{order.payment_method || "Cash"}</strong>
+                          </div>
+                        </div>
+
+                        <div className="text-right">
+                          <div className="text-xl font-black text-[#eb660c]">${(order.total_amount || 0).toFixed(2)}</div>
+                          <button
+                            type="button"
+                            onClick={() => handleReprintOrder(order)}
+                            className="mt-1 px-3 py-1.5 bg-[#eb660c] hover:bg-[#d55909] text-white rounded-xl text-xs font-extrabold flex items-center gap-1.5 shadow-sm transition-all active:scale-95"
+                          >
+                            🖨️ Reprint Receipt
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Customer Info (if available) */}
+                      {(order.customer_name || order.customer_phone || order.delivery_address) && (
+                        <div className="text-xs text-gray-300 bg-[#181C24] p-2.5 rounded-xl border border-[#262D3D] space-y-0.5">
+                          {order.customer_name && <div>👤 <strong>Customer:</strong> {order.customer_name}</div>}
+                          {order.customer_phone && <div>📞 <strong>Phone:</strong> {order.customer_phone}</div>}
+                          {order.delivery_address && <div>🏠 <strong>Address:</strong> {order.delivery_address}</div>}
+                        </div>
+                      )}
+
+                      {/* Items List */}
+                      <div className="text-xs text-gray-400 space-y-1">
+                        <div className="font-bold text-gray-300 text-[11px] uppercase">Items Summary:</div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {(order.items || []).map((item, idx) => (
+                            <span key={idx} className="bg-[#181C24] border border-[#262D3D] px-2.5 py-1 rounded-lg text-[11px] text-gray-200 font-medium">
+                              <strong>{item.quantity || item.qty}x</strong> {item.product_name || item.name} (${((item.unit_price || 0) * (item.quantity || item.qty || 1)).toFixed(2)})
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+
+                    </div>
+                  ))
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-3.5 border-t border-[#262D3D] bg-[#14171F] flex justify-between items-center text-xs text-gray-400">
+              <span>Showing past {completedOrdersHistory.length} orders</span>
+              <button
+                onClick={() => setActiveTabModal(null)}
+                className="px-5 py-2 bg-[#262D3D] hover:bg-[#323B4E] text-white rounded-xl font-bold"
               >
                 Close
               </button>
