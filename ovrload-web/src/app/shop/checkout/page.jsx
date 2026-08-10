@@ -7,9 +7,9 @@ export default function CheckoutPage() {
   const [cartItems, setCartItems] = useState([]);
   const [orderType, setOrderType] = useState(() => {
     if (typeof window !== "undefined") {
-      return localStorage.getItem("orderType") || "pickup";
+      return localStorage.getItem("orderType") || "delivery";
     }
-    return "pickup";
+    return "delivery";
   });
   const [selectedDate, setSelectedDate] = useState("");
   const [selectedTime, setSelectedTime] = useState("");

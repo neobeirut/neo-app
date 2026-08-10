@@ -9,9 +9,9 @@ export default function ShopPage() {
   const [selectedBranch, setSelectedBranch] = useState(null);
   const [orderType, setOrderType] = useState(() => {
     if (typeof window !== "undefined") {
-      return localStorage.getItem("orderType") || "pickup";
+      return localStorage.getItem("orderType") || "delivery";
     }
-    return "pickup";
+    return "delivery";
   });
   const [branches, setBranches] = useState([]);
   const [categories, setCategories] = useState([]);
