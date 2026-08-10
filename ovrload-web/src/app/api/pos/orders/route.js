@@ -101,7 +101,8 @@ export async function POST(request) {
         subtotal_amount,
         delivery_fee,
         discount_amount,
-        total_amount
+        total_amount,
+        created_at
       ) VALUES (
         ${branchId},
         ${orderType},
@@ -115,9 +116,10 @@ export async function POST(request) {
         ${subtotal},
         ${deliveryFee},
         ${discountAmount},
-        ${total}
+        ${total},
+        NOW()
       )
-      RETURNING id, created_at
+      RETURNING id, created_at;
     `;
 
     const newOrder = orderResult[0];

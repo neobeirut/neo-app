@@ -11,23 +11,30 @@ export async function GET(request) {
     let dateWhereClauseO = "";
 
     if (range === "today") {
-      dateWhereClause = "AND created_at >= CURRENT_DATE";
-      dateWhereClauseO = "AND o.created_at >= CURRENT_DATE";
+      dateWhereClause = "AND (created_at >= CURRENT_DATE OR created_at >= NOW() - INTERVAL '24 hours' OR created_at IS NULL)";
+      dateWhereClauseO = "AND (o.created_at >= CURRENT_DATE OR o.created_at >= NOW() - INTERVAL '24 hours' OR o.created_at IS NULL)";
     } else if (range === "yesterday") {
       dateWhereClause = "AND created_at >= CURRENT_DATE - INTERVAL '1 day' AND created_at < CURRENT_DATE";
       dateWhereClauseO = "AND o.created_at >= CURRENT_DATE - INTERVAL '1 day' AND o.created_at < CURRENT_DATE";
     } else if (range === "7days") {
-      dateWhereClause = "AND created_at >= CURRENT_DATE - INTERVAL '7 days'";
-      dateWhereClauseO = "AND o.created_at >= CURRENT_DATE - INTERVAL '7 days'";
+      dateWhereClause = "AND (created_at >= CURRENT_DATE - INTERVAL '7 days' OR created_at IS NULL)";
+      dateWhereClauseO = "AND (o.created_at >= CURRENT_DATE - INTERVAL '7 days' OR o.created_at IS NULL)";
     } else if (range === "thismonth") {
-      dateWhereClause = "AND created_at >= DATE_TRUNC('month', CURRENT_DATE)";
-      dateWhereClauseO = "AND o.created_at >= DATE_TRUNC('month', CURRENT_DATE)";
+      dateWhereClause = "AND (created_at >= DATE_TRUNC('month', CURRENT_DATE) OR created_at IS NULL)";
+      dateWhereClauseO = "AND (o.created_at >= DATE_TRUNC('month', CURRENT_DATE) OR o.created_at IS NULL)";
+    } else if (range === "all") {
+      dateWhereClause = "";
+      dateWhereClauseO = "";
     } else if (range === "custom" && startDateParam && endDateParam) {
       const cleanStart = startDateParam.replace(/[^0-9-]/g, "");
       const cleanEnd = endDateParam.replace(/[^0-9-]/g, "");
       dateWhereClause = `AND created_at >= '${cleanStart} 00:00:00' AND created_at <= '${cleanEnd} 23:59:59'`;
       dateWhereClauseO = `AND o.created_at >= '${cleanStart} 00:00:00' AND o.created_at <= '${cleanEnd} 23:59:59'`;
     }
+
+    // Valid completed sales status (includes completed, approved, paid, etc. - excludes cancelled/voided)
+    const salesStatusFilter = "COALESCE(status, 'completed') NOT IN ('cancelled', 'voided', 'pending')";
+    const salesStatusFilterO = "COALESCE(o.status, 'completed') NOT IN ('cancelled', 'voided', 'pending')";
 
     // 1. KPI Summary
     const summaryRows = await sql.unsafe(`
@@ -39,7 +46,7 @@ export async function GET(request) {
         COALESCE(SUM(delivery_fee::float), 0) as total_delivery_fees,
         COALESCE(AVG(total_amount::float), 0) as avg_order_value
       FROM orders
-      WHERE status = 'completed' ${dateWhereClause}
+      WHERE ${salesStatusFilter} ${dateWhereClause}
     `);
     const summary = summaryRows[0] || {};
 
@@ -51,7 +58,7 @@ export async function GET(request) {
         COALESCE(SUM(total_amount::float), 0) as total_revenue,
         COALESCE(SUM(discount_amount::float), 0) as total_discount
       FROM orders
-      WHERE status = 'completed' ${dateWhereClause}
+      WHERE ${salesStatusFilter} ${dateWhereClause}
       GROUP BY COALESCE(order_source, 'In-Store')
       ORDER BY total_revenue DESC
     `);
@@ -63,7 +70,7 @@ export async function GET(request) {
         COUNT(*)::int as order_count,
         COALESCE(SUM(total_amount::float), 0) as total_revenue
       FROM orders
-      WHERE status = 'completed' ${dateWhereClause}
+      WHERE ${salesStatusFilter} ${dateWhereClause}
       GROUP BY COALESCE(payment_method, 'Cash')
       ORDER BY total_revenue DESC
     `);
@@ -80,7 +87,7 @@ export async function GET(request) {
       JOIN orders o ON oi.order_id = o.id
       LEFT JOIN products p ON oi.product_id = p.id
       LEFT JOIN categories c ON p.category_id = c.id
-      WHERE o.status = 'completed' ${dateWhereClauseO}
+      WHERE ${salesStatusFilterO} ${dateWhereClauseO}
       GROUP BY oi.product_id, p.name, c.name
       ORDER BY total_qty DESC
       LIMIT 15
@@ -96,18 +103,18 @@ export async function GET(request) {
       JOIN orders o ON oi.order_id = o.id
       LEFT JOIN products p ON oi.product_id = p.id
       LEFT JOIN categories c ON p.category_id = c.id
-      WHERE o.status = 'completed' ${dateWhereClauseO}
+      WHERE ${salesStatusFilterO} ${dateWhereClauseO}
       GROUP BY c.name
       ORDER BY total_revenue DESC
     `);
 
-    // 6. Voided Orders Log
+    // 6. Voided & Cancelled Orders Log
     const voidedSummaryRows = await sql.unsafe(`
       SELECT 
         COUNT(*)::int as void_count,
         COALESCE(SUM(total_amount::float), 0) as total_voided_amount
       FROM orders
-      WHERE status = 'voided' ${dateWhereClause}
+      WHERE status IN ('voided', 'cancelled') ${dateWhereClause}
     `);
 
     const voidedOrders = await sql.unsafe(`
@@ -118,7 +125,7 @@ export async function GET(request) {
         void_reason,
         created_at
       FROM orders
-      WHERE status = 'voided' ${dateWhereClause}
+      WHERE status IN ('voided', 'cancelled') ${dateWhereClause}
       ORDER BY created_at DESC
       LIMIT 20
     `);
@@ -130,7 +137,7 @@ export async function GET(request) {
         COUNT(*)::int as order_count,
         COALESCE(SUM(total_amount::float), 0) as total_revenue
       FROM orders
-      WHERE status = 'completed' ${dateWhereClause}
+      WHERE ${salesStatusFilter} ${dateWhereClause}
       GROUP BY EXTRACT(HOUR FROM created_at)
       ORDER BY hour ASC
     `);
