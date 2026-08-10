@@ -152,46 +152,83 @@ export async function getDeliveryFee(order_type, options = {}) {
 
   const { addressId, branchId = 1, address: addressText, latitude, longitude } = options;
 
-  let deliveryLat, deliveryLng;
+  try {
+    let deliveryLat, deliveryLng;
 
-  if (addressId) {
-    const [address] = await sql`
-      SELECT latitude, longitude
-      FROM user_addresses
-      WHERE id = ${addressId}
-    `;
+    if (addressId) {
+      const [address] = await sql`
+        SELECT latitude, longitude
+        FROM user_addresses
+        WHERE id = ${addressId}
+      `;
 
-    if (address && address.latitude && address.longitude) {
-      deliveryLat = parseFloat(address.latitude);
-      deliveryLng = parseFloat(address.longitude);
+      if (address && address.latitude && address.longitude) {
+        deliveryLat = parseFloat(address.latitude);
+        deliveryLng = parseFloat(address.longitude);
+      }
+    } else if (latitude && longitude) {
+      deliveryLat = parseFloat(latitude);
+      deliveryLng = parseFloat(longitude);
+    } else if (addressText && addressText.trim()) {
+      const addressStr = addressText.trim();
+      const distMatch = addressStr.match(/(\d+\.?\d*)\s*km/i);
+      if (distMatch) {
+        const distanceKm = parseFloat(distMatch[1]);
+        const rule = await findDeliveryRule(branchId, distanceKm);
+        const cost = rule ? parseFloat(rule.delivery_cost) : 0;
+        return {
+          fee: cost,
+          distanceKm,
+          deliveryRuleId: rule?.id || null,
+          freeDeliveryPeriodId: null,
+          calculationMethod: "address_text_distance_parse",
+          inDeliveryZone: !!rule,
+        };
+      }
+      const geocoded = await geocodeAddress(addressStr);
+      if (geocoded) {
+        deliveryLat = geocoded.lat;
+        deliveryLng = geocoded.lng;
+      }
     }
-  } else if (latitude && longitude) {
-    deliveryLat = parseFloat(latitude);
-    deliveryLng = parseFloat(longitude);
-  } else if (addressText && addressText.trim()) {
-    const addressStr = addressText.trim();
-    const distMatch = addressStr.match(/(\d+\.?\d*)\s*km/i);
-    if (distMatch) {
-      const distanceKm = parseFloat(distMatch[1]);
-      const rule = await findDeliveryRule(branchId, distanceKm);
-      const cost = rule ? parseFloat(rule.delivery_cost) : 0;
+
+    if (!deliveryLat || !deliveryLng) {
       return {
-        fee: cost,
-        distanceKm,
-        deliveryRuleId: rule?.id || null,
+        fee: 0,
+        distanceKm: null,
+        deliveryRuleId: null,
         freeDeliveryPeriodId: null,
-        calculationMethod: "address_text_distance_parse",
-        inDeliveryZone: !!rule,
+        calculationMethod: "no_coordinates",
+        inDeliveryZone: false,
+        error: "Delivery coordinates not found for distance calculation",
       };
     }
-    const geocoded = await geocodeAddress(addressStr);
-    if (geocoded) {
-      deliveryLat = geocoded.lat;
-      deliveryLng = geocoded.lng;
-    }
-  }
 
-    // Calculate distance using Google Maps
+    // Get branch location
+    const [branch] = await sql`
+      SELECT id, name, location
+      FROM branches
+      WHERE id = ${branchId}
+    `;
+
+    if (!branch) {
+      throw new Error("Branch not found");
+    }
+
+    let branchLat, branchLng;
+    if (branch.location) {
+      const coords = branch.location.match(/(-?\d+\.?\d*),\s*(-?\d+\.?\d*)/);
+      if (coords) {
+        branchLat = parseFloat(coords[1]);
+        branchLng = parseFloat(coords[2]);
+      }
+    }
+
+    if (!branchLat || !branchLng) {
+      throw new Error("Branch location not configured");
+    }
+
+    // Calculate distance using Google Maps / Routes
     const distanceKm = await calculateDistance(
       { lat: branchLat, lng: branchLng },
       { lat: deliveryLat, lng: deliveryLng },
@@ -218,7 +255,6 @@ export async function getDeliveryFee(order_type, options = {}) {
     const rule = await findDeliveryRule(branchId, distanceKm);
 
     if (!rule) {
-      // No rule found - check if there's a maximum distance defined
       const [maxRule] = await sql`
         SELECT MAX(max_distance_km) as max_distance
         FROM delivery_pricing_rules
@@ -241,7 +277,6 @@ export async function getDeliveryFee(order_type, options = {}) {
         };
       }
 
-      // Use fallback cost if configured
       const [fallbackSetting] = await sql`
         SELECT setting_value
         FROM app_settings
@@ -250,7 +285,7 @@ export async function getDeliveryFee(order_type, options = {}) {
 
       const fallbackCost = fallbackSetting
         ? parseFloat(fallbackSetting.setting_value)
-        : 5.0;
+        : 0;
 
       return {
         fee: fallbackCost,
@@ -273,7 +308,6 @@ export async function getDeliveryFee(order_type, options = {}) {
   } catch (error) {
     console.error("Error calculating delivery fee:", error);
 
-    // Fallback to legacy behavior on error
     try {
       const [row] = await sql`
         SELECT setting_value
