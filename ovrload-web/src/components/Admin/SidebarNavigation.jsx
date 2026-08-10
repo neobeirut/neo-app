@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import {
   Home,
+  BarChart3,
   ShoppingBag,
   Layers,
   Coffee,
@@ -38,6 +39,7 @@ export function SidebarNavigation({
   const getIcon = (tabId) => {
     const iconMap = {
       dashboard: Home,
+      reports: BarChart3,
       orders: ShoppingBag,
       categories: Layers,
       products: Coffee,
@@ -64,7 +66,7 @@ export function SidebarNavigation({
   const navGroups = [
     {
       title: "Overview & Operations",
-      items: ["dashboard", "orders"]
+      items: ["dashboard", "reports", "orders"]
     },
     {
       title: "Catalog Management",
