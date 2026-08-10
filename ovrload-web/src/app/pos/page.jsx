@@ -619,12 +619,12 @@ export default function TabletPOSPage() {
     }
   };
 
-  // Send Silent WhatsApp Driver Request via Infobip Backend API (+961 3 361 515)
+  // Send Silent WhatsApp Driver Request via Infobip Backend API (+961 3 826 136)
   const handleSendDeliveryWhatsApp = async (etaMinutes, mode = "silent") => {
     if (!lastCompletedOrder) return;
-    const cleanPhone = "9613361515";
+    const cleanPhone = "9613826136";
     const timeText = etaMinutes === "Now" ? "Now" : etaMinutes ? `${etaMinutes}'` : "15'";
-    const msg = `🛵 Hello, need driver in ${timeText}`;
+    const msg = `🛵 Hello, need driver in ${timeText} for Order #${lastCompletedOrder.id}`;
 
     // Always copy message to clipboard as fallback
     if (typeof navigator !== "undefined" && navigator.clipboard) {
@@ -1730,7 +1730,7 @@ export default function TabletPOSPage() {
             {lastCompletedOrder.order_type === "delivery" && (
               <div className="bg-[#0F1115] border border-[#262D3D] rounded-xl p-3.5 space-y-2.5 text-center">
                 <div className="flex justify-between items-center text-xs font-bold text-gray-300">
-                  <span className="flex items-center gap-1.5">🛵 Request Driver (+961 3 361 515)</span>
+                  <span className="flex items-center gap-1.5">🛵 Request Driver (+961 3 826 136)</span>
                   {dispatchStatusMsg ? (
                     <span className="text-[10px] bg-[#25D366]/20 text-[#25D366] px-2.5 py-0.5 rounded-full font-black animate-pulse">
                       {dispatchStatusMsg}

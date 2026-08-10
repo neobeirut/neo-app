@@ -4,9 +4,11 @@ export async function POST(request) {
   try {
     const body = await request.json();
     const { orderId, etaMinutes, phone } = body;
-    const targetPhone = phone || "9613361515";
+    const targetPhone = phone || "9613826136";
     const timeText = etaMinutes === "Now" ? "Now" : etaMinutes ? `${etaMinutes}'` : "15'";
-    const messageText = `🛵 Hello, need driver in ${timeText}`;
+    const orderText = orderId ? ` for Order #${orderId}` : "";
+    const paramText = `${timeText}${orderText}`;
+    const messageText = `🛵 Hello, need driver in ${paramText}`;
 
     let apiResult = null;
     let templateSuccess = false;
@@ -16,7 +18,7 @@ export async function POST(request) {
       apiResult = await sendInfobipWhatsAppTemplate(
         targetPhone,
         { templateName: "driver_request", language: "en" },
-        [timeText]
+        [paramText]
       );
       if (apiResult && apiResult.id) {
         templateSuccess = true;
