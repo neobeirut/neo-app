@@ -623,7 +623,7 @@ export default function TabletPOSPage() {
   const handleSendDeliveryWhatsApp = async (etaMinutes, mode = "silent") => {
     if (!lastCompletedOrder) return;
     const cleanPhone = "9613361515";
-    const timeText = etaMinutes ? `${etaMinutes}'` : "15'";
+    const timeText = etaMinutes === "Now" ? "Now" : etaMinutes ? `${etaMinutes}'` : "15'";
     const msg = `🛵 Hello, need driver in ${timeText}`;
 
     // Always copy message to clipboard as fallback
@@ -1742,8 +1742,8 @@ export default function TabletPOSPage() {
                 <div className="text-[11px] text-gray-400 font-medium text-left">
                   Tap arrival ETA time (Sends WhatsApp silently via Infobip in 0.2s):
                 </div>
-                <div className="grid grid-cols-4 gap-2">
-                  {["15", "20", "30", "45"].map((time) => (
+                <div className="grid grid-cols-5 gap-1.5">
+                  {["Now", "15", "20", "30", "45"].map((time) => (
                     <button
                       key={time}
                       type="button"
@@ -1751,7 +1751,7 @@ export default function TabletPOSPage() {
                       className="py-2.5 bg-[#25D366] hover:bg-[#20bd5a] text-black font-black text-xs rounded-xl transition-all shadow-md active:scale-95 flex items-center justify-center gap-1"
                     >
                       <span>⚡</span>
-                      <span>{time}'</span>
+                      <span>{time === "Now" ? "Now" : `${time}'`}</span>
                     </button>
                   ))}
                 </div>

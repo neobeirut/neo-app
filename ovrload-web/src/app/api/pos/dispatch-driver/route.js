@@ -5,7 +5,7 @@ export async function POST(request) {
     const body = await request.json();
     const { orderId, etaMinutes, phone } = body;
     const targetPhone = phone || "9613361515";
-    const timeText = etaMinutes ? `${etaMinutes}'` : "15'";
+    const timeText = etaMinutes === "Now" ? "Now" : etaMinutes ? `${etaMinutes}'` : "15'";
     const messageText = `🛵 Hello, need driver in ${timeText}`;
 
     let apiResult = null;
