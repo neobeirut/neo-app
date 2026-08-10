@@ -8,20 +8,25 @@ export async function GET(request) {
     const endDateParam = searchParams.get("endDate");
 
     let dateWhereClause = "";
+    let dateWhereClauseO = "";
 
     if (range === "today") {
       dateWhereClause = "AND created_at >= CURRENT_DATE";
+      dateWhereClauseO = "AND o.created_at >= CURRENT_DATE";
     } else if (range === "yesterday") {
       dateWhereClause = "AND created_at >= CURRENT_DATE - INTERVAL '1 day' AND created_at < CURRENT_DATE";
+      dateWhereClauseO = "AND o.created_at >= CURRENT_DATE - INTERVAL '1 day' AND o.created_at < CURRENT_DATE";
     } else if (range === "7days") {
       dateWhereClause = "AND created_at >= CURRENT_DATE - INTERVAL '7 days'";
+      dateWhereClauseO = "AND o.created_at >= CURRENT_DATE - INTERVAL '7 days'";
     } else if (range === "thismonth") {
       dateWhereClause = "AND created_at >= DATE_TRUNC('month', CURRENT_DATE)";
+      dateWhereClauseO = "AND o.created_at >= DATE_TRUNC('month', CURRENT_DATE)";
     } else if (range === "custom" && startDateParam && endDateParam) {
-      // Basic sanitization for dates YYYY-MM-DD
       const cleanStart = startDateParam.replace(/[^0-9-]/g, "");
       const cleanEnd = endDateParam.replace(/[^0-9-]/g, "");
       dateWhereClause = `AND created_at >= '${cleanStart} 00:00:00' AND created_at <= '${cleanEnd} 23:59:59'`;
+      dateWhereClauseO = `AND o.created_at >= '${cleanStart} 00:00:00' AND o.created_at <= '${cleanEnd} 23:59:59'`;
     }
 
     // 1. KPI Summary
@@ -75,7 +80,7 @@ export async function GET(request) {
       JOIN orders o ON oi.order_id = o.id
       LEFT JOIN products p ON oi.product_id = p.id
       LEFT JOIN categories c ON p.category_id = c.id
-      WHERE o.status = 'completed' ${dateWhereClause}
+      WHERE o.status = 'completed' ${dateWhereClauseO}
       GROUP BY oi.product_id, p.name, c.name
       ORDER BY total_qty DESC
       LIMIT 15
@@ -91,7 +96,7 @@ export async function GET(request) {
       JOIN orders o ON oi.order_id = o.id
       LEFT JOIN products p ON oi.product_id = p.id
       LEFT JOIN categories c ON p.category_id = c.id
-      WHERE o.status = 'completed' ${dateWhereClause}
+      WHERE o.status = 'completed' ${dateWhereClauseO}
       GROUP BY c.name
       ORDER BY total_revenue DESC
     `);
