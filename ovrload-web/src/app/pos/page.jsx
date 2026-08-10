@@ -16,7 +16,7 @@ export default function TabletPOSPage() {
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [deliveryAddress, setDeliveryAddress] = useState("");
-  const [deliveryFee, setDeliveryFee] = useState(0);
+  const [deliveryFee, setDeliveryFee] = useState(3);
   
   // Admin Configured Channel Discounts (Fetched from admin settings)
   const [totersDiscountPercent, setTotersDiscountPercent] = useState(15);
@@ -401,6 +401,8 @@ export default function TabletPOSPage() {
         setDeliveryAddress("");
         setSelectedChannel(null); // Reset origin
         setEditingOrderId(null);
+        setDeliveryFee(3);
+        setOrderType("delivery");
         fetchOrdersQueue();
       }
     } catch (err) {
@@ -425,7 +427,25 @@ export default function TabletPOSPage() {
         const updateRes = await fetch(`/api/pos/orders/${editingOrderId}/status`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status: "approved" })
+          body: JSON.stringify({
+            status: "approved",
+            subtotal,
+            deliveryFee: orderType === "delivery" ? (parseFloat(deliveryFee) || 0) : 0,
+            discountAmount,
+            total,
+            customerName,
+            customerPhone,
+            deliveryAddress,
+            orderType,
+            orderSource: selectedChannel || "WhatsApp",
+            items: ticketItems.map((item) => ({
+              product_id: item.product_id,
+              quantity: item.qty,
+              unit_price: item.unit_price,
+              customizations: item.selectedCustomizations.map((c) => c.ingredient || c.name),
+              comment: item.note
+            }))
+          })
         });
         data = await updateRes.json();
         if (data.success) {
@@ -492,13 +512,13 @@ export default function TabletPOSPage() {
         setCustomerName("");
         setCustomerPhone("");
         setDeliveryAddress("");
-        setShowCustomerDropdown(false);
-        setCustomerSearchResults([]);
         setSelectedChannel(null); // Reset origin
         setEditingOrderId(null);
         setDiscountType("none");
         setDiscountValInput(15);
         setDiscountIsPercent(true);
+        setDeliveryFee(3);
+        setOrderType("delivery");
         setActiveTabModal("receipt");
         fetchOrdersQueue();
       }
@@ -553,7 +573,10 @@ export default function TabletPOSPage() {
     setCustomerName(order.customer_name || "");
     setCustomerPhone(order.customer_phone || "");
     setDeliveryAddress(order.delivery_address || "");
-    setDeliveryFee(order.delivery_fee || 0);
+    const initialFee = order.delivery_fee !== undefined && order.delivery_fee !== null && parseFloat(order.delivery_fee) > 0
+      ? parseFloat(order.delivery_fee)
+      : (order.order_type === "delivery" || !order.order_type ? 3 : 0);
+    setDeliveryFee(initialFee);
 
     const mappedItems = (order.items || []).map((i) => ({
       product_id: i.product_id,
@@ -834,7 +857,10 @@ export default function TabletPOSPage() {
             {/* Order Type Buttons (Default Delivery) */}
             <div className="grid grid-cols-2 gap-2 mb-3">
               <button
-                onClick={() => setOrderType("delivery")}
+                onClick={() => {
+                  setOrderType("delivery");
+                  if (deliveryFee === 0 || !deliveryFee) setDeliveryFee(3);
+                }}
                 className={`py-2 rounded-xl text-xs font-bold border transition-all ${
                   orderType === "delivery"
                     ? "bg-[#eb660c] text-white border-[#eb660c]"
@@ -844,7 +870,9 @@ export default function TabletPOSPage() {
                 🚚 Delivery
               </button>
               <button
-                onClick={() => setOrderType("pickup")}
+                onClick={() => {
+                  setOrderType("pickup");
+                }}
                 className={`py-2 rounded-xl text-xs font-bold border transition-all ${
                   orderType === "pickup"
                     ? "bg-[#eb660c] text-white border-[#eb660c]"
@@ -1037,9 +1065,19 @@ export default function TabletPOSPage() {
                   </div>
                 )}
                 {orderType === "delivery" && (
-                  <div className="flex justify-between gap-2">
-                    <span>Delivery</span>
-                    <span className="text-white font-bold">${deliveryFee.toFixed(2)}</span>
+                  <div className="flex justify-between items-center gap-2 text-xs text-gray-400">
+                    <span>Delivery Fee</span>
+                    <div className="flex items-center gap-1">
+                      <span className="text-white font-bold">$</span>
+                      <input
+                        type="number"
+                        step="0.5"
+                        min="0"
+                        value={deliveryFee}
+                        onChange={(e) => setDeliveryFee(Math.max(0, parseFloat(e.target.value) || 0))}
+                        className="w-16 px-1.5 py-0.5 bg-[#0F1115] border border-[#262D3D] rounded text-right text-xs font-bold text-white focus:outline-none focus:border-[#eb660c]"
+                      />
+                    </div>
                   </div>
                 )}
                 <div className="flex justify-between gap-2 pt-1 border-t border-[#262D3D] text-sm font-black text-white">
