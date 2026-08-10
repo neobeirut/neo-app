@@ -36,10 +36,14 @@ export function toE164(phone) {
 }
 
 /**
- * Format recipient phone number for Infobip
+ * Format recipient phone number for Infobip (must be without '+' prefix)
  */
 export function toInfobipRecipient(phone) {
-  return toE164(phone);
+  let e164 = toE164(phone);
+  if (e164.startsWith("+")) {
+    return e164.slice(1);
+  }
+  return e164;
 }
 
 /**
