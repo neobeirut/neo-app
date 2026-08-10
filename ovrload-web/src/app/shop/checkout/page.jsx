@@ -328,41 +328,11 @@ export default function CheckoutPage() {
         <form onSubmit={handlePlaceOrder}>
           {/* Order Type */}
           <div className="mb-8">
-            <h2 className="text-1xl font-bold text-[#1A1A1A] mb-4">
+            <h2 className="text-xl font-bold text-[#1A1A1A] mb-4">
               Order Type
             </h2>
             <div className="grid grid-cols-2 gap-4">
-              {/* Pickup Button on the LEFT */}
-              <button
-                type="button"
-                onClick={() => {
-                  setOrderType("pickup");
-                  if (typeof window !== "undefined") localStorage.setItem("orderType", "pickup");
-                }}
-                className={`p-6 rounded-xl border-2 transition-all ${
-                  orderType === "pickup"
-                    ? "border-[#235b4e] bg-[#F0F5F3]"
-                    : "border-[#E0E0E0] hover:border-[#235b4e]"
-                }`}
-              >
-                <svg
-                  className="w-8 h-8 mx-auto mb-2 text-[#235b4e]"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"
-                  />
-                </svg>
-                <div className="font-semibold text-[#1A1A1A]">Pickup</div>
-                <div className="text-xs text-[#666666] mt-1">Location not required • Free</div>
-              </button>
-
-              {/* Delivery Button on the RIGHT */}
+              {/* Delivery Button on the LEFT (Default) */}
               <button
                 type="button"
                 onClick={() => {
@@ -390,6 +360,36 @@ export default function CheckoutPage() {
                 </svg>
                 <div className="font-semibold text-[#1A1A1A]">Delivery</div>
                 <div className="text-xs text-[#666666] mt-1">Calculated when location selected</div>
+              </button>
+
+              {/* Pickup Button on the RIGHT */}
+              <button
+                type="button"
+                onClick={() => {
+                  setOrderType("pickup");
+                  if (typeof window !== "undefined") localStorage.setItem("orderType", "pickup");
+                }}
+                className={`p-6 rounded-xl border-2 transition-all ${
+                  orderType === "pickup"
+                    ? "border-[#235b4e] bg-[#F0F5F3]"
+                    : "border-[#E0E0E0] hover:border-[#235b4e]"
+                }`}
+              >
+                <svg
+                  className="w-8 h-8 mx-auto mb-2 text-[#235b4e]"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"
+                  />
+                </svg>
+                <div className="font-semibold text-[#1A1A1A]">Pickup</div>
+                <div className="text-xs text-[#666666] mt-1">Location not required • Free</div>
               </button>
             </div>
           </div>
