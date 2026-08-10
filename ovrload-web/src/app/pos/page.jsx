@@ -58,6 +58,42 @@ export default function TabletPOSPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [validationError, setValidationError] = useState("");
 
+  // Customer Search & Autocomplete State
+  const [customerSearchResults, setCustomerSearchResults] = useState([]);
+  const [isSearchingCustomers, setIsSearchingCustomers] = useState(false);
+  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+
+  const handleCustomerSearch = async (query) => {
+    if (!query || query.trim().length < 2) {
+      setCustomerSearchResults([]);
+      setShowCustomerDropdown(false);
+      return;
+    }
+    setIsSearchingCustomers(true);
+    try {
+      const res = await fetch(`/api/pos/customers?q=${encodeURIComponent(query.trim())}`);
+      const data = await res.json();
+      if (data.customers && data.customers.length > 0) {
+        setCustomerSearchResults(data.customers);
+        setShowCustomerDropdown(true);
+      } else {
+        setCustomerSearchResults([]);
+        setShowCustomerDropdown(false);
+      }
+    } catch (err) {
+      console.error("Error searching customers:", err);
+    } finally {
+      setIsSearchingCustomers(false);
+    }
+  };
+
+  const handleSelectCustomer = (c) => {
+    if (c.customer_name) setCustomerName(c.customer_name);
+    if (c.customer_phone) setCustomerPhone(c.customer_phone);
+    if (c.delivery_address) setDeliveryAddress(c.delivery_address);
+    setShowCustomerDropdown(false);
+  };
+
   const receiptPrintRef = useRef(null);
 
   // Load Products & Categories
@@ -456,6 +492,8 @@ export default function TabletPOSPage() {
         setCustomerName("");
         setCustomerPhone("");
         setDeliveryAddress("");
+        setShowCustomerDropdown(false);
+        setCustomerSearchResults([]);
         setSelectedChannel(null); // Reset origin
         setEditingOrderId(null);
         setDiscountType("none");
@@ -817,24 +855,37 @@ export default function TabletPOSPage() {
               </button>
             </div>
 
-            {/* Customer Inputs */}
-            <div className="space-y-2">
+            {/* Customer Inputs with Autocomplete */}
+            <div className="space-y-2 relative">
               <div className="grid grid-cols-2 gap-2">
                 <input
                   type="text"
                   value={customerName}
-                  onChange={(e) => setCustomerName(e.target.value)}
-                  placeholder="Customer Name"
+                  onChange={(e) => {
+                    setCustomerName(e.target.value);
+                    handleCustomerSearch(e.target.value);
+                  }}
+                  onFocus={() => {
+                    if (customerName.length >= 2) handleCustomerSearch(customerName);
+                  }}
+                  placeholder="Customer Name 🔍"
                   className="px-3 py-1.5 bg-[#0F1115] border border-[#262D3D] rounded-lg text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#eb660c]"
                 />
                 <input
                   type="tel"
                   value={customerPhone}
-                  onChange={(e) => setCustomerPhone(e.target.value)}
-                  placeholder="Phone Number"
+                  onChange={(e) => {
+                    setCustomerPhone(e.target.value);
+                    handleCustomerSearch(e.target.value);
+                  }}
+                  onFocus={() => {
+                    if (customerPhone.length >= 2) handleCustomerSearch(customerPhone);
+                  }}
+                  placeholder="Phone Number 🔍"
                   className="px-3 py-1.5 bg-[#0F1115] border border-[#262D3D] rounded-lg text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#eb660c]"
                 />
               </div>
+
               {orderType === "delivery" && (
                 <input
                   type="text"
@@ -843,6 +894,39 @@ export default function TabletPOSPage() {
                   placeholder="Delivery Address & Landmarks"
                   className="w-full px-3 py-1.5 bg-[#0F1115] border border-[#262D3D] rounded-lg text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#eb660c]"
                 />
+              )}
+
+              {/* Autocomplete Dropdown Menu */}
+              {showCustomerDropdown && customerSearchResults.length > 0 && (
+                <div className="absolute left-0 right-0 top-full mt-1 bg-[#181C24] border border-[#eb660c]/60 rounded-xl shadow-2xl z-50 max-h-56 overflow-y-auto divide-y divide-[#262D3D]">
+                  <div className="px-3 py-1.5 text-[10px] font-bold text-[#eb660c] bg-[#eb660c]/10 flex justify-between items-center sticky top-0 bg-[#181C24] z-10 border-b border-[#262D3D]">
+                    <span>Found Customers (Tap to select)</span>
+                    <button
+                      type="button"
+                      onClick={() => setShowCustomerDropdown(false)}
+                      className="text-gray-400 hover:text-white font-bold"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  {customerSearchResults.map((c, i) => (
+                    <div
+                      key={i}
+                      onClick={() => handleSelectCustomer(c)}
+                      className="p-2.5 hover:bg-[#202632] cursor-pointer transition-colors text-xs flex flex-col gap-0.5"
+                    >
+                      <div className="flex justify-between items-center font-extrabold text-white">
+                        <span>👤 {c.customer_name || "Customer"}</span>
+                        <span className="text-[#eb660c] font-mono text-[11px]">{c.customer_phone || ""}</span>
+                      </div>
+                      {c.delivery_address && (
+                        <span className="text-[10px] text-gray-400 truncate max-w-full">
+                          📍 {c.delivery_address}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           </div>
