@@ -101,8 +101,7 @@ export async function POST(request) {
         subtotal_amount,
         delivery_fee,
         discount_amount,
-        total_amount,
-        created_at
+        total_amount
       ) VALUES (
         ${branchId},
         ${orderType},
