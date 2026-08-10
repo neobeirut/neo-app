@@ -271,7 +271,7 @@ export async function sendInfobipWhatsAppTemplate(toPhone, templateConfig, param
   const cfg = getInfobipConfig();
   const to = toInfobipRecipient(toPhone);
 
-  const registry = await import("./whatsappTemplateRegistry");
+  const registry = await import("./whatsappTemplateRegistry.js");
   let schema = null;
 
   try {
