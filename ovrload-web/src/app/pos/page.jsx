@@ -514,15 +514,17 @@ export default function TabletPOSPage() {
               product_id: item.product_id,
               quantity: item.qty,
               unit_price: item.unit_price,
-              customizations: item.selectedCustomizations.map((c) => c.ingredient || c.name),
-              comment: item.note
+              customizations: (item.selectedCustomizations || []).map((c) =>
+                typeof c === "string" ? c : (c.ingredient || c.name || "")
+              ).filter(Boolean),
+              comment: item.note || ""
             }))
           })
         });
         data = await createRes.json();
       }
 
-      if (data.success) {
+      if (data && data.success) {
         const completedOrderData = {
           id: data.orderId || editingOrderId,
           order_source: selectedChannel,
@@ -558,9 +560,12 @@ export default function TabletPOSPage() {
         setOrderType("delivery");
         setActiveTabModal("receipt");
         fetchOrdersQueue();
+      } else if (data && data.error) {
+        setValidationError(`⚠️ ${data.error}`);
       }
     } catch (err) {
       console.error("Error completing payment:", err);
+      setValidationError(`⚠️ Error completing payment: ${err.message}`);
     } finally {
       setIsSubmitting(false);
     }
