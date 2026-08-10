@@ -683,7 +683,9 @@ export default function TabletPOSPage() {
           <hr className="border-black mb-2" />
           <div>Type: {lastCompletedOrder.order_type?.toUpperCase()}</div>
           <div>Payment: {lastCompletedOrder.payment_method}</div>
-          {lastCompletedOrder.customer_name && <div>Customer: {lastCompletedOrder.customer_name}</div>}
+          <div className="font-extrabold text-sm my-1">
+            CLIENT: {lastCompletedOrder.customer_name || (lastCompletedOrder.order_source === "In-Store" ? "Walk-in Guest" : "N/A")}
+          </div>
           {lastCompletedOrder.customer_phone && <div>Phone: {lastCompletedOrder.customer_phone}</div>}
           {lastCompletedOrder.delivery_address && <div>Addr: {lastCompletedOrder.delivery_address}</div>}
           <hr className="border-black my-2" />
