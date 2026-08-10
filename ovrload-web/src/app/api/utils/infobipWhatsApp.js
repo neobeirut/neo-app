@@ -1,4 +1,4 @@
-import sql from "./sql";
+import sql from "./sql.js";
 
 // Global variable to store the last request body string for debugging/forensics
 let lastRequestBodyString = "";
