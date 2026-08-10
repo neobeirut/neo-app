@@ -620,19 +620,26 @@ export default function TabletPOSPage() {
   };
 
   // Send WhatsApp Driver Request to Delivery Company (+961 3 361 515)
-  const handleSendDeliveryWhatsApp = (etaMinutes) => {
+  const handleSendDeliveryWhatsApp = (etaMinutes, mode = "open") => {
     if (!lastCompletedOrder) return;
     const cleanPhone = "9613361515";
     const timeText = etaMinutes ? `${etaMinutes}'` : "15'";
     const msg = `🛵 Hello, need driver in ${timeText}`;
 
-    // Always copy message to clipboard as fallback
+    // Always copy message to clipboard
     if (typeof navigator !== "undefined" && navigator.clipboard) {
-      try { navigator.clipboard.writeText(msg); } catch (e) {}
+      try {
+        navigator.clipboard.writeText(`${msg}\nPhone: +${cleanPhone}`);
+        setCopiedWaMsg(true);
+        setTimeout(() => setCopiedWaMsg(false), 3000);
+      } catch (e) {}
     }
 
-    // Direct 1-tap launch of native WhatsApp app
-    window.location.href = `whatsapp://send?phone=${cleanPhone}&text=${encodeURIComponent(msg)}`;
+    if (mode === "copy") return;
+
+    // Direct WhatsApp API Link (opens WhatsApp app directly on Android / iOS / Web)
+    const waUrl = `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(msg)}`;
+    window.open(waUrl, "_blank");
   };
 
   // Fetch Order History for POS
@@ -1705,23 +1712,39 @@ export default function TabletPOSPage() {
               <div className="bg-[#0F1115] border border-[#262D3D] rounded-xl p-3.5 space-y-2.5 text-center">
                 <div className="flex justify-between items-center text-xs font-bold text-gray-300">
                   <span className="flex items-center gap-1.5">🛵 Request Driver (+961 3 361 515)</span>
-                  <span className="text-[10px] text-[#25D366] font-extrabold">1-Tap Launch</span>
+                  {copiedWaMsg ? (
+                    <span className="text-[10px] bg-[#25D366]/20 text-[#25D366] px-2 py-0.5 rounded-full font-black animate-pulse">
+                      Text & Phone Copied! ✓
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-[#25D366] font-bold">Driver Dispatch</span>
+                  )}
                 </div>
                 <div className="text-[11px] text-gray-400 font-medium text-left">
-                  Tap arrival ETA time to open WhatsApp chat:
+                  Select ETA time for driver:
                 </div>
                 <div className="grid grid-cols-4 gap-2">
                   {["15", "20", "30", "45"].map((time) => (
                     <button
                       key={time}
                       type="button"
-                      onClick={() => handleSendDeliveryWhatsApp(time)}
+                      onClick={() => handleSendDeliveryWhatsApp(time, "open")}
                       className="py-2.5 bg-[#25D366] hover:bg-[#20bd5a] text-black font-black text-xs rounded-xl transition-all shadow-md active:scale-95 flex items-center justify-center gap-1"
                     >
                       <span>💬</span>
                       <span>{time}'</span>
                     </button>
                   ))}
+                </div>
+                <div className="flex gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => handleSendDeliveryWhatsApp("15", "copy")}
+                    className="flex-1 py-2 bg-[#262D3D] hover:bg-[#323B4E] text-gray-200 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1 transition-all"
+                  >
+                    <span>📋</span>
+                    <span>Copy Text & Phone (+961 3 361 515)</span>
+                  </button>
                 </div>
               </div>
             )}
