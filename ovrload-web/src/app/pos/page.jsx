@@ -1067,18 +1067,34 @@ export default function TabletPOSPage() {
                   <span>Subtotal</span>
                   <span className="text-white font-bold">${subtotal.toFixed(2)}</span>
                 </div>
-                {discountAmount > 0 && (
-                  <div className="flex justify-between gap-2 text-[#eb660c] font-extrabold">
-                    <span>
-                      Discount ({
-                        discountType === "toters" ? `TOTERS ${totersDiscountPercent}%` :
-                        discountType === "noknok" ? `NOKNOK ${noknokDiscountPercent}%` :
-                        discountType === "15%" ? "15%" : "Custom"
-                      })
-                    </span>
-                    <span>-${discountAmount.toFixed(2)}</span>
+                {/* Interactive Editable Discount Row (Default 15%, Editable by Cashier) */}
+                <div className="flex justify-between items-center gap-2 text-[#eb660c] font-extrabold text-xs">
+                  <div className="flex items-center gap-1.5">
+                    <span>Discount</span>
+                    <div className="flex items-center bg-[#0F1115] border border-[#262D3D] focus-within:border-[#eb660c] rounded px-1.5 py-0.5">
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="1"
+                        value={
+                          discountType === "toters" ? totersDiscountPercent :
+                          discountType === "noknok" ? noknokDiscountPercent :
+                          discountValInput
+                        }
+                        onChange={(e) => {
+                          const val = Math.max(0, parseFloat(e.target.value) || 0);
+                          setDiscountValInput(val);
+                          setDiscountType("custom");
+                          setDiscountIsPercent(true);
+                        }}
+                        className="w-10 bg-transparent text-right text-xs font-black text-[#eb660c] outline-none"
+                      />
+                      <span className="text-[10px] text-[#eb660c] font-extrabold ml-0.5">%</span>
+                    </div>
                   </div>
-                )}
+                  <span>-${discountAmount.toFixed(2)}</span>
+                </div>
                 {orderType === "delivery" && (
                   <div className="flex justify-between items-center gap-2 text-xs text-gray-400">
                     <span>Delivery Fee</span>
@@ -1301,7 +1317,10 @@ export default function TabletPOSPage() {
                       setDiscountType("noknok");
                       setSelectedPaymentMethod("NokNok");
                     } else {
-                      setDiscountType("none");
+                      // WhatsApp, App, and In-Store default to 15% discount (editable by cashier)
+                      setDiscountType("custom");
+                      setDiscountIsPercent(true);
+                      setDiscountValInput(15);
                       setSelectedPaymentMethod("Cash");
                     }
                   }}
