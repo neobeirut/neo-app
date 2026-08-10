@@ -1149,9 +1149,7 @@ export default function TabletPOSPage() {
             <div className="grid grid-cols-2 gap-3">
               {[
                 { name: "Cash", icon: "💵" },
-                { name: "Wish", icon: "🟣" },
-                { name: "Toters", icon: "🟢" },
-                { name: "NokNok", icon: "🔴" }
+                { name: "Wish", icon: "🟣" }
               ].map((method) => (
                 <button
                   key={method.name}
