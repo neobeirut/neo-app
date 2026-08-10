@@ -8,22 +8,11 @@ export async function POST(request) {
     const timeText = etaMinutes ? `${etaMinutes}'` : "15'";
     const messageText = `🛵 Hello, need driver in ${timeText}`;
 
-    let apiResult = null;
-    let apiSuccess = false;
-    let apiError = null;
-
-    try {
-      apiResult = await sendInfobipWhatsAppFreeForm(targetPhone, messageText);
-      apiSuccess = true;
-    } catch (infobipErr) {
-      apiError = infobipErr.message || String(infobipErr);
-      console.error("[DispatchDriver] Infobip API Error:", infobipErr);
-    }
+    const apiResult = await sendInfobipWhatsAppFreeForm(targetPhone, messageText);
 
     return Response.json({
       success: true,
-      apiSuccess,
-      apiError,
+      apiSuccess: true,
       messageText,
       targetPhone,
       result: apiResult,

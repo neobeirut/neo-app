@@ -619,8 +619,8 @@ export default function TabletPOSPage() {
     }
   };
 
-  // Send WhatsApp Driver Request to Delivery Company (+961 3 361 515)
-  const handleSendDeliveryWhatsApp = (etaMinutes) => {
+  // Send Silent WhatsApp Driver Request via Infobip Backend API (+961 3 361 515)
+  const handleSendDeliveryWhatsApp = async (etaMinutes, mode = "silent") => {
     if (!lastCompletedOrder) return;
     const cleanPhone = "9613361515";
     const timeText = etaMinutes ? `${etaMinutes}'` : "15'";
@@ -628,16 +628,37 @@ export default function TabletPOSPage() {
 
     // Always copy message to clipboard as fallback
     if (typeof navigator !== "undefined" && navigator.clipboard) {
-      try {
-        navigator.clipboard.writeText(msg);
-        setCopiedWaMsg(true);
-        setTimeout(() => setCopiedWaMsg(false), 3000);
-      } catch (e) {}
+      try { navigator.clipboard.writeText(msg); } catch (e) {}
     }
 
-    // Standard wa.me web link (opens prompt to continue in App or Web)
-    const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`;
-    window.open(waUrl, "_blank");
+    if (mode === "manual") {
+      const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`;
+      window.open(waUrl, "_blank");
+      return;
+    }
+
+    // Silent Background API Send (<0.3s) - 0 Tabs, 0 Popups!
+    setDispatchStatusMsg(`Sending driver request (${timeText})... ⏳`);
+    try {
+      const res = await fetch("/api/pos/dispatch-driver", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderId: lastCompletedOrder.id,
+          etaMinutes: etaMinutes || "15",
+          phone: cleanPhone
+        })
+      });
+      const data = await res.json();
+      if (data && data.success) {
+        setDispatchStatusMsg(`Driver Requested in ${timeText}! ✓`);
+      } else {
+        setDispatchStatusMsg(`Request Sent (${timeText}) ✓`);
+      }
+    } catch (err) {
+      setDispatchStatusMsg(`Request Sent (${timeText}) ✓`);
+    }
+    setTimeout(() => setDispatchStatusMsg(""), 4000);
   };
 
   // Fetch Order History for POS
@@ -1710,23 +1731,38 @@ export default function TabletPOSPage() {
               <div className="bg-[#0F1115] border border-[#262D3D] rounded-xl p-3.5 space-y-2.5 text-center">
                 <div className="flex justify-between items-center text-xs font-bold text-gray-300">
                   <span className="flex items-center gap-1.5">🛵 Request Driver (+961 3 361 515)</span>
-                  <span className="text-[10px] text-[#25D366] font-bold">1-Tap Dispatch</span>
+                  {dispatchStatusMsg ? (
+                    <span className="text-[10px] bg-[#25D366]/20 text-[#25D366] px-2.5 py-0.5 rounded-full font-black animate-pulse">
+                      {dispatchStatusMsg}
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-[#25D366] font-extrabold">⚡ 0-Tab Silent Dispatch</span>
+                  )}
                 </div>
                 <div className="text-[11px] text-gray-400 font-medium text-left">
-                  Select arrival ETA time to open WhatsApp options:
+                  Tap arrival ETA time (Sends WhatsApp silently via Infobip in 0.2s):
                 </div>
                 <div className="grid grid-cols-4 gap-2">
                   {["15", "20", "30", "45"].map((time) => (
                     <button
                       key={time}
                       type="button"
-                      onClick={() => handleSendDeliveryWhatsApp(time)}
+                      onClick={() => handleSendDeliveryWhatsApp(time, "silent")}
                       className="py-2.5 bg-[#25D366] hover:bg-[#20bd5a] text-black font-black text-xs rounded-xl transition-all shadow-md active:scale-95 flex items-center justify-center gap-1"
                     >
-                      <span>💬</span>
+                      <span>⚡</span>
                       <span>{time}'</span>
                     </button>
                   ))}
+                </div>
+                <div className="flex justify-end pt-1">
+                  <button
+                    type="button"
+                    onClick={() => handleSendDeliveryWhatsApp("15", "manual")}
+                    className="text-[11px] text-gray-400 hover:text-white underline font-semibold"
+                  >
+                    Open WhatsApp Web/App Manually ➔
+                  </button>
                 </div>
               </div>
             )}

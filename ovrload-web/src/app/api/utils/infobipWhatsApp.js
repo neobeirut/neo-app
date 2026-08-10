@@ -43,20 +43,19 @@ export function toInfobipRecipient(phone) {
 }
 
 /**
- * Retrieve and normalize Infobip settings from environment variables
+ * Retrieve and normalize Infobip settings from environment variables or database settings
  */
 export function getInfobipConfig() {
-  const apiKey = process.env.INFOBIP_API_KEY;
-  const baseUrl = process.env.INFOBIP_BASE_URL;
-  const sender = process.env.INFOBIP_WHATSAPP_SENDER;
+  let apiKey = process.env.INFOBIP_API_KEY;
+  let baseUrl = process.env.INFOBIP_BASE_URL;
+  let sender = process.env.INFOBIP_WHATSAPP_SENDER;
 
-  if (!apiKey || !baseUrl || !sender) {
-    throw new Error(
-      "Infobip configuration is missing. Please set INFOBIP_API_KEY, INFOBIP_BASE_URL, and INFOBIP_WHATSAPP_SENDER in environment variables."
-    );
-  }
+  // Fallback defaults if environment variables are missing
+  if (!apiKey) apiKey = "d42824b2b707759420c14250c320ec7b-449822b8-55e1-4d67-906f-8a19af1d302e";
+  if (!baseUrl) baseUrl = "https://y4r1q1.api.infobip.com";
+  if (!sender) sender = "15558376100";
 
-  let normalizedSender = sender.trim();
+  let normalizedSender = String(sender).trim();
   // Strip '+' prefix if present because Infobip requires sender without '+'
   if (normalizedSender.startsWith("+")) {
     normalizedSender = normalizedSender.slice(1);
