@@ -1129,12 +1129,12 @@ export default function TabletPOSPage() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => setSelectedPaymentMethod("Wish")}
+                        onClick={() => setSelectedPaymentMethod("Whish")}
                         className={`px-2 py-0.5 text-[10px] font-bold rounded transition-all ${
-                          selectedPaymentMethod === "Wish" ? "bg-purple-600 text-white shadow" : "text-gray-400 hover:text-white"
+                          selectedPaymentMethod === "Whish" ? "bg-purple-600 text-white shadow" : "text-gray-400 hover:text-white"
                         }`}
                       >
-                        🟣 Wish
+                        🟣 Whish
                       </button>
                     </div>
                   </div>
@@ -1374,7 +1374,7 @@ export default function TabletPOSPage() {
         </div>
       )}
 
-      {/* PAYMENT METHOD SELECTION MODAL (CASH vs WISH) */}
+      {/* PAYMENT METHOD SELECTION MODAL (CASH vs WHISH) */}
       {activeTabModal === "payment" && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:hidden">
           <div className="bg-[#181C24] border border-[#262D3D] rounded-2xl w-[450px] p-5 space-y-5 shadow-2xl">
@@ -1397,7 +1397,7 @@ export default function TabletPOSPage() {
             <div className="grid grid-cols-2 gap-3">
               {[
                 { name: "Cash", icon: "💵" },
-                { name: "Wish", icon: "🟣" }
+                { name: "Whish", icon: "🟣" }
               ].map((method) => (
                 <button
                   key={method.name}
@@ -1433,21 +1433,6 @@ export default function TabletPOSPage() {
                 className="px-6 py-2.5 bg-[#eb660c] hover:bg-[#d55909] disabled:opacity-50 text-white rounded-xl text-xs font-extrabold shadow-md"
               >
                 {isSubmitting ? "Processing..." : `Confirm ${selectedPaymentMethod} & Print`}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-                className="px-4 py-2.5 bg-[#262D3D] text-white rounded-xl text-xs font-bold"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleFinalizePayment}
-                disabled={isSubmitting}
-                className="px-6 py-2.5 bg-[#eb660c] hover:bg-[#d55909] disabled:opacity-50 text-white rounded-xl text-xs font-extrabold shadow-md"
-              >
-                {isSubmitting ? "Processing..." : "Confirm Payment & Print"}
               </button>
             </div>
           </div>
