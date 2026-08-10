@@ -57,6 +57,12 @@ export default function TabletPOSPage() {
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [validationError, setValidationError] = useState("");
+  const [deliveryCompanyPhone, setDeliveryCompanyPhone] = useState(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("pos_delivery_company_phone") || "";
+    }
+    return "";
+  });
 
   // Customer Search & Autocomplete State
   const [customerSearchResults, setCustomerSearchResults] = useState([]);
@@ -604,6 +610,33 @@ export default function TabletPOSPage() {
     } catch (err) {
       console.error("Error rejecting order:", err);
     }
+  };
+
+  // Send WhatsApp Delivery Dispatch to Delivery Company / Driver
+  const handleSendDeliveryWhatsApp = () => {
+    if (!lastCompletedOrder) return;
+    const cleanPhone = (deliveryCompanyPhone || "").replace(/[^0-9]/g, "");
+
+    const itemsList = (lastCompletedOrder.items || [])
+      .map((item) => `• ${item.qty || item.quantity || 1}x ${item.name || item.product_name}`)
+      .join("\n");
+
+    const msg = `🛵 *NEW DELIVERY DISPATCH - ORDER #${lastCompletedOrder.id}*
+📍 *Channel*: ${lastCompletedOrder.order_source || "POS"}
+👤 *Customer*: ${lastCompletedOrder.customer_name || "Guest"}
+📞 *Phone*: ${lastCompletedOrder.customer_phone || "N/A"}
+🏠 *Address*: ${lastCompletedOrder.delivery_address || "N/A"}
+💵 *Payment*: ${lastCompletedOrder.payment_method || "Cash"}
+💰 *Total to Collect*: $${(lastCompletedOrder.total_amount || lastCompletedOrder.total || 0).toFixed(2)}
+
+📦 *Order Items*:
+${itemsList}`;
+
+    const waUrl = cleanPhone 
+      ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`
+      : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+
+    window.open(waUrl, "_blank");
   };
 
   // Directly Approve Incoming WhatsApp Order
@@ -1619,6 +1652,40 @@ export default function TabletPOSPage() {
               </div>
             </div>
 
+            {/* Delivery Dispatch section for Delivery Orders */}
+            {lastCompletedOrder.order_type === "delivery" && (
+              <div className="bg-[#0F1115] border border-[#262D3D] rounded-xl p-3.5 space-y-2 text-left">
+                <div className="flex justify-between items-center text-xs font-bold text-gray-300">
+                  <span>🛵 WhatsApp Delivery Dispatch</span>
+                  <span className="text-[10px] text-gray-500">Auto-Formatted</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-gray-400">Driver/Company #:</span>
+                  <input
+                    type="text"
+                    placeholder="e.g. 96170123456"
+                    value={deliveryCompanyPhone}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setDeliveryCompanyPhone(val);
+                      if (typeof window !== "undefined") {
+                        localStorage.setItem("pos_delivery_company_phone", val);
+                      }
+                    }}
+                    className="flex-1 bg-[#181C24] border border-[#262D3D] rounded-lg px-2.5 py-1 text-xs text-white placeholder-gray-500 font-mono focus:outline-none focus:border-[#25D366]"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleSendDeliveryWhatsApp}
+                  className="w-full py-2.5 bg-[#25D366] hover:bg-[#20bd5a] text-black font-extrabold text-xs rounded-xl flex items-center justify-center gap-2 shadow-md transition-all active:scale-98"
+                >
+                  <span>📲</span>
+                  <span>Send Order to Delivery Company on WhatsApp</span>
+                </button>
+              </div>
+            )}
+
             <div className="flex justify-center gap-3 pt-2">
               <button
                 onClick={handlePrintThermalTicket}
@@ -1628,7 +1695,7 @@ export default function TabletPOSPage() {
               </button>
               <button
                 onClick={() => setActiveTabModal(null)}
-                className="px-4 py-2.5 bg-[#262D3D] text-white rounded-xl text-xs font-bold"
+                className="px-4 py-2.5 bg-[#262D3D] text-white rounded-xl text-xs font-bold hover:bg-[#323B4E]"
               >
                 Close
               </button>
