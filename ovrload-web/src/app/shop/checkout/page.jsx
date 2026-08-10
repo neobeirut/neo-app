@@ -116,9 +116,19 @@ export default function CheckoutPage() {
       return;
     }
 
-    if (orderType === "delivery" && !deliveryAddress.trim()) {
-      alert("Please enter a delivery address");
-      return;
+    if (orderType === "delivery") {
+      if (!deliveryAddress.trim()) {
+        alert("Please enter a delivery address");
+        return;
+      }
+      if (isCalculatingFee) {
+        alert("Calculating delivery fee based on your location... Please wait a moment.");
+        return;
+      }
+      if (!calculatedDeliveryFee || Number(calculatedDeliveryFee) <= 0) {
+        alert("⚠️ Cannot place delivery order: Delivery fee is $0 or uncalculated. Please enter a valid delivery location and wait for fee calculation.");
+        return;
+      }
     }
 
     setSubmitting(true);

@@ -16,7 +16,7 @@ export default function TabletPOSPage() {
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [deliveryAddress, setDeliveryAddress] = useState("");
-  const [deliveryFee, setDeliveryFee] = useState(3);
+  const [deliveryFee, setDeliveryFee] = useState(0);
   
   // Admin Configured Channel Discounts (Fetched from admin settings)
   const [totersDiscountPercent, setTotersDiscountPercent] = useState(15);
@@ -93,6 +93,29 @@ export default function TabletPOSPage() {
     if (c.delivery_address) setDeliveryAddress(c.delivery_address);
     setShowCustomerDropdown(false);
   };
+
+  // Auto-calculate delivery fee in POS when delivery address is entered
+  useEffect(() => {
+    if (orderType !== "delivery" || !deliveryAddress.trim()) {
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch("/api/delivery/calculate-cost", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ branchId: 1, address: deliveryAddress.trim() }),
+        });
+        const data = await res.json();
+        if (data.deliveryCost !== undefined && data.deliveryCost > 0) {
+          setDeliveryFee(data.deliveryCost);
+        }
+      } catch (err) {
+        console.error("Error calculating POS delivery fee:", err);
+      }
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [deliveryAddress, orderType]);
 
   const receiptPrintRef = useRef(null);
 
@@ -352,11 +375,18 @@ export default function TabletPOSPage() {
     }
   };
 
-  // Validate Order Origin Selection
-  const validateOrderOrigin = () => {
-    if (!selectedChannel) {
+  // Validate Order Origin & Delivery Fee ($0 delivery fee is blocked for delivery orders)
+  const validateOrder = () => {
+    if (!selectedChannel && !editingOrderId) {
       setValidationError("⚠️ Order Origin is REQUIRED! Please select Toters, WhatsApp, NokNok, etc. at the top.");
       return false;
+    }
+    if (orderType === "delivery") {
+      const fee = parseFloat(deliveryFee) || 0;
+      if (fee <= 0) {
+        setValidationError("⚠️ Delivery fee cannot be $0 for delivery orders. Please enter a delivery location or set the fee.");
+        return false;
+      }
     }
     setValidationError("");
     return true;
@@ -365,7 +395,7 @@ export default function TabletPOSPage() {
   // Hold Current Order
   const handleHoldOrder = async () => {
     if (ticketItems.length === 0) return;
-    if (!validateOrderOrigin()) return;
+    if (!validateOrder()) return;
 
     setIsSubmitting(true);
     try {
@@ -401,7 +431,7 @@ export default function TabletPOSPage() {
         setDeliveryAddress("");
         setSelectedChannel(null); // Reset origin
         setEditingOrderId(null);
-        setDeliveryFee(3);
+        setDeliveryFee(0);
         setOrderType("delivery");
         fetchOrdersQueue();
       }
@@ -416,8 +446,8 @@ export default function TabletPOSPage() {
   const handleFinalizePayment = async () => {
     if (ticketItems.length === 0) return;
     // Default to In-Store if no channel selected instead of blocking
-    if (!selectedChannel) setSelectedChannel("In-Store");
-    setValidationError("");
+    if (!selectedChannel && !editingOrderId) setSelectedChannel("In-Store");
+    if (!validateOrder()) return;
 
     setIsSubmitting(true);
     try {
@@ -517,7 +547,7 @@ export default function TabletPOSPage() {
         setDiscountType("none");
         setDiscountValInput(15);
         setDiscountIsPercent(true);
-        setDeliveryFee(3);
+        setDeliveryFee(0);
         setOrderType("delivery");
         setActiveTabModal("receipt");
         fetchOrdersQueue();
@@ -573,9 +603,9 @@ export default function TabletPOSPage() {
     setCustomerName(order.customer_name || "");
     setCustomerPhone(order.customer_phone || "");
     setDeliveryAddress(order.delivery_address || "");
-    const initialFee = order.delivery_fee !== undefined && order.delivery_fee !== null && parseFloat(order.delivery_fee) > 0
+    const initialFee = order.delivery_fee !== undefined && order.delivery_fee !== null
       ? parseFloat(order.delivery_fee)
-      : (order.order_type === "delivery" || !order.order_type ? 3 : 0);
+      : 0;
     setDeliveryFee(initialFee);
 
     const mappedItems = (order.items || []).map((i) => ({
@@ -859,7 +889,6 @@ export default function TabletPOSPage() {
               <button
                 onClick={() => {
                   setOrderType("delivery");
-                  if (deliveryFee === 0 || !deliveryFee) setDeliveryFee(3);
                 }}
                 className={`py-2 rounded-xl text-xs font-bold border transition-all ${
                   orderType === "delivery"
@@ -872,6 +901,7 @@ export default function TabletPOSPage() {
               <button
                 onClick={() => {
                   setOrderType("pickup");
+                  setDeliveryFee(0);
                 }}
                 className={`py-2 rounded-xl text-xs font-bold border transition-all ${
                   orderType === "pickup"

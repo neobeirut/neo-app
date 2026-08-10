@@ -86,6 +86,13 @@ export async function POST(request) {
       return Response.json({ error: "Cannot create an empty order" }, { status: 400 });
     }
 
+    if (orderType === "delivery" && (parseFloat(deliveryFee) || 0) <= 0) {
+      return Response.json(
+        { error: "Delivery fee cannot be 0 for delivery orders. Please enter a location or set a valid delivery fee." },
+        { status: 400 }
+      );
+    }
+
     // Insert order
     const orderResult = await sql`
       INSERT INTO orders (
