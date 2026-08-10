@@ -353,7 +353,7 @@ export default function TabletPOSPage() {
   })();
 
   const discountAmount = calculatedDiscount;
-  const total = Math.max(0, subtotal + (orderType === "delivery" ? deliveryFee : 0) - discountAmount);
+  const total = Math.max(0, subtotal + (Number(deliveryFee) || 0) - discountAmount);
 
   // Human-readable discount label for receipt
   const discountLabel = (() => {
@@ -1240,6 +1240,28 @@ export default function TabletPOSPage() {
                     </div>
                   </div>
                   <span>-${discountAmount.toFixed(2)}</span>
+                </div>
+
+                {/* Interactive Editable Delivery Fee Row (Listed directly under Discount, editable by cashier) */}
+                <div className="flex justify-between items-center gap-2 text-xs font-bold text-gray-300">
+                  <div className="flex items-center gap-1.5">
+                    <span>🛵 Delivery</span>
+                    <div className="flex items-center bg-[#0F1115] border border-[#262D3D] focus-within:border-[#eb660c] rounded px-1.5 py-0.5">
+                      <span className="text-[10px] text-[#25D366] font-extrabold mr-0.5">$</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        value={deliveryFee}
+                        onChange={(e) => {
+                          const val = Math.max(0, parseFloat(e.target.value) || 0);
+                          setDeliveryFee(val);
+                        }}
+                        className="w-12 bg-transparent text-right text-xs font-black text-[#25D366] outline-none"
+                      />
+                    </div>
+                  </div>
+                  <span className="text-[#25D366] font-extrabold">+${deliveryFee.toFixed(2)}</span>
                 </div>
                 {(!["Toters", "NokNok"].includes(selectedChannel)) && (
                   <div className="flex justify-between items-center gap-2 text-xs text-gray-400">
