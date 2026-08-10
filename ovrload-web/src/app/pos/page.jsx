@@ -612,12 +612,12 @@ export default function TabletPOSPage() {
     }
   };
 
-  // Send WhatsApp Driver Request to Delivery Company (+961 3 826 136)
+  // Send WhatsApp Driver Request to Delivery Company (+961 3 361 515)
   const handleSendDeliveryWhatsApp = (etaMinutes) => {
     if (!lastCompletedOrder) return;
-    const cleanPhone = "9613826136";
+    const cleanPhone = "9613361515";
     const timeText = etaMinutes ? `${etaMinutes}'` : "15'";
-    const msg = `🛵 Hello, need driver in ${timeText} for Order #${lastCompletedOrder.id}`;
+    const msg = `🛵 Hello, need driver in ${timeText}`;
     const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`;
     window.open(waUrl, "_blank");
   };
@@ -1639,11 +1639,11 @@ export default function TabletPOSPage() {
             {lastCompletedOrder.order_type === "delivery" && (
               <div className="bg-[#0F1115] border border-[#262D3D] rounded-xl p-3.5 space-y-2.5 text-center">
                 <div className="flex justify-between items-center text-xs font-bold text-gray-300">
-                  <span className="flex items-center gap-1.5">🛵 Request Driver (+961 3 826 136)</span>
+                  <span className="flex items-center gap-1.5">🛵 Request Driver (+961 3 361 515)</span>
                   <span className="text-[10px] text-[#25D366] font-bold">1-Tap Dispatch</span>
                 </div>
                 <div className="text-[11px] text-gray-400 font-medium text-left">
-                  Select arrival ETA time for Order #{lastCompletedOrder.id}:
+                  Select arrival ETA time:
                 </div>
                 <div className="grid grid-cols-4 gap-2">
                   {["15", "20", "30", "45"].map((time) => (
