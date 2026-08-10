@@ -563,7 +563,7 @@ export default function TabletPOSPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0F1115] text-[#E0E6ED] font-sans overflow-hidden flex flex-col select-none">
+    <div className="h-screen max-h-screen bg-[#0F1115] text-[#E0E6ED] font-sans overflow-hidden flex flex-col select-none">
       {/* Printable Thermal Receipt Container */}
       {lastCompletedOrder && (
         <div className="hidden print:block print:w-[80mm] print:text-black print:p-2 text-xs font-mono">
@@ -606,7 +606,7 @@ export default function TabletPOSPage() {
       )}
 
       {/* TOP TABLET HEADER */}
-      <header className="h-16 bg-[#181C24] border-b border-[#262D3D] px-6 flex items-center justify-between shadow-md print:hidden">
+      <header className="h-16 bg-[#181C24] border-b border-[#262D3D] px-6 flex items-center justify-between shadow-md print:hidden flex-shrink-0">
         {/* Brand */}
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
@@ -682,7 +682,7 @@ export default function TabletPOSPage() {
 
       {/* Validation Error Banner */}
       {validationError && (
-        <div className="bg-red-600 text-white text-xs font-bold px-6 py-2 flex items-center justify-between shadow-md print:hidden">
+        <div className="bg-red-600 text-white text-xs font-bold px-6 py-2 flex items-center justify-between shadow-md print:hidden flex-shrink-0">
           <span>{validationError}</span>
           <button onClick={() => setValidationError("")} className="font-extrabold px-2">✕</button>
         </div>
@@ -690,7 +690,7 @@ export default function TabletPOSPage() {
 
       {/* Editing WhatsApp Banner */}
       {editingOrderId && (
-        <div className="bg-[#eb660c] text-white text-xs font-extrabold px-6 py-2 flex items-center justify-between shadow-md print:hidden">
+        <div className="bg-[#eb660c] text-white text-xs font-extrabold px-6 py-2 flex items-center justify-between shadow-md print:hidden flex-shrink-0">
           <span>✏️ Editing WhatsApp Order #{editingOrderId} — Make adjustments then tap "Approve & Print"</span>
           <button
             onClick={() => {
@@ -706,11 +706,11 @@ export default function TabletPOSPage() {
       )}
 
       {/* DUAL-PANE TABLET MAIN AREA */}
-      <div className="flex-1 flex overflow-hidden print:hidden">
+      <div className="flex-1 min-h-0 flex overflow-hidden print:hidden">
         {/* LEFT PANE: PRODUCTS & CATEGORIES (65% width) */}
-        <div className="w-[65%] flex flex-col bg-[#12151C] border-r border-[#262D3D]">
+        <div className="w-[65%] h-full flex flex-col bg-[#12151C] border-r border-[#262D3D] min-h-0 overflow-hidden">
           {/* Category Tabs (No search bar) */}
-          <div className="p-4 bg-[#181C24] border-b border-[#262D3D] flex items-center gap-2 overflow-x-auto no-scrollbar">
+          <div className="p-4 bg-[#181C24] border-b border-[#262D3D] flex items-center gap-2 overflow-x-auto no-scrollbar flex-shrink-0">
             <button
               onClick={() => setSelectedCategory("All")}
               className={`px-4 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
@@ -737,7 +737,7 @@ export default function TabletPOSPage() {
           </div>
 
           {/* Product Grid (Compact, Fixed Card Height, Price between Options & Add) */}
-          <div className="flex-1 overflow-y-auto p-4 grid grid-cols-3 gap-3 align-content-start">
+          <div className="flex-1 min-h-0 overflow-y-auto p-4 grid grid-cols-3 gap-3 align-content-start">
             {filteredProducts.map((product) => (
               <div
                 key={product.id}
@@ -776,9 +776,9 @@ export default function TabletPOSPage() {
         </div>
 
         {/* RIGHT PANE: ACTIVE TICKET CART & CHECKOUT (35% width - Independent 100% Height) */}
-        <div className="w-[35%] h-full flex flex-col bg-[#181C24] border-l border-[#262D3D] overflow-hidden relative">
+        <div className="w-[35%] h-full flex flex-col bg-[#181C24] border-l border-[#262D3D] min-h-0 overflow-hidden relative">
           {/* Order Header / Customer Info (Fixed Top) */}
-          <div className="p-4 border-b border-[#262D3D] bg-[#14171F] flex-shrink-0">
+          <div className="p-3.5 border-b border-[#262D3D] bg-[#14171F] flex-shrink-0">
             <div className="flex items-center justify-between mb-3">
               <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">
                 Current Ticket
@@ -847,7 +847,7 @@ export default function TabletPOSPage() {
           </div>
 
           {/* Ticket Items List (Scrollable Middle Section) */}
-          <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-2.5">
+          <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-2">
             {ticketItems.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-gray-500 gap-2 py-12">
                 <svg className="w-12 h-12 stroke-current" fill="none" viewBox="0 0 24 24">
@@ -931,7 +931,7 @@ export default function TabletPOSPage() {
           </div>
 
           {/* Ticket Footer / Summary (Fixed Bottom - Always Visible) */}
-          <div className="p-4 border-t border-[#262D3D] bg-[#14171F] space-y-3 flex-shrink-0 shadow-2xl">
+          <div className="p-3.5 border-t border-[#262D3D] bg-[#14171F] space-y-2.5 flex-shrink-0 shadow-2xl">
             {/* Discount Selection Section */}
             <div className="bg-[#0F1115] p-2.5 rounded-xl border border-[#262D3D] space-y-2">
               <div className="flex items-center justify-between">
