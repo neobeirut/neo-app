@@ -1157,7 +1157,12 @@ export default function TabletPOSPage() {
                 <button
                   onClick={() => {
                     if (!validateOrder()) return;
-                    handleFinalizePayment();
+                    // For Toters, NokNok, or Editing existing orders, bypass modal and finalize directly
+                    if (selectedChannel === "Toters" || selectedChannel === "NokNok" || editingOrderId) {
+                      handleFinalizePayment();
+                    } else {
+                      setActiveTabModal("payment");
+                    }
                   }}
                   disabled={ticketItems.length === 0 || isSubmitting}
                   className="py-2.5 px-3 bg-[#eb660c] hover:bg-[#d55909] disabled:opacity-50 text-white rounded-xl font-extrabold text-xs transition-all shadow-md whitespace-nowrap"
@@ -1369,22 +1374,23 @@ export default function TabletPOSPage() {
         </div>
       )}
 
-      {/* PAYMENT METHOD SELECTION MODAL */}
+      {/* PAYMENT METHOD SELECTION MODAL (CASH vs WISH) */}
       {activeTabModal === "payment" && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:hidden">
-          <div className="bg-[#181C24] border border-[#262D3D] rounded-2xl w-[450px] p-5 space-y-4 shadow-2xl">
+          <div className="bg-[#181C24] border border-[#262D3D] rounded-2xl w-[450px] p-5 space-y-5 shadow-2xl">
             <div className="flex justify-between items-center border-b border-[#262D3D] pb-3">
               <h3 className="font-extrabold text-lg text-white">Select Payment Method</h3>
               <button
+                type="button"
                 onClick={() => setActiveTabModal(null)}
-                className="text-gray-400 hover:text-white font-bold"
+                className="text-gray-400 hover:text-white font-bold text-lg"
               >
                 ✕
               </button>
             </div>
 
-            <div className="text-center py-2 bg-[#0F1115] rounded-xl border border-[#262D3D]">
-              <span className="text-xs text-gray-400 block">Total Due</span>
+            <div className="text-center py-3 bg-[#0F1115] rounded-xl border border-[#262D3D]">
+              <span className="text-xs text-gray-400 block font-semibold mb-1">Total Due Amount</span>
               <span className="text-3xl font-black text-[#eb660c]">${total.toFixed(2)}</span>
             </div>
 
@@ -1395,29 +1401,43 @@ export default function TabletPOSPage() {
               ].map((method) => (
                 <button
                   key={method.name}
+                  type="button"
                   onClick={() => setSelectedPaymentMethod(method.name)}
-                  className={`p-4 rounded-xl border font-bold text-sm flex items-center gap-2 transition-all ${
+                  className={`p-4 rounded-xl border font-black text-sm flex items-center justify-center gap-2.5 transition-all ${
                     selectedPaymentMethod === method.name
-                      ? "bg-[#eb660c]/20 border-[#eb660c] text-white shadow-md scale-105"
-                      : "bg-[#0F1115] border-[#262D3D] text-gray-400 hover:text-white"
+                      ? "bg-[#eb660c] border-[#eb660c] text-white shadow-lg scale-105 ring-2 ring-white/20"
+                      : "bg-[#0F1115] border-[#262D3D] text-gray-400 hover:text-white hover:border-gray-500"
                   }`}
                 >
-                  <span>{method.icon}</span>
-                  <span>{method.name}</span>
+                  <span className="text-2xl">{method.icon}</span>
+                  <span className="text-base">{method.name}</span>
                 </button>
               ))}
             </div>
 
-            {/* Show channel warning inside the modal */}
-            {!selectedChannel && (
-              <div className="bg-yellow-500/10 border border-yellow-500/40 rounded-xl px-3 py-2 text-xs text-yellow-300 font-semibold">
-                ⚠️ No channel selected — will default to <strong>In-Store</strong>
-              </div>
-            )}
-
-            <div className="pt-2 flex justify-end gap-2">
+            <div className="pt-2 flex justify-end gap-2 border-t border-[#262D3D]">
               <button
+                type="button"
                 onClick={() => setActiveTabModal(null)}
+                className="px-4 py-2.5 bg-[#262D3D] text-white rounded-xl text-xs font-bold hover:bg-[#323B4E]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTabModal(null);
+                  handleFinalizePayment();
+                }}
+                disabled={isSubmitting}
+                className="px-6 py-2.5 bg-[#eb660c] hover:bg-[#d55909] disabled:opacity-50 text-white rounded-xl text-xs font-extrabold shadow-md"
+              >
+                {isSubmitting ? "Processing..." : `Confirm ${selectedPaymentMethod} & Print`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
                 className="px-4 py-2.5 bg-[#262D3D] text-white rounded-xl text-xs font-bold"
               >
                 Cancel
