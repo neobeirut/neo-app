@@ -108,6 +108,8 @@ export default function CheckoutPage() {
   const deliveryFee = orderType === "delivery" ? calculatedDeliveryFee : 0;
   const total = subtotal + deliveryFee;
 
+  const isDeliveryBlocked = orderType === "delivery" && (isCalculatingFee || !deliveryAddress.trim() || calculatedDeliveryFee <= 0);
+
   const handlePlaceOrder = async (e) => {
     e.preventDefault();
 
@@ -118,7 +120,7 @@ export default function CheckoutPage() {
 
     if (orderType === "delivery") {
       if (!deliveryAddress.trim()) {
-        alert("Please enter a delivery address");
+        alert("Please enter a delivery address to calculate delivery fee.");
         return;
       }
       if (isCalculatingFee) {
@@ -126,7 +128,7 @@ export default function CheckoutPage() {
         return;
       }
       if (!calculatedDeliveryFee || Number(calculatedDeliveryFee) <= 0) {
-        alert("⚠️ Cannot place delivery order: Delivery fee is $0 or uncalculated. Please enter a valid delivery location and wait for fee calculation.");
+        alert("⚠️ Cannot submit order: Delivery fee is $0 or uncalculated. Please specify a valid delivery location and wait for fee calculation.");
         return;
       }
     }
@@ -279,7 +281,7 @@ export default function CheckoutPage() {
         <form onSubmit={handlePlaceOrder}>
           {/* Order Type */}
           <div className="mb-8">
-            <h2 className="text-xl font-bold text-[#1A1A1A] mb-4">
+            <h2 className="text-1xl font-bold text-[#1A1A1A] mb-4">
               Order Type
             </h2>
             <div className="grid grid-cols-2 gap-4">
@@ -430,9 +432,9 @@ export default function CheckoutPage() {
                     ? "$0.00 (Pickup)"
                     : isCalculatingFee
                     ? "Calculating..."
-                    : deliveryAddress.trim()
+                    : deliveryAddress.trim() && calculatedDeliveryFee > 0
                     ? `$${calculatedDeliveryFee.toFixed(2)}`
-                    : "$0.00 (Select location)"}
+                    : "$0.00 (Select location / Calculation required)"}
                 </span>
               </div>
               <div className="border-t border-[#E0E0E0] pt-3 flex justify-between">
@@ -448,14 +450,34 @@ export default function CheckoutPage() {
             </div>
           </div>
 
+          {/* Warning banner if delivery calculation is missing/pending */}
+          {orderType === "delivery" && isDeliveryBlocked && (
+            <div className="mb-4 p-3.5 bg-amber-50 border border-amber-300 rounded-xl text-xs text-amber-900 font-bold flex items-center gap-2">
+              <span className="text-base">⚠️</span>
+              <span>
+                {isCalculatingFee
+                  ? "Calculating delivery fee for your location..."
+                  : !deliveryAddress.trim()
+                  ? "Please enter your delivery address above to calculate delivery fee."
+                  : "Delivery fee calculation pending or location invalid ($0 fee). You cannot place a delivery order until a valid delivery location is specified and fee is calculated."}
+              </span>
+            </div>
+          )}
+
           {/* Place Order Button */}
           <button
             type="submit"
-            disabled={submitting}
+            disabled={submitting || isDeliveryBlocked}
             className="w-full bg-[#235b4e] text-white px-6 py-4 rounded-lg hover:bg-[#2B6B5C] transition-colors font-medium text-lg disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {submitting
               ? "Placing Order..."
+              : isDeliveryBlocked
+              ? isCalculatingFee
+                ? "Calculating Delivery Fee..."
+                : !deliveryAddress.trim()
+                ? "Enter Delivery Address to Continue"
+                : "Delivery Fee Calculation Required ($0)"
               : `Place Order - $${total.toFixed(2)}`}
           </button>
         </form>

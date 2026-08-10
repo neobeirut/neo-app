@@ -432,6 +432,18 @@ export async function POST(request) {
 
     let deliveryFee = deliveryInfo.fee;
 
+    // Reject delivery order creation if delivery fee is 0 and no active free delivery period exists
+    if (order_type === "delivery" && deliveryFee <= 0 && deliveryInfo.calculationMethod !== "free_period") {
+      return corsJson(
+        request,
+        {
+          error: "Delivery fee cannot be $0 for delivery orders. Please specify a valid delivery address.",
+          code: "DELIVERY_FEE_ZERO",
+        },
+        { status: 400 },
+      );
+    }
+
     // Process points reward
     const rewardResult = await processPointsReward({
       request,
