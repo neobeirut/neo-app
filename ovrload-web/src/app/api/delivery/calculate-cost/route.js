@@ -232,7 +232,7 @@ export async function POST(request) {
       `;
       const cost = firstRule?.delivery_cost
         ? parseFloat(firstRule.delivery_cost)
-        : (fallbackSetting ? parseFloat(fallbackSetting.setting_value) : 3.0);
+        : (fallbackSetting ? parseFloat(fallbackSetting.setting_value) : 0);
 
       return Response.json({
         distanceKm: null,
@@ -280,7 +280,7 @@ export async function POST(request) {
 
       const fallbackCost = fallbackSetting
         ? parseFloat(fallbackSetting.setting_value)
-        : 5.0;
+        : 0;
 
       console.log("[USING FALLBACK DUE TO API ERROR]", fallbackCost);
 
@@ -359,7 +359,7 @@ export async function POST(request) {
 
       const fallbackCost = fallbackSetting
         ? parseFloat(fallbackSetting.setting_value)
-        : 5.0;
+        : 0;
 
       console.log("[USING FALLBACK]", fallbackCost);
 
