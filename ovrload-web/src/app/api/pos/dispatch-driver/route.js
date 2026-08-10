@@ -1,6 +1,5 @@
-import { sendInfobipWhatsAppFreeForm } from "@/app/api/utils/infobipWhatsApp";
+import { sendInfobipWhatsAppTemplate, sendInfobipWhatsAppFreeForm } from "@/app/api/utils/infobipWhatsApp";
 
-// Trigger deployment build 2026-08-10 18:05
 export async function POST(request) {
   try {
     const body = await request.json();
@@ -9,11 +8,32 @@ export async function POST(request) {
     const timeText = etaMinutes ? `${etaMinutes}'` : "15'";
     const messageText = `🛵 Hello, need driver in ${timeText}`;
 
-    const apiResult = await sendInfobipWhatsAppFreeForm(targetPhone, messageText);
+    let apiResult = null;
+    let templateSuccess = false;
+
+    // 1. Try Approved Template first (bypasses 24-hour session limits)
+    try {
+      apiResult = await sendInfobipWhatsAppTemplate(
+        targetPhone,
+        { templateName: "driver_request", language: "en" },
+        [timeText]
+      );
+      if (apiResult && apiResult.id) {
+        templateSuccess = true;
+      }
+    } catch (templateError) {
+      console.warn("[dispatch-driver] Template dispatch failed, falling back to free-form text:", templateError.message);
+    }
+
+    // 2. Fallback to free-form text if template is not yet active
+    if (!templateSuccess) {
+      apiResult = await sendInfobipWhatsAppFreeForm(targetPhone, messageText);
+    }
 
     return Response.json({
       success: true,
       apiSuccess: true,
+      usedTemplate: templateSuccess,
       messageText,
       targetPhone,
       result: apiResult,
