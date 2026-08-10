@@ -1,5 +1,6 @@
 import { sendInfobipWhatsAppFreeForm } from "@/app/api/utils/infobipWhatsApp";
 
+// Trigger deployment build 2026-08-10 18:05
 export async function POST(request) {
   try {
     const body = await request.json();
