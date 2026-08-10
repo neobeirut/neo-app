@@ -449,7 +449,7 @@ export default function TabletPOSPage() {
           deliveryAddress,
           status: "held",
           subtotal,
-          deliveryFee: orderType === "delivery" ? deliveryFee : 0,
+          deliveryFee: (parseFloat(deliveryFee) || 0),
           discountAmount,
           total,
           items: ticketItems.map((item) => ({
@@ -498,7 +498,7 @@ export default function TabletPOSPage() {
           body: JSON.stringify({
             status: "approved",
             subtotal,
-            deliveryFee: orderType === "delivery" ? (parseFloat(deliveryFee) || 0) : 0,
+            deliveryFee: (parseFloat(deliveryFee) || 0),
             discountAmount,
             total,
             customerName,
@@ -538,7 +538,7 @@ export default function TabletPOSPage() {
             deliveryAddress,
             status: "completed",
             subtotal,
-            deliveryFee: orderType === "delivery" ? deliveryFee : 0,
+            deliveryFee: (parseFloat(deliveryFee) || 0),
             discountAmount,
             total,
             items: ticketItems.map((item) => ({
@@ -568,7 +568,7 @@ export default function TabletPOSPage() {
           customer_phone: customerPhone,
           delivery_address: deliveryAddress,
           subtotal_amount: subtotal,
-          delivery_fee: orderType === "delivery" ? deliveryFee : 0,
+          delivery_fee: (parseFloat(deliveryFee) || 0),
           discount_amount: discountAmount,
           discount_label: discountAmount > 0 ? discountLabel : null,
           total_amount: total,
