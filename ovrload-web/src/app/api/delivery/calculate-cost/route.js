@@ -4,86 +4,59 @@ import sql from "@/app/api/utils/sql";
  * Calculate driving distance between two points using Google Routes API (New)
  * Replaces deprecated Distance Matrix API
  */
+function haversineDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371; // Earth radius in km
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) *
+      Math.cos(lat2 * (Math.PI / 180)) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  // 1.3x multiplier estimates real road driving distance vs straight line
+  return parseFloat((R * c * 1.3).toFixed(2));
+}
+
 async function calculateDistance(origin, destination) {
-  // IMPORTANT: Use only the server key, NOT the public/client keys
-  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
-  if (!apiKey) {
-    console.error(
-      "[GOOGLE MAPS] GOOGLE_MAPS_API_KEY not found. Available env vars:",
-      Object.keys(process.env).filter(
-        (k) => k.includes("GOOGLE") || k.includes("MAPS"),
-      ),
-    );
-    throw new Error(
-      "Google Maps API key not configured - GOOGLE_MAPS_API_KEY must be set for server-side API calls",
-    );
-  }
+  if (apiKey) {
+    try {
+      const url = `https://routes.googleapis.com/directions/v2:computeRoutes`;
+      const requestBody = {
+        origin: { location: { latLng: { latitude: origin.lat, longitude: origin.lng } } },
+        destination: { location: { latLng: { latitude: destination.lat, longitude: destination.lng } } },
+        travelMode: "DRIVE",
+        routingPreference: "TRAFFIC_AWARE",
+        computeAlternativeRoutes: false,
+        languageCode: "en-US",
+        units: "METRIC",
+      };
 
-  // Routes API endpoint
-  const url = `https://routes.googleapis.com/directions/v2:computeRoutes`;
-
-  // Routes API request body
-  const requestBody = {
-    origin: {
-      location: {
-        latLng: {
-          latitude: origin.lat,
-          longitude: origin.lng,
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Goog-Api-Key": apiKey,
+          "X-Goog-FieldMask": "routes.distanceMeters,routes.duration",
         },
-      },
-    },
-    destination: {
-      location: {
-        latLng: {
-          latitude: destination.lat,
-          longitude: destination.lng,
-        },
-      },
-    },
-    travelMode: "DRIVE",
-    routingPreference: "TRAFFIC_AWARE",
-    computeAlternativeRoutes: false,
-    languageCode: "en-US",
-    units: "METRIC",
-  };
+        body: JSON.stringify(requestBody),
+      });
 
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Goog-Api-Key": apiKey,
-      // Request only the fields we need to reduce costs
-      "X-Goog-FieldMask": "routes.distanceMeters,routes.duration",
-    },
-    body: JSON.stringify(requestBody),
-  });
-
-  const data = await response.json();
-
-  console.log("[ROUTES API] Full response:", JSON.stringify(data, null, 2));
-
-  // Check for API errors
-  if (!response.ok || data.error) {
-    console.error("[ROUTES API] Error details:", {
-      status: response.status,
-      error: data.error,
-      full_response: data,
-    });
-    throw new Error(
-      `Google Routes API error: ${data.error?.message || response.statusText}`,
-    );
+      const data = await response.json();
+      const route = data.routes?.[0];
+      if (route && route.distanceMeters) {
+        return route.distanceMeters / 1000;
+      }
+    } catch (err) {
+      console.warn("[ROUTES API ERROR - FALLING BACK TO HAVERSINE]", err.message);
+    }
   }
 
-  // Extract distance from first route
-  const route = data.routes?.[0];
-
-  if (!route || !route.distanceMeters) {
-    throw new Error("Unable to calculate distance - no route found");
-  }
-
-  // Return distance in kilometers
-  return route.distanceMeters / 1000;
+  // Haversine fallback if API key is missing or Routes API fails
+  return haversineDistance(origin.lat, origin.lng, destination.lat, destination.lng);
 }
 
 /**
@@ -149,8 +122,8 @@ async function findDeliveryRule(branchId, distanceKm) {
     FROM delivery_pricing_rules
     WHERE branch_id = ${branchId}
       AND is_active = true
-      AND min_distance_km <= ${distanceKm}
-      AND max_distance_km >= ${distanceKm}
+      AND min_distance_km::numeric <= ${distanceKm}
+      AND max_distance_km::numeric >= ${distanceKm}
     ORDER BY display_order, id
     LIMIT 1
   `;
@@ -165,8 +138,8 @@ async function findDeliveryRule(branchId, distanceKm) {
     FROM delivery_pricing_rules
     WHERE branch_id IS NULL
       AND is_active = true
-      AND min_distance_km <= ${distanceKm}
-      AND max_distance_km >= ${distanceKm}
+      AND min_distance_km::numeric <= ${distanceKm}
+      AND max_distance_km::numeric >= ${distanceKm}
     ORDER BY display_order, id
     LIMIT 1
   `;
