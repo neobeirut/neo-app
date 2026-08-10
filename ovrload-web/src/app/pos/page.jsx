@@ -57,6 +57,7 @@ export default function TabletPOSPage() {
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [validationError, setValidationError] = useState("");
+  const [copiedWaMsg, setCopiedWaMsg] = useState(false);
   const [deliveryCompanyPhone, setDeliveryCompanyPhone] = useState(() => {
     if (typeof window !== "undefined") {
       return localStorage.getItem("pos_delivery_company_phone") || "";
@@ -612,14 +613,24 @@ export default function TabletPOSPage() {
     }
   };
 
-  // Send WhatsApp Driver Request to Delivery Company (+961 3 361 515)
-  const handleSendDeliveryWhatsApp = (etaMinutes) => {
+  // Send or Copy WhatsApp Driver Request to Delivery Company (+961 3 361 515)
+  const handleSendDeliveryWhatsApp = (etaMinutes, copyOnly = false) => {
     if (!lastCompletedOrder) return;
     const cleanPhone = "9613361515";
     const timeText = etaMinutes ? `${etaMinutes}'` : "15'";
     const msg = `🛵 Hello, need driver in ${timeText}`;
-    const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`;
-    window.open(waUrl, "_blank");
+
+    // Always copy message & target number to clipboard for easy pasting
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      navigator.clipboard.writeText(`${msg}\nTarget: +${cleanPhone}`);
+      setCopiedWaMsg(true);
+      setTimeout(() => setCopiedWaMsg(false), 3000);
+    }
+
+    if (!copyOnly) {
+      const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`;
+      window.open(waUrl, "_blank");
+    }
   };
 
   // Directly Approve Incoming WhatsApp Order
@@ -1640,10 +1651,16 @@ export default function TabletPOSPage() {
               <div className="bg-[#0F1115] border border-[#262D3D] rounded-xl p-3.5 space-y-2.5 text-center">
                 <div className="flex justify-between items-center text-xs font-bold text-gray-300">
                   <span className="flex items-center gap-1.5">🛵 Request Driver (+961 3 361 515)</span>
-                  <span className="text-[10px] text-[#25D366] font-bold">1-Tap Dispatch</span>
+                  {copiedWaMsg ? (
+                    <span className="text-[10px] bg-[#25D366]/20 text-[#25D366] px-2 py-0.5 rounded-full font-black animate-pulse">
+                      Copied to Clipboard! ✓
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-[#25D366] font-bold">1-Tap Dispatch</span>
+                  )}
                 </div>
                 <div className="text-[11px] text-gray-400 font-medium text-left">
-                  Select arrival ETA time:
+                  Select arrival ETA time to open WhatsApp or copy message:
                 </div>
                 <div className="grid grid-cols-4 gap-2">
                   {["15", "20", "30", "45"].map((time) => (
@@ -1657,6 +1674,13 @@ export default function TabletPOSPage() {
                     </button>
                   ))}
                 </div>
+                <button
+                  type="button"
+                  onClick={() => handleSendDeliveryWhatsApp("15", true)}
+                  className="w-full py-2 bg-[#262D3D] hover:bg-[#323B4E] text-gray-300 hover:text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all"
+                >
+                  📋 Copy Driver Message & Number to Clipboard
+                </button>
               </div>
             )}
 
