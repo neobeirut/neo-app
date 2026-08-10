@@ -377,7 +377,9 @@ export default function TabletPOSPage() {
   // Complete Order & Trigger Print (or Save Edited WhatsApp Order)
   const handleFinalizePayment = async () => {
     if (ticketItems.length === 0) return;
-    if (!validateOrderOrigin()) return;
+    // Default to In-Store if no channel selected instead of blocking
+    if (!selectedChannel) setSelectedChannel("In-Store");
+    setValidationError("");
 
     setIsSubmitting(true);
     try {
@@ -1282,6 +1284,13 @@ export default function TabletPOSPage() {
               ))}
             </div>
 
+            {/* Show channel warning inside the modal */}
+            {!selectedChannel && (
+              <div className="bg-yellow-500/10 border border-yellow-500/40 rounded-xl px-3 py-2 text-xs text-yellow-300 font-semibold">
+                ⚠️ No channel selected — will default to <strong>In-Store</strong>
+              </div>
+            )}
+
             <div className="pt-2 flex justify-end gap-2">
               <button
                 onClick={() => setActiveTabModal(null)}
@@ -1294,7 +1303,7 @@ export default function TabletPOSPage() {
                 disabled={isSubmitting}
                 className="px-6 py-2.5 bg-[#eb660c] hover:bg-[#d55909] disabled:opacity-50 text-white rounded-xl text-xs font-extrabold shadow-md"
               >
-                Confirm Payment & Print
+                {isSubmitting ? "Processing..." : "Confirm Payment & Print"}
               </button>
             </div>
           </div>
