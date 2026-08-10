@@ -1095,19 +1095,28 @@ export default function TabletPOSPage() {
                   </div>
                   <span>-${discountAmount.toFixed(2)}</span>
                 </div>
-                {orderType === "delivery" && (
+                {(!["Toters", "NokNok"].includes(selectedChannel)) && (
                   <div className="flex justify-between items-center gap-2 text-xs text-gray-400">
-                    <span>Delivery Fee</span>
-                    <div className="flex items-center gap-1">
-                      <span className="text-white font-bold">$</span>
-                      <input
-                        type="number"
-                        step="0.5"
-                        min="0"
-                        value={deliveryFee}
-                        onChange={(e) => setDeliveryFee(Math.max(0, parseFloat(e.target.value) || 0))}
-                        className="w-16 px-1.5 py-0.5 bg-[#0F1115] border border-[#262D3D] rounded text-right text-xs font-bold text-white focus:outline-none focus:border-[#eb660c]"
-                      />
+                    <span>Payment</span>
+                    <div className="flex bg-[#0F1115] p-0.5 rounded border border-[#262D3D]">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedPaymentMethod("Cash")}
+                        className={`px-2 py-0.5 text-[10px] font-bold rounded transition-all ${
+                          selectedPaymentMethod === "Cash" ? "bg-[#eb660c] text-white shadow" : "text-gray-400 hover:text-white"
+                        }`}
+                      >
+                        💵 Cash
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedPaymentMethod("Wish")}
+                        className={`px-2 py-0.5 text-[10px] font-bold rounded transition-all ${
+                          selectedPaymentMethod === "Wish" ? "bg-purple-600 text-white shadow" : "text-gray-400 hover:text-white"
+                        }`}
+                      >
+                        🟣 Wish
+                      </button>
                     </div>
                   </div>
                 )}
@@ -1129,17 +1138,12 @@ export default function TabletPOSPage() {
                 <button
                   onClick={() => {
                     if (!validateOrder()) return;
-                    // For Toters, NokNok, or Editing existing orders, bypass modal and finalize directly
-                    if (selectedChannel === "Toters" || selectedChannel === "NokNok" || editingOrderId) {
-                      handleFinalizePayment();
-                    } else {
-                      setActiveTabModal("payment");
-                    }
+                    handleFinalizePayment();
                   }}
                   disabled={ticketItems.length === 0 || isSubmitting}
                   className="py-2.5 px-3 bg-[#eb660c] hover:bg-[#d55909] disabled:opacity-50 text-white rounded-xl font-extrabold text-xs transition-all shadow-md whitespace-nowrap"
                 >
-                  {editingOrderId ? "✅ Approve & Print" : "💳 Pay & Print"}
+                  {isSubmitting ? "Processing..." : (editingOrderId ? "✅ Approve & Print" : "💳 Pay & Print")}
                 </button>
               </div>
             </div>
