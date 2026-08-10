@@ -351,41 +351,59 @@ export default function TabletPOSPage() {
     return "Discount";
   })();
 
-  // Send print job to local print server (Direct HTTP with HTTPS proxy fallback)
+  // Send print job to local print server (Form POST bypasses HTTPS Mixed Content blocking)
   const handlePrint = async (orderData) => {
-    // 1. Try direct HTTP print first
-    if (printServerIP) {
-      try {
-        const url = `http://${printServerIP}:${printServerPort}/print`;
-        const res = await fetch(url, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(orderData),
-          signal: AbortSignal.timeout(4000),
-        });
-        const result = await res.json();
-        if (result.success) {
-          console.log(`Direct HTTP Printed: ${(result.printed || []).join(" + ")}`);
-          return;
-        }
-      } catch (err) {
-        console.warn("Direct HTTP print failed (possible mixed content), routing via HTTPS proxy:", err.message);
-      }
-    }
+    const ip = printServerIP || "192.168.18.195";
+    const port = printServerPort || "9191";
+    const url = `http://${ip}:${port}/print`;
 
-    // 2. Fallback to HTTPS server proxy /api/pos/print
     try {
-      const proxyRes = await fetch("/api/pos/print", {
+      // 1. Try direct fetch first
+      const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(orderData),
+        signal: AbortSignal.timeout(2000),
       });
-      const proxyResult = await proxyRes.json();
-      if (proxyResult.success) {
-        console.log(`Proxy Printed: ${(proxyResult.printed || []).join(" + ")}`);
+      const result = await res.json();
+      if (result && result.success) {
+        console.log(`Direct HTTP Printed: ${(result.printed || []).join(" + ")}`);
+        return;
       }
-    } catch (proxyErr) {
-      console.error("Print proxy error:", proxyErr.message);
+    } catch (err) {
+      console.warn("Fetch blocked or timed out, submitting print job via form POST:", err.message);
+    }
+
+    // 2. Form POST submission to hidden iframe bypasses HTTPS Mixed Content restrictions on tablet
+    try {
+      let iframe = document.getElementById("print_iframe");
+      if (!iframe) {
+        iframe = document.createElement("iframe");
+        iframe.id = "print_iframe";
+        iframe.name = "print_iframe";
+        iframe.style.display = "none";
+        document.body.appendChild(iframe);
+      }
+
+      const form = document.createElement("form");
+      form.method = "POST";
+      form.action = url;
+      form.target = "print_iframe";
+
+      const input = document.createElement("input");
+      input.type = "hidden";
+      input.name = "payload";
+      input.value = JSON.stringify(orderData);
+      form.appendChild(input);
+
+      document.body.appendChild(form);
+      form.submit();
+      setTimeout(() => {
+        try { document.body.removeChild(form); } catch (e) {}
+      }, 1000);
+      console.log("Submitted print job via Form POST to local print server.");
+    } catch (formErr) {
+      console.error("Print form error:", formErr.message);
     }
   };
 
