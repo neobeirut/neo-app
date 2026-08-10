@@ -625,16 +625,27 @@ export default function TabletPOSPage() {
     const timeText = etaMinutes ? `${etaMinutes}'` : "15'";
     const msg = `🛵 Hello, need driver in ${timeText}`;
 
-    // Always copy message & target number to clipboard for easy pasting
+    // Always copy message to clipboard for instant pasting
     if (typeof navigator !== "undefined" && navigator.clipboard) {
-      navigator.clipboard.writeText(`${msg}\nTarget: +${cleanPhone}`);
+      navigator.clipboard.writeText(msg);
       setCopiedWaMsg(true);
       setTimeout(() => setCopiedWaMsg(false), 3000);
     }
 
     if (!copyOnly) {
-      const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`;
-      window.open(waUrl, "_blank");
+      // Direct Native App Deep-link (Instant 0-second launch, bypasses wa.me web landing page)
+      const directAppUrl = `whatsapp://send?phone=${cleanPhone}&text=${encodeURIComponent(msg)}`;
+      const link = document.createElement("a");
+      link.href = directAppUrl;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      // Fallback to wa.me only if native app doesn't launch
+      setTimeout(() => {
+        if (document.hidden || document.webkitHidden) return;
+        window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`, "_blank");
+      }, 1200);
     }
   };
 
