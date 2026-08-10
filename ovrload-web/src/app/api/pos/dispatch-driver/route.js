@@ -16,8 +16,8 @@ export async function POST(request) {
       apiResult = await sendInfobipWhatsAppFreeForm(targetPhone, messageText);
       apiSuccess = true;
     } catch (infobipErr) {
-      apiError = infobipErr.message;
-      console.warn("Infobip API dispatch warning:", infobipErr.message);
+      apiError = infobipErr.message || String(infobipErr);
+      console.error("[DispatchDriver] Infobip API Error:", infobipErr);
     }
 
     return Response.json({
