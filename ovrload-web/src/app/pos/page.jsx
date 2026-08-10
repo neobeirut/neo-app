@@ -711,45 +711,37 @@ export default function TabletPOSPage() {
           </div>
         </div>
 
-        {/* Channels Selector Bar (Required - First option is Toters) */}
+        {/* Active Origin Display & Switch Button */}
         <div className="flex items-center gap-2">
-          <span className="text-xs font-bold text-gray-400">Order Origin*:</span>
-          <div className={`flex items-center bg-[#0F1115] p-1 rounded-xl border gap-1 transition-all ${
-            !selectedChannel ? "border-red-500 animate-pulse" : "border-[#262D3D]"
-          }`}>
-            {[
-              { name: "Toters", color: "bg-[#00C49F] text-black" },
-              { name: "WhatsApp", color: "bg-[#25D366] text-black" },
-              { name: "NokNok", color: "bg-[#FF5A5F] text-white" },
-              { name: "App", color: "bg-[#3B82F6] text-white" },
-              { name: "In-Store", color: "bg-[#E5C07B] text-black" }
-            ].map((channel) => (
+          <span className="text-xs font-bold text-gray-400">Order Origin:</span>
+          {selectedChannel ? (
+            <div className="flex items-center gap-2">
+              <span className={`px-3 py-1.5 rounded-xl text-xs font-extrabold flex items-center gap-1.5 shadow-md ${
+                selectedChannel === "Toters" ? "bg-[#00C49F] text-black" :
+                selectedChannel === "WhatsApp" ? "bg-[#25D366] text-black" :
+                selectedChannel === "NokNok" ? "bg-[#FF5A5F] text-white" :
+                selectedChannel === "App" ? "bg-[#3B82F6] text-white" :
+                "bg-[#E5C07B] text-black"
+              }`}>
+                {selectedChannel}
+              </span>
               <button
-                key={channel.name}
-                onClick={() => {
-                  setSelectedChannel(channel.name);
-                  setValidationError("");
-                  if (channel.name === "Toters") {
-                    setDiscountType("toters");
-                    setSelectedPaymentMethod("Toters");
-                  } else if (channel.name === "NokNok") {
-                    setDiscountType("noknok");
-                    setSelectedPaymentMethod("NokNok");
-                  } else {
-                    setDiscountType("none");
-                    setSelectedPaymentMethod("Cash");
-                  }
-                }}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-extrabold transition-all flex items-center gap-1.5 ${
-                  selectedChannel === channel.name
-                    ? `${channel.color} shadow-md scale-105 ring-2 ring-[#eb660c]`
-                    : "text-gray-400 hover:text-white hover:bg-[#181C24]"
-                }`}
+                type="button"
+                onClick={() => setSelectedChannel(null)}
+                className="text-[11px] font-bold text-gray-400 hover:text-white underline px-2 py-1"
               >
-                {channel.name}
+                Switch Channel
               </button>
-            ))}
-          </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setSelectedChannel(null)}
+              className="px-3.5 py-1.5 bg-[#eb660c] hover:bg-[#d55909] text-white rounded-xl text-xs font-extrabold shadow-md animate-pulse"
+            >
+              Select Origin ➔
+            </button>
+          )}
         </div>
 
         {/* Queues & Quick Actions */}
@@ -1268,6 +1260,69 @@ export default function TabletPOSPage() {
                 Save Item to Ticket
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MANDATORY SELECT ORDER ORIGIN MODAL (FIRST STEP FOR NEW TICKET) */}
+      {(!selectedChannel && !editingOrderId && activeTabModal !== "incoming" && activeTabModal !== "held") && (
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center p-4 print:hidden animate-fade-in select-none">
+          <div className="bg-[#181C24] border border-[#262D3D] rounded-3xl w-full max-w-lg p-6 space-y-6 shadow-2xl text-center">
+            
+            {/* Header */}
+            <div className="space-y-2">
+              <div className="w-14 h-14 rounded-2xl bg-[#eb660c]/20 text-[#eb660c] border border-[#eb660c]/40 flex items-center justify-center text-2xl mx-auto shadow-inner">
+                🛵
+              </div>
+              <h2 className="text-2xl font-black text-white tracking-wide">Select Order Origin</h2>
+              <p className="text-xs text-gray-400 font-medium">
+                Step 1 of 2: Choose the sales channel for this order to unlock the POS catalog.
+              </p>
+            </div>
+
+            {/* Channels Big Touch Buttons Grid */}
+            <div className="grid grid-cols-1 gap-3">
+              {[
+                { name: "Toters", icon: "🟢", desc: `Toters Delivery (${totersDiscountPercent}% Auto-Discount • Auto-Paid)`, color: "bg-[#00C49F] hover:bg-[#00b391] text-black border-[#00C49F]" },
+                { name: "WhatsApp", icon: "💬", desc: "WhatsApp Order Direct", color: "bg-[#25D366] hover:bg-[#20bd5a] text-black border-[#25D366]" },
+                { name: "NokNok", icon: "🔴", desc: `NokNok Express (${noknokDiscountPercent}% Auto-Discount • Auto-Paid)`, color: "bg-[#FF5A5F] hover:bg-[#e04f53] text-white border-[#FF5A5F]" },
+                { name: "App", icon: "📱", desc: "Mobile Application Order", color: "bg-[#3B82F6] hover:bg-[#2563eb] text-white border-[#3B82F6]" },
+                { name: "In-Store", icon: "🏪", desc: "Dine-In / Takeaway Cash POS", color: "bg-[#E5C07B] hover:bg-[#d4b06a] text-black border-[#E5C07B]" }
+              ].map((ch) => (
+                <button
+                  key={ch.name}
+                  onClick={() => {
+                    setSelectedChannel(ch.name);
+                    setValidationError("");
+                    if (ch.name === "Toters") {
+                      setDiscountType("toters");
+                      setSelectedPaymentMethod("Toters");
+                    } else if (ch.name === "NokNok") {
+                      setDiscountType("noknok");
+                      setSelectedPaymentMethod("NokNok");
+                    } else {
+                      setDiscountType("none");
+                      setSelectedPaymentMethod("Cash");
+                    }
+                  }}
+                  className={`p-4 rounded-2xl border font-black text-sm flex items-center justify-between transition-all active:scale-98 shadow-md group ${ch.color}`}
+                >
+                  <div className="flex items-center gap-3 text-left">
+                    <span className="text-2xl">{ch.icon}</span>
+                    <div>
+                      <div className="font-black text-base">{ch.name}</div>
+                      <div className="text-[11px] opacity-80 font-semibold">{ch.desc}</div>
+                    </div>
+                  </div>
+                  <span className="text-xl opacity-60 group-hover:translate-x-1 transition-transform">➔</span>
+                </button>
+              ))}
+            </div>
+
+            <div className="pt-2 text-[11px] text-gray-500 font-semibold">
+              OVR LOAD POS • Select Origin to Begin
+            </div>
+
           </div>
         </div>
       )}
