@@ -351,27 +351,41 @@ export default function TabletPOSPage() {
     return "Discount";
   })();
 
-  // Send print job to local print server
+  // Send print job to local print server (Direct HTTP with HTTPS proxy fallback)
   const handlePrint = async (orderData) => {
-    if (!printServerIP) {
-      console.warn("Print server IP not configured. Set it in Admin → Settings → Printer.");
-      return;
+    // 1. Try direct HTTP print first
+    if (printServerIP) {
+      try {
+        const url = `http://${printServerIP}:${printServerPort}/print`;
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(orderData),
+          signal: AbortSignal.timeout(4000),
+        });
+        const result = await res.json();
+        if (result.success) {
+          console.log(`Direct HTTP Printed: ${(result.printed || []).join(" + ")}`);
+          return;
+        }
+      } catch (err) {
+        console.warn("Direct HTTP print failed (possible mixed content), routing via HTTPS proxy:", err.message);
+      }
     }
-    const url = `http://${printServerIP}:${printServerPort}/print`;
+
+    // 2. Fallback to HTTPS server proxy /api/pos/print
     try {
-      const res = await fetch(url, {
+      const proxyRes = await fetch("/api/pos/print", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(orderData),
-        signal: AbortSignal.timeout(8000),
       });
-      const result = await res.json();
-      if (result.success) {
-        const labels = (result.printed || []).join(" + ");
-        console.log(`Printed: ${labels}`);
+      const proxyResult = await proxyRes.json();
+      if (proxyResult.success) {
+        console.log(`Proxy Printed: ${(proxyResult.printed || []).join(" + ")}`);
       }
-    } catch (err) {
-      console.warn("Print server unreachable:", err.message);
+    } catch (proxyErr) {
+      console.error("Print proxy error:", proxyErr.message);
     }
   };
 
@@ -1285,7 +1299,7 @@ export default function TabletPOSPage() {
       )}
 
       {/* MANDATORY SELECT ORDER ORIGIN MODAL (FIRST STEP FOR NEW TICKET) */}
-      {(!selectedChannel && !editingOrderId && activeTabModal !== "incoming" && activeTabModal !== "held") && (
+      {(!selectedChannel && !editingOrderId && activeTabModal === null) && (
         <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center p-4 print:hidden animate-fade-in select-none">
           <div className="bg-[#181C24] border border-[#262D3D] rounded-3xl w-full max-w-lg p-6 space-y-6 shadow-2xl text-center">
             
