@@ -396,6 +396,11 @@ export default function TabletPOSPage() {
           data.orderId = editingOrderId;
         }
       } else {
+        const actualPaymentMethod =
+          selectedChannel === "Toters" ? "Toters" :
+          selectedChannel === "NokNok" ? "NokNok" :
+          selectedPaymentMethod;
+
         // Create brand new POS order
         const createRes = await fetch("/api/pos/orders", {
           method: "POST",
@@ -403,7 +408,7 @@ export default function TabletPOSPage() {
           body: JSON.stringify({
             orderType,
             orderSource: selectedChannel,
-            paymentMethod: selectedPaymentMethod,
+            paymentMethod: actualPaymentMethod,
             customerName,
             customerPhone,
             deliveryAddress,
@@ -429,7 +434,10 @@ export default function TabletPOSPage() {
           id: data.orderId || editingOrderId,
           order_source: selectedChannel,
           order_type: orderType,
-          payment_method: selectedPaymentMethod,
+          payment_method:
+            selectedChannel === "Toters" ? "Toters" :
+            selectedChannel === "NokNok" ? "NokNok" :
+            selectedPaymentMethod,
           customer_name: customerName,
           customer_phone: customerPhone,
           delivery_address: deliveryAddress,
@@ -639,10 +647,13 @@ export default function TabletPOSPage() {
                   setValidationError("");
                   if (channel.name === "Toters") {
                     setDiscountType("toters");
+                    setSelectedPaymentMethod("Toters");
                   } else if (channel.name === "NokNok") {
                     setDiscountType("noknok");
+                    setSelectedPaymentMethod("NokNok");
                   } else {
                     setDiscountType("none");
+                    setSelectedPaymentMethod("Cash");
                   }
                 }}
                 className={`px-3.5 py-1.5 rounded-lg text-xs font-extrabold transition-all flex items-center gap-1.5 ${
@@ -964,7 +975,11 @@ export default function TabletPOSPage() {
                 </button>
                 <button
                   onClick={() => {
-                    if (validateOrderOrigin()) {
+                    if (!validateOrderOrigin()) return;
+                    // For Toters & NokNok, payment is pre-set — bypass modal and complete order directly
+                    if (selectedChannel === "Toters" || selectedChannel === "NokNok") {
+                      handleFinalizePayment();
+                    } else {
                       setActiveTabModal("payment");
                     }
                   }}
