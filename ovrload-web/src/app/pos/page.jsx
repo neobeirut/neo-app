@@ -612,30 +612,13 @@ export default function TabletPOSPage() {
     }
   };
 
-  // Send WhatsApp Delivery Dispatch to Delivery Company / Driver
-  const handleSendDeliveryWhatsApp = () => {
+  // Send WhatsApp Driver Request to Delivery Company (+961 3 826 136)
+  const handleSendDeliveryWhatsApp = (etaMinutes) => {
     if (!lastCompletedOrder) return;
-    const cleanPhone = (deliveryCompanyPhone || "").replace(/[^0-9]/g, "");
-
-    const itemsList = (lastCompletedOrder.items || [])
-      .map((item) => `• ${item.qty || item.quantity || 1}x ${item.name || item.product_name}`)
-      .join("\n");
-
-    const msg = `🛵 *NEW DELIVERY DISPATCH - ORDER #${lastCompletedOrder.id}*
-📍 *Channel*: ${lastCompletedOrder.order_source || "POS"}
-👤 *Customer*: ${lastCompletedOrder.customer_name || "Guest"}
-📞 *Phone*: ${lastCompletedOrder.customer_phone || "N/A"}
-🏠 *Address*: ${lastCompletedOrder.delivery_address || "N/A"}
-💵 *Payment*: ${lastCompletedOrder.payment_method || "Cash"}
-💰 *Total to Collect*: $${(lastCompletedOrder.total_amount || lastCompletedOrder.total || 0).toFixed(2)}
-
-📦 *Order Items*:
-${itemsList}`;
-
-    const waUrl = cleanPhone 
-      ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`
-      : `https://wa.me/?text=${encodeURIComponent(msg)}`;
-
+    const cleanPhone = "9613826136";
+    const timeText = etaMinutes ? `${etaMinutes}'` : "15'";
+    const msg = `🛵 Hello, need driver in ${timeText} for Order #${lastCompletedOrder.id}`;
+    const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`;
     window.open(waUrl, "_blank");
   };
 
@@ -1652,37 +1635,28 @@ ${itemsList}`;
               </div>
             </div>
 
-            {/* Delivery Dispatch section for Delivery Orders */}
+            {/* Driver Request section for Delivery Orders */}
             {lastCompletedOrder.order_type === "delivery" && (
-              <div className="bg-[#0F1115] border border-[#262D3D] rounded-xl p-3.5 space-y-2 text-left">
+              <div className="bg-[#0F1115] border border-[#262D3D] rounded-xl p-3.5 space-y-2.5 text-center">
                 <div className="flex justify-between items-center text-xs font-bold text-gray-300">
-                  <span>🛵 WhatsApp Delivery Dispatch</span>
-                  <span className="text-[10px] text-gray-500">Auto-Formatted</span>
+                  <span className="flex items-center gap-1.5">🛵 Request Driver (+961 3 826 136)</span>
+                  <span className="text-[10px] text-[#25D366] font-bold">1-Tap Dispatch</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-gray-400">Driver/Company #:</span>
-                  <input
-                    type="text"
-                    placeholder="e.g. 96170123456"
-                    value={deliveryCompanyPhone}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setDeliveryCompanyPhone(val);
-                      if (typeof window !== "undefined") {
-                        localStorage.setItem("pos_delivery_company_phone", val);
-                      }
-                    }}
-                    className="flex-1 bg-[#181C24] border border-[#262D3D] rounded-lg px-2.5 py-1 text-xs text-white placeholder-gray-500 font-mono focus:outline-none focus:border-[#25D366]"
-                  />
+                <div className="text-[11px] text-gray-400 font-medium text-left">
+                  Select arrival ETA time for Order #{lastCompletedOrder.id}:
                 </div>
-                <button
-                  type="button"
-                  onClick={handleSendDeliveryWhatsApp}
-                  className="w-full py-2.5 bg-[#25D366] hover:bg-[#20bd5a] text-black font-extrabold text-xs rounded-xl flex items-center justify-center gap-2 shadow-md transition-all active:scale-98"
-                >
-                  <span>📲</span>
-                  <span>Send Order to Delivery Company on WhatsApp</span>
-                </button>
+                <div className="grid grid-cols-4 gap-2">
+                  {["15", "20", "30", "45"].map((time) => (
+                    <button
+                      key={time}
+                      type="button"
+                      onClick={() => handleSendDeliveryWhatsApp(time)}
+                      className="py-2.5 bg-[#25D366]/15 hover:bg-[#25D366] border border-[#25D366]/40 text-[#25D366] hover:text-black rounded-xl font-black text-xs transition-all shadow-sm active:scale-95"
+                    >
+                      {time}'
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
 
