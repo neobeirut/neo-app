@@ -10,20 +10,20 @@ export async function POST(request) {
 
     let apiResult = null;
     let apiSuccess = false;
+    let apiError = null;
 
     try {
-      apiResult = await sendInfobipWhatsAppFreeForm({
-        to: targetPhone,
-        text: messageText,
-      });
+      apiResult = await sendInfobipWhatsAppFreeForm(targetPhone, messageText);
       apiSuccess = true;
     } catch (infobipErr) {
+      apiError = infobipErr.message;
       console.warn("Infobip API dispatch warning:", infobipErr.message);
     }
 
     return Response.json({
       success: true,
       apiSuccess,
+      apiError,
       messageText,
       targetPhone,
       result: apiResult,
