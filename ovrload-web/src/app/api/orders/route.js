@@ -318,10 +318,10 @@ async function sendAutomatedOrderWhatsAppMessages({ orderId, orderNumber, branch
         ? `\n📍 GPS Location: https://maps.google.com/?q=${order.latitude},${order.longitude}`
         : "";
 
-    // 1. FULL ORDER NOTIFICATION FOR OVR LOAD / BRANCH
-    const ovrloadMsgText = `🛒 *New Order #${orderNumber} from Web Shop*\n\n*Order Type:* ${String(
+    // 1. FULL ORDER NOTIFICATION FOR OVR LOAD (Sent to 81202607)
+    const ovrloadMsgText = `🛒 *New Order #${orderNumber}*\n\n*Order Type:* ${String(
       order.order_type || "delivery"
-    ).toUpperCase()}\n*Branch:* ${order.branch_name || "Ovrload"}\n\n*Items:*\n${itemsText}\n\n*Subtotal:* $${Number(
+    ).toUpperCase()}\n\n*Items:*\n${itemsText}\n\n*Subtotal:* $${Number(
       order.subtotal_amount || 0
     ).toFixed(2)}\n*Delivery Fee:* $${Number(order.delivery_fee || 0).toFixed(
       2
@@ -342,7 +342,7 @@ async function sendAutomatedOrderWhatsAppMessages({ orderId, orderNumber, branch
       });
       console.log(`[automated_order_whatsapp] Sent full order notification to OVR LOAD (${branchPhoneE164})`);
     } catch (e) {
-      console.error("[automated_order_whatsapp] Failed sending to OVR LOAD branch phone:", e);
+      console.error("[automated_order_whatsapp] Failed sending to OVR LOAD phone:", e);
       // Fallback template
       await sendNewOrderWhatsApp({ orderId, orderNumber, branchId }).catch((err) =>
         console.error("[automated_order_whatsapp] Fallback template failed:", err)
@@ -353,15 +353,15 @@ async function sendAutomatedOrderWhatsAppMessages({ orderId, orderNumber, branch
     if (order.customer_phone) {
       try {
         const clientPhoneE164 = toLebanonE164(order.customer_phone);
-        const clientMsgText = `🛒 *Order #${orderNumber} Confirmed - Néo Beirut*\n\n*Branch:* ${
-          order.branch_name || "Néo Beirut"
-        }\n\n*Items:*\n${itemsText}\n\n*Subtotal:* $${Number(order.subtotal_amount || 0).toFixed(
+        const clientMsgText = `🛒 *Order #${orderNumber} Confirmed - OVR LOAD*\n\n*Order Type:* ${String(
+          order.order_type || "delivery"
+        ).toUpperCase()}\n\n*Items:*\n${itemsText}\n\n*Subtotal:* $${Number(order.subtotal_amount || 0).toFixed(
           2
         )}\n*Delivery Fee:* $${Number(order.delivery_fee || 0).toFixed(
           2
         )}\n*Total:* $${Number(order.total_amount || 0).toFixed(
           2
-        )}\n*Schedule:* ${order.scheduled_date || ""} ${order.scheduled_time || ""}\n\nThank you for ordering with Néo Beirut! 🙏`;
+        )}\n*Schedule:* ${order.scheduled_date || ""} ${order.scheduled_time || ""}\n\nThank you for ordering with OVR LOAD! 🙏`;
 
         await sendWhatsAppFreeForm(clientPhoneE164, clientMsgText);
         console.log(`[automated_order_whatsapp] Sent short order confirmation to Client (${clientPhoneE164})`);
