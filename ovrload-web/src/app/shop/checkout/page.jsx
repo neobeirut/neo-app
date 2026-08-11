@@ -562,24 +562,7 @@ export default function CheckoutPage() {
                 ? isCalculatingFee
                   ? "Calculating Delivery Fee..."
                   : "Pin Location to Calculate Delivery Fee"
-                : `Place Order • $${total.toFixed(2)}`}
-            </button>
-
-            {/* WhatsApp Order Option */}
-            <button
-              type="button"
-              disabled={isDeliveryBlocked}
-              onClick={() => {
-                if (isDeliveryBlocked) return;
-                const itemsText = cartItems.map(i => `• ${i.quantity}x ${i.name || "Item"} ($${(i.price * i.quantity).toFixed(2)})`).join("\n");
-                const locLink = pinnedLocation ? `\n📍 GPS Location: https://maps.google.com/?q=${pinnedLocation.lat},${pinnedLocation.lng}` : "";
-                const msg = `🛒 *New Order from Web Shop*\n\n*Order Type:* ${orderType.toUpperCase()}\n*Branch:* ${selectedBranch?.name || "Ovrload"}\n\n*Items:*\n${itemsText}\n\n*Subtotal:* $${subtotal.toFixed(2)}\n*Delivery Fee:* $${deliveryFee.toFixed(2)}\n*Total:* $${total.toFixed(2)}\n\n*Delivery Address:* ${deliveryAddress || "Not specified"}${locLink}\n*Schedule:* ${selectedDate} ${selectedTime}`;
-                const waUrl = `https://wa.me/96176489078?text=${encodeURIComponent(msg)}`;
-                window.open(waUrl, "_blank");
-              }}
-              className="w-full bg-[#25D366] hover:bg-[#20bd5a] text-white px-6 py-3.5 rounded-xl font-bold text-base transition-all shadow-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <span>💬 Order via WhatsApp</span>
+                : `Place the Order • $${total.toFixed(2)}`}
             </button>
           </div>
         </form>
