@@ -50,14 +50,9 @@ export function toInfobipRecipient(phone) {
  * Retrieve and normalize Infobip settings from environment variables or database settings
  */
 export function getInfobipConfig() {
-  let apiKey = process.env.INFOBIP_API_KEY;
-  let baseUrl = process.env.INFOBIP_BASE_URL;
-  let sender = process.env.INFOBIP_WHATSAPP_SENDER;
-
-  // Fallback defaults if environment variables are missing
-  if (!apiKey) apiKey = "d42824b2b707759420c14250c320ec7b-449822b8-55e1-4d67-906f-8a19af1d302e";
-  if (!baseUrl) baseUrl = "https://y4r1q1.api.infobip.com";
-  if (!sender) sender = "15558376100";
+  let apiKey = process.env.INFOBIP_API_KEY || "d42824b2b707759420c14250c320ec7b-449822b8-55e1-4d67-906f-8a19af1d302e";
+  let baseUrl = process.env.INFOBIP_BASE_URL || "https://y4r1q1.api.infobip.com";
+  let sender = "96176489078"; // FORCED REAL SENDER FOR OVR LOAD
 
   let normalizedSender = String(sender).trim();
   // Strip '+' prefix if present because Infobip requires sender without '+'
