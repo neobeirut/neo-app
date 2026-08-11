@@ -1,0 +1,164 @@
+﻿
+> build
+> node -e "import('fs').then(f => ['build','.react-router','node_modules/.cache','node_modules/.vite'].forEach(d => f.rmSync(d, {recursive:true, force:true})))" && react-router build
+
+[36mvite v6.4.3 [32mbuilding for production...[36m[39m
+transforming...
+[32mΓ£ô[39m 2330 modules transformed.
+node.exe : [31mΓ£ù[39m Build failed in 9.27s
+At C:\Program Files\nodejs\npm.ps1:29 char:3
++   & $NODE_EXE $NPM_CLI_JS $args
++   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([31mΓ£ù[39m Build failed in 9.27s:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+[31m"default" cannot be exported from "src/app/root.jsx" as it is a reexport that references itself.[39m
+    at getRollupError 
+(file:///C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/node_modules/rollup/dist/es/shared/parseAst.js:317:41)
+    at error 
+(file:///C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/node_modules/rollup/dist/es/shared/parseAst.js:313:42)
+    at getVariableForExportNameRecursive (file:///C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/node_modules/r
+ollup/dist/es/shared/node-entry.js:16964:49)
+    at Module.getVariableForExportName (file:///C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/node_modules/rol
+lup/dist/es/shared/node-entry.js:17313:41)
+    at getVariableForExportNameRecursive (file:///C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/node_modules/r
+ollup/dist/es/shared/node-entry.js:16971:19)
+    at Module.getVariableForExportName (file:///C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/node_modules/rol
+lup/dist/es/shared/node-entry.js:17313:41)
+    at Module.getExportedVariablesByName (file:///C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/node_modules/r
+ollup/dist/es/shared/node-entry.js:17232:45)
+    at Module.includeAllExports (file:///C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/node_modules/rollup/dis
+t/es/shared/node-entry.js:17403:37)
+    at Graph.includeStatements (file:///C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/node_modules/rollup/dist
+/es/shared/node-entry.js:23055:36)
+    at Graph.build (file:///C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/node_modules/rollup/dist/es/shared/n
+ode-entry.js:22985:14)
+    at file:///C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/node_modules/rollup/dist/es/shared/node-entry.js:
+23675:13
+    at catchUnfinishedHookActions (file:///C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/node_modules/rollup/d
+ist/es/shared/node-entry.js:23143:16)
+    at rollupInternal (file:///C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/node_modules/rollup/dist/es/share
+d/node-entry.js:23670:5)
+    at buildEnvironment (file:///C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/node_modules/vite/dist/node/chu
+nks/dep-Dm0c1Wj2.js:46365:14)
+    at buildEnvironment 
+(C:\Users\fredd\.gemini\antigravity\neo-app\ovrload-web\node_modules\@react-router\dev\dist\cli\index.js:2145:5)
+    at viteBuild 
+(C:\Users\fredd\.gemini\antigravity\neo-app\ovrload-web\node_modules\@react-router\dev\dist\cli\index.js:2176:3)
+    at build 
+(C:\Users\fredd\.gemini\antigravity\neo-app\ovrload-web\node_modules\@react-router\dev\dist\cli\index.js:2042:10)
+    at build2 
+(C:\Users\fredd\.gemini\antigravity\neo-app\ovrload-web\node_modules\@react-router\dev\dist\cli\index.js:2380:5)
+    at run2 
+(C:\Users\fredd\.gemini\antigravity\neo-app\ovrload-web\node_modules\@react-router\dev\dist\cli\index.js:2711:7) {
+  code: 'CIRCULAR_REEXPORT',
+  exporter: 'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/app/root.jsx',
+  watchFiles: [
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/app/root.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/app/account/signin/page.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/app/account/logout/page.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/app/account/signup/page.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/app/admin/client/[id]/page.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/app/page.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/app/admin/account-recovery/page.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/app/admin/forgot-password/page.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/node_modules/@react-router/dev/dist/config/defaults/entry.c
+lient.tsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/app/admin/page.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/app/admin/login/page.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/app/admin/logo/page.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/app/admin/reset-password/page.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/app/admin/token-cleanup/page.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/app/admin/inspect-ready-pickup/page.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/app/admin/push-diagnostics/page.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/app/admin/whatsapp-status-test/page.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/app/admin/review-reports/page.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/app/admin/whatsapp-diagnostics/page.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/app/admin/whatsapp-setup/page.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/app/admin/whatsapp-forensic-comparison/page.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/app/delete-account/page.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/app/contact/page.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/app/apple-review-instructions/page.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/app/errors/async-effect-error/page.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/app/download-app/page.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/app/errors/event-handler-error/page.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/app/errors/missing-component/page.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/app/errors/infinite-render-loop/page.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/app/errors/json-parse-error/page.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/app/errors/hook-rule/page.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/app/errors/null-access/page.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/app/errors/type-error-not-function/page.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/app/errors/render-object/page.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/app/init-admin/page.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/app/errors/undefined-access/page.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/app/errors/unhandled-promise/page.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/app/shop/checkout/page.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/app/init-customer/page.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/app/shop/page.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/app/init-test-account/page.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/app/shop/cart/page.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/app/__create/social-dev-shim/page.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/app/admin/whatsapp-test/page.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/app/__create/not-found.tsx',
+    'C:\\Users\\fredd\\.gemini\\antigravity\\neo-app\\ovrload-web\\package.json',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/node_modules/react-dom/client.js',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/node_modules/react/index.js',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/node_modules/react/jsx-runtime.js',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/node_modules/react-router/dist/development/dom-export.mjs',
+    'C:\\Users\\fredd\\.gemini\\antigravity\\neo-app\\ovrload-web\\src\\app\\layout.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/node_modules/react-dom/index.js',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/node_modules/react/cjs/react.production.min.js',
+    
+'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/node_modules/react/cjs/react-jsx-runtime.production.min.js',
+    
+'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/node_modules/react-router/dist/development/chunk-ZA36QIGN.mjs',
+    
+'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/node_modules/react-router/dist/development/chunk-62JRHF6Z.mjs',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/node_modules/react-dom/cjs/react-dom.production.min.js',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/node_modules/react-router/dist/development/index.mjs',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/app/layout.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/node_modules/react-router-dom/dist/index.mjs',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/node_modules/scheduler/index.js',
+    
+'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/node_modules/react-router/node_modules/cookie/dist/index.js',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/node_modules/set-cookie-parser/lib/set-cookie.js',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/node_modules/@tanstack/react-query/build/modern/index.js',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/node_modules/sonner/dist/index.mjs',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/utils/useUser.js',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/utils/useUpload.js',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/node_modules/@hono/auth-js/dist/react.js',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/node_modules/styled-jsx/style.js',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/utils/deviceDetection.js',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/hooks/useAdminData.js',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/app/errors/missing-component/helpers.js',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/hooks/useAdminActions.js',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/components/Admin/BranchForm.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/components/Admin/SidebarNavigation.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/components/Admin/CategoryForm.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/node_modules/lucide-react/dist/esm/lucide-react.js',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/components/Admin/RewardForm.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/components/Admin/DashboardView.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/components/Admin/CategoriesTable.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/components/Admin/AddPointsForm.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/components/Admin/ProductsTable.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/components/Admin/LoyaltyView.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/components/Admin/RewardsTable.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/components/Admin/ProductBranchStatusView.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/components/Admin/BulkUpload.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/components/Admin/SettingsView.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/components/Admin/AdminUsersView.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/components/Admin/BranchesTable.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/components/Admin/UsersView.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/components/Admin/ProductFormModal.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/components/Admin/OrdersView.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/components/Admin/CustomizationItemsView.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/components/Admin/PromoCodesView.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/components/Admin/NotificationsView.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/components/Admin/EventsView.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/components/Admin/CustomerMessagesView.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/components/Admin/LoyaltyPerksAdmin.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/src/components/Admin/WebsiteView.jsx',
+    'C:/Users/fredd/.gemini/antigravity/neo-app/ovrload-web/node_modules/scheduler/cjs/scheduler.production.min.js',
+    ... 2118 more items
+  ]
+}
