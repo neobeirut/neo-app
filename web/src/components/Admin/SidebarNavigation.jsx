@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import {
   Home,
+  BarChart3,
   ShoppingBag,
   Layers,
   Coffee,
@@ -38,6 +39,7 @@ export function SidebarNavigation({
   const getIcon = (tabId) => {
     const iconMap = {
       dashboard: Home,
+      reports: BarChart3,
       orders: ShoppingBag,
       categories: Layers,
       products: Coffee,
@@ -64,7 +66,7 @@ export function SidebarNavigation({
   const navGroups = [
     {
       title: "Overview & Operations",
-      items: ["dashboard", "orders"]
+      items: ["dashboard", "reports", "orders"]
     },
     {
       title: "Catalog Management",
@@ -103,11 +105,11 @@ export function SidebarNavigation({
       {/* Brand Header */}
       <div className="p-6 border-b border-slate-800 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center font-bold text-white shadow-lg shadow-indigo-500/30">
-            NB
+          <div className="w-8 h-8 rounded-lg bg-orange-600 flex items-center justify-center font-bold text-white shadow-lg shadow-orange-500/30">
+            OV
           </div>
           <div>
-            <h2 className="font-bold text-lg leading-tight tracking-wide text-white">Neo Beirut</h2>
+            <h2 className="font-bold text-lg leading-tight tracking-wide text-white">Ovrload</h2>
             <span className="text-xs text-slate-400 font-medium tracking-wider uppercase">Admin Panel</span>
           </div>
         </div>

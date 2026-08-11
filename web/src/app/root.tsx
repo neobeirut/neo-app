@@ -434,25 +434,105 @@ export function Layout({ children }: { children: ReactNode }) {
       );
     }
   }, [pathname]);
+
+  // Remove the pre-React loading indicator as soon as React has mounted
+  useEffect(() => {
+    const el = document.getElementById('pre-react-loading');
+    if (el) {
+      el.style.transition = 'opacity 0.3s ease';
+      el.style.opacity = '0';
+      setTimeout(() => { if (el.parentNode) el.parentNode.removeChild(el); }, 320);
+    }
+  }, []);
   return (
     <html lang="en">
       <head>
         <meta charSet="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+        <meta httpEquiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+        <meta httpEquiv="Pragma" content="no-cache" />
+        <meta httpEquiv="Expires" content="0" />
+        <meta name="theme-color" content="#eb660c" />
+        <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="apple-mobile-web-app-title" content="OVR LOAD POS" />
+        <link rel="apple-touch-icon" href="/pwa-icon-192.png" />
+        <link rel="apple-touch-icon" sizes="192x192" href="/pwa-icon-192.png" />
+        <link rel="apple-touch-icon" sizes="512x512" href="/pwa-icon-512.png" />
+        <link rel="manifest" href="/manifest.json" />
         <Meta />
         <Links />
-        <script type="module" src="/src/__create/dev-error-overlay.js"></script>
-        <link rel="icon" href="/api/favicon" />
+        {/* dev-error-overlay removed — it doesn't exist in production and causes silent script failures on some tablet browsers */}
+        <link rel="icon" href="/pwa-icon-192.png" />
         {LoadFontsSSR ? <LoadFontsSSR /> : null}
+        {/* FontAwesome — loaded in head so icons are ready before first paint */}
+        <link rel="preconnect" href="https://ka-p.fontawesome.com" crossOrigin="anonymous" />
+        <link rel="stylesheet" href="https://ka-p.fontawesome.com/releases/v6.3.0/css/pro.min.css?token=2c15cc0cc7" crossOrigin="anonymous" />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              if ('serviceWorker' in navigator) {
+                window.addEventListener('load', function() {
+                  navigator.serviceWorker.register('/sw.js').catch(function(err) {
+                    console.log('SW registration error:', err);
+                  });
+                });
+              }
+            `
+          }}
+        />
       </head>
       <body>
+        {/* Pre-React loading indicator — visible immediately on page load, hidden once React mounts */}
+        <div
+          id="pre-react-loading"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: '#0F1115',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            fontFamily: 'sans-serif',
+            color: '#eb660c',
+            fontSize: '18px',
+            letterSpacing: '3px',
+          }}
+        >
+          OVR LOAD POS…
+        </div>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                function hideLoader() {
+                  var el = document.getElementById('pre-react-loading');
+                  if (el) el.remove();
+                }
+                var attempts = 0;
+                function checkReady() {
+                  attempts++;
+                  if (attempts > 80) { hideLoader(); return; }
+                  if (document.body && document.body.children.length > 3) { hideLoader(); return; }
+                  setTimeout(checkReady, 100);
+                }
+                if (document.readyState === 'loading') {
+                  document.addEventListener('DOMContentLoaded', function() { setTimeout(checkReady, 300); });
+                } else {
+                  setTimeout(checkReady, 300);
+                }
+              })();
+            `
+          }}
+        />
         <ClientOnly loader={() => children} />
         <Toaster position={isMobile ? 'top-center' : 'bottom-right'} />
         <ScrollRestoration />
         <Scripts />
-        <link rel="preconnect" href="https://ka-p.fontawesome.com" crossOrigin="anonymous" />
-        <link rel="stylesheet" href="https://ka-p.fontawesome.com/releases/v6.3.0/css/pro.min.css?token=2c15cc0cc7" crossOrigin="anonymous" />
       </body>
+
     </html>
   );
 }

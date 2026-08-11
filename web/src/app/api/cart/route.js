@@ -1,8 +1,7 @@
-// BUILD_CACHE_BUSTER: 1785685432806
-﻿import sql from "@/app/api/utils/sql";
+import sql from "@/app/api/utils/sql";
 import { corsJson, corsOptions } from "@/app/api/utils/cors";
 
-const CART_ROUTE_VERSION = "2026-08-02-cart-schema-v2";
+const CART_ROUTE_VERSION = "2026-08-02-cart-schema-aligned-v1";
 
 export async function OPTIONS(request) {
   return corsOptions(request);
@@ -42,9 +41,10 @@ async function resolveUserId(request) {
   }
 
   if (phone) {
-    const user = await sql`
-      SELECT id FROM auth_users WHERE regexp_replace(phone, '[^0-9]', '', 'g') = ${phone} AND is_active = true ORDER BY id DESC LIMIT 1
-    `;
+    const user = await sql(
+      "SELECT id FROM auth_users WHERE regexp_replace(phone, '[^0-9]', '', 'g') = $1 AND is_active = true ORDER BY id DESC LIMIT 1",
+      [phone],
+    );
     if (user.length > 0) {
       return String(user[0].id);
     }
@@ -107,7 +107,7 @@ export async function GET(request) {
       FROM cart_items ci
       JOIN products p ON ci.product_id = p.id
       LEFT JOIN product_branch_status pbs 
-        ON p.id = pbs.product_id AND (${branchId ? Number(branchId) : null}::int IS NULL OR pbs.branch_id = ${branchId ? Number(branchId) : null}::int)
+        ON p.id = pbs.product_id ${branchId ? sql`AND pbs.branch_id = ${Number(branchId)}` : sql``}
       LEFT JOIN cart_item_addons cia ON ci.id = cia.cart_item_id
       LEFT JOIN product_addons pa ON cia.addon_id = pa.id
       WHERE ci.user_id = ${String(userId)}

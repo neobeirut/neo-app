@@ -5,7 +5,7 @@ export function CategoryForm({ editingItem, onSave, onCancel }) {
     name: editingItem?.name || "",
     image_url: editingItem?.image_url || "",
     display_order: editingItem?.display_order || 0,
-    section: editingItem?.section || "Store",
+    section: editingItem?.section || "Delivery",
     is_active: editingItem?.is_active ?? true,
   });
 
@@ -32,16 +32,6 @@ export function CategoryForm({ editingItem, onSave, onCancel }) {
           onChange={(e) => setFormData({ ...formData, name: e.target.value })}
           className="border rounded px-3 py-2 placeholder:text-gray-400"
         />
-        <select
-          value={formData.section}
-          onChange={(e) =>
-            setFormData({ ...formData, section: e.target.value })
-          }
-          className="border rounded px-3 py-2 text-gray-900"
-        >
-          <option value="Store">Store</option>
-          <option value="Bistro">Bistro</option>
-        </select>
         <input
           type="url"
           placeholder="Image URL"

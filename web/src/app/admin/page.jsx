@@ -31,12 +31,14 @@ import CustomerMessagesView from "@/components/Admin/CustomerMessagesView";
 import WhatsAppInboxView from "@/components/Admin/WhatsAppInboxView";
 import DeliveryPricingView from "@/components/Admin/DeliveryPricingView";
 import WebsiteView from "@/components/Admin/WebsiteView";
+import ReportsView from "@/components/Admin/ReportsView";
 
 export default function AdminPage() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const allTabs = useMemo(
     () => [
       "dashboard",
+      "reports",
       "categories",
       "products",
       "customization-items",
@@ -493,6 +495,11 @@ export default function AdminPage() {
           />
         )}
 
+        {/* Reports & Analytics View */}
+        {activeTab === "reports" && allowedTabs.includes("reports") && (
+          <ReportsView />
+        )}
+
         {/* WhatsApp Inbox View */}
         {activeTab === "whatsapp-inbox" &&
           allowedTabs.includes("whatsapp-inbox") && (
@@ -547,6 +554,7 @@ export default function AdminPage() {
           activeTab !== "events" &&
           activeTab !== "notifications" &&
           activeTab !== "promo-codes" &&
+          activeTab !== "reports" &&
           activeTab !== "whatsapp-inbox" && (
             <button
               onClick={() => {

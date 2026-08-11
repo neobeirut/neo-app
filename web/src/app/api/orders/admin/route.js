@@ -12,8 +12,13 @@ export async function GET(request) {
       );
     }
 
-    // Check if admin has orders role
-    if (!admin.roles || !admin.roles.includes("orders")) {
+    // Check if admin has orders role or full admin/owner access
+    if (
+      !admin.roles ||
+      (!admin.roles.includes("orders") &&
+        !admin.roles.includes("admin") &&
+        !admin.roles.includes("owner"))
+    ) {
       return Response.json(
         { error: "Unauthorized - orders permission required" },
         { status: 403 },
@@ -78,7 +83,7 @@ export async function GET(request) {
 
     ordersQuery += ` ORDER BY o.created_at DESC`;
 
-    const orders = await sql.unsafe(ordersQuery, params);
+    const orders = await sql(ordersQuery, params);
 
     // Get order IDs
     const orderIds = orders.map((o) => o.id);

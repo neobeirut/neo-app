@@ -4,6 +4,8 @@ import { WhatsAppTemplatesSection } from "./SettingsView/WhatsAppTemplatesSectio
 import { PromoPopupSection } from "./SettingsView/PromoPopupSection";
 import { BranchBackgroundSection } from "./SettingsView/BranchBackgroundSection";
 import { WebsiteIconSection } from "./SettingsView/WebsiteIconSection";
+import { ChannelDiscountSection } from "./SettingsView/ChannelDiscountSection";
+import { PrinterSection } from "./SettingsView/PrinterSection";
 
 export default function SettingsView({
   branchBackgroundUrl,
@@ -39,6 +41,10 @@ export default function SettingsView({
         <h2 className="text-2xl font-semibold text-gray-900 mb-6">
           App Settings
         </h2>
+
+        <PrinterSection />
+
+        <ChannelDiscountSection />
 
         <WebsiteIconSection
           websiteIconUrl={websiteIconUrl}

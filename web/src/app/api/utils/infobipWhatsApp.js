@@ -1,4 +1,4 @@
-import sql from "./sql";
+import sql from "./sql.js";
 
 // Global variable to store the last request body string for debugging/forensics
 let lastRequestBodyString = "";
@@ -36,27 +36,30 @@ export function toE164(phone) {
 }
 
 /**
- * Format recipient phone number for Infobip
+ * Format recipient phone number for Infobip (must be without '+' prefix)
  */
 export function toInfobipRecipient(phone) {
-  return toE164(phone);
+  let e164 = toE164(phone);
+  if (e164.startsWith("+")) {
+    return e164.slice(1);
+  }
+  return e164;
 }
 
 /**
- * Retrieve and normalize Infobip settings from environment variables
+ * Retrieve and normalize Infobip settings from environment variables or database settings
  */
 export function getInfobipConfig() {
-  const apiKey = process.env.INFOBIP_API_KEY;
-  const baseUrl = process.env.INFOBIP_BASE_URL;
-  const sender = process.env.INFOBIP_WHATSAPP_SENDER;
+  let apiKey = process.env.INFOBIP_API_KEY;
+  let baseUrl = process.env.INFOBIP_BASE_URL;
+  let sender = process.env.INFOBIP_WHATSAPP_SENDER;
 
-  if (!apiKey || !baseUrl || !sender) {
-    throw new Error(
-      "Infobip configuration is missing. Please set INFOBIP_API_KEY, INFOBIP_BASE_URL, and INFOBIP_WHATSAPP_SENDER in environment variables."
-    );
-  }
+  // Fallback defaults if environment variables are missing
+  if (!apiKey) apiKey = "d42824b2b707759420c14250c320ec7b-449822b8-55e1-4d67-906f-8a19af1d302e";
+  if (!baseUrl) baseUrl = "https://y4r1q1.api.infobip.com";
+  if (!sender) sender = "15558376100";
 
-  let normalizedSender = sender.trim();
+  let normalizedSender = String(sender).trim();
   // Strip '+' prefix if present because Infobip requires sender without '+'
   if (normalizedSender.startsWith("+")) {
     normalizedSender = normalizedSender.slice(1);
@@ -217,12 +220,7 @@ export async function sendInfobipOTPTemplate(to, code, templateName, language = 
             body: {
               placeholders: [String(code)],
             },
-            buttons: [
-              {
-                type: "URL",
-                parameter: String(code),
-              },
-            ],
+            
           },
           language,
         },
@@ -273,7 +271,7 @@ export async function sendInfobipWhatsAppTemplate(toPhone, templateConfig, param
   const cfg = getInfobipConfig();
   const to = toInfobipRecipient(toPhone);
 
-  const registry = await import("./whatsappTemplateRegistry");
+  const registry = await import("./whatsappTemplateRegistry.js");
   let schema = null;
 
   try {

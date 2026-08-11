@@ -53,9 +53,6 @@ export function CategoriesTable({ categories, onEdit, onDelete, onReorder }) {
               Name
             </th>
             <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">
-              Section
-            </th>
-            <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">
               Image
             </th>
             <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">
@@ -88,17 +85,6 @@ export function CategoriesTable({ categories, onEdit, onDelete, onReorder }) {
                 <GripVertical size={20} className="text-gray-400" />
               </td>
               <td className="px-6 py-4 text-sm text-gray-900">{category.name}</td>
-              <td className="px-6 py-4">
-                <span
-                  className={`px-2 py-1 text-xs rounded-full ${
-                    category.section === "Store"
-                      ? "bg-blue-100 text-blue-800"
-                      : "bg-orange-100 text-orange-800"
-                  }`}
-                >
-                  {category.section || "Store"}
-                </span>
-              </td>
               <td className="px-6 py-4">
                 <img
                   src={category.image_url}

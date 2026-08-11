@@ -4,86 +4,91 @@ import sql from "@/app/api/utils/sql";
  * Calculate driving distance between two points using Google Routes API (New)
  * Replaces deprecated Distance Matrix API
  */
+function haversineDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371; // Earth radius in km
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) *
+      Math.cos(lat2 * (Math.PI / 180)) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  // 1.3x multiplier estimates real road driving distance vs straight line
+  return parseFloat((R * c * 1.3).toFixed(2));
+}
+
 async function calculateDistance(origin, destination) {
-  // IMPORTANT: Use only the server key, NOT the public/client keys
-  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
-  if (!apiKey) {
-    console.error(
-      "[GOOGLE MAPS] GOOGLE_MAPS_API_KEY not found. Available env vars:",
-      Object.keys(process.env).filter(
-        (k) => k.includes("GOOGLE") || k.includes("MAPS"),
-      ),
-    );
-    throw new Error(
-      "Google Maps API key not configured - GOOGLE_MAPS_API_KEY must be set for server-side API calls",
-    );
-  }
+  if (apiKey) {
+    try {
+      const url = `https://routes.googleapis.com/directions/v2:computeRoutes`;
+      const requestBody = {
+        origin: { location: { latLng: { latitude: origin.lat, longitude: origin.lng } } },
+        destination: { location: { latLng: { latitude: destination.lat, longitude: destination.lng } } },
+        travelMode: "DRIVE",
+        routingPreference: "TRAFFIC_AWARE",
+        computeAlternativeRoutes: false,
+        languageCode: "en-US",
+        units: "METRIC",
+      };
 
-  // Routes API endpoint
-  const url = `https://routes.googleapis.com/directions/v2:computeRoutes`;
-
-  // Routes API request body
-  const requestBody = {
-    origin: {
-      location: {
-        latLng: {
-          latitude: origin.lat,
-          longitude: origin.lng,
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Goog-Api-Key": apiKey,
+          "X-Goog-FieldMask": "routes.distanceMeters,routes.duration",
         },
-      },
-    },
-    destination: {
-      location: {
-        latLng: {
-          latitude: destination.lat,
-          longitude: destination.lng,
-        },
-      },
-    },
-    travelMode: "DRIVE",
-    routingPreference: "TRAFFIC_AWARE",
-    computeAlternativeRoutes: false,
-    languageCode: "en-US",
-    units: "METRIC",
-  };
+        body: JSON.stringify(requestBody),
+      });
 
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Goog-Api-Key": apiKey,
-      // Request only the fields we need to reduce costs
-      "X-Goog-FieldMask": "routes.distanceMeters,routes.duration",
-    },
-    body: JSON.stringify(requestBody),
-  });
-
-  const data = await response.json();
-
-  console.log("[ROUTES API] Full response:", JSON.stringify(data, null, 2));
-
-  // Check for API errors
-  if (!response.ok || data.error) {
-    console.error("[ROUTES API] Error details:", {
-      status: response.status,
-      error: data.error,
-      full_response: data,
-    });
-    throw new Error(
-      `Google Routes API error: ${data.error?.message || response.statusText}`,
-    );
+      const data = await response.json();
+      const route = data.routes?.[0];
+      if (route && route.distanceMeters) {
+        return route.distanceMeters / 1000;
+      }
+    } catch (err) {
+      console.warn("[ROUTES API ERROR - FALLING BACK TO HAVERSINE]", err.message);
+    }
   }
 
-  // Extract distance from first route
-  const route = data.routes?.[0];
+  // Haversine fallback if API key is missing or Routes API fails
+  return haversineDistance(origin.lat, origin.lng, destination.lat, destination.lng);
+}
 
-  if (!route || !route.distanceMeters) {
-    throw new Error("Unable to calculate distance - no route found");
+/**
+ * Convert address text or coordinate string into lat/lng
+ */
+async function geocodeAddress(addressText) {
+  if (!addressText) return null;
+
+  // Check if text itself contains lat,lng coordinates e.g. "33.8938, 35.5018"
+  const coordMatch = addressText.match(/(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)/);
+  if (coordMatch) {
+    return {
+      lat: parseFloat(coordMatch[1]),
+      lng: parseFloat(coordMatch[2]),
+    };
   }
 
-  // Return distance in kilometers
-  return route.distanceMeters / 1000;
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+  if (!apiKey) return null;
+
+  try {
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(addressText)}&key=${apiKey}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.status === "OK" && data.results?.[0]?.geometry?.location) {
+      const loc = data.results[0].geometry.location;
+      return { lat: loc.lat, lng: loc.lng };
+    }
+  } catch (err) {
+    console.error("[GEOCODE ERROR]", err);
+  }
+  return null;
 }
 
 /**
@@ -117,8 +122,8 @@ async function findDeliveryRule(branchId, distanceKm) {
     FROM delivery_pricing_rules
     WHERE branch_id = ${branchId}
       AND is_active = true
-      AND min_distance_km <= ${distanceKm}
-      AND max_distance_km >= ${distanceKm}
+      AND min_distance_km::numeric <= ${distanceKm}
+      AND max_distance_km::numeric >= ${distanceKm}
     ORDER BY display_order, id
     LIMIT 1
   `;
@@ -133,8 +138,8 @@ async function findDeliveryRule(branchId, distanceKm) {
     FROM delivery_pricing_rules
     WHERE branch_id IS NULL
       AND is_active = true
-      AND min_distance_km <= ${distanceKm}
-      AND max_distance_km >= ${distanceKm}
+      AND min_distance_km::numeric <= ${distanceKm}
+      AND max_distance_km::numeric >= ${distanceKm}
     ORDER BY display_order, id
     LIMIT 1
   `;
@@ -215,9 +220,43 @@ export async function POST(request) {
     } else if (latitude && longitude) {
       deliveryLat = parseFloat(latitude);
       deliveryLng = parseFloat(longitude);
+    } else if (body.address && body.address.trim()) {
+      const addressStr = body.address.trim();
+
+      // Check if address text explicitly specifies distance e.g. "5.1 km" or "5.1km"
+      const distMatch = addressStr.match(/(\d+\.?\d*)\s*km/i);
+      if (distMatch) {
+        const distanceKm = parseFloat(distMatch[1]);
+        const rule = await findDeliveryRule(branchId, distanceKm);
+        const cost = rule ? parseFloat(rule.delivery_cost) : 0;
+        return Response.json({
+          distanceKm,
+          deliveryCost: cost,
+          isFreeDelivery: cost === 0,
+          inDeliveryZone: !!rule,
+          calculationMethod: "address_text_distance_parse",
+        });
+      }
+
+      // Try geocoding the address text
+      const geocoded = await geocodeAddress(addressStr);
+      if (geocoded) {
+        deliveryLat = geocoded.lat;
+        deliveryLng = geocoded.lng;
+      } else {
+        return Response.json(
+          {
+            error: "Could not geocode delivery address to calculate distance. Please specify a valid address.",
+            distanceKm: null,
+            deliveryCost: 0,
+            inDeliveryZone: false,
+          },
+          { status: 400 }
+        );
+      }
     } else {
       return Response.json(
-        { error: "Address coordinates are required" },
+        { error: "Address coordinates or address text are required" },
         { status: 400 },
       );
     }
@@ -254,7 +293,7 @@ export async function POST(request) {
 
       const fallbackCost = fallbackSetting
         ? parseFloat(fallbackSetting.setting_value)
-        : 5.0;
+        : 0;
 
       console.log("[USING FALLBACK DUE TO API ERROR]", fallbackCost);
 
@@ -333,7 +372,7 @@ export async function POST(request) {
 
       const fallbackCost = fallbackSetting
         ? parseFloat(fallbackSetting.setting_value)
-        : 5.0;
+        : 0;
 
       console.log("[USING FALLBACK]", fallbackCost);
 
