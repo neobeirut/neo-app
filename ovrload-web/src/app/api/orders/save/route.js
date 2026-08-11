@@ -109,14 +109,16 @@ export async function POST(request) {
       }
     }
 
-    // 5. Trigger automated Infobip WhatsApp messages
-    sendAutomatedOrderWhatsAppMessages({
-      orderId,
-      orderNumber,
-      branchId: 1,
-    }).catch((err) => {
+    // 5. Trigger automated Infobip WhatsApp messages (AWAITED for serverless environment)
+    try {
+      await sendAutomatedOrderWhatsAppMessages({
+        orderId,
+        orderNumber,
+        branchId: 1,
+      });
+    } catch (err) {
       console.error("[api/orders/save] WhatsApp dispatch error:", err);
-    });
+    }
 
     return corsJson(request, {
       success: true,
