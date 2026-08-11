@@ -333,7 +333,7 @@ async function sendAutomatedOrderWhatsAppMessages({ orderId, orderNumber, branch
       order.scheduled_date || ""
     } ${order.scheduled_time || ""}`;
 
-    const rawBranchPhone = order.branch_whatsapp || order.branch_phone || "96176489078";
+    const rawBranchPhone = order.branch_whatsapp || order.branch_phone || "96181202607";
     try {
       const branchPhoneE164 = toLebanonE164(rawBranchPhone);
       await sendWhatsAppFreeForm(branchPhoneE164, ovrloadMsgText).catch(async () => {
