@@ -9,6 +9,8 @@ export async function GET(request) {
 
     // Timezone-aware date helpers (Beirut = UTC+3)
     const tz = "Asia/Beirut";
+    let dateWhereClause = "";
+    let dateWhereClauseO = "";
 
     if (range === "today") {
       // Today = calendar day in Beirut timezone
