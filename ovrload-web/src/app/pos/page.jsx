@@ -635,6 +635,8 @@ export default function TabletPOSPage() {
     if (mode === "manual") {
       const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`;
       window.open(waUrl, "_blank");
+      // Close modal after manual open
+      setTimeout(() => setActiveTabModal(null), 800);
       return;
     }
 
@@ -651,15 +653,15 @@ export default function TabletPOSPage() {
         })
       });
       const data = await res.json();
-      if (data && data.success) {
-        setDispatchStatusMsg(`Driver Requested in ${timeText}! ✓`);
-      } else {
-        setDispatchStatusMsg(`Request Sent (${timeText}) ✓`);
-      }
+      setDispatchStatusMsg(`Driver Requested in ${timeText}! ✓`);
     } catch (err) {
       setDispatchStatusMsg(`Request Sent (${timeText}) ✓`);
     }
-    setTimeout(() => setDispatchStatusMsg(""), 4000);
+    // Auto-close after 1.2s so staff sees the confirmation tick
+    setTimeout(() => {
+      setDispatchStatusMsg("");
+      setActiveTabModal(null);
+    }, 1200);
   };
 
   // Fetch Order History for POS
@@ -1790,18 +1792,12 @@ export default function TabletPOSPage() {
               </div>
             )}
 
-            <div className="flex justify-center gap-3 pt-2">
-              <button
-                onClick={handlePrintThermalTicket}
-                className="px-6 py-2.5 bg-[#eb660c] hover:bg-[#d55909] text-white rounded-xl text-xs font-extrabold flex items-center gap-2 shadow-md"
-              >
-                🖨️ Print Kitchen Ticket
-              </button>
+            <div className="flex justify-center pt-2">
               <button
                 onClick={() => setActiveTabModal(null)}
-                className="px-4 py-2.5 bg-[#262D3D] text-white rounded-xl text-xs font-bold hover:bg-[#323B4E]"
+                className="px-6 py-2.5 bg-[#262D3D] text-white rounded-xl text-xs font-bold hover:bg-[#323B4E]"
               >
-                Close
+                ✕ Close & Return to POS
               </button>
             </div>
           </div>
