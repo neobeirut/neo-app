@@ -63,7 +63,7 @@ export async function GET(request) {
         COALESCE(SUM(discount_amount::float), 0) as total_discount
       FROM orders
       WHERE ${salesStatusFilter} ${dateWhereClause}
-      GROUP BY COALESCE(order_source, 'In-Store')
+      GROUP BY CASE WHEN COALESCE(order_source, 'POS') IN ('POS', 'In-Store', '') THEN 'In-Store' ELSE order_source END
       ORDER BY total_revenue DESC
     `);
 
