@@ -148,22 +148,24 @@ export async function GET(request) {
 
     // 8. Meal Period Breakdown (Beirut timezone)
     const mealPeriodSales = await sql.unsafe(`
-      SELECT
-        CASE
-          WHEN EXTRACT(HOUR FROM created_at AT TIME ZONE 'Asia/Beirut') >= 7
-           AND EXTRACT(HOUR FROM created_at AT TIME ZONE 'Asia/Beirut') < 15 THEN 'Lunch'
-          WHEN EXTRACT(HOUR FROM created_at AT TIME ZONE 'Asia/Beirut') >= 15
-           AND EXTRACT(HOUR FROM created_at AT TIME ZONE 'Asia/Beirut') < 19 THEN 'Afternoon'
-          WHEN EXTRACT(HOUR FROM created_at AT TIME ZONE 'Asia/Beirut') >= 19
-           AND EXTRACT(HOUR FROM created_at AT TIME ZONE 'Asia/Beirut') <= 23 THEN 'Dinner'
-          ELSE 'Other'
-        END as meal_period,
-        COUNT(*)::int as order_count,
-        COALESCE(SUM(total_amount::float), 0) as total_revenue,
-        COALESCE(AVG(total_amount::float), 0) as avg_order_value
-      FROM orders
-      WHERE ${salesStatusFilter} ${dateWhereClause}
-      GROUP BY meal_period
+      SELECT * FROM (
+        SELECT
+          CASE
+            WHEN EXTRACT(HOUR FROM created_at AT TIME ZONE 'Asia/Beirut') >= 7
+             AND EXTRACT(HOUR FROM created_at AT TIME ZONE 'Asia/Beirut') < 15 THEN 'Lunch'
+            WHEN EXTRACT(HOUR FROM created_at AT TIME ZONE 'Asia/Beirut') >= 15
+             AND EXTRACT(HOUR FROM created_at AT TIME ZONE 'Asia/Beirut') < 19 THEN 'Afternoon'
+            WHEN EXTRACT(HOUR FROM created_at AT TIME ZONE 'Asia/Beirut') >= 19
+             AND EXTRACT(HOUR FROM created_at AT TIME ZONE 'Asia/Beirut') <= 23 THEN 'Dinner'
+            ELSE 'Other'
+          END as meal_period,
+          COUNT(*)::int as order_count,
+          COALESCE(SUM(total_amount::float), 0) as total_revenue,
+          COALESCE(AVG(total_amount::float), 0) as avg_order_value
+        FROM orders
+        WHERE ${salesStatusFilter} ${dateWhereClause}
+        GROUP BY 1
+      ) sub
       ORDER BY
         CASE meal_period
           WHEN 'Lunch'     THEN 1
