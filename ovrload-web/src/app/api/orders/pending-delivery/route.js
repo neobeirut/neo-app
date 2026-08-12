@@ -28,7 +28,7 @@ export async function GET() {
           o.order_type ILIKE 'delivery'
           OR (o.delivery_address IS NOT NULL AND o.delivery_address != '')
         )
-        AND o.status NOT IN ('cancelled')
+        AND o.status NOT IN ('cancelled', 'completed')
         AND o.created_at >= NOW() - INTERVAL '24 hours'
       GROUP BY o.id, au.name, au.phone
       ORDER BY o.created_at DESC

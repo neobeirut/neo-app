@@ -52,9 +52,9 @@ export default function DriverPage() {
       const data = await res.json();
       setOrders(data);
       setConnected(true);
-    } catch {
+    } catch (err) {
       setConnected(false);
-      showToast("⚠️ Could not load orders");
+      showToast("⚠️ " + (err.message || "Could not load orders"));
     } finally {
       setLoading(false);
     }
@@ -107,12 +107,7 @@ export default function DriverPage() {
     }
   };
 
-  const active = orders.filter((o) =>
-    ["pending", "accepted", "preparing", "ready", "out_for_delivery"].includes(o.status)
-  );
-  const recent = orders.filter(
-    (o) => !["pending", "accepted", "preparing", "ready", "out_for_delivery"].includes(o.status)
-  );
+  const activeStatuses = ["pending", "accepted", "preparing", "ready", "out_for_delivery"];
 
   const badgeStyle = (status) => {
     const map = {
@@ -165,22 +160,10 @@ export default function DriverPage() {
             </div>
           ) : (
             <>
-              {active.length > 0 && (
-                <>
-                  <div style={{ fontSize: "0.7rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#5e5e62", marginBottom: "0.6rem" }}>
-                    Active — {active.length} order{active.length > 1 ? "s" : ""}
-                  </div>
-                  {active.map((o) => <OrderCard key={o.id} o={o} onOpen={setActiveOrder} timeAgo={timeAgo} cleanAddr={cleanAddr} badgeStyle={badgeStyle} badgeLabel={badgeLabel} />)}
-                </>
-              )}
-              {recent.length > 0 && (
-                <>
-                  <div style={{ fontSize: "0.7rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#5e5e62", margin: "1.25rem 0 0.6rem" }}>
-                    Recently Completed
-                  </div>
-                  {recent.map((o) => <OrderCard key={o.id} o={o} onOpen={setActiveOrder} timeAgo={timeAgo} cleanAddr={cleanAddr} badgeStyle={badgeStyle} badgeLabel={badgeLabel} />)}
-                </>
-              )}
+              <div style={{ fontSize: "0.7rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#5e5e62", marginBottom: "0.6rem" }}>
+                Active — {orders.length} order{orders.length > 1 ? "s" : ""}
+              </div>
+              {orders.map((o) => <OrderCard key={o.id} o={o} onOpen={setActiveOrder} timeAgo={timeAgo} cleanAddr={cleanAddr} badgeStyle={badgeStyle} badgeLabel={badgeLabel} />)}
             </>
           )}
         </div>
