@@ -1,7 +1,19 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import Script from "next/script";
+
+// Load QRCode library dynamically (no next/script — React Router app)
+function useQRScript() {
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    if (window.QRCode) { setReady(true); return; }
+    const s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js";
+    s.onload = () => setReady(true);
+    document.head.appendChild(s);
+  }, []);
+  return ready;
+}
 
 export default function DriverPage() {
   const [orders, setOrders] = useState([]);
@@ -10,7 +22,7 @@ export default function DriverPage() {
   const [activeOrder, setActiveOrder] = useState(null);
   const [pickingUp, setPickingUp] = useState(false);
   const [toast, setToast] = useState(null);
-  const [qrReady, setQrReady] = useState(false);
+  const qrReady = useQRScript();
   const qrRef = useRef(null);
   const qrInstanceRef = useRef(null);
 
@@ -120,11 +132,6 @@ export default function DriverPage() {
 
   return (
     <>
-      <Script
-        src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"
-        onLoad={() => setQrReady(true)}
-      />
-
       <div style={{ background: "#0a0a0a", minHeight: "100vh", fontFamily: "-apple-system, 'Outfit', BlinkMacSystemFont, sans-serif", color: "#fff" }}>
 
         {/* Header */}
