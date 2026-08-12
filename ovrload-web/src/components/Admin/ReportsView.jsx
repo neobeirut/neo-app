@@ -109,6 +109,15 @@ export default function ReportsView() {
   const voidedSummary = reportData?.voidedSummary || {};
   const voidedOrders = reportData?.voidedOrders || [];
   const hourlySales = reportData?.hourlySales || [];
+  const mealPeriodSales = reportData?.mealPeriodSales || [];
+
+  const mealConfig = {
+    Lunch:     { emoji: '☀️',  label: 'Lunch',     time: '7:00 AM – 3:00 PM',  color: '#f59e0b', bg: 'rgba(245,158,11,0.08)',  border: 'rgba(245,158,11,0.25)' },
+    Afternoon: { emoji: '🌇',  label: 'Afternoon', time: '3:01 PM – 7:00 PM',  color: '#eb660c', bg: 'rgba(235,102,12,0.08)',  border: 'rgba(235,102,12,0.25)' },
+    Dinner:    { emoji: '🌙',  label: 'Dinner',    time: '7:01 PM – 11:59 PM', color: '#818cf8', bg: 'rgba(129,140,248,0.08)', border: 'rgba(129,140,248,0.25)' },
+  };
+  const allPeriods = ['Lunch', 'Afternoon', 'Dinner'];
+
 
   const maxChannelRevenue = Math.max(...channels.map((c) => c.total_revenue || 0), 1);
 
@@ -392,6 +401,49 @@ export default function ReportsView() {
               )}
             </tbody>
           </table>
+        </div>
+      </div>
+
+      {/* MEAL PERIOD BREAKDOWN */}
+      <div className="bg-[#181C24] border border-[#262D3D] rounded-2xl p-5 space-y-4 shadow-lg">
+        <div className="flex justify-between items-center border-b border-[#262D3D] pb-3">
+          <h2 className="text-base font-extrabold text-white flex items-center gap-2">
+            🕐 Order Period Breakdown
+          </h2>
+          <span className="text-xs text-gray-400 font-semibold">Beirut time</span>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {allPeriods.map((period) => {
+            const cfg  = mealConfig[period];
+            const data = mealPeriodSales.find((r) => r.meal_period === period) || { order_count: 0, total_revenue: 0, avg_order_value: 0 };
+            const totalOrders = mealPeriodSales.reduce((s, r) => s + (r.order_count || 0), 0) || 1;
+            const pct = Math.round((data.order_count / totalOrders) * 100);
+            return (
+              <div key={period} style={{ background: cfg.bg, borderColor: cfg.border }} className="rounded-xl border p-4 flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-2xl">{cfg.emoji}</span>
+                  <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ color: cfg.color, background: cfg.border }}>{pct}% of orders</span>
+                </div>
+                <div>
+                  <p className="text-base font-black text-white">{cfg.label}</p>
+                  <p className="text-[11px] text-gray-400">{cfg.time}</p>
+                </div>
+                <div className="flex justify-between items-end">
+                  <div>
+                    <p className="text-2xl font-black" style={{ color: cfg.color }}>{data.order_count}</p>
+                    <p className="text-[10px] text-gray-400 uppercase font-bold">Orders</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-lg font-black text-white">${(data.total_revenue || 0).toFixed(2)}</p>
+                    <p className="text-[10px] text-gray-400">Avg ${(data.avg_order_value || 0).toFixed(2)}</p>
+                  </div>
+                </div>
+                <div className="h-1.5 rounded-full bg-[#262D3D] overflow-hidden">
+                  <div className="h-full rounded-full transition-all duration-700" style={{ width: `${pct}%`, background: cfg.color }} />
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 

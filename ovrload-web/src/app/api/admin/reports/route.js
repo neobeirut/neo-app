@@ -146,6 +146,33 @@ export async function GET(request) {
       ORDER BY hour ASC
     `);
 
+    // 8. Meal Period Breakdown (Beirut timezone)
+    const mealPeriodSales = await sql.unsafe(`
+      SELECT
+        CASE
+          WHEN EXTRACT(HOUR FROM created_at AT TIME ZONE 'Asia/Beirut') >= 7
+           AND EXTRACT(HOUR FROM created_at AT TIME ZONE 'Asia/Beirut') < 15 THEN 'Lunch'
+          WHEN EXTRACT(HOUR FROM created_at AT TIME ZONE 'Asia/Beirut') >= 15
+           AND EXTRACT(HOUR FROM created_at AT TIME ZONE 'Asia/Beirut') < 19 THEN 'Afternoon'
+          WHEN EXTRACT(HOUR FROM created_at AT TIME ZONE 'Asia/Beirut') >= 19
+           AND EXTRACT(HOUR FROM created_at AT TIME ZONE 'Asia/Beirut') <= 23 THEN 'Dinner'
+          ELSE 'Other'
+        END as meal_period,
+        COUNT(*)::int as order_count,
+        COALESCE(SUM(total_amount::float), 0) as total_revenue,
+        COALESCE(AVG(total_amount::float), 0) as avg_order_value
+      FROM orders
+      WHERE ${salesStatusFilter} ${dateWhereClause}
+      GROUP BY meal_period
+      ORDER BY
+        CASE meal_period
+          WHEN 'Lunch'     THEN 1
+          WHEN 'Afternoon' THEN 2
+          WHEN 'Dinner'    THEN 3
+          ELSE 4
+        END
+    `);
+
     return Response.json({
       summary,
       channels,
@@ -154,7 +181,8 @@ export async function GET(request) {
       categories,
       voidedSummary: voidedSummaryRows[0] || { void_count: 0, total_voided_amount: 0 },
       voidedOrders,
-      hourlySales
+      hourlySales,
+      mealPeriodSales
     });
   } catch (error) {
     console.error("Error in GET /api/admin/reports:", error);
