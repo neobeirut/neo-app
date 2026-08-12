@@ -6,7 +6,8 @@ import { useState, useEffect, useCallback, useRef } from "react";
 function useQRScript() {
   const [ready, setReady] = useState(false);
   useEffect(() => {
-    if (window.QRCode) { setReady(true); return; }
+    // useEffect only runs client-side, so window is always defined here
+    if (typeof window !== "undefined" && window.QRCode) { setReady(true); return; }
     const s = document.createElement("script");
     s.src = "https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js";
     s.onload = () => setReady(true);
