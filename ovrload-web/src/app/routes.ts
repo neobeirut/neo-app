@@ -13,6 +13,7 @@ type Tree = {
 	path: string;
 	children: Tree[];
 	hasPage: boolean;
+	hasRoute: boolean;
 	isParam: boolean;
 	paramName: string;
 	isCatchAll: boolean;
@@ -24,6 +25,7 @@ function buildRouteTree(dir: string, basePath = ''): Tree {
 		path: basePath,
 		children: [],
 		hasPage: false,
+		hasRoute: false,
 		isParam: false,
 		isCatchAll: false,
 		paramName: '',
@@ -54,10 +56,24 @@ function buildRouteTree(dir: string, basePath = ''): Tree {
 			node.children.push(childNode);
 		} else if (file === 'page.jsx') {
 			node.hasPage = true;
-    }
+		} else if (file === 'route.js' || file === 'route.ts') {
+			node.hasRoute = true;
+		}
 	}
 
 	return node;
+}
+
+function resolveSegments(path: string): string {
+	return path.split('/').map((segment) => {
+		if (segment.startsWith('[') && segment.endsWith(']')) {
+			const p = segment.slice(1, -1);
+			if (p.startsWith('...')) return '*';
+			if (p.startsWith('[') && p.endsWith(']')) return `:${p.slice(1, -1)}?`;
+			return `:${p}`;
+		}
+		return segment;
+	}).join('/');
 }
 
 function generateRoutes(node: Tree): RouteConfigEntry[] {
@@ -66,36 +82,19 @@ function generateRoutes(node: Tree): RouteConfigEntry[] {
 	if (node.hasPage) {
 		const componentPath =
 			node.path === '' ? `./${node.path}page.jsx` : `./${node.path}/page.jsx`;
-
 		if (node.path === '') {
 			routes.push(index(componentPath));
 		} else {
-			// Handle parameter routes
-			let routePath = node.path;
-
-			// Replace all parameter segments in the path
-			const segments = routePath.split('/');
-			const processedSegments = segments.map((segment) => {
-				if (segment.startsWith('[') && segment.endsWith(']')) {
-					const paramName = segment.slice(1, -1);
-
-					// Handle catch-all parameters (e.g., [...ids] becomes *)
-					if (paramName.startsWith('...')) {
-						return '*'; // React Router's catch-all syntax
-					}
-					// Handle optional parameters (e.g., [[id]] becomes :id?)
-					if (paramName.startsWith('[') && paramName.endsWith(']')) {
-						return `:${paramName.slice(1, -1)}?`;
-					}
-					// Handle regular parameters (e.g., [id] becomes :id)
-					return `:${paramName}`;
-				}
-				return segment;
-			});
-
-			routePath = processedSegments.join('/');
-			routes.push(route(routePath, componentPath));
+			routes.push(route(resolveSegments(node.path), componentPath));
 		}
+	}
+
+	// Also register route.js files (API / resource routes)
+	if (node.hasRoute && !node.hasPage) {
+		const ext = 'route.js';
+		const componentPath = `./${node.path}/${ext}`;
+		const routePath = resolveSegments(node.path);
+		routes.push(route(routePath, componentPath));
 	}
 
 	for (const child of node.children) {
