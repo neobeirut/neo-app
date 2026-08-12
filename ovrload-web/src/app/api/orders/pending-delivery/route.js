@@ -1,7 +1,8 @@
 import sql from "@/app/api/utils/sql";
+import { corsJson, corsOptions } from "@/app/api/utils/cors";
 
 // GET /api/orders/pending-delivery
-export async function GET() {
+export async function GET(request) {
   try {
     const orders = await sql`
       SELECT
@@ -33,9 +34,13 @@ export async function GET() {
       GROUP BY o.id, au.name, au.phone
       ORDER BY o.created_at DESC
     `;
-    return Response.json(orders);
+    return corsJson(request, orders);
   } catch (err) {
     console.error("[pending-delivery] Error:", err);
-    return Response.json({ error: "Internal Server Error" }, { status: 500 });
+    return corsJson(request, { error: "Internal Server Error" }, { status: 500 });
   }
+}
+
+export async function OPTIONS(request) {
+  return corsOptions(request);
 }
