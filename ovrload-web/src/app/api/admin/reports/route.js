@@ -7,30 +7,32 @@ export async function GET(request) {
     const startDateParam = searchParams.get("startDate");
     const endDateParam = searchParams.get("endDate");
 
-    let dateWhereClause = "";
-    let dateWhereClauseO = "";
+    // Timezone-aware date helpers (Beirut = UTC+3)
+    const tz = "Asia/Beirut";
 
     if (range === "today") {
-      dateWhereClause = "AND (created_at >= CURRENT_DATE OR created_at >= NOW() - INTERVAL '24 hours' OR created_at IS NULL)";
-      dateWhereClauseO = "AND (o.created_at >= CURRENT_DATE OR o.created_at >= NOW() - INTERVAL '24 hours' OR o.created_at IS NULL)";
+      // Today = calendar day in Beirut timezone
+      dateWhereClause  = `AND (created_at AT TIME ZONE '${tz}')::date = (CURRENT_TIMESTAMP AT TIME ZONE '${tz}')::date`;
+      dateWhereClauseO = `AND (o.created_at AT TIME ZONE '${tz}')::date = (CURRENT_TIMESTAMP AT TIME ZONE '${tz}')::date`;
     } else if (range === "yesterday") {
-      dateWhereClause = "AND created_at >= CURRENT_DATE - INTERVAL '1 day' AND created_at < CURRENT_DATE";
-      dateWhereClauseO = "AND o.created_at >= CURRENT_DATE - INTERVAL '1 day' AND o.created_at < CURRENT_DATE";
+      dateWhereClause  = `AND (created_at AT TIME ZONE '${tz}')::date = (CURRENT_TIMESTAMP AT TIME ZONE '${tz}')::date - INTERVAL '1 day'`;
+      dateWhereClauseO = `AND (o.created_at AT TIME ZONE '${tz}')::date = (CURRENT_TIMESTAMP AT TIME ZONE '${tz}')::date - INTERVAL '1 day'`;
     } else if (range === "7days") {
-      dateWhereClause = "AND (created_at >= CURRENT_DATE - INTERVAL '7 days' OR created_at IS NULL)";
-      dateWhereClauseO = "AND (o.created_at >= CURRENT_DATE - INTERVAL '7 days' OR o.created_at IS NULL)";
+      dateWhereClause  = `AND (created_at AT TIME ZONE '${tz}')::date >= (CURRENT_TIMESTAMP AT TIME ZONE '${tz}')::date - INTERVAL '6 days'`;
+      dateWhereClauseO = `AND (o.created_at AT TIME ZONE '${tz}')::date >= (CURRENT_TIMESTAMP AT TIME ZONE '${tz}')::date - INTERVAL '6 days'`;
     } else if (range === "thismonth") {
-      dateWhereClause = "AND (created_at >= DATE_TRUNC('month', CURRENT_DATE) OR created_at IS NULL)";
-      dateWhereClauseO = "AND (o.created_at >= DATE_TRUNC('month', CURRENT_DATE) OR o.created_at IS NULL)";
+      dateWhereClause  = `AND DATE_TRUNC('month', created_at AT TIME ZONE '${tz}') = DATE_TRUNC('month', CURRENT_TIMESTAMP AT TIME ZONE '${tz}')`;
+      dateWhereClauseO = `AND DATE_TRUNC('month', o.created_at AT TIME ZONE '${tz}') = DATE_TRUNC('month', CURRENT_TIMESTAMP AT TIME ZONE '${tz}')`;
     } else if (range === "all") {
-      dateWhereClause = "";
+      dateWhereClause  = "";
       dateWhereClauseO = "";
     } else if (range === "custom" && startDateParam && endDateParam) {
       const cleanStart = startDateParam.replace(/[^0-9-]/g, "");
-      const cleanEnd = endDateParam.replace(/[^0-9-]/g, "");
-      dateWhereClause = `AND created_at >= '${cleanStart} 00:00:00' AND created_at <= '${cleanEnd} 23:59:59'`;
-      dateWhereClauseO = `AND o.created_at >= '${cleanStart} 00:00:00' AND o.created_at <= '${cleanEnd} 23:59:59'`;
+      const cleanEnd   = endDateParam.replace(/[^0-9-]/g, "");
+      dateWhereClause  = `AND (created_at AT TIME ZONE '${tz}')::date >= '${cleanStart}' AND (created_at AT TIME ZONE '${tz}')::date <= '${cleanEnd}'`;
+      dateWhereClauseO = `AND (o.created_at AT TIME ZONE '${tz}')::date >= '${cleanStart}' AND (o.created_at AT TIME ZONE '${tz}')::date <= '${cleanEnd}'`;
     }
+
 
     // Valid completed sales status (includes completed, approved, paid, etc. - excludes cancelled/voided)
     const salesStatusFilter = "COALESCE(status, 'completed') NOT IN ('cancelled', 'voided', 'pending')";
