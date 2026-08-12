@@ -57,7 +57,7 @@ export async function GET(request) {
     // 2. Sales Channel Breakdown
     const channels = await sql.unsafe(`
       SELECT 
-        COALESCE(order_source, 'In-Store') as channel,
+        CASE WHEN COALESCE(order_source, 'POS') IN ('POS', 'In-Store', '') THEN 'In-Store' ELSE order_source END as channel,
         COUNT(*)::int as order_count,
         COALESCE(SUM(total_amount::float), 0) as total_revenue,
         COALESCE(SUM(discount_amount::float), 0) as total_discount
