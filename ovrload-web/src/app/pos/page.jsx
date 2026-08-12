@@ -728,6 +728,30 @@ export default function TabletPOSPage() {
       });
       const data = await res.json();
       if (data.success) {
+        // Build print data from the order (same format as handleReprintOrder)
+        const printData = {
+          id: order.id,
+          order_source: order.order_source || "WhatsApp",
+          order_type: order.order_type || "delivery",
+          payment_method: order.payment_method || "Cash",
+          customer_name: order.customer_name || "",
+          customer_phone: order.customer_phone || "",
+          delivery_address: order.delivery_address || "",
+          subtotal_amount: order.subtotal_amount || 0,
+          delivery_fee: order.delivery_fee || 0,
+          discount_amount: order.discount_amount || 0,
+          total_amount: order.total_amount || 0,
+          items: (order.items || []).map((i) => ({
+            qty: i.quantity || i.qty || 1,
+            name: i.product_name || i.name || "Item",
+            unit_price: i.unit_price || 0,
+            selectedCustomizations: i.customizations ? [{ name: i.customizations }] : [],
+            note: i.comment || ""
+          })),
+          created_at: order.created_at || new Date().toISOString()
+        };
+        // Fire print job before opening receipt modal
+        handlePrint(printData);
         setLastCompletedOrder(order);
         setActiveTabModal("receipt");
         fetchOrdersQueue();
