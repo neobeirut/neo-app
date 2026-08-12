@@ -38,6 +38,10 @@ export default function TabletPOSPage() {
   const [heldOrders, setHeldOrders] = useState([]);
   const [pendingOrders, setPendingOrders] = useState([]);
   const [activeTabModal, setActiveTabModal] = useState(null); // 'held', 'incoming', 'payment', 'customization', 'void_item', 'receipt'
+
+  // Notification tracking refs (no re-render needed)
+  const knownOrderIdsRef = useRef(null); // Set of order IDs already seen
+  const isFirstPollRef   = useRef(true); // Skip alerts on initial page load
   
   // Customization Modal State
   const [currentProduct, setCurrentProduct] = useState(null);
@@ -153,6 +157,47 @@ export default function TabletPOSPage() {
   };
 
   // Load Pending WhatsApp & Held Orders
+  // ── WhatsApp Order Notification Helpers ─────────────────────────────────
+  const playNotificationBeep = () => {
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const beep = (freq, startAt, dur) => {
+        const osc  = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = "sine";
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.4, ctx.currentTime + startAt);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + startAt + dur);
+        osc.start(ctx.currentTime + startAt);
+        osc.stop(ctx.currentTime + startAt + dur + 0.05);
+      };
+      beep(880,  0,    0.18);
+      beep(1100, 0.22, 0.18);
+      beep(1320, 0.44, 0.30);
+    } catch (e) { /* Audio blocked before user gesture — ignored */ }
+  };
+
+  const fireOrderNotification = (order) => {
+    playNotificationBeep();
+    if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+      const notif = new Notification("🛵 New WhatsApp Order!", {
+        body: `${order.customer_name || "Customer"}  •  $${parseFloat(order.total_amount || 0).toFixed(2)}`,
+        icon: "/icon-192x192.png",
+        tag: `wa-order-${order.id}`,
+        renotify: true,
+        requireInteraction: true,
+      });
+      notif.onclick = () => {
+        window.focus();
+        setActiveTabModal("incoming");
+      };
+    }
+  };
+
   const fetchOrdersQueue = async () => {
     try {
       const [pendingRes, heldRes] = await Promise.all([
@@ -160,13 +205,28 @@ export default function TabletPOSPage() {
         fetch("/api/pos/orders?type=held")
       ]);
       const pendingData = await pendingRes.json();
-      const heldData = await heldRes.json();
-      if (pendingData.orders) setPendingOrders(pendingData.orders);
+      const heldData    = await heldRes.json();
+
+      if (pendingData.orders) {
+        const incoming = pendingData.orders;
+        setPendingOrders(incoming);
+
+        // Detect brand-new orders and notify (skip on first load)
+        if (!isFirstPollRef.current && knownOrderIdsRef.current) {
+          incoming
+            .filter((o) => !knownOrderIdsRef.current.has(o.id))
+            .forEach((o) => fireOrderNotification(o));
+        }
+        knownOrderIdsRef.current = new Set(incoming.map((o) => o.id));
+        isFirstPollRef.current   = false;
+      }
+
       if (heldData.orders) setHeldOrders(heldData.orders);
     } catch (err) {
       console.error("Error fetching orders queue:", err);
     }
   };
+
 
   // PWA Install State
   const [deferredInstallPrompt, setDeferredInstallPrompt] = useState(null);
@@ -193,6 +253,10 @@ export default function TabletPOSPage() {
   };
 
   useEffect(() => {
+    // Request notification permission silently on mount
+    if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
     fetchProducts();
     fetchOrdersQueue();
     const interval = setInterval(fetchOrdersQueue, 10000); // Polling pending orders every 10s
