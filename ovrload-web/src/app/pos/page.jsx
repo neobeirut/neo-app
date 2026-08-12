@@ -589,7 +589,8 @@ export default function TabletPOSPage() {
         setDiscountIsPercent(true);
         setDeliveryFee(0);
         setOrderType("delivery");
-        setActiveTabModal("receipt");
+        // Toters & NokNok handle their own delivery — skip driver modal, go straight back
+        setActiveTabModal(["Toters", "NokNok"].includes(selectedChannel) ? null : "receipt");
         fetchOrdersQueue();
       } else if (data && data.error) {
         setValidationError(`⚠️ ${data.error}`);
