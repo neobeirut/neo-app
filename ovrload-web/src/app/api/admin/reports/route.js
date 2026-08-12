@@ -7,32 +7,30 @@ export async function GET(request) {
     const startDateParam = searchParams.get("startDate");
     const endDateParam = searchParams.get("endDate");
 
-    // Timezone-aware date helpers (Beirut = UTC+3)
-    const tz = "Asia/Beirut";
+    // Timezone offset for Beirut (UTC+3) — use interval addition for reliability
     let dateWhereClause = "";
     let dateWhereClauseO = "";
 
     if (range === "today") {
-      // Today = calendar day in Beirut timezone
-      dateWhereClause  = `AND (created_at AT TIME ZONE '${tz}')::date = (CURRENT_TIMESTAMP AT TIME ZONE '${tz}')::date`;
-      dateWhereClauseO = `AND (o.created_at AT TIME ZONE '${tz}')::date = (CURRENT_TIMESTAMP AT TIME ZONE '${tz}')::date`;
+      dateWhereClause  = "AND (created_at + INTERVAL '3 hours')::date = (CURRENT_TIMESTAMP + INTERVAL '3 hours')::date";
+      dateWhereClauseO = "AND (o.created_at + INTERVAL '3 hours')::date = (CURRENT_TIMESTAMP + INTERVAL '3 hours')::date";
     } else if (range === "yesterday") {
-      dateWhereClause  = `AND (created_at AT TIME ZONE '${tz}')::date = (CURRENT_TIMESTAMP AT TIME ZONE '${tz}')::date - INTERVAL '1 day'`;
-      dateWhereClauseO = `AND (o.created_at AT TIME ZONE '${tz}')::date = (CURRENT_TIMESTAMP AT TIME ZONE '${tz}')::date - INTERVAL '1 day'`;
+      dateWhereClause  = "AND (created_at + INTERVAL '3 hours')::date = (CURRENT_TIMESTAMP + INTERVAL '3 hours')::date - INTERVAL '1 day'";
+      dateWhereClauseO = "AND (o.created_at + INTERVAL '3 hours')::date = (CURRENT_TIMESTAMP + INTERVAL '3 hours')::date - INTERVAL '1 day'";
     } else if (range === "7days") {
-      dateWhereClause  = `AND (created_at AT TIME ZONE '${tz}')::date >= (CURRENT_TIMESTAMP AT TIME ZONE '${tz}')::date - INTERVAL '6 days'`;
-      dateWhereClauseO = `AND (o.created_at AT TIME ZONE '${tz}')::date >= (CURRENT_TIMESTAMP AT TIME ZONE '${tz}')::date - INTERVAL '6 days'`;
+      dateWhereClause  = "AND (created_at + INTERVAL '3 hours')::date >= (CURRENT_TIMESTAMP + INTERVAL '3 hours')::date - INTERVAL '6 days'";
+      dateWhereClauseO = "AND (o.created_at + INTERVAL '3 hours')::date >= (CURRENT_TIMESTAMP + INTERVAL '3 hours')::date - INTERVAL '6 days'";
     } else if (range === "thismonth") {
-      dateWhereClause  = `AND DATE_TRUNC('month', created_at AT TIME ZONE '${tz}') = DATE_TRUNC('month', CURRENT_TIMESTAMP AT TIME ZONE '${tz}')`;
-      dateWhereClauseO = `AND DATE_TRUNC('month', o.created_at AT TIME ZONE '${tz}') = DATE_TRUNC('month', CURRENT_TIMESTAMP AT TIME ZONE '${tz}')`;
+      dateWhereClause  = "AND DATE_TRUNC('month', created_at + INTERVAL '3 hours') = DATE_TRUNC('month', CURRENT_TIMESTAMP + INTERVAL '3 hours')";
+      dateWhereClauseO = "AND DATE_TRUNC('month', o.created_at + INTERVAL '3 hours') = DATE_TRUNC('month', CURRENT_TIMESTAMP + INTERVAL '3 hours')";
     } else if (range === "all") {
       dateWhereClause  = "";
       dateWhereClauseO = "";
     } else if (range === "custom" && startDateParam && endDateParam) {
       const cleanStart = startDateParam.replace(/[^0-9-]/g, "");
       const cleanEnd   = endDateParam.replace(/[^0-9-]/g, "");
-      dateWhereClause  = `AND (created_at AT TIME ZONE '${tz}')::date >= '${cleanStart}' AND (created_at AT TIME ZONE '${tz}')::date <= '${cleanEnd}'`;
-      dateWhereClauseO = `AND (o.created_at AT TIME ZONE '${tz}')::date >= '${cleanStart}' AND (o.created_at AT TIME ZONE '${tz}')::date <= '${cleanEnd}'`;
+      dateWhereClause  = `AND (created_at + INTERVAL '3 hours')::date >= '${cleanStart}' AND (created_at + INTERVAL '3 hours')::date <= '${cleanEnd}'`;
+      dateWhereClauseO = `AND (o.created_at + INTERVAL '3 hours')::date >= '${cleanStart}' AND (o.created_at + INTERVAL '3 hours')::date <= '${cleanEnd}'`;
     }
 
 
@@ -146,17 +144,17 @@ export async function GET(request) {
       ORDER BY hour ASC
     `);
 
-    // 8. Meal Period Breakdown (Beirut timezone)
+    // 8. Meal Period Breakdown (Beirut = UTC+3, using interval)
     const mealPeriodSales = await sql.unsafe(`
       SELECT * FROM (
         SELECT
           CASE
-            WHEN EXTRACT(HOUR FROM created_at AT TIME ZONE 'Asia/Beirut') >= 7
-             AND EXTRACT(HOUR FROM created_at AT TIME ZONE 'Asia/Beirut') < 15 THEN 'Lunch'
-            WHEN EXTRACT(HOUR FROM created_at AT TIME ZONE 'Asia/Beirut') >= 15
-             AND EXTRACT(HOUR FROM created_at AT TIME ZONE 'Asia/Beirut') < 19 THEN 'Afternoon'
-            WHEN EXTRACT(HOUR FROM created_at AT TIME ZONE 'Asia/Beirut') >= 19
-             AND EXTRACT(HOUR FROM created_at AT TIME ZONE 'Asia/Beirut') <= 23 THEN 'Dinner'
+            WHEN EXTRACT(HOUR FROM created_at + INTERVAL '3 hours') >= 7
+             AND EXTRACT(HOUR FROM created_at + INTERVAL '3 hours') < 15 THEN 'Lunch'
+            WHEN EXTRACT(HOUR FROM created_at + INTERVAL '3 hours') >= 15
+             AND EXTRACT(HOUR FROM created_at + INTERVAL '3 hours') < 19 THEN 'Afternoon'
+            WHEN EXTRACT(HOUR FROM created_at + INTERVAL '3 hours') >= 19
+             AND EXTRACT(HOUR FROM created_at + INTERVAL '3 hours') <= 23 THEN 'Dinner'
             ELSE 'Other'
           END as meal_period,
           COUNT(*)::int as order_count,
