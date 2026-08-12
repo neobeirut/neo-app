@@ -556,6 +556,18 @@ export default function TabletPOSPage() {
       }
 
       if (data && data.success) {
+        // Normalize items to same clean shape used by handleReprintOrder
+        // so the print server always receives consistent data
+        const normalizedItems = ticketItems.map((item) => ({
+          qty: item.qty || item.quantity || 1,
+          name: item.name || item.product_name || "Item",
+          unit_price: item.unit_price || 0,
+          selectedCustomizations: (item.selectedCustomizations || []).map((c) =>
+            typeof c === "string" ? { name: c } : { name: c.ingredient || c.name || "" }
+          ),
+          note: item.note || ""
+        }));
+
         const completedOrderData = {
           id: data.orderId || editingOrderId,
           order_source: selectedChannel,
@@ -572,10 +584,11 @@ export default function TabletPOSPage() {
           discount_amount: discountAmount,
           discount_label: discountAmount > 0 ? discountLabel : null,
           total_amount: total,
-          items: ticketItems,
+          items: normalizedItems,
           created_at: new Date().toISOString()
         };
         // Fire print job (non-blocking — order saved regardless of print result)
+        console.log("[POS] Firing print for order #" + completedOrderData.id, completedOrderData);
         handlePrint(completedOrderData);
         setLastCompletedOrder(completedOrderData);
         setTicketItems([]);
