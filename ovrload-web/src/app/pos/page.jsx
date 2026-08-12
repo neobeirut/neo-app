@@ -560,7 +560,7 @@ export default function TabletPOSPage() {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            status: "approved",
+            status: "completed",
             subtotal,
             deliveryFee: (parseFloat(deliveryFee) || 0),
             discountAmount,
@@ -788,7 +788,7 @@ export default function TabletPOSPage() {
       const res = await fetch(`/api/pos/orders/${order.id}/status`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "approved" })
+        body: JSON.stringify({ status: "completed" })
       });
       const data = await res.json();
       if (data.success) {
