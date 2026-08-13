@@ -68,9 +68,18 @@ export function DashboardView({
 }) {
   const [isMounted, setIsMounted] = useState(false);
   const [shortcutsExpanded, setShortcutsExpanded] = useState(false);
+  const [apiCategories, setApiCategories] = useState([]);
 
   useEffect(() => {
     setIsMounted(true);
+    fetch('/api/admin/reports?range=all')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && Array.isArray(data.categories)) {
+          setApiCategories(data.categories);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   // Filter completed/delivered/ready orders for positive revenue mapping
@@ -176,6 +185,24 @@ export function DashboardView({
 
   // 5. Category Breakdown: Total Items & Total Amount per Category
   const categoryReportData = useMemo(() => {
+    if (apiCategories && apiCategories.length > 0) {
+      return apiCategories.map((cat) => {
+        const catProds = (products || []).filter(
+          (p) => (p.category || p.category_name) === cat.category_name
+        );
+        return {
+          category: cat.category_name,
+          total_products: catProds.length,
+          total_inventory_amount: catProds.reduce(
+            (sum, p) => sum + parseFloat(p.unit_price_usd || p.price || 0),
+            0
+          ),
+          total_items_sold: parseInt(cat.total_qty || 0, 10),
+          total_sales_amount: parseFloat(cat.total_revenue || 0),
+        };
+      }).sort((a, b) => b.total_sales_amount - a.total_sales_amount);
+    }
+
     const map = {};
 
     // Populate catalog products
@@ -215,7 +242,7 @@ export function DashboardView({
     });
 
     return Object.values(map).sort((a, b) => a.category.localeCompare(b.category));
-  }, [products, completedOrders]);
+  }, [apiCategories, products, completedOrders]);
 
   // Recent Orders Feed (Last 5 orders)
   const recentOrders = useMemo(() => {
