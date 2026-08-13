@@ -1,11 +1,18 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-import { resolve } from 'path'
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import { resolve } from 'path';
 
-// https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
   base: './',
+  resolve: {
+    alias: {
+      '@/auth.js': resolve(__dirname, 'web/src/auth.js'),
+      '@/auth': resolve(__dirname, 'web/src/auth.js'),
+      '@': resolve(__dirname, 'web/src'),
+    },
+    extensions: ['.mjs', '.js', '.ts', '.jsx', '.tsx', '.json'],
+  },
   build: {
     rollupOptions: {
       input: {
@@ -14,4 +21,4 @@ export default defineConfig({
       }
     }
   }
-})
+});
