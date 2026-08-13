@@ -15,7 +15,7 @@ export async function GET(request) {
         u.points, 
         u.membership_tier, 
         u.total_spent,
-        u.emailverified as "emailVerified",
+        u."emailVerified",
         u.role,
         u.branch_id,
         b.name as branch_name,
@@ -35,7 +35,7 @@ export async function GET(request) {
     });
   } catch (error) {
     console.error("Error fetching users:", error);
-    return Response.json({ error: "Internal server error", details: error.message, stack: error.stack }, { status: 500 });
+    return Response.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 

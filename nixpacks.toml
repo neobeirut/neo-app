@@ -1,0 +1,11 @@
+[providers]
+providers = ["node"]
+
+[variables]
+PUPPETEER_SKIP_DOWNLOAD = "true"
+
+[phases.setup]
+nixPkgs = ["nodejs_22", "unzip"]
+
+[phases.install]
+cmds = ["export PUPPETEER_SKIP_DOWNLOAD=true && cd ovrload-web && npm install"]

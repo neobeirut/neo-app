@@ -267,12 +267,19 @@ export const api = {
     const payload = await injectRestaurantId({ ...user });
     let res;
     if (payload.id) {
-      res = await supabase.from('users').update(payload).eq('id', payload.id).select().single();
+      res = await supabase.from('users').update(payload).eq('id', payload.id).select();
+      if (res.error) return { success: false, error: res.error.message };
+      if (!res.data || res.data.length === 0) {
+        // Fallback: If update didn't find the row, try inserting instead
+        res = await supabase.from('users').insert(payload).select();
+      }
     } else {
-      res = await supabase.from('users').insert(payload).select().single();
+      res = await supabase.from('users').insert(payload).select();
     }
     if (res.error) return { success: false, error: res.error.message };
-    return { success: true, data: res.data };
+    
+    // Return the first element of the array
+    return { success: true, data: res.data && res.data.length > 0 ? res.data[0] : null };
   },
 
   deleteUser: async (id: string) => {
@@ -280,6 +287,59 @@ export const api = {
     if (error) return { success: false, error: error.message };
     return { success: true };
   },
+
+  hardDeleteEmployee: async (employeeId: string, appUserId?: string | null, userName?: string | null) => {
+    try {
+      // HR related data by employee_id
+      const hrTables = [
+        'employee_attendance',
+        'employee_attendance_breaks',
+        'employee_missing_punches',
+        'employee_leave_requests',
+        'employee_shift_requests',
+        'employee_schedules',
+        'employee_payroll_items',
+        'payrolls',
+        'loans',
+        'tp_assessments',
+        'tp_employee_training',
+        'employee_training_progress',
+        'tips_distribution'
+      ];
+      
+      for (const table of hrTables) {
+        if (table === 'employee_leave_requests') {
+          await supabase.from(table).delete().eq('employee_id', employeeId);
+          await supabase.from(table).delete().eq('peer_employee_id', employeeId);
+        } else if (table === 'employee_shift_requests') {
+          await supabase.from(table).delete().eq('employee_id', employeeId);
+          await supabase.from(table).delete().eq('target_employee_id', employeeId);
+        } else {
+          await supabase.from(table).delete().eq('employee_id', employeeId);
+        }
+      }
+
+      // User name related (logs, push tokens)
+      if (userName) {
+        await supabase.from('activity_logs').delete().eq('user_name', userName);
+        await supabase.from('user_push_tokens').delete().eq('user_name', userName);
+      }
+
+      // App User ID related
+      if (appUserId) {
+        await supabase.from('users').delete().eq('id', appUserId);
+      }
+
+      // Finally delete employee
+      const { error } = await supabase.from('employees').delete().eq('employee_id', employeeId);
+      if (error) return { success: false, error: error.message };
+
+      return { success: true };
+    } catch (e: any) {
+      return { success: false, error: e.message };
+    }
+  },
+
 
   uploadHrDocument: async (file: File) => {
     try {
@@ -414,7 +474,18 @@ export const api = {
   },
 
   saveAppPermission: async (payload: any) => {
-    const { error } = await supabase.from('app_permissions').upsert(payload);
+    const cleanPayload = { ...payload };
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+    if (!cleanPayload.restaurant_id || !uuidRegex.test(cleanPayload.restaurant_id)) {
+      const rid = getRestaurantId();
+      if (rid && uuidRegex.test(rid)) {
+        cleanPayload.restaurant_id = rid;
+      } else {
+        delete cleanPayload.restaurant_id;
+      }
+    }
+    const { error } = await supabase.from('app_permissions').upsert(cleanPayload);
     if (error) return { success: false, error: error.message };
     return { success: true };
   },
@@ -545,44 +616,81 @@ export const api = {
   // APP PERMISSIONS (per-user)
   // --------------------------------------------------------------------------
   getAppPermissions: async (userName: string, departments: string, userRole: string) => {
+    const DEFAULT_PERMISSIONS = {
+      can_create_orders: false,
+      can_send_orders: false,
+      can_receive_orders: false,
+      can_edit_all_orders: false,
+      can_add_items_to_orders: false,
+      can_order_all_departments: false,
+      can_create_purchasing: false,
+      can_order_purchasing: false,
+      can_receive_purchasing: false,
+      can_view_menu_manual: false,
+      can_manage_menu_manual: false,
+      can_manage_tips: false,
+      can_manage_checklists: false,
+      can_fill_checklists: false,
+      can_log_waste: false,
+      can_view_waste_report: false,
+      can_manage_hr: false,
+      can_manage_training: false,
+      can_manage_reservations: false,
+      can_access_settings: false,
+      can_view_schedule: true,
+      can_manage_schedules: false,
+      can_view_timesheet: true,
+      can_view_salary: true,
+      can_request_leave: true,
+      can_approve_leave: false,
+      can_request_shift_swap: true,
+      can_approve_shift_swap: false,
+      can_submit_missing_punch: true,
+      can_approve_missing_punch: false,
+      can_view_attendance_reports: false,
+      can_manage_branches: false,
+      can_manage_wallets: false,
+      can_manage_news: false,
+      can_manage_daily_cash: false,
+      can_view_86: false,
+      can_manage_86: false,
+      can_view_complaints: false,
+      can_manage_complaints: false,
+      can_view_upsell: false,
+      can_manage_upsell: false,
+      can_manage_tasks: false,
+      can_view_voids: false,
+      can_manage_voids: false,
+      can_punch_clock: false,
+      can_view_finance_dashboard: false,
+      can_view_signin_logs: false,
+      can_view_client_orders: false,
+      can_manage_client_orders: false,
+      can_view_client_reports: false,
+      can_manage_attendance: false,
+      can_view_catalog: false,
+      can_manage_catalog: false,
+      can_view_suppliers: false,
+      can_manage_suppliers: false,
+      can_view_price_intelligence: false,
+      can_manage_price_intelligence: false,
+      can_view_inventory: false,
+      can_manage_inventory: false,
+      allowed_departments: ''
+    };
+
     if (userRole === 'Admin' || userRole === 'SuperAdmin') {
-      return {
-        success: true,
-        data: {
-          can_create_orders: true, can_send_orders: true,
-          can_receive_orders: true, can_edit_all_orders: true,
-          can_add_items_to_orders: true, can_order_all_departments: true,
-          can_create_purchasing: true, can_order_purchasing: true, can_receive_purchasing: true,
-          can_manage_checklists: true, can_fill_checklists: true,
-          can_log_waste: true, can_view_waste_report: true,
-          can_manage_hr: true, can_manage_training: true, can_manage_reservations: true,
-          can_access_settings: true, can_manage_daily_cash: true, can_manage_tips: true,
-          can_punch_clock: true,
-          can_view_menu_manual: true, can_view_finance_dashboard: true,
-          can_view_86: true, can_manage_86: true,
-          can_view_complaints: true, can_manage_complaints: true,
-          can_view_upsell: true, can_manage_upsell: true,
-          can_view_signin_logs: true,
-          can_manage_tasks: true,
-          can_view_voids: true,
-          can_manage_voids: true,
-          can_view_client_orders: true,
-          can_manage_client_orders: true,
-          can_view_client_reports: true,
-          can_view_catalog: true,
-          can_manage_catalog: true,
-          can_view_suppliers: true,
-          can_manage_suppliers: true,
-          can_view_price_intelligence: true,
-          can_manage_price_intelligence: true
-        }
-      };
+      const adminPerms = Object.keys(DEFAULT_PERMISSIONS).reduce((acc: any, key) => {
+        acc[key] = key !== 'allowed_departments' ? true : '';
+        return acc;
+      }, {});
+      return { success: true, data: adminPerms };
     }
 
     // 1. Try user-specific permissions
     const { data: userData } = await supabase.from('app_permissions').select('*').eq('id', `user:${userName}`).single();
     if (userData) {
-      return { success: true, data: userData };
+      return { success: true, data: { ...DEFAULT_PERMISSIONS, ...userData } };
     }
 
     // 2. Fallback to departments
@@ -592,75 +700,20 @@ export const api = {
       const { data: deptData } = await supabase.from('app_permissions').select('*').in('id', deptIds);
       
       if (deptData && deptData.length > 0) {
-        const merged = deptData.reduce((acc: any, curr: any) => ({
-          can_create_orders: acc.can_create_orders || curr.can_create_orders,
-          can_send_orders: acc.can_send_orders || curr.can_send_orders,
-          can_receive_orders: acc.can_receive_orders || curr.can_receive_orders,
-          can_edit_all_orders: acc.can_edit_all_orders || curr.can_edit_all_orders,
-          can_add_items_to_orders: acc.can_add_items_to_orders || curr.can_add_items_to_orders,
-          can_order_all_departments: acc.can_order_all_departments || curr.can_order_all_departments,
-          can_create_purchasing: acc.can_create_purchasing || curr.can_create_purchasing,
-          can_order_purchasing: acc.can_order_purchasing || curr.can_order_purchasing,
-          can_receive_purchasing: acc.can_receive_purchasing || curr.can_receive_purchasing,
-          can_manage_checklists: acc.can_manage_checklists || curr.can_manage_checklists,
-          can_fill_checklists: acc.can_fill_checklists || curr.can_fill_checklists,
-          can_log_waste: acc.can_log_waste || curr.can_log_waste,
-          can_view_waste_report: acc.can_view_waste_report || curr.can_view_waste_report,
-          can_manage_hr: acc.can_manage_hr || curr.can_manage_hr,
-          can_manage_training: acc.can_manage_training || curr.can_manage_training,
-          can_punch_clock: acc.can_punch_clock || curr.can_punch_clock,
-          can_manage_reservations: acc.can_manage_reservations || curr.can_manage_reservations,
-          can_access_settings: acc.can_access_settings || curr.can_access_settings,
-          can_manage_daily_cash: acc.can_manage_daily_cash || curr.can_manage_daily_cash,
-          can_manage_tips: acc.can_manage_tips || curr.can_manage_tips,
-          can_view_menu_manual: acc.can_view_menu_manual || curr.can_view_menu_manual,
-          can_view_finance_dashboard: acc.can_view_finance_dashboard || curr.can_view_finance_dashboard,
-          can_view_86: acc.can_view_86 || curr.can_view_86,
-          can_manage_86: acc.can_manage_86 || curr.can_manage_86,
-          can_view_complaints: acc.can_view_complaints || curr.can_view_complaints,
-          can_manage_complaints: acc.can_manage_complaints || curr.can_manage_complaints,
-          can_manage_upsell: acc.can_manage_upsell || curr.can_manage_upsell,
-          can_view_signin_logs: acc.can_view_signin_logs || curr.can_view_signin_logs,
-          can_manage_tasks: acc.can_manage_tasks || curr.can_manage_tasks,
-          can_view_voids: acc.can_view_voids || curr.can_view_voids,
-          can_manage_voids: acc.can_manage_voids || curr.can_manage_voids,
-          can_view_client_orders: acc.can_view_client_orders || curr.can_view_client_orders,
-          can_manage_client_orders: acc.can_manage_client_orders || curr.can_manage_client_orders,
-          can_view_client_reports: acc.can_view_client_reports || curr.can_view_client_reports,
-          can_view_catalog: acc.can_view_catalog || curr.can_view_catalog,
-          can_manage_catalog: acc.can_manage_catalog || curr.can_manage_catalog,
-          can_view_suppliers: acc.can_view_suppliers || curr.can_view_suppliers,
-          can_manage_suppliers: acc.can_manage_suppliers || curr.can_manage_suppliers,
-          can_view_price_intelligence: acc.can_view_price_intelligence || curr.can_view_price_intelligence,
-          can_manage_price_intelligence: acc.can_manage_price_intelligence || curr.can_manage_price_intelligence
-        }), { 
-          can_create_orders: false, can_send_orders: false, 
-          can_receive_orders: false, can_edit_all_orders: false, 
-          can_add_items_to_orders: false, can_order_all_departments: false,
-          can_create_purchasing: false, can_order_purchasing: false, can_receive_purchasing: false,
-          can_manage_checklists: false, can_fill_checklists: false,
-          can_log_waste: false, can_view_waste_report: false,
-          can_manage_hr: false, can_manage_training: false, can_manage_reservations: false,
-          can_access_settings: false, can_manage_daily_cash: false, can_manage_tips: false,
-          can_punch_clock: false,
-          can_view_menu_manual: false, can_view_finance_dashboard: false,
-          can_view_86: false, can_manage_86: false,
-          can_view_complaints: false, can_manage_complaints: false,
-          can_view_upsell: false, can_manage_upsell: false,
-          can_view_signin_logs: false,
-          can_manage_tasks: false,
-          can_view_voids: false,
-          can_manage_voids: false,
-          can_view_client_orders: false,
-          can_manage_client_orders: false,
-          can_view_client_reports: false,
-          can_view_catalog: false,
-          can_manage_catalog: false,
-          can_view_suppliers: false,
-          can_manage_suppliers: false,
-          can_view_price_intelligence: false,
-          can_manage_price_intelligence: false
-        });
+        const merged = deptData.reduce((acc: any, curr: any) => {
+          const newAcc = { ...acc };
+          Object.keys(DEFAULT_PERMISSIONS).forEach(key => {
+            if (key === 'allowed_departments') {
+              // merge departments string, comma separated
+              const currentDepts = (newAcc[key] || '').split(',').map((s: string) => s.trim()).filter(Boolean);
+              const incomingDepts = (curr[key] || '').split(',').map((s: string) => s.trim()).filter(Boolean);
+              newAcc[key] = Array.from(new Set([...currentDepts, ...incomingDepts])).join(', ');
+            } else {
+              newAcc[key] = acc[key] || curr[key];
+            }
+          });
+          return newAcc;
+        }, { ...DEFAULT_PERMISSIONS });
         return { success: true, data: merged };
       }
     }
@@ -670,6 +723,7 @@ export const api = {
       return {
         success: true,
         data: {
+          ...DEFAULT_PERMISSIONS,
           can_create_orders: true, can_send_orders: true,
           can_receive_orders: true, can_edit_all_orders: true,
           can_add_items_to_orders: true, can_order_all_departments: true,
@@ -695,12 +749,15 @@ export const api = {
           can_view_suppliers: true,
           can_manage_suppliers: true,
           can_view_price_intelligence: true,
-          can_manage_price_intelligence: true
+          can_manage_price_intelligence: true,
+          can_view_inventory: true,
+          can_manage_inventory: true,
+          can_manage_attendance: true
         }
       };
     }
 
-        return { success: true, data: { can_view_complaints: true, can_manage_complaints: true, can_view_voids: true, can_manage_voids: true, can_punch_clock: false } };
+    return { success: true, data: { ...DEFAULT_PERMISSIONS, can_view_complaints: true, can_manage_complaints: true, can_view_voids: true, can_manage_voids: true, can_punch_clock: false } };
   },
 
   // Activity / Audit Logs
@@ -1777,13 +1834,18 @@ export const api = {
     return { success: true };
   },
 
-  getReservations: async (branch: string, date: string) => {
+  getReservations: async (branch: string, date: string, includeDeleted: boolean = false) => {
     const rid = getRestaurantId();
     let resQuery = supabase
       .from('reservations')
       .select('*')
-      .eq('branch', branch)
       .eq('reservation_date', date);
+    if (!includeDeleted) {
+      resQuery = resQuery.or('is_deleted.eq.false,is_deleted.is.null').neq('status', 'Deleted');
+    }
+    if (branch && branch !== 'All') {
+      resQuery = resQuery.ilike('branch', branch);
+    }
     if (rid) resQuery = resQuery.eq('restaurant_id', rid);
     const { data: reservations, error: reservationsError } = await resQuery.order('reservation_time');
     
@@ -1831,6 +1893,16 @@ export const api = {
   
   cancelReservation: async (id: string, reason: string) => {
     const { error } = await supabase.from('reservations').update({ status: 'Cancelled', cancel_reason: reason }).eq('id', id);
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  },
+
+  deleteReservation: async (id: string, cancelReason: string = 'Marked as Deleted') => {
+    const { error } = await supabase.from('reservations').update({
+      is_deleted: true,
+      status: 'Deleted',
+      cancel_reason: cancelReason
+    }).eq('id', id);
     if (error) return { success: false, error: error.message };
     return { success: true };
   },
@@ -2795,24 +2867,11 @@ export const api = {
   },
 
   getTenantAdmin: async (restaurantId: string) => {
-    let { data, error } = await supabase
-      .from('users')
-      .select('id, name, email, pin')
-      .eq('restaurant_id', restaurantId)
-      .order('id', { ascending: true })
-      .limit(1);
-
-    if (error && (error.message.includes('restaurant_id') || error.message.includes('relationship'))) {
-      // Fallback: get the first Admin/Manager user or just the first user
-      const fallback = await supabase
-        .from('users')
-        .select('id, name, email, pin')
-        .in('role', ['Admin', 'Manager'])
-        .order('id', { ascending: true })
-        .limit(1);
-      data = fallback.data;
-      error = fallback.error;
-    }
+    // Use the get_tenant_admin RPC which correctly identifies the primary login account
+    // by joining public.users with auth.users (oldest auth-confirmed admin first)
+    const { data, error } = await supabase.rpc('get_tenant_admin', {
+      p_restaurant_id: restaurantId
+    });
 
     if (error) return { success: false, error: error.message };
     return { success: true, data: data?.[0] || null };
@@ -2826,6 +2885,7 @@ export const api = {
     admin_name?: string;
     admin_email?: string;
     admin_pin?: string;
+    admin_password?: string;
   }) => {
     const { error: restoErr } = await supabase
       .from('restaurants')
@@ -2838,47 +2898,17 @@ export const api = {
 
     if (restoErr) return { success: false, error: restoErr.message };
 
-    if (payload.admin_email || payload.admin_name || payload.admin_pin) {
-      const updateData: any = {};
-      if (payload.admin_name) updateData.name = payload.admin_name;
-      if (payload.admin_email) updateData.email = payload.admin_email.toLowerCase();
-      if (payload.admin_pin) updateData.pin = payload.admin_pin;
+    if (payload.admin_email || payload.admin_name || payload.admin_pin || payload.admin_password) {
+      const { error: rpcErr } = await supabase.rpc('update_tenant_admin_credentials', {
+        p_restaurant_id: id,
+        p_admin_id: payload.admin_id || null,
+        p_admin_name: payload.admin_name || null,
+        p_admin_email: payload.admin_email ? payload.admin_email.toLowerCase() : null,
+        p_admin_pin: payload.admin_pin || null,
+        p_admin_password: payload.admin_password || null
+      });
 
-      let userErr: any = null;
-      if (payload.admin_id) {
-        const res = await supabase
-          .from('users')
-          .update(updateData)
-          .eq('id', payload.admin_id);
-        userErr = res.error;
-      } else {
-        const res = await supabase
-          .from('users')
-          .update(updateData)
-          .eq('restaurant_id', id);
-        userErr = res.error;
-
-        if (userErr && (userErr.message.includes('restaurant_id') || userErr.message.includes('relationship'))) {
-          // Fallback for single-tenant databases: update the first Admin/Manager user
-          const { data: firstAdmin } = await supabase
-            .from('users')
-            .select('id')
-            .in('role', ['Admin', 'Manager'])
-            .order('id', { ascending: true })
-            .limit(1)
-            .maybeSingle();
-
-          if (firstAdmin) {
-            const res2 = await supabase
-              .from('users')
-              .update(updateData)
-              .eq('id', firstAdmin.id);
-            userErr = res2.error;
-          }
-        }
-      }
-
-      if (userErr) return { success: false, error: userErr.message };
+      if (rpcErr) return { success: false, error: rpcErr.message };
     }
 
     return { success: true };
@@ -2977,16 +3007,50 @@ export const api = {
   getInventoryLocationsList: async () => {
     const rid = getRestaurantId();
     let query = supabase.from('inventory_locations').select('*');
-    if (rid) query = query.eq('restaurant_id', rid);
+    if (rid) {
+      query = query.or(`restaurant_id.eq.${rid},restaurant_id.is.null`);
+    }
     const { data, error } = await query.order('name');
     if (error) return { success: false, error: error.message };
     return { success: true, data };
   },
 
-  saveInventoryLocation: async (location: { id?: string, name: string }) => {
-    const payload = await injectRestaurantId({ ...location });
-    const { error } = await supabase.from('inventory_locations').upsert(payload);
-    if (error) return { success: false, error: error.message };
+  saveInventoryLocation: async (location: { id?: string, name: string, department?: string }) => {
+    const locNameClean = location.name.trim();
+    const locDeptClean = (location.department || 'Kitchen').trim();
+
+    if (!location.id) {
+      const { data: existing } = await supabase
+        .from('inventory_locations')
+        .select('id, name, department')
+        .ilike('name', locNameClean)
+        .ilike('department', locDeptClean)
+        .maybeSingle();
+
+      if (existing) {
+        return {
+          success: false,
+          error: `A storage location named "${locNameClean}" already exists in the ${locDeptClean} department.`
+        };
+      }
+    }
+
+    const payload = await injectRestaurantId({
+      ...location,
+      name: locNameClean,
+      department: locDeptClean
+    });
+
+    const { error } = await supabase.from('inventory_locations').insert(payload);
+    if (error) {
+      if (error.message.includes('duplicate key') || error.message.includes('unique constraint') || error.code === '23505') {
+        return { 
+          success: false, 
+          error: `A storage location named "${locNameClean}" already exists in the ${locDeptClean} department.` 
+        };
+      }
+      return { success: false, error: error.message };
+    }
     return { success: true };
   },
 
@@ -3078,11 +3142,27 @@ export const api = {
   },
 
   saveAttendanceLog: async (log: any) => {
+    const payload = { ...log };
+    delete payload.date;
+    delete payload.employees;
+    delete payload.employee;
+
+    const rid = getRestaurantId();
+    if (!payload.restaurant_id && rid) {
+      payload.restaurant_id = rid;
+    }
+    if (!payload.device_id) {
+      payload.device_id = 'Web Admin / GPS Punch';
+    }
+    if (!payload.id) {
+      delete payload.id;
+    }
+
     let res;
-    if (log.id) {
-      res = await supabase.from('employee_attendance').update(log).eq('id', log.id);
+    if (payload.id) {
+      res = await supabase.from('employee_attendance').update(payload).eq('id', payload.id);
     } else {
-      res = await supabase.from('employee_attendance').insert([log]);
+      res = await supabase.from('employee_attendance').insert([payload]);
     }
     if (res.error) return { success: false, error: res.error.message };
     return { success: true };
@@ -3124,5 +3204,1066 @@ export const api = {
     if (error) return { success: false, error: error.message };
     return { success: true, data };
   },
+
+  // Inventory Management API Functions
+  getStockBalances: async (branch?: string, location?: string) => {
+    const rid = getRestaurantId();
+    let query = supabase.from('inventory_stock_balances').select('*');
+    if (rid) query = query.eq('restaurant_id', rid);
+    if (branch && branch !== 'All') query = query.eq('branch', branch);
+    if (location && location !== 'All') query = query.eq('location', location);
+    const { data, error } = await query.order('item_name');
+    if (error) return { success: false, error: error.message };
+    return { success: true, data: data || [] };
+  },
+
+  upsertStockBalance: async (balance: any) => {
+    const payload = await injectRestaurantId({ ...balance });
+    const { error } = await supabase.from('inventory_stock_balances').upsert(payload);
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  },
+
+  getStockCounts: async (branch?: string) => {
+    const rid = getRestaurantId();
+    let query = supabase.from('inventory_counts').select('*');
+    if (rid) query = query.eq('restaurant_id', rid);
+    if (branch && branch !== 'All') query = query.eq('branch', branch);
+    const { data, error } = await query.order('created_at', { ascending: false });
+    if (error) return { success: false, error: error.message };
+    return { success: true, data: data || [] };
+  },
+
+  getStockCountItems: async (countId: string) => {
+    const { data, error } = await supabase
+      .from('inventory_count_items')
+      .select('*')
+      .eq('count_id', countId);
+    if (error) return { success: false, error: error.message };
+    return { success: true, data: data || [] };
+  },
+
+  saveStockCount: async (header: any, items: any[]) => {
+    const rid = getRestaurantId();
+    const countNumber = header.count_number || `STK-${Date.now().toString().slice(-6)}`;
+    const payloadHeader = await injectRestaurantId({
+      ...header,
+      count_number: countNumber
+    });
+
+    const { data: countRes, error: countErr } = await supabase
+      .from('inventory_counts')
+      .insert([payloadHeader])
+      .select('id')
+      .single();
+
+    if (countErr) return { success: false, error: countErr.message };
+    const countId = countRes.id;
+
+    if (items && items.length > 0) {
+      // 1. Insert into inventory_count_items
+      const payloadItems = items.map(item => ({
+        ...item,
+        count_id: countId,
+        restaurant_id: rid
+      }));
+      await supabase.from('inventory_count_items').insert(payloadItems);
+
+      // 2. Insert item-level records for existing inventory_counts query compatibility
+      const countItemRows = items.map(item => ({
+        restaurant_id: rid,
+        count_number: countNumber,
+        branch: header.branch,
+        location: header.location,
+        department: item.department || 'General',
+        item: item.item_name || item.name,
+        item_name: item.item_name || item.name,
+        count_qty: Number(item.count_qty || 0),
+        expected_qty: Number(item.expected_qty || 0),
+        par_level: Number(item.par_level || 0),
+        unit: item.unit || 'pcs',
+        unit_cost: Number(item.unit_cost || 0),
+        variance_qty: Number(item.variance_qty || 0),
+        variance_cost: Number(item.variance_cost || 0),
+        date: header.date || new Date().toISOString(),
+        counted_by: header.counted_by || 'Admin',
+        status: header.status || 'Completed'
+      }));
+      await supabase.from('inventory_counts').insert(countItemRows);
+
+      // Update live stock balances with counted quantities
+      for (const item of items) {
+        if (item.count_qty !== undefined && item.item_name) {
+          const balPayload = await injectRestaurantId({
+            branch: header.branch,
+            location: header.location,
+            item_id: item.item_id || null,
+            item_name: item.item_name,
+            department: item.department || '',
+            unit: item.unit || '',
+            par_level: item.par_level || 0,
+            current_stock: Number(item.count_qty),
+            unit_cost: Number(item.unit_cost || 0),
+            last_updated: new Date().toISOString()
+          });
+
+          // Check if balance entry exists
+          let balQuery = supabase
+            .from('inventory_stock_balances')
+            .select('id')
+            .eq('branch', header.branch)
+            .eq('location', header.location)
+            .eq('item_name', item.item_name);
+          if (rid) balQuery = balQuery.eq('restaurant_id', rid);
+
+          const { data: existingBal } = await balQuery.maybeSingle();
+          if (existingBal?.id) {
+            await supabase.from('inventory_stock_balances').update({
+              current_stock: Number(item.count_qty),
+              last_updated: new Date().toISOString()
+            }).eq('id', existingBal.id);
+          } else {
+            await supabase.from('inventory_stock_balances').insert([balPayload]);
+          }
+        }
+      }
+    }
+
+    return { success: true, id: countId };
+  },
+
+  getStockAdjustments: async (branch?: string) => {
+    const rid = getRestaurantId();
+    let query = supabase.from('inventory_adjustments').select('*');
+    if (rid) query = query.eq('restaurant_id', rid);
+    if (branch && branch !== 'All') query = query.eq('branch', branch);
+    const { data, error } = await query.order('created_at', { ascending: false });
+    if (error) return { success: false, error: error.message };
+    return { success: true, data: data || [] };
+  },
+
+  saveStockAdjustment: async (adjustment: any) => {
+    const rid = getRestaurantId();
+    const payload = await injectRestaurantId({ ...adjustment });
+    const { error } = await supabase.from('inventory_adjustments').insert([payload]);
+    if (error) return { success: false, error: error.message };
+
+    // Update live stock balances
+    let balQuery = supabase
+      .from('inventory_stock_balances')
+      .select('id, current_stock')
+      .eq('branch', adjustment.branch)
+      .eq('location', adjustment.location)
+      .eq('item_name', adjustment.item_name);
+    if (rid) balQuery = balQuery.eq('restaurant_id', rid);
+
+    const { data: existingBal } = await balQuery.maybeSingle();
+    const isNegative = ['Waste/Damage', 'Internal Use', 'Expiry', 'Stock Out'].includes(adjustment.adjustment_type);
+    const qtyDelta = isNegative ? -Math.abs(Number(adjustment.quantity)) : Math.abs(Number(adjustment.quantity));
+
+    if (existingBal?.id) {
+      const newStock = Math.max(0, Number(existingBal.current_stock || 0) + qtyDelta);
+      await supabase.from('inventory_stock_balances').update({
+        current_stock: newStock,
+        last_updated: new Date().toISOString()
+      }).eq('id', existingBal.id);
+    } else {
+      const newBalPayload = await injectRestaurantId({
+        branch: adjustment.branch,
+        location: adjustment.location,
+        item_id: adjustment.item_id || null,
+        item_name: adjustment.item_name,
+        unit: adjustment.unit || '',
+        current_stock: Math.max(0, qtyDelta),
+        unit_cost: Number(adjustment.unit_cost || 0),
+        last_updated: new Date().toISOString()
+      });
+      await supabase.from('inventory_stock_balances').insert([newBalPayload]);
+    }
+
+    return { success: true };
+  },
+
+  getStockTransfers: async (branch?: string) => {
+    const rid = getRestaurantId();
+    let query = supabase.from('inventory_transfers').select('*');
+    if (rid) query = query.eq('restaurant_id', rid);
+    if (branch && branch !== 'All') {
+      query = query.or(`from_branch.eq.${branch},to_branch.eq.${branch}`);
+    }
+    const { data, error } = await query.order('created_at', { ascending: false });
+    if (error) return { success: false, error: error.message };
+    return { success: true, data: data || [] };
+  },
+
+  getStockTransferItems: async (transferId: string) => {
+    const { data, error } = await supabase
+      .from('inventory_transfer_items')
+      .select('*')
+      .eq('transfer_id', transferId);
+    if (error) return { success: false, error: error.message };
+    return { success: true, data: data || [] };
+  },
+
+  saveStockTransfer: async (header: any, items: any[]) => {
+    const rid = getRestaurantId();
+    const payloadHeader = await injectRestaurantId({
+      ...header,
+      transfer_number: header.transfer_number || `TRF-${Date.now().toString().slice(-6)}`
+    });
+
+    const { data: trfRes, error: trfErr } = await supabase
+      .from('inventory_transfers')
+      .insert([payloadHeader])
+      .select('id')
+      .single();
+
+    if (trfErr) return { success: false, error: trfErr.message };
+    const transferId = trfRes.id;
+
+    if (items && items.length > 0) {
+      const payloadItems = items.map(item => ({
+        ...item,
+        transfer_id: transferId,
+        restaurant_id: rid
+      }));
+      const { error: itemsErr } = await supabase.from('inventory_transfer_items').insert(payloadItems);
+      if (itemsErr) return { success: false, error: itemsErr.message };
+
+      // Update source & target stock balances
+      for (const item of items) {
+        if (item.quantity && item.item_name) {
+          const qty = Number(item.quantity);
+
+          // Deduct from source
+          let srcQuery = supabase
+            .from('inventory_stock_balances')
+            .select('id, current_stock')
+            .eq('branch', header.from_branch)
+            .eq('location', header.from_location)
+            .eq('item_name', item.item_name);
+          if (rid) srcQuery = srcQuery.eq('restaurant_id', rid);
+          const { data: srcBal } = await srcQuery.maybeSingle();
+
+          if (srcBal?.id) {
+            await supabase.from('inventory_stock_balances').update({
+              current_stock: Math.max(0, Number(srcBal.current_stock || 0) - qty),
+              last_updated: new Date().toISOString()
+            }).eq('id', srcBal.id);
+          }
+
+          // Add to destination
+          let destQuery = supabase
+            .from('inventory_stock_balances')
+            .select('id, current_stock')
+            .eq('branch', header.to_branch)
+            .eq('location', header.to_location)
+            .eq('item_name', item.item_name);
+          if (rid) destQuery = destQuery.eq('restaurant_id', rid);
+          const { data: destBal } = await destQuery.maybeSingle();
+
+          if (destBal?.id) {
+            await supabase.from('inventory_stock_balances').update({
+              current_stock: Number(destBal.current_stock || 0) + qty,
+              last_updated: new Date().toISOString()
+            }).eq('id', destBal.id);
+          } else {
+            const destPayload = await injectRestaurantId({
+              branch: header.to_branch,
+              location: header.to_location,
+              item_id: item.item_id || null,
+              item_name: item.item_name,
+              unit: item.unit || '',
+              current_stock: qty,
+              unit_cost: Number(item.unit_cost || 0),
+              last_updated: new Date().toISOString()
+            });
+            await supabase.from('inventory_stock_balances').insert([destPayload]);
+          }
+        }
+      }
+    }
+
+    return { success: true, id: transferId };
+  },
+
+  // ----------------------------------------------------
+  // SHIFT MANAGEMENT API METHODS (Phase 1)
+  // ----------------------------------------------------
+  getShiftTemplates: async (branch?: string) => {
+    const rid = getRestaurantId();
+    let query = supabase.from('shift_templates').select('*');
+    if (branch && branch !== 'All') query = query.or(`branch.eq.${branch},branch.is.null`);
+    if (rid) query = query.eq('restaurant_id', rid);
+
+    const { data, error } = await query.order('start_time', { ascending: true });
+    if (error) return { success: false, error: error.message };
+    return { success: true, data: data || [] };
+  },
+
+  saveShiftTemplate: async (template: any) => {
+    const payload = await injectRestaurantId({ ...template, updated_at: new Date().toISOString() });
+    if (!payload.id) delete payload.id;
+
+    let res;
+    if (template.id) {
+      res = await supabase.from('shift_templates').update(payload).eq('id', template.id);
+    } else {
+      res = await supabase.from('shift_templates').insert([payload]);
+    }
+    if (res.error) return { success: false, error: res.error.message };
+    return { success: true };
+  },
+
+  deleteShiftTemplate: async (id: string) => {
+    const { error } = await supabase.from('shift_templates').delete().eq('id', id);
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  },
+
+  getEmployeeSchedules: async (filters: { startDate?: string; endDate?: string; branch?: string; employee_id?: string; status?: string }) => {
+    const rid = getRestaurantId();
+    let query = supabase.from('employee_schedules').select('*');
+    if (filters.startDate) query = query.gte('date', filters.startDate);
+    if (filters.endDate) query = query.lte('date', filters.endDate);
+    if (filters.branch && filters.branch !== 'All') query = query.eq('branch', filters.branch);
+    if (filters.employee_id && filters.employee_id !== 'All') query = query.eq('employee_id', filters.employee_id);
+    if (filters.status && filters.status !== 'All') query = query.eq('status', filters.status);
+    if (rid) query = query.eq('restaurant_id', rid);
+
+    const { data: schedData, error } = await query.order('date', { ascending: true });
+    if (error) return { success: false, error: error.message };
+
+    let empQuery = supabase.from('employees').select('*');
+    if (rid) empQuery = empQuery.eq('restaurant_id', rid);
+    const { data: empData } = await empQuery;
+
+    const empMap = new Map((empData || []).map((e) => [e.employee_id || e.id, e]));
+
+    const merged = (schedData || []).map((s) => ({
+      ...s,
+      employees: empMap.get(s.employee_id) || s.employees || null
+    }));
+
+    return { success: true, data: merged };
+  },
+
+  saveEmployeeSchedule: async (schedule: any) => {
+    const parseTimeToMinutes = (timeStr: string): number => {
+      if (!timeStr) return 0;
+      const parts = timeStr.split(':');
+      const h = parseInt(parts[0], 10) || 0;
+      const m = parseInt(parts[1], 10) || 0;
+      return h * 60 + m;
+    };
+
+    const payload = await injectRestaurantId({ ...schedule, updated_at: new Date().toISOString() });
+    if (!payload.id) delete payload.id;
+
+    // Validate Schedule Conflicts (Leave exclusivity & Non-overlapping shift rules)
+    let query = supabase
+      .from('employee_schedules')
+      .select('*')
+      .eq('employee_id', payload.employee_id)
+      .eq('date', payload.date);
+
+    if (payload.id) query = query.neq('id', payload.id);
+    const { data: existingSchedules } = await query;
+
+    if (existingSchedules && existingSchedules.length > 0) {
+      // Rule 1: If assigning a Day Off / Leave, block if ANY assignment already exists on date
+      if (payload.assignment_type !== 'shift') {
+        const firstEx = existingSchedules[0];
+        const exName = firstEx.shift_name || firstEx.assignment_type.replace('_', ' ').toUpperCase();
+        return {
+          success: false,
+          error: `Schedule conflict on ${payload.date}! Employee already has "${exName}" assigned. Cannot assign Day Off/Leave on a date with existing shifts.`
+        };
+      }
+
+      // Rule 2: If assigning a Work Shift, check existing assignments
+      if (payload.assignment_type === 'shift') {
+        for (const ex of existingSchedules) {
+          // Rule 2a: If existing record is Day Off / Leave, block adding a shift
+          if (ex.assignment_type !== 'shift') {
+            const leaveName = ex.shift_name || ex.assignment_type.replace('_', ' ').toUpperCase();
+            return {
+              success: false,
+              error: `Schedule conflict on ${payload.date}! Employee is on "${leaveName}". Cannot add a work shift on a day off or leave.`
+            };
+          }
+
+          // Rule 2b: If existing record is a work shift, check time overlap
+          if (ex.start_time && ex.end_time && payload.start_time && payload.end_time) {
+            let startA = parseTimeToMinutes(ex.start_time);
+            let endA = parseTimeToMinutes(ex.end_time);
+            if (endA <= startA) endA += 1440; // Overnight shift
+
+            let startB = parseTimeToMinutes(payload.start_time);
+            let endB = parseTimeToMinutes(payload.end_time);
+            if (endB <= startB) endB += 1440; // Overnight shift
+
+            if (startB < endA && endB > startA) {
+              return {
+                success: false,
+                error: `Shift overlap detected! Employee is already scheduled for "${ex.shift_name || 'Shift'}" (${ex.start_time} - ${ex.end_time}) on ${payload.date}. Non-overlapping shifts only (e.g. 07:00-12:00 and 17:00-22:00).`
+              };
+            }
+          }
+        }
+      }
+    }
+
+    let res;
+    if (schedule.id) {
+      res = await supabase.from('employee_schedules').update(payload).eq('id', schedule.id);
+    } else {
+      res = await supabase.from('employee_schedules').insert([payload]);
+    }
+    if (res.error) return { success: false, error: res.error.message };
+
+    // Send targeted schedule update notification to the specific employee
+    try {
+      const shiftDesc = payload.shift_name || (payload.assignment_type ? payload.assignment_type.replace('_', ' ').toUpperCase() : 'Shift');
+      const notif = await injectRestaurantId({
+        title: '📅 Schedule Updated',
+        message: `Your work schedule for ${payload.date} (${shiftDesc}) has been updated. Please check your schedule for changes.`,
+        type: 'schedule_updated',
+        target_user_id: payload.employee_id,
+        is_read: false,
+        created_at: new Date().toISOString()
+      });
+      await supabase.from('notifications').insert([notif]);
+    } catch (notifErr) {
+      console.error('Error sending schedule update notification:', notifErr);
+    }
+
+    return { success: true };
+  },
+
+  saveEmployeeSchedulesBatch: async (schedules: any[]) => {
+    if (!schedules.length) return { success: true, count: 0 };
+
+    const parseTimeToMinutes = (timeStr: string): number => {
+      if (!timeStr) return 0;
+      const parts = timeStr.split(':');
+      const h = parseInt(parts[0], 10) || 0;
+      const m = parseInt(parts[1], 10) || 0;
+      return h * 60 + m;
+    };
+
+    const prepared = await Promise.all(
+      schedules.map(async (s) => {
+        const p = await injectRestaurantId({ ...s, updated_at: new Date().toISOString() });
+        if (!p.id) delete p.id;
+        return p;
+      })
+    );
+
+    // Validate Schedule Conflicts across prepared batch items and database
+    for (const p of prepared) {
+      let query = supabase
+        .from('employee_schedules')
+        .select('*')
+        .eq('employee_id', p.employee_id)
+        .eq('date', p.date);
+
+      if (p.id) query = query.neq('id', p.id);
+      const { data: existingSchedules } = await query;
+
+      if (existingSchedules && existingSchedules.length > 0) {
+        if (p.assignment_type !== 'shift') {
+          const firstEx = existingSchedules[0];
+          const exName = firstEx.shift_name || firstEx.assignment_type.replace('_', ' ').toUpperCase();
+          return {
+            success: false,
+            error: `Schedule conflict on ${p.date}! Employee already has "${exName}" assigned. Cannot assign Day Off/Leave on a date with existing shifts.`
+          };
+        }
+
+        if (p.assignment_type === 'shift') {
+          for (const ex of existingSchedules) {
+            if (ex.assignment_type !== 'shift') {
+              const leaveName = ex.shift_name || ex.assignment_type.replace('_', ' ').toUpperCase();
+              return {
+                success: false,
+                error: `Schedule conflict on ${p.date}! Employee is on "${leaveName}". Cannot add a work shift on a day off or leave.`
+              };
+            }
+
+            if (ex.start_time && ex.end_time && p.start_time && p.end_time) {
+              let startA = parseTimeToMinutes(ex.start_time);
+              let endA = parseTimeToMinutes(ex.end_time);
+              if (endA <= startA) endA += 1440;
+
+              let startB = parseTimeToMinutes(p.start_time);
+              let endB = parseTimeToMinutes(p.end_time);
+              if (endB <= startB) endB += 1440;
+
+              if (startB < endA && endB > startA) {
+                return {
+                  success: false,
+                  error: `Shift overlap detected for date ${p.date}! Existing shift "${ex.shift_name || 'Shift'}" (${ex.start_time} - ${ex.end_time}) overlaps with new shift (${p.start_time} - ${p.end_time}).`
+                };
+              }
+            }
+          }
+        }
+      }
+    }
+
+    const { data, error } = await supabase.from('employee_schedules').insert(prepared).select('id');
+    if (error) return { success: false, error: error.message };
+
+    // Send targeted update notifications to only the affected employees in batch
+    try {
+      const targetEmpIds = Array.from(new Set(prepared.map((p) => p.employee_id)));
+      const notifications = await Promise.all(
+        targetEmpIds.map((empId) =>
+          injectRestaurantId({
+            title: '📅 Schedule Updated',
+            message: `Your work schedule has been updated. Please check your schedule for details.`,
+            type: 'schedule_updated',
+            target_user_id: empId,
+            is_read: false,
+            created_at: new Date().toISOString()
+          })
+        )
+      );
+      await supabase.from('notifications').insert(notifications);
+    } catch (notifErr) {
+      console.error('Error sending batch schedule update notifications:', notifErr);
+    }
+
+    return { success: true, count: data?.length || 0 };
+  },
+
+  deleteEmployeeSchedule: async (id: string) => {
+    const { data: sched } = await supabase.from('employee_schedules').select('*').eq('id', id).single();
+    const { error } = await supabase.from('employee_schedules').delete().eq('id', id);
+    if (error) return { success: false, error: error.message };
+
+    if (sched && sched.employee_id) {
+      try {
+        const notif = await injectRestaurantId({
+          title: '📅 Schedule Updated',
+          message: `Your shift on ${sched.date} (${sched.shift_name || 'Shift'}) has been updated / removed.`,
+          type: 'schedule_updated',
+          target_user_id: sched.employee_id,
+          is_read: false,
+          created_at: new Date().toISOString()
+        });
+        await supabase.from('notifications').insert([notif]);
+      } catch (notifErr) {
+        console.error('Error sending schedule deletion notification:', notifErr);
+      }
+    }
+
+    return { success: true };
+  },
+
+  copyPreviousWeekSchedule: async (sourceStartDate: string, targetStartDate: string, branch?: string) => {
+    const rid = getRestaurantId();
+    const srcStart = new Date(sourceStartDate);
+    const srcEnd = new Date(srcStart);
+    srcEnd.setDate(srcEnd.getDate() + 6);
+
+    const srcEndStr = srcEnd.toISOString().split('T')[0];
+
+    let query = supabase.from('employee_schedules').select('*').gte('date', sourceStartDate).lte('date', srcEndStr);
+    if (branch && branch !== 'All') query = query.eq('branch', branch);
+    if (rid) query = query.eq('restaurant_id', rid);
+
+    const { data: existingSource, error: fetchErr } = await query;
+    if (fetchErr) return { success: false, error: fetchErr.message };
+    if (!existingSource || existingSource.length === 0) {
+      return { success: false, error: 'No schedules found in the source week to copy.' };
+    }
+
+    const targetStart = new Date(targetStartDate);
+    const daysOffset = Math.round((targetStart.getTime() - srcStart.getTime()) / (1000 * 60 * 60 * 24));
+
+    const copied = await Promise.all(
+      existingSource.map(async (item: any) => {
+        const origDate = new Date(item.date);
+        origDate.setDate(origDate.getDate() + daysOffset);
+        const newDateStr = origDate.toISOString().split('T')[0];
+
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { id, created_at, updated_at, published_at, ...rest } = item;
+        return injectRestaurantId({
+          ...rest,
+          date: newDateStr,
+          status: 'draft',
+          published_at: null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        });
+      })
+    );
+
+    const { error: insertErr } = await supabase.from('employee_schedules').insert(copied);
+    if (insertErr) return { success: false, error: insertErr.message };
+
+    // Send targeted schedule update notifications to affected employees
+    try {
+      const targetEmpIds = Array.from(new Set(copied.map((p) => p.employee_id)));
+      const notifications = await Promise.all(
+        targetEmpIds.map((empId) =>
+          injectRestaurantId({
+            title: '📅 Schedule Updated',
+            message: `Your work schedule for week of ${targetStartDate} has been copied and updated.`,
+            type: 'schedule_updated',
+            target_user_id: empId,
+            is_read: false,
+            created_at: new Date().toISOString()
+          })
+        )
+      );
+      await supabase.from('notifications').insert(notifications);
+    } catch (notifErr) {
+      console.error('Error sending copy week notifications:', notifErr);
+    }
+
+    return { success: true, count: copied.length };
+  },
+
+  copyPreviousMonthSchedule: async (sourceMonthStr: string, targetMonthStr: string, branch?: string) => {
+    const rid = getRestaurantId();
+    const [sYear, sMonth] = sourceMonthStr.split('-').map(Number);
+    const [tYear, tMonth] = targetMonthStr.split('-').map(Number);
+
+    const sStart = `${sourceMonthStr}-01`;
+    const sLastDay = new Date(sYear, sMonth, 0).getDate();
+    const sEnd = `${sourceMonthStr}-${String(sLastDay).padStart(2, '0')}`;
+
+    let query = supabase.from('employee_schedules').select('*').gte('date', sStart).lte('date', sEnd);
+    if (branch && branch !== 'All') query = query.eq('branch', branch);
+    if (rid) query = query.eq('restaurant_id', rid);
+
+    const { data: existingSource, error: fetchErr } = await query;
+    if (fetchErr) return { success: false, error: fetchErr.message };
+    if (!existingSource || existingSource.length === 0) {
+      return { success: false, error: 'No schedules found in the source month to copy.' };
+    }
+
+    const tLastDay = new Date(tYear, tMonth, 0).getDate();
+
+    const copied: any[] = [];
+    for (const item of existingSource) {
+      const dayNum = parseInt(item.date.split('-')[2], 10);
+      if (dayNum <= tLastDay) {
+        const newDateStr = `${targetMonthStr}-${String(dayNum).padStart(2, '0')}`;
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { id, created_at, updated_at, published_at, ...rest } = item;
+        copied.push(
+          await injectRestaurantId({
+            ...rest,
+            date: newDateStr,
+            status: 'draft',
+            published_at: null,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          })
+        );
+      }
+    }
+
+    if (!copied.length) return { success: false, error: 'No valid dates mapped.' };
+
+    const { error: insertErr } = await supabase.from('employee_schedules').insert(copied);
+    if (insertErr) return { success: false, error: insertErr.message };
+
+    // Send targeted schedule update notifications to affected employees
+    try {
+      const targetEmpIds = Array.from(new Set(copied.map((p) => p.employee_id)));
+      const notifications = await Promise.all(
+        targetEmpIds.map((empId) =>
+          injectRestaurantId({
+            title: '📅 Schedule Updated',
+            message: `Your work schedule for month ${targetMonthStr} has been copied and updated.`,
+            type: 'schedule_updated',
+            target_user_id: empId,
+            is_read: false,
+            created_at: new Date().toISOString()
+          })
+        )
+      );
+      await supabase.from('notifications').insert(notifications);
+    } catch (notifErr) {
+      console.error('Error sending copy month notifications:', notifErr);
+    }
+
+    return { success: true, count: copied.length };
+  },
+
+  publishSchedules: async (startDate: string, endDate: string, branch?: string) => {
+    const rid = getRestaurantId();
+    let query = supabase
+      .from('employee_schedules')
+      .update({
+        status: 'published',
+        published_at: new Date().toISOString()
+      })
+      .gte('date', startDate)
+      .lte('date', endDate)
+      .eq('status', 'draft');
+
+    if (branch && branch !== 'All') query = query.eq('branch', branch);
+    if (rid) query = query.eq('restaurant_id', rid);
+
+    const { error } = await query;
+    if (error) return { success: false, error: error.message };
+
+    // Query ALL employees who are scheduled in this date range to receive the published notification
+    let allEmpQuery = supabase
+      .from('employee_schedules')
+      .select('employee_id')
+      .gte('date', startDate)
+      .lte('date', endDate);
+
+    if (branch && branch !== 'All') allEmpQuery = allEmpQuery.eq('branch', branch);
+    if (rid) allEmpQuery = allEmpQuery.eq('restaurant_id', rid);
+
+    const { data: allSchedData } = await allEmpQuery;
+
+    if (allSchedData && allSchedData.length > 0) {
+      const allEmpIds = Array.from(new Set(allSchedData.map((s) => s.employee_id)));
+      const notifications = await Promise.all(
+        allEmpIds.map((empId) =>
+          injectRestaurantId({
+            title: '📅 Work Schedule Published',
+            message: `Your work schedule for ${startDate} to ${endDate} has been published. Please check your schedule for details.`,
+            type: 'schedule_published',
+            target_user_id: empId,
+            is_read: false,
+            created_at: new Date().toISOString()
+          })
+        )
+      );
+      await supabase.from('notifications').insert(notifications);
+    }
+
+    return { success: true, count: allSchedData?.length || 0 };
+  },
+
+  // ----------------------------------------------------
+  // PAYROLL FINALIZATION API METHODS (Phase 3)
+  // ----------------------------------------------------
+  getPayrollPeriods: async (branch?: string) => {
+    const rid = getRestaurantId();
+    let query = supabase.from('payroll_periods').select('*');
+    if (branch && branch !== 'All') query = query.or(`branch.eq.${branch},branch.is.null`);
+    if (rid) query = query.eq('restaurant_id', rid);
+
+    const { data, error } = await query.order('start_date', { ascending: false });
+    if (error) return { success: false, error: error.message };
+    return { success: true, data: data || [] };
+  },
+
+  savePayrollPeriod: async (period: any) => {
+    const payload = await injectRestaurantId({ ...period, updated_at: new Date().toISOString() });
+    if (!payload.id) delete payload.id;
+
+    let res;
+    if (period.id) {
+      res = await supabase.from('payroll_periods').update(payload).eq('id', period.id);
+    } else {
+      res = await supabase.from('payroll_periods').insert([payload]).select('id').single();
+    }
+    if (res.error) return { success: false, error: res.error.message };
+    return { success: true, data: res.data };
+  },
+
+  lockPayrollPeriod: async (periodId: string, lockedBy: string) => {
+    const { error } = await supabase
+      .from('payroll_periods')
+      .update({
+        status: 'locked',
+        locked_at: new Date().toISOString(),
+        locked_by: lockedBy,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', periodId);
+
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  },
+
+  getEmployeePayrollItems: async (payrollPeriodId: string) => {
+    const { data, error } = await supabase
+      .from('employee_payroll_items')
+      .select('*')
+      .eq('payroll_period_id', payrollPeriodId);
+
+    if (error) return { success: false, error: error.message };
+    return { success: true, data: data || [] };
+  },
+
+  saveEmployeePayrollItemsBatch: async (items: any[]) => {
+    if (!items.length) return { success: true, count: 0 };
+    const prepared = await Promise.all(
+      items.map(async (item) => {
+        const p = await injectRestaurantId({ ...item, updated_at: new Date().toISOString() });
+        if (!p.id) delete p.id;
+        return p;
+      })
+    );
+
+    const { data, error } = await supabase.from('employee_payroll_items').insert(prepared).select('id');
+    if (error) return { success: false, error: error.message };
+    return { success: true, count: data?.length || 0 };
+  },
+
+  // Leave Requests API
+  getLeaveRequests: async (filters: { employeeId?: string; status?: string; startDate?: string; endDate?: string } = {}) => {
+    let query = supabase.from('employee_leave_requests').select('*').order('start_date', { ascending: false });
+    const rid = getRestaurantId();
+    if (rid) query = query.eq('restaurant_id', rid);
+    if (filters.employeeId && filters.employeeId !== 'All') query = query.eq('employee_id', filters.employeeId);
+    if (filters.status && filters.status !== 'All') query = query.eq('status', filters.status);
+    if (filters.startDate) query = query.gte('start_date', filters.startDate);
+    if (filters.endDate) query = query.lte('end_date', filters.endDate);
+
+    const { data, error } = await query;
+    if (error) return { success: false, error: error.message };
+    return { success: true, data: data || [] };
+  },
+
+  createLeaveRequest: async (payload: {
+    employee_id: string;
+    leave_type: string;
+    start_date: string;
+    end_date: string;
+    total_days: number;
+    reason?: string;
+  }) => {
+    const isShiftSwap = payload.leave_type === 'Shift Swap';
+    const initialStatus = isShiftSwap ? 'pending_peer' : 'pending';
+
+    const dataWithRid = await injectRestaurantId({
+      ...payload,
+      status: initialStatus
+    });
+    delete dataWithRid.id;
+    const { data, error } = await supabase.from('employee_leave_requests').insert([dataWithRid]).select().single();
+    if (error) return { success: false, error: error.message };
+
+    // Broadcast notification to peers in same branch/department for shift swap
+    if (isShiftSwap && data) {
+      try {
+        const { data: requester } = await supabase
+          .from('employees')
+          .select('first_name, last_name, branch, position, department')
+          .eq('employee_id', payload.employee_id)
+          .single();
+
+        const reqName = requester
+          ? `${requester.first_name || ''} ${requester.last_name || ''}`.trim()
+          : payload.employee_id;
+
+        let query = supabase
+          .from('employees')
+          .select('employee_id')
+          .neq('employee_id', payload.employee_id);
+
+        if (requester?.branch) query = query.eq('branch', requester.branch);
+        if (requester?.department) query = query.eq('department', requester.department);
+
+        const { data: peers } = await query;
+
+        if (peers && peers.length > 0) {
+          const notifications = await Promise.all(
+            peers.map((p) =>
+              injectRestaurantId({
+                title: '🔄 New Shift Swap Available',
+                message: `${reqName} is looking to swap their shift on ${payload.start_date}. Click to agree.`,
+                type: 'shift_swap_request',
+                target_user_id: p.employee_id,
+                is_read: false,
+                created_at: new Date().toISOString()
+              })
+            )
+          );
+          await supabase.from('notifications').insert(notifications);
+        }
+      } catch (notifyErr) {
+        console.error('Error dispatching shift swap notifications:', notifyErr);
+      }
+    }
+
+    return { success: true, data };
+  },
+
+  agreeToShiftSwap: async (requestId: string, peerEmployeeId: string, peerName: string) => {
+    const { data: reqData } = await supabase.from('employee_leave_requests').select('*').eq('id', requestId).single();
+    if (!reqData) return { success: false, error: 'Shift swap request not found.' };
+
+    const { error } = await supabase
+      .from('employee_leave_requests')
+      .update({
+        status: 'pending_manager',
+        peer_employee_id: peerEmployeeId,
+        peer_agreed_at: new Date().toISOString(),
+        review_notes: `Peer agreed: ${peerName}`,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', requestId);
+
+    if (error) return { success: false, error: error.message };
+
+    try {
+      const { data: managers } = await supabase.from('employees').select('employee_id').in('role', ['Manager', 'Admin', 'SuperAdmin']);
+      if (managers && managers.length > 0) {
+        const notifications = await Promise.all(
+          managers.map((m) =>
+            injectRestaurantId({
+              title: '📋 Shift Swap Agreed - Action Required',
+              message: `${peerName} agreed to swap shift with employee ${reqData.employee_id} on ${reqData.start_date}. Manager review required.`,
+              type: 'shift_swap_peer_agreed',
+              target_user_id: m.employee_id,
+              is_read: false,
+              created_at: new Date().toISOString()
+            })
+          )
+        );
+        await supabase.from('notifications').insert(notifications);
+      }
+    } catch (notifyErr) {
+      console.error('Error dispatching manager notification:', notifyErr);
+    }
+
+    return { success: true };
+  },
+
+  updateLeaveRequestStatus: async (id: string, status: string, reviewedBy: string, reviewNotes?: string) => {
+    const { data: reqData } = await supabase.from('employee_leave_requests').select('*').eq('id', id).single();
+
+    const { error } = await supabase
+      .from('employee_leave_requests')
+      .update({
+        status,
+        reviewed_by: reviewedBy,
+        reviewed_at: new Date().toISOString(),
+        review_notes: reviewNotes || null,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', id);
+
+    if (error) return { success: false, error: error.message };
+
+    if (status === 'approved' && reqData) {
+      try {
+        const leaveType = (reqData.leave_type || '').toLowerCase();
+
+        if (leaveType.includes('swap') && reqData.peer_employee_id) {
+          // SHIFT SWAP APPROVAL LOGIC
+          const targetDate = reqData.start_date;
+          const empA = reqData.employee_id;
+          const empB = reqData.peer_employee_id;
+
+          const { data: schedA } = await supabase.from('employee_schedules').select('*').eq('employee_id', empA).eq('date', targetDate).single();
+          const { data: schedB } = await supabase.from('employee_schedules').select('*').eq('employee_id', empB).eq('date', targetDate).single();
+
+          if (schedA && schedB) {
+            // Swap employee_ids on existing schedules
+            await supabase.from('employee_schedules').update({ employee_id: empB, updated_at: new Date().toISOString() }).eq('id', schedA.id);
+            await supabase.from('employee_schedules').update({ employee_id: empA, updated_at: new Date().toISOString() }).eq('id', schedB.id);
+          } else if (schedA && !schedB) {
+            // Assign SchedA to EmpB, and set EmpA to Day Off
+            await supabase.from('employee_schedules').update({ employee_id: empB, updated_at: new Date().toISOString() }).eq('id', schedA.id);
+            const offPayload = await injectRestaurantId({
+              employee_id: empA,
+              branch: schedA.branch || 'Main',
+              date: targetDate,
+              assignment_type: 'day_off',
+              shift_name: 'DAY OFF',
+              status: 'published',
+              updated_at: new Date().toISOString()
+            });
+            delete offPayload.id;
+            await supabase.from('employee_schedules').insert([offPayload]);
+          }
+
+          // Notify both employees
+          const swapNotifications = await Promise.all([
+            injectRestaurantId({
+              title: '✅ Shift Swap Approved & Applied',
+              message: `Your shift swap for ${targetDate} has been approved by ${reviewedBy} and applied to your schedule.`,
+              type: 'shift_swap_approved',
+              target_user_id: empA,
+              is_read: false,
+              created_at: new Date().toISOString()
+            }),
+            injectRestaurantId({
+              title: '✅ Shift Swap Approved & Applied',
+              message: `Your shift swap for ${targetDate} has been approved by ${reviewedBy} and applied to your schedule.`,
+              type: 'shift_swap_approved',
+              target_user_id: empB,
+              is_read: false,
+              created_at: new Date().toISOString()
+            })
+          ]);
+          await supabase.from('notifications').insert(swapNotifications);
+        } else {
+          // REGULAR LEAVE APPROVAL LOGIC (Vacation, Sick, Unpaid)
+          let assignmentType = 'unpaid_leave';
+          let shiftName = 'UNPAID LEAVE';
+
+          if (leaveType.includes('vacation')) {
+            assignmentType = 'vacation';
+            shiftName = 'VACATION LEAVE';
+          } else if (leaveType.includes('sick')) {
+            assignmentType = 'sick_leave';
+            shiftName = 'SICK LEAVE';
+          } else if (leaveType.includes('unpaid')) {
+            assignmentType = 'unpaid_leave';
+            shiftName = 'UNPAID LEAVE';
+          } else {
+            assignmentType = 'unpaid_leave';
+            shiftName = reqData.leave_type?.toUpperCase() || 'UNPAID LEAVE';
+          }
+
+          const curDate = new Date(reqData.start_date);
+          const endDate = new Date(reqData.end_date);
+
+          const { data: empObj } = await supabase.from('employees').select('branch, position').eq('employee_id', reqData.employee_id).single();
+          const branchName = empObj?.branch || 'Main';
+
+          const scheduleBatch: any[] = [];
+
+          while (curDate <= endDate) {
+            const dateStr = curDate.toISOString().split('T')[0];
+
+            await supabase.from('employee_schedules').delete().eq('employee_id', reqData.employee_id).eq('date', dateStr);
+
+            scheduleBatch.push({
+              employee_id: reqData.employee_id,
+              branch: branchName,
+              date: dateStr,
+              assignment_type: assignmentType,
+              shift_name: shiftName,
+              position: empObj?.position || null,
+              status: 'published',
+              notes: reqData.reason ? `Approved Leave Request: ${reqData.reason}` : 'Approved Leave Request'
+            });
+
+            curDate.setDate(curDate.getDate() + 1);
+          }
+
+          if (scheduleBatch.length > 0) {
+            const prepared = await Promise.all(scheduleBatch.map(async (s) => injectRestaurantId({ ...s, updated_at: new Date().toISOString() })));
+            await supabase.from('employee_schedules').insert(prepared);
+          }
+        }
+      } catch (syncErr) {
+        console.error('Error syncing leave request to schedule:', syncErr);
+      }
+    }
+
+    return { success: true };
+  }
 };
+
+
 

@@ -348,139 +348,137 @@ export function ProductsTable({
             <h3 className="text-lg font-semibold text-gray-900 mb-4 px-6">
               {categoryName}
             </h3>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-max">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-2 py-3 text-left text-sm font-medium text-gray-500 w-8"></th>
-                    <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">
-                      Name
-                    </th>
-                    <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">
-                      Price
-                    </th>
-                    <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">
-                      Status (All Branches)
-                    </th>
-                    <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">
-                      Rating
-                    </th>
-                    <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">
-                      Flags
-                    </th>
-                    <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {categoryProducts.map((product) => (
-                    <tr
-                      key={product.id}
-                      draggable
-                      onDragStart={(e) => handleDragStart(e, product)}
-                      onDragOver={(e) => handleDragOver(e, product)}
-                      onDrop={(e) => handleDrop(e, product)}
-                      onDragEnd={handleDragEnd}
-                      className={`
-                      ${draggedItem?.id === product.id ? "opacity-50" : ""}
-                      ${dragOverItem?.id === product.id ? "bg-blue-50" : ""}
-                      cursor-move hover:bg-gray-50 transition-colors
-                    `}
-                    >
-                      <td className="px-2 py-4">
-                        <GripVertical size={16} className="text-gray-400" />
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <img
-                            src={product.image_url}
-                            alt={product.name}
-                            className="w-12 h-12 object-cover rounded"
-                          />
-                          <span className="text-sm text-gray-900">
-                            {product.name}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-900">
-                        ${product.price}
-                        {product.original_price && (
-                          <span className="text-gray-500 line-through ml-2">
-                            ${product.original_price}
+            <table className="w-full">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-2 py-3 text-left text-sm font-medium text-gray-500 w-8"></th>
+                  <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">
+                    Name
+                  </th>
+                  <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">
+                    Price
+                  </th>
+                  <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">
+                    Status (All Branches)
+                  </th>
+                  <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">
+                    Rating
+                  </th>
+                  <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">
+                    Flags
+                  </th>
+                  <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {categoryProducts.map((product) => (
+                  <tr
+                    key={product.id}
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, product)}
+                    onDragOver={(e) => handleDragOver(e, product)}
+                    onDrop={(e) => handleDrop(e, product)}
+                    onDragEnd={handleDragEnd}
+                    className={`
+                    ${draggedItem?.id === product.id ? "opacity-50" : ""}
+                    ${dragOverItem?.id === product.id ? "bg-blue-50" : ""}
+                    cursor-move hover:bg-gray-50 transition-colors
+                  `}
+                  >
+                    <td className="px-2 py-4">
+                      <GripVertical size={16} className="text-gray-400" />
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <img
+                          src={product.image_url}
+                          alt={product.name}
+                          className="w-12 h-12 object-cover rounded"
+                        />
+                        <span className="text-sm text-gray-900">
+                          {product.name}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-900">
+                      ${product.price}
+                      {product.original_price && (
+                        <span className="text-gray-500 line-through ml-2">
+                          ${product.original_price}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 text-sm">
+                      <select
+                        value={product.status || "Available"}
+                        onChange={(e) =>
+                          handleStatusChange(product.id, e.target.value)
+                        }
+                        disabled={updatingStatus[product.id]}
+                        className={`px-2 py-1 text-xs rounded border-0 cursor-pointer ${
+                          product.status === "Available"
+                            ? "bg-green-100 text-green-800"
+                            : product.status === "Unavailable Today"
+                              ? "bg-yellow-100 text-yellow-800"
+                              : product.status ===
+                                  "Unavailable Until Further Notice"
+                                ? "bg-red-100 text-red-800"
+                                : product.status === "Hide from Menu"
+                                  ? "bg-gray-100 text-gray-800"
+                                  : "bg-blue-100 text-blue-800"
+                        } ${updatingStatus[product.id] ? "opacity-50" : ""}`}
+                      >
+                        {statusOptionsForDropdown.map((status) => (
+                          <option key={status} value={status}>
+                            {status === "Unavailable Until Further Notice"
+                              ? "On Hold"
+                              : status}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-900">
+                      <div className="flex items-center gap-1">
+                        <Star size={14} className="text-yellow-400" />
+                        {product.rating}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex gap-1">
+                        {product.is_featured && (
+                          <span className="px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded">
+                            Featured
                           </span>
                         )}
-                      </td>
-                      <td className="px-6 py-4 text-sm">
-                        <select
-                          value={product.status || "Available"}
-                          onChange={(e) =>
-                            handleStatusChange(product.id, e.target.value)
-                          }
-                          disabled={updatingStatus[product.id]}
-                          className={`px-2 py-1 text-xs rounded border-0 cursor-pointer ${
-                            product.status === "Available"
-                              ? "bg-green-100 text-green-800"
-                              : product.status === "Unavailable Today"
-                                ? "bg-yellow-100 text-yellow-800"
-                                : product.status ===
-                                    "Unavailable Until Further Notice"
-                                  ? "bg-red-100 text-red-800"
-                                  : product.status === "Hide from Menu"
-                                    ? "bg-gray-100 text-gray-800"
-                                    : "bg-blue-100 text-blue-800"
-                          } ${updatingStatus[product.id] ? "opacity-50" : ""}`}
+                        {product.is_special && (
+                          <span className="px-2 py-1 text-xs bg-orange-100 text-orange-800 rounded">
+                            Special
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-sm">
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => onEdit(product)}
+                          className="text-blue-600 hover:text-blue-800"
                         >
-                          {statusOptionsForDropdown.map((status) => (
-                            <option key={status} value={status}>
-                              {status === "Unavailable Until Further Notice"
-                                ? "On Hold"
-                                : status}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-900">
-                        <div className="flex items-center gap-1">
-                          <Star size={14} className="text-yellow-400" />
-                          {product.rating}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex gap-1">
-                          {product.is_featured && (
-                            <span className="px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded">
-                              Featured
-                            </span>
-                          )}
-                          {product.is_special && (
-                            <span className="px-2 py-1 text-xs bg-orange-100 text-orange-800 rounded">
-                              Special
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-sm">
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => onEdit(product)}
-                            className="text-blue-600 hover:text-blue-800"
-                          >
-                            <Edit2 size={16} />
-                          </button>
-                          <button
-                            onClick={() => onDelete(product.id, "products")}
-                            className="text-red-600 hover:text-red-800"
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                          <Edit2 size={16} />
+                        </button>
+                        <button
+                          onClick={() => onDelete(product.id, "products")}
+                          className="text-red-600 hover:text-red-800"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         ),
       )}

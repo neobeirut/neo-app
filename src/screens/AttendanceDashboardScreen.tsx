@@ -1,6 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState, useEffect, useMemo } from 'react';
 import { api } from '../api/client';
+import ShiftManagementView from '../components/attendance/ShiftManagementView';
+import AttendanceAnalysisView from '../components/attendance/AttendanceAnalysisView';
+import PayrollValidationScreen from '../components/attendance/PayrollValidationScreen';
+import AttendanceReportsView from '../components/attendance/AttendanceReportsView';
+import LeaveRequestsView from '../components/attendance/LeaveRequestsView';
+import LaborIntelligenceView from '../components/attendance/LaborIntelligenceView';
+import AuditTooltip from '../components/attendance/AuditTooltip';
 import { 
   Loader2, Clock, MapPin, Smartphone, RefreshCw, 
   Trash2, Edit, Plus, Search, CheckCircle, ChevronDown, ChevronUp
@@ -17,7 +24,7 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
     );
   }, [user, permissions]);
 
-  const [activeTab, setActiveTab] = useState<'active' | 'timesheets' | 'employees'>('active');
+  const [activeTab, setActiveTab] = useState<'schedule' | 'analysis' | 'payroll' | 'reports' | 'leave' | 'labor_intelligence' | 'active' | 'timesheets' | 'employees'>('schedule');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -106,11 +113,13 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
         if (activeShift) {
           const res = await api.saveAttendanceLog({
             id: activeShift.id,
+            restaurant_id: user?.restaurant_id || activeShift.restaurant_id,
             employee_id: gpsEmployeeId,
             branch: activeShift.branch,
             punch_in: activeShift.punch_in,
             punch_out: now,
-            punch_out_notes: `GPS Verified (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`
+            punch_out_notes: `GPS Verified (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`,
+            device_id: activeShift.device_id || 'Web Admin (GPS)'
           });
           if (res.success) {
             alert(`📍 GPS Verified! Punch Out recorded for ${activeShift.branch}.`);
@@ -121,10 +130,12 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
           }
         } else {
           const res = await api.saveAttendanceLog({
+            restaurant_id: user?.restaurant_id,
             employee_id: gpsEmployeeId,
             branch: gpsTargetBranch,
             punch_in: now,
-            punch_in_notes: `GPS Verified (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`
+            punch_in_notes: `GPS Verified (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`,
+            device_id: 'Web Admin (GPS)'
           });
           if (res.success) {
             alert(`📍 GPS Verified! Punch In recorded for ${gpsTargetBranch}.`);
@@ -370,13 +381,19 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
       );
     }
 
+    const managerName = user?.name || user?.email || 'Store Manager';
+    const auditReason = `Punch timestamp updated by ${managerName} on ${new Date().toLocaleString()}`;
+
     const updatedLog = {
       id: selectedLog.id,
       branch: formBranch,
       punch_in: new Date(formPunchIn).toISOString(),
       punch_out: formPunchOut ? new Date(formPunchOut).toISOString() : null,
       punch_in_notes: formPunchInNotes || null,
-      punch_out_notes: finalPunchOutNotes
+      punch_out_notes: finalPunchOutNotes,
+      modified_by: managerName,
+      modified_at: new Date().toISOString(),
+      modification_reason: auditReason
     };
 
     const res = await api.saveAttendanceLog(updatedLog);
@@ -430,14 +447,20 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
       detailsStr
     );
 
+    const managerName = user?.name || user?.email || 'Store Manager';
+
     const newLog = {
+      restaurant_id: user?.restaurant_id,
       employee_id: formEmployeeId,
       branch: formBranch,
       punch_in: new Date(formPunchIn).toISOString(),
       punch_out: formPunchOut ? new Date(formPunchOut).toISOString() : null,
       punch_in_notes: finalPunchInNotes,
       punch_out_notes: finalPunchOutNotes,
-      device_id: 'Manual Entry'
+      device_id: 'Manual Entry',
+      modified_by: managerName,
+      modified_at: new Date().toISOString(),
+      modification_reason: `Manual shift created by ${managerName}`
     };
 
     const res = await api.saveAttendanceLog(newLog);
@@ -516,7 +539,7 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
   }
 
   return (
-    <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
+    <div style={{ padding: '24px', maxWidth: '1600px', margin: '0 auto', width: '100%' }}>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
         <div>
@@ -532,7 +555,7 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
               setGpsTargetBranch(user.branch && user.branch !== 'All' ? user.branch : 'Badaro');
               setShowGpsModal(true);
             }}
-            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 18px', backgroundColor: '#0284c7', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}
+            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 18px', backgroundColor: 'var(--primary)', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}
           >
             <MapPin size={18} /> GPS Verified Punch
           </button>
@@ -546,7 +569,7 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
           )}
           <button 
             onClick={exportToExcel}
-            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 18px', backgroundColor: '#2e7d32', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}
+            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 18px', backgroundColor: 'var(--primary)', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}
           >
             Export to Excel
           </button>
@@ -562,6 +585,42 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
 
       {/* Tabs */}
       <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: '24px', gap: '8px' }}>
+        <button 
+          onClick={() => setActiveTab('schedule')} 
+          style={{ ...tabStyle, borderBottom: activeTab === 'schedule' ? '2px solid var(--primary)' : 'none', color: activeTab === 'schedule' ? 'var(--primary)' : 'var(--text-muted)' }}
+        >
+          Shift Planning
+        </button>
+        <button 
+          onClick={() => setActiveTab('analysis')} 
+          style={{ ...tabStyle, borderBottom: activeTab === 'analysis' ? '2px solid var(--primary)' : 'none', color: activeTab === 'analysis' ? 'var(--primary)' : 'var(--text-muted)' }}
+        >
+          Shift vs Attendance Analysis
+        </button>
+        <button 
+          onClick={() => setActiveTab('payroll')} 
+          style={{ ...tabStyle, borderBottom: activeTab === 'payroll' ? '2px solid var(--primary)' : 'none', color: activeTab === 'payroll' ? 'var(--primary)' : 'var(--text-muted)' }}
+        >
+          Payroll Validation & Approval
+        </button>
+        <button 
+          onClick={() => setActiveTab('reports')} 
+          style={{ ...tabStyle, borderBottom: activeTab === 'reports' ? '2px solid var(--primary)' : 'none', color: activeTab === 'reports' ? 'var(--primary)' : 'var(--text-muted)' }}
+        >
+          Reports & Analytics
+        </button>
+        <button 
+          onClick={() => setActiveTab('leave')} 
+          style={{ ...tabStyle, borderBottom: activeTab === 'leave' ? '2px solid var(--primary)' : 'none', color: activeTab === 'leave' ? 'var(--primary)' : 'var(--text-muted)' }}
+        >
+          Leave Requests
+        </button>
+        <button 
+          onClick={() => setActiveTab('labor_intelligence')} 
+          style={{ ...tabStyle, borderBottom: activeTab === 'labor_intelligence' ? '2px solid var(--primary)' : 'none', color: activeTab === 'labor_intelligence' ? 'var(--primary)' : 'var(--text-muted)' }}
+        >
+          Labor Intelligence (Cost & Sales)
+        </button>
         <button 
           onClick={() => setActiveTab('active')} 
           style={{ ...tabStyle, borderBottom: activeTab === 'active' ? '2px solid var(--primary)' : 'none', color: activeTab === 'active' ? 'var(--primary)' : 'var(--text-muted)' }}
@@ -581,6 +640,63 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
           Employee Settings ({employees.length})
         </button>
       </div>
+
+      {/* SHIFT MANAGEMENT VIEW */}
+      {activeTab === 'schedule' && (
+        <ShiftManagementView
+          user={user}
+          permissions={permissions}
+          employees={employees}
+          branches={branches}
+        />
+      )}
+
+      {/* ATTENDANCE & SHIFT VALIDATION ANALYSIS VIEW */}
+      {activeTab === 'analysis' && (
+        <AttendanceAnalysisView
+          user={user}
+          permissions={permissions}
+          employees={employees}
+          branches={branches}
+        />
+      )}
+
+      {/* PAYROLL VALIDATION REVIEW & PERIOD LOCKING VIEW */}
+      {activeTab === 'payroll' && (
+        <PayrollValidationScreen
+          user={user}
+          permissions={permissions}
+          employees={employees}
+          branches={branches}
+        />
+      )}
+
+      {/* REPORTS CENTER VIEW */}
+      {activeTab === 'reports' && (
+        <AttendanceReportsView
+          user={user}
+          permissions={permissions}
+          employees={employees}
+          branches={branches}
+        />
+      )}
+
+      {/* EMPLOYEE LEAVE REQUESTS VIEW */}
+      {activeTab === 'leave' && (
+        <LeaveRequestsView
+          user={user}
+          employees={employees}
+        />
+      )}
+
+      {/* LABOR COST FORECASTING & LABOR % VS SALES INTELLIGENCE VIEW */}
+      {activeTab === 'labor_intelligence' && (
+        <LaborIntelligenceView
+          user={user}
+          employees={employees}
+          branches={branches}
+        />
+      )}
 
       {/* FILTER BAR (only for timesheets) */}
       {activeTab === 'timesheets' && (
@@ -891,7 +1007,10 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
 
                             return (
                               <tr key={log.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                                <td style={{ padding: '12px 16px', fontWeight: 600, color: 'var(--text-main)' }}>{empName}</td>
+                                <td style={{ padding: '12px 16px', fontWeight: 600, color: 'var(--text-main)' }}>
+                                  {empName}
+                                  <AuditTooltip log={log} />
+                                </td>
                                 <td style={{ padding: '12px 16px' }}>{logDateStr}</td>
                                 <td style={{ padding: '12px 16px' }}>{log.branch}</td>
                                 <td style={{ padding: '12px 16px' }}>{emp.position || '-'}</td>
@@ -1259,7 +1378,7 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
                 <button 
                   type="submit" 
                   disabled={gpsPunching}
-                  style={{ padding: '8px 18px', backgroundColor: '#0284c7', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+                  style={{ padding: '8px 18px', backgroundColor: 'var(--primary)', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
                 >
                   {gpsPunching ? <Loader2 size={16} className="spin" /> : <MapPin size={16} />}
                   {gpsPunching ? 'Verifying Location...' : 'Verify GPS & Punch'}

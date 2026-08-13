@@ -355,6 +355,25 @@ export default function MenuRecipeFormScreen() {
               {allRecipes.map(r => <option key={r.id} value={r.id}>{r.item_name}</option>)}
             </select>
           </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '16px' }}>
+            <button 
+              type="button" 
+              onClick={() => navigate('/menu-manual')}
+              style={{ padding: '12px 24px', borderRadius: '6px', border: '1px solid var(--border)', background: '#fff', fontWeight: 600, cursor: 'pointer' }}
+            >
+              Cancel
+            </button>
+            <button 
+              type="button"
+              onClick={handleSave} 
+              disabled={saving}
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 32px', backgroundColor: 'var(--primary)', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 700, fontSize: '16px', cursor: 'pointer' }}
+            >
+              {saving ? <Loader2 size={20} className="spin" /> : <Save size={20} />}
+              Save Recipe
+            </button>
+          </div>
         </div>
       </div>
     </div>

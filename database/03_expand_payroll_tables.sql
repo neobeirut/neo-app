@@ -1,0 +1,31 @@
+-- Migration: Expand Payroll Tables for Phase 4 & Phase 5 Validation & Dual Side-by-Side Display
+
+-- 1. Expand payroll_periods
+ALTER TABLE public.payroll_periods 
+  ADD COLUMN IF NOT EXISTS total_estimated_payroll NUMERIC(12,2) DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS total_final_payroll NUMERIC(12,2) DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS total_variance NUMERIC(12,2) DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS approved_by TEXT;
+
+-- 2. Expand employee_payroll_items
+ALTER TABLE public.employee_payroll_items
+  ADD COLUMN IF NOT EXISTS scheduled_hours NUMERIC(8,2) DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS worked_days INT DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS absent_days INT DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS vacation_days INT DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS sick_days INT DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS unpaid_leave_days INT DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS late_count INT DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS early_out_count INT DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS estimated_payroll NUMERIC(10,2) DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS approved_hours NUMERIC(8,2) DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS approved_overtime NUMERIC(8,2) DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS bonus NUMERIC(10,2) DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS transportation NUMERIC(10,2) DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS commission NUMERIC(10,2) DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS allowances NUMERIC(10,2) DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS tips NUMERIC(10,2) DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS final_payroll NUMERIC(10,2) DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS variance_difference NUMERIC(10,2) DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS manager_notes TEXT;

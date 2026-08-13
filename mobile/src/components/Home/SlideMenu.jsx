@@ -24,7 +24,6 @@ import {
   CalendarDays,
 } from "lucide-react-native";
 import { useRouter } from "expo-router";
-import { useBranchStore } from "@/utils/branchStore";
 import * as Haptics from "expo-haptics";
 import { getImageSource, apiFetch } from "@/utils/apiFetch";
 import { useQuery } from "@tanstack/react-query";
@@ -39,8 +38,6 @@ export function SlideMenu({
   logoData,
 }) {
   const router = useRouter();
-  const branches = useBranchStore((state) => state.branches) || [];
-  const isSingleBranch = branches.filter((b) => b.is_active).length === 1;
   const slideAnim = React.useRef(new Animated.Value(-300)).current;
 
   // Fetch logo if not provided (shared cache key with Home)
@@ -311,42 +308,40 @@ export function SlideMenu({
             />
 
             {/* Current Location */}
-            {!isSingleBranch && (
-              <TouchableOpacity
-                onPress={handleLocationPress}
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  paddingHorizontal: 24,
-                  paddingVertical: 16,
-                  gap: 16,
-                }}
-              >
-                <MapPin size={22} color={colors.primary} />
-                <View style={{ flex: 1 }}>
-                  <Text
-                    style={{
-                      fontFamily: "Inter_500Medium",
-                      fontSize: 14,
-                      color: colors.textSecondary,
-                      marginBottom: 2,
-                    }}
-                  >
-                    Current Location
-                  </Text>
-                  <Text
-                    style={{
-                      fontFamily: "Inter_600SemiBold",
-                      fontSize: 15,
-                      color: colors.text,
-                    }}
-                    numberOfLines={1}
-                  >
-                    {selectedBranch?.name || "Select Branch"}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            )}
+            <TouchableOpacity
+              onPress={handleLocationPress}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                paddingHorizontal: 24,
+                paddingVertical: 16,
+                gap: 16,
+              }}
+            >
+              <MapPin size={22} color={colors.primary} />
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={{
+                    fontFamily: "Inter_500Medium",
+                    fontSize: 14,
+                    color: colors.textSecondary,
+                    marginBottom: 2,
+                  }}
+                >
+                  Current Location
+                </Text>
+                <Text
+                  style={{
+                    fontFamily: "Inter_600SemiBold",
+                    fontSize: 15,
+                    color: colors.text,
+                  }}
+                  numberOfLines={1}
+                >
+                  {selectedBranch?.name || "Select Branch"}
+                </Text>
+              </View>
+            </TouchableOpacity>
 
             {/* Locate Us */}
             <TouchableOpacity

@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
-import { ArrowLeft, Save, Loader2, Users } from 'lucide-react';
+import { ArrowLeft, Save, Loader2, Users, Trash2, AlertTriangle } from 'lucide-react';
 import { encryptAES, decryptAES, getStoredDecryptionKey, ENCRYPTION_ENABLED } from '../utils/cryptoHelper';
-
 export default function EmployeeFormScreen({ user }: { user?: any }) {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -11,6 +10,9 @@ export default function EmployeeFormScreen({ user }: { user?: any }) {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
 
   // Form State
   const [firstName, setFirstName] = useState('');
@@ -278,6 +280,29 @@ export default function EmployeeFormScreen({ user }: { user?: any }) {
     }
   };
 
+  const handleDelete = async () => {
+    if (deleteConfirmText !== 'DELETE') {
+      alert('Please type DELETE to confirm.');
+      return;
+    }
+    
+    setDeleting(true);
+    let resolvedAppUserId = appUserId;
+    
+    // Also use the name for user_name in activity logs
+    const fullName = `${firstName} ${lastName}`.trim();
+
+    const res = await api.hardDeleteEmployee(id as string, resolvedAppUserId, fullName);
+    setDeleting(false);
+    
+    if (res.success) {
+      setShowDeleteModal(false);
+      navigate('/employees');
+    } else {
+      alert(res.error || 'Failed to delete employee.');
+    }
+  };
+
   if (loading) return <div style={{ padding: '40px', textAlign: 'center' }}><Loader2 className="spin" /></div>;
 
   return (
@@ -296,14 +321,26 @@ export default function EmployeeFormScreen({ user }: { user?: any }) {
             </p>
           </div>
         </div>
-        <button 
-          onClick={handleSave}
-          disabled={saving}
-          style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 24px', backgroundColor: 'var(--primary)', color: 'white', border: 'none', borderRadius: 'var(--radius)', fontWeight: 600, cursor: 'pointer' }}
-        >
-          {saving ? <Loader2 size={20} className="spin" /> : <Save size={20} />}
-          Save Employee
-        </button>
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+          {isEditing && (
+            <button 
+              onClick={(e) => { e.preventDefault(); setShowDeleteModal(true); }}
+              disabled={saving || deleting}
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', backgroundColor: 'transparent', color: 'var(--danger)', border: '1px solid var(--danger)', borderRadius: 'var(--radius)', fontWeight: 600, cursor: 'pointer' }}
+            >
+              <Trash2 size={18} />
+              Delete Employee
+            </button>
+          )}
+          <button 
+            onClick={handleSave}
+            disabled={saving || deleting}
+            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 24px', backgroundColor: 'var(--primary)', color: 'white', border: 'none', borderRadius: 'var(--radius)', fontWeight: 600, cursor: 'pointer' }}
+          >
+            {saving ? <Loader2 size={20} className="spin" /> : <Save size={20} />}
+            Save Employee
+          </button>
+        </div>
       </div>
 
       <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
@@ -505,6 +542,55 @@ export default function EmployeeFormScreen({ user }: { user?: any }) {
         </div>
 
       </form>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ backgroundColor: 'var(--surface)', padding: '24px', borderRadius: 'var(--radius)', width: '100%', maxWidth: '400px', border: '1px solid var(--border)', boxShadow: '0 10px 25px rgba(0,0,0,0.1)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px', color: 'var(--danger)' }}>
+              <AlertTriangle size={24} />
+              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700 }}>Permanent Deletion</h3>
+            </div>
+            
+            <p style={{ color: 'var(--text-muted)', fontSize: '14px', lineHeight: '1.5', marginBottom: '16px' }}>
+              Are you absolutely sure? This will permanently delete the employee <strong>{firstName} {lastName}</strong>, their user account, activity logs, attendance punches, schedules, payrolls, and all related HR records.
+            </p>
+            <p style={{ color: 'var(--danger)', fontSize: '14px', fontWeight: 600, marginBottom: '8px' }}>
+              This action CANNOT be undone.
+            </p>
+            
+            <div style={{ marginBottom: '24px' }}>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '6px' }}>
+                Type <strong>DELETE</strong> to confirm
+              </label>
+              <input 
+                type="text" 
+                style={inputStyle}
+                placeholder="DELETE"
+                value={deleteConfirmText}
+                onChange={e => setDeleteConfirmText(e.target.value)}
+              />
+            </div>
+            
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button 
+                onClick={() => { setShowDeleteModal(false); setDeleteConfirmText(''); }}
+                style={{ padding: '8px 16px', backgroundColor: 'transparent', border: '1px solid var(--border)', borderRadius: 'var(--radius)', cursor: 'pointer', fontWeight: 600 }}
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleDelete}
+                disabled={deleteConfirmText !== 'DELETE' || deleting}
+                style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', backgroundColor: 'var(--danger)', color: 'white', border: 'none', borderRadius: 'var(--radius)', cursor: deleteConfirmText !== 'DELETE' ? 'not-allowed' : 'pointer', fontWeight: 600, opacity: deleteConfirmText !== 'DELETE' ? 0.6 : 1 }}
+              >
+                {deleting ? <Loader2 size={16} className="spin" /> : <Trash2 size={16} />}
+                Confirm Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

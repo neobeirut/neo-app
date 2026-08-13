@@ -58,7 +58,27 @@ export default function ReservationsScreen({ user }: { user: any }) {
     confirmation_call: false
   });
 
-  const canManage = user.role === 'Admin' || user.role === 'Manager';
+  const canManage = user.role === 'Admin' || user.role === 'Manager' || user.role === 'SuperAdmin';
+  const canDelete = user.role === 'Admin' || user.role === 'Manager' || user.role === 'SuperAdmin';
+
+  const handleDeleteReservation = async (id: string, name: string) => {
+    if (!canDelete) {
+      alert('Permission Denied: Only Managers and Admins can delete reservations.');
+      return;
+    }
+
+    if (window.confirm(`Are you sure you want to permanently delete the reservation for "${name}"?`)) {
+      setSubmittingAction(true);
+      const res = await api.deleteReservation(id);
+      setSubmittingAction(false);
+      if (res.success) {
+        setShowResModal(false);
+        loadReservations();
+      } else {
+        alert('Failed to delete reservation: ' + (res.error || 'Unknown error'));
+      }
+    }
+  };
 
   useEffect(() => {
     loadInitialData();
@@ -68,7 +88,7 @@ export default function ReservationsScreen({ user }: { user: any }) {
     if (selectedBranch) {
       loadReservations();
     }
-  }, [selectedBranch, selectedDate]);
+  }, [selectedBranch, selectedDate, statusFilter]);
 
   useEffect(() => {
     if (searchQuery.length > 2) {
@@ -110,7 +130,8 @@ export default function ReservationsScreen({ user }: { user: any }) {
   const loadReservations = async () => {
     setLoading(true);
     try {
-      const res = await api.getReservations(selectedBranch, selectedDate);
+      const includeDeleted = statusFilter === 'Deleted';
+      const res = await api.getReservations(selectedBranch, selectedDate, includeDeleted);
       if (res.success && res.data) {
         setReservations(res.data);
       } else {
@@ -552,6 +573,7 @@ export default function ReservationsScreen({ user }: { user: any }) {
               <option value="Seated">Seated</option>
               <option value="Cancelled">Cancelled</option>
               <option value="No-Show">No-Show</option>
+              <option value="Deleted">🗑️ Deleted Records (Verification)</option>
             </select>
           </div>
 
@@ -725,7 +747,7 @@ export default function ReservationsScreen({ user }: { user: any }) {
                         {res.cancel_reason && <div style={{ color: 'var(--danger)', fontWeight: 600, marginTop: '2px' }}>❌ Cancel Reason: {res.cancel_reason}</div>}
                         {!res.comments && !res.cancel_reason && '—'}
                       </td>
-                      <td style={tableCellStyle}>
+                      <td style={{ ...tableCellStyle, display: 'flex', gap: '6px' }}>
                         <button 
                           onClick={() => handleOpenEdit(res)} 
                           className="auth-btn" 
@@ -736,8 +758,23 @@ export default function ReservationsScreen({ user }: { user: any }) {
                             backgroundColor: 'var(--primary)'
                           }}
                         >
-                          Edit details
+                          Edit
                         </button>
+                        {canDelete && (
+                          <button 
+                            onClick={() => handleDeleteReservation(res.id, clientName)} 
+                            className="auth-btn" 
+                            style={{ 
+                              width: 'auto', 
+                              padding: '6px 12px', 
+                              fontSize: '12px',
+                              backgroundColor: '#ef4444',
+                              color: '#ffffff'
+                            }}
+                          >
+                            Delete
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );
@@ -1052,26 +1089,38 @@ export default function ReservationsScreen({ user }: { user: any }) {
                 padding: '20px',
                 borderTop: '1px solid var(--border)',
                 display: 'flex',
-                justifyContent: 'flex-end',
-                gap: '12px',
+                justifyContent: 'space-between',
+                alignItems: 'center',
                 backgroundColor: '#f8fafc'
               }}>
-                <button
-                  type="button"
-                  onClick={() => setShowResModal(false)}
-                  className="auth-btn"
-                  style={{ width: 'auto', padding: '10px 18px', backgroundColor: '#ffffff', color: 'var(--text-main)', border: '1px solid var(--border)' }}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="auth-btn"
-                  style={{ width: 'auto', padding: '10px 18px', backgroundColor: 'var(--primary)', color: 'white', border: 'none' }}
-                  disabled={submittingAction}
-                >
-                  {submittingAction ? 'Saving...' : 'Save Booking'}
-                </button>
+                {editingReservation && canDelete ? (
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteReservation(editingReservation.id, selectedClient?.name || 'this client')}
+                    className="auth-btn"
+                    style={{ width: 'auto', padding: '10px 18px', backgroundColor: '#ef4444', color: '#ffffff', border: 'none', fontWeight: 600 }}
+                  >
+                    Delete Reservation
+                  </button>
+                ) : <div />}
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowResModal(false)}
+                    className="auth-btn"
+                    style={{ width: 'auto', padding: '10px 18px', backgroundColor: '#ffffff', color: 'var(--text-main)', border: '1px solid var(--border)' }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="auth-btn"
+                    style={{ width: 'auto', padding: '10px 18px', backgroundColor: 'var(--primary)', color: 'white', border: 'none' }}
+                    disabled={submittingAction}
+                  >
+                    {submittingAction ? 'Saving...' : 'Save Booking'}
+                  </button>
+                </div>
               </div>
             </form>
           </div>

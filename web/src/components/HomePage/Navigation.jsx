@@ -1,3 +1,5 @@
+import { openOrderApp } from "@/utils/deviceDetection";
+
 export function Navigation({ scrollToSection }) {
   return (
     <>
@@ -26,12 +28,12 @@ export function Navigation({ scrollToSection }) {
         Contact
       </button>
 
-      <a
-        href="/shop"
-        className="bg-[#2D5F5D] text-white px-6 py-3 font-semibold hover:bg-[#1f4342] transition-colors rounded-lg cursor-pointer inline-flex items-center justify-center"
+      <button
+        onClick={(e) => openOrderApp(e)}
+        className="bg-[#2D5F5D] text-white px-6 py-3 font-semibold hover:bg-[#1f4342] transition-colors rounded-lg cursor-pointer"
       >
         Order Now
-      </a>
+      </button>
     </>
   );
 }

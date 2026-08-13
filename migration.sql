@@ -5,7 +5,7 @@ ALTER TABLE public.restaurants ADD COLUMN IF NOT EXISTS settings JSONB DEFAULT '
 UPDATE public.restaurants 
 SET settings = '{"enabled_sections": [
   "orders", "client_orders", "reservations", "checklists", "shift_submissions", "tasks",
-  "catalog", "purchasing", "suppliers", "waste", "missing_items", "voids", 
+  "catalog", "purchasing", "suppliers", "waste", "missing_items", "inventory_reporting", "voids", 
   "employees", "tips", "permissions", "signin_logs", "complaints", "specials", 
   "finance", "branch_management", "news", "sops", "menu"
 ]}'::jsonb

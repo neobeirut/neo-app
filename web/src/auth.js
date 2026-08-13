@@ -37,9 +37,9 @@ function Adapter(client) {
     async createUser(user) {
       const { name, email, emailVerified, image } = user;
       const sql = `
-        INSERT INTO auth_users (name, email, emailverified, image)
+        INSERT INTO auth_users (name, email, "emailVerified", image)
         VALUES ($1, $2, $3, $4)
-        RETURNING id, name, email, emailverified, image`;
+        RETURNING id, name, email, "emailVerified", image`;
       const result = await client.query(sql, [
         name,
         email,
@@ -100,9 +100,9 @@ function Adapter(client) {
       const { id, name, email, emailVerified, image } = newUser;
       const updateSql = `
         UPDATE auth_users set
-        name = $2, email = $3, emailverified = $4, image = $5
+        name = $2, email = $3, "emailVerified" = $4, image = $5
         where id = $1
-        RETURNING name, id, email, emailverified, image
+        RETURNING name, id, email, "emailVerified", image
       `;
       const query2 = await client.query(updateSql, [
         id,

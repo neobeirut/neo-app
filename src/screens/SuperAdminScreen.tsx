@@ -108,6 +108,7 @@ export default function SuperAdminScreen() {
   const [editUName, setEditUName] = useState('');
   const [editUEmail, setEditUEmail] = useState('');
   const [editUPin, setEditUPin] = useState('');
+  const [editUPassword, setEditUPassword] = useState('');
   const [editRIsVatSubscribed, setEditRIsVatSubscribed] = useState(true);
   const [savingEdit, setSavingEdit] = useState(false);
   const [editErr, setEditErr] = useState('');
@@ -167,6 +168,7 @@ export default function SuperAdminScreen() {
     setEditUName('');
     setEditUEmail('');
     setEditUPin('');
+    setEditUPassword('');
     setEditErr('');
 
     const res = await api.getTenantAdmin(r.id);
@@ -182,6 +184,10 @@ export default function SuperAdminScreen() {
     e.preventDefault();
     if (!editModalResto) return;
     if (!editRName.trim()) { setEditErr('Restaurant Name is required.'); return; }
+    if (editUPassword && editUPassword.trim().length < 6) {
+      setEditErr('New Password must be at least 6 characters.');
+      return;
+    }
 
     setSavingEdit(true);
     setEditErr('');
@@ -193,7 +199,8 @@ export default function SuperAdminScreen() {
       admin_id: editUId,
       admin_name: editUName.trim(),
       admin_email: editUEmail.trim().toLowerCase(),
-      admin_pin: editUPin.trim()
+      admin_pin: editUPin.trim(),
+      admin_password: editUPassword.trim() || undefined
     });
 
     if (res.success) {
@@ -1426,6 +1433,19 @@ export default function SuperAdminScreen() {
                       type="text"
                       value={editUPin}
                       onChange={e => setEditUPin(e.target.value)}
+                      style={{ width: '100%', padding: '10px 12px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '14px', outline: 'none' }}
+                    />
+                  </div>
+
+                  <div style={{ gridColumn: 'span 2' }}>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px' }}>
+                      New Portal Password <span style={{ fontWeight: 400, color: 'gray' }}>(Leave blank to keep unchanged)</span>
+                    </label>
+                    <input
+                      type="password"
+                      placeholder="Enter new password (min 6 characters)"
+                      value={editUPassword}
+                      onChange={e => setEditUPassword(e.target.value)}
                       style={{ width: '100%', padding: '10px 12px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '14px', outline: 'none' }}
                     />
                   </div>

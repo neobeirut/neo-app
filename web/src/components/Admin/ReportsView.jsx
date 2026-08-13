@@ -91,6 +91,14 @@ export default function ReportsView() {
     (topProducts || []).forEach((item) => {
       csvContent += `"${item.product_name}",${item.category_name},${item.total_qty},$${(item.total_revenue || 0).toFixed(2)}\n`;
     });
+    csvContent += "\n";
+
+    // Category Breakdown
+    csvContent += "CATEGORY PERFORMANCE REPORT\n";
+    csvContent += "Category Name,Total Items Sold,Total Sales Revenue\n";
+    (categories || []).forEach((cat) => {
+      csvContent += `"${cat.category_name}",${cat.total_qty || 0},$${(cat.total_revenue || 0).toFixed(2)}\n`;
+    });
 
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
@@ -389,6 +397,65 @@ export default function ReportsView() {
                     <td className="py-3 text-right pr-2 font-black text-[#eb660c]">${(item.total_revenue || 0).toFixed(2)}</td>
                   </tr>
                 ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* CATEGORY PERFORMANCE & REVENUE BREAKDOWN: TOTAL ITEMS & AMOUNT PER CATEGORY */}
+      <div className="bg-[#181C24] border border-[#262D3D] rounded-2xl p-5 space-y-4 shadow-lg">
+        <div className="flex justify-between items-center border-b border-[#262D3D] pb-3">
+          <h2 className="text-base font-extrabold text-white flex items-center gap-2">
+            <span>📊</span> Category Performance & Revenue Breakdown
+          </h2>
+          <span className="text-xs text-gray-400 font-bold">{categories.length} Categories</span>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead>
+              <tr className="border-b border-[#262D3D] text-gray-400 font-bold uppercase text-[10px]">
+                <th className="pb-3 pl-2">Category</th>
+                <th className="pb-3 text-center">Items Sold (Qty)</th>
+                <th className="pb-3 text-right pr-4">Total Revenue ($)</th>
+                <th className="pb-3 text-center w-36">Sales Share</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#262D3D]/50 text-gray-300 font-semibold">
+              {categories.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="text-center py-8 text-gray-500">No category sales found for this period</td>
+                </tr>
+              ) : (
+                categories.map((cat, idx) => {
+                  const totalRev = summary.total_revenue || 1;
+                  const sharePct = totalRev > 0 ? Math.round(((cat.total_revenue || 0) / totalRev) * 100) : 0;
+
+                  return (
+                    <tr key={cat.category_name || idx} className="hover:bg-[#0F1115]/50 transition-colors">
+                      <td className="py-3 pl-2 font-bold text-white">
+                        <span className="px-2.5 py-1 rounded-lg bg-[#0F1115] border border-[#262D3D] text-xs font-bold text-gray-200">
+                          {cat.category_name}
+                        </span>
+                      </td>
+                      <td className="py-3 text-center font-black text-[#eb660c]">
+                        {cat.total_qty || 0}
+                      </td>
+                      <td className="py-3 text-right pr-4 font-black text-emerald-400">
+                        ${(cat.total_revenue || 0).toFixed(2)}
+                      </td>
+                      <td className="py-3 text-center">
+                        <div className="flex items-center gap-2 justify-center">
+                          <div className="w-20 bg-[#0F1115] h-2 rounded-full overflow-hidden border border-[#262D3D]">
+                            <div className="bg-[#eb660c] h-full rounded-full" style={{ width: `${Math.min(100, sharePct)}%` }}></div>
+                          </div>
+                          <span className="text-[11px] font-bold text-gray-400 w-8">{sharePct}%</span>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

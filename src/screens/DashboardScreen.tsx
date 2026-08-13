@@ -33,7 +33,7 @@ export default function DashboardScreen({
   permissions
 }: DashboardScreenProps) {
   const navigate = useNavigate();
-  const isAdmin = user.role === 'Admin';
+  const isAdmin = user.role === 'Admin' || user.role === 'Super Admin' || user.role === 'SuperAdmin' || user.role === 'Owner' || user.role === 'Manager' || user.role?.toLowerCase()?.includes('admin');
 
   // Filters State
   const [selectedBranch, setSelectedBranch] = useState<string>('');

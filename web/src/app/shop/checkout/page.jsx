@@ -131,11 +131,6 @@ export default function CheckoutPage() {
     try {
       const response = await fetch(`/api/cart?branch_id=${selectedBranch.id}`);
       const data = await response.json();
-      if (data.unauthenticated) {
-        alert("Please sign in or create an account to proceed to checkout.");
-        window.location.href = "/account/signin?callbackUrl=/shop/checkout";
-        return;
-      }
       setCartItems(data.cart_items || []);
     } catch (error) {
       console.error("Error fetching cart:", error);

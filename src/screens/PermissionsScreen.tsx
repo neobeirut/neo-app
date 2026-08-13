@@ -4,7 +4,7 @@ import {
   Loader2, Shield, Search, User, Users, Check, AlertCircle, 
   ShoppingCart, ClipboardList, ChefHat, DollarSign, Trash2, 
   TrendingUp, Briefcase, GraduationCap, Calendar, Lock, Sliders, CheckCircle2,
-  Sparkles, CheckSquare, Receipt, FolderOpen, Package
+  Sparkles, CheckSquare, Receipt, FolderOpen, Package, Clock
 } from 'lucide-react';
 
 const DEFAULT_PERMISSIONS = {
@@ -18,6 +18,7 @@ const DEFAULT_PERMISSIONS = {
   can_order_purchasing: false,
   can_receive_purchasing: false,
   can_view_menu_manual: false,
+  can_manage_menu_manual: false,
   can_manage_tips: false,
   can_manage_checklists: false,
   can_fill_checklists: false,
@@ -27,6 +28,20 @@ const DEFAULT_PERMISSIONS = {
   can_manage_training: false,
   can_manage_reservations: false,
   can_access_settings: false,
+  can_view_schedule: true,
+  can_manage_schedules: false,
+  can_view_timesheet: true,
+  can_view_salary: true,
+  can_request_leave: true,
+  can_approve_leave: false,
+  can_request_shift_swap: true,
+  can_approve_shift_swap: false,
+  can_submit_missing_punch: true,
+  can_approve_missing_punch: false,
+  can_view_attendance_reports: false,
+  can_manage_branches: false,
+  can_manage_wallets: false,
+  can_manage_news: false,
   can_manage_daily_cash: false,
   can_view_86: false,
   can_manage_86: false,
@@ -50,6 +65,8 @@ const DEFAULT_PERMISSIONS = {
   can_manage_suppliers: false,
   can_view_price_intelligence: false,
   can_manage_price_intelligence: false,
+  can_view_inventory: false,
+  can_manage_inventory: false,
   allowed_departments: ''
 };
 
@@ -84,6 +101,8 @@ const CATEGORIES = [
     permissions: [
       { key: 'can_view_catalog', label: 'View Item Catalog' },
       { key: 'can_manage_catalog', label: 'Manage Item Catalog (Add/Edit/Delete)' },
+      { key: 'can_view_inventory', label: 'View Inventory Management & Physical Counts' },
+      { key: 'can_manage_inventory', label: 'Manage & Perform Physical Inventory Counts' },
       { key: 'can_view_suppliers', label: 'View Suppliers' },
       { key: 'can_manage_suppliers', label: 'Manage Suppliers (Add/Edit/Delete)' },
       { key: 'can_view_price_intelligence', label: 'View Supplier Price Intelligence' },
@@ -92,11 +111,12 @@ const CATEGORIES = [
   },
   {
     id: 'checklists',
-    title: 'Daily Checklists',
+    title: 'Daily Checklists & Tasks',
     icon: <ClipboardList size={18} style={{ color: '#28a745' }} />,
     permissions: [
       { key: 'can_manage_checklists', label: 'Manage Checklists (SOPs)' },
       { key: 'can_fill_checklists', label: 'Fill Checklists (SOPs)' },
+      { key: 'can_manage_tasks', label: 'Manage & Assign Tasks' },
     ]
   },
   {
@@ -105,6 +125,7 @@ const CATEGORIES = [
     icon: <ChefHat size={18} style={{ color: '#fd7e14' }} />,
     permissions: [
       { key: 'can_view_menu_manual', label: 'View Menu Manual' },
+      { key: 'can_manage_menu_manual', label: 'Manage Menu Manual & Recipes (Add/Edit/Delete)' },
       { key: 'can_view_86', label: 'View 86 Items' },
       { key: 'can_manage_86', label: 'Manage 86 Items' },
     ]
@@ -137,11 +158,29 @@ const CATEGORIES = [
   },
   {
     id: 'hr',
-    title: 'Payroll',
+    title: 'Payroll & HR',
     icon: <Briefcase size={18} style={{ color: '#6f42c1' }} />,
     permissions: [
-      { key: 'can_manage_hr', label: 'Manage Payroll' },
-      { key: 'can_punch_clock', label: 'Punch In / Out (Attendance)' },
+      { key: 'can_manage_hr', label: 'Manage Payroll & Salaries' },
+    ]
+  },
+  {
+    id: 'attendance',
+    title: 'Attendance & Timesheets Matrix',
+    icon: <Clock size={18} style={{ color: '#007bff' }} />,
+    permissions: [
+      { key: 'can_punch_clock', label: 'Punch Clock (In / Out / Break)' },
+      { key: 'can_view_schedule', label: 'View Shift Schedule' },
+      { key: 'can_manage_schedules', label: 'Manage Schedules (Builder & Publish)' },
+      { key: 'can_view_timesheet', label: 'View Monthly Timesheets' },
+      { key: 'can_view_salary', label: 'View Salary & Payslip Preview' },
+      { key: 'can_request_leave', label: 'Submit Leave Requests' },
+      { key: 'can_approve_leave', label: 'Approve Leave Requests' },
+      { key: 'can_request_shift_swap', label: 'Submit Shift Swap Requests' },
+      { key: 'can_approve_shift_swap', label: 'Approve Shift Swaps' },
+      { key: 'can_submit_missing_punch', label: 'Submit Missing Punch Requests' },
+      { key: 'can_approve_missing_punch', label: 'Approve Missing Punches' },
+      { key: 'can_view_attendance_reports', label: 'View Live Attendance Hub & Reports' },
     ]
   },
   {
@@ -166,6 +205,9 @@ const CATEGORIES = [
     icon: <Lock size={18} style={{ color: '#343a40' }} />,
     permissions: [
       { key: 'can_access_settings', label: 'Access App Settings' },
+      { key: 'can_manage_branches', label: 'Manage Branches & Storage Locations' },
+      { key: 'can_manage_wallets', label: 'Manage E-Wallets & Balances' },
+      { key: 'can_manage_news', label: 'Manage Restaurant News & Announcements' },
     ]
   },
   {
@@ -235,6 +277,13 @@ const GLOBAL_MODULES = [
     desc: 'Notifies concern departments/branches on order placement, dispatch, and receipt.',
     bg: '#ecfdf5',
     icon: <ClipboardList size={20} style={{ color: '#10b981' }} />
+  },
+  {
+    key: 'client_orders',
+    title: 'Client Orders',
+    desc: 'Notifies Admins and fulfillment managers when client orders are placed or updated.',
+    bg: '#ecfdf5',
+    icon: <Briefcase size={20} style={{ color: '#10b981' }} />
   },
   {
     key: 'purchasing',
@@ -452,18 +501,26 @@ export default function PermissionsScreen({ user, onUpdateUser }: { user?: UserP
       });
   }, [activeTab, departments, users, permissions, searchQuery]);
 
+  useEffect(() => {
+    if (!selectedEntityId && sidebarItems.length > 0) {
+      setSelectedEntityId(sidebarItems[0].id);
+    }
+  }, [sidebarItems, selectedEntityId]);
+
   const getSelectedPermission = () => {
     if (!selectedEntityId) return null;
     const found = permissions.find(p => p.id === selectedEntityId);
     if (found) return found;
 
     const [type, name] = selectedEntityId.split(':');
+    const rid = user?.restaurant_id;
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     return {
       ...DEFAULT_PERMISSIONS,
       id: selectedEntityId,
       type: type as 'department' | 'user',
       name: name,
-      restaurant_id: user?.restaurant_id
+      ...(rid && uuidRegex.test(rid) ? { restaurant_id: rid } : {})
     };
   };
 
@@ -1192,7 +1249,7 @@ export default function PermissionsScreen({ user, onUpdateUser }: { user?: UserP
                         <button 
                           onClick={handleSaveSystemSettings}
                           className="auth-btn"
-                          style={{ backgroundColor: '#ffffff', color: '#059669', border: 'none', fontWeight: 'bold', padding: '10px 20px', height: '38px', lineHeight: '18px', width: 'auto', cursor: 'pointer' }}
+                          style={{ backgroundColor: 'var(--primary)', color: '#ffffff', border: 'none', fontWeight: 'bold', padding: '10px 20px', height: '38px', lineHeight: '18px', width: 'auto', cursor: 'pointer' }}
                         >
                           Save Settings
                         </button>

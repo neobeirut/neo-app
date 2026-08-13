@@ -42,11 +42,41 @@ export default function ChecklistsScreen({ user }: { user: any }) {
   const [templateDept, setTemplateDept] = useState('');
   const [templateTasks, setTemplateTasks] = useState<{ id: string; text: string; type: 'checkbox' | 'number' | 'photo' }[]>([]);
   
+  // Template Preview Modal state
+  const [previewTemplate, setPreviewTemplate] = useState<any | null>(null);
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
+
   // Task builder state
   const [newTaskText, setNewTaskText] = useState('');
   const [newTaskType, setNewTaskType] = useState<'checkbox' | 'number' | 'photo'>('checkbox');
 
   const [submittingAction, setSubmittingAction] = useState(false);
+
+  // Helper functions for task text & normalization
+  const getTaskText = (t: any): string => {
+    if (!t) return '';
+    if (typeof t === 'string') return t;
+    return t.text || t.title || t.name || t.description || '';
+  };
+
+  const getTaskType = (t: any): 'checkbox' | 'number' | 'photo' => {
+    if (!t || typeof t === 'string') return 'checkbox';
+    return t.type || 'checkbox';
+  };
+
+  const normalizeTasks = (rawTasks: any[]): { id: string; text: string; type: 'checkbox' | 'number' | 'photo' }[] => {
+    if (!Array.isArray(rawTasks)) return [];
+    return rawTasks.map((t, idx) => {
+      if (typeof t === 'string') {
+        return { id: `task-${idx}-${Date.now()}`, text: t, type: 'checkbox' };
+      }
+      return {
+        id: t.id || `task-${idx}-${Date.now()}`,
+        text: getTaskText(t),
+        type: getTaskType(t)
+      };
+    });
+  };
 
   // KPIs
   const [kpis, setKpis] = useState({
@@ -589,45 +619,208 @@ export default function ChecklistsScreen({ user }: { user: any }) {
                       <th style={tableHeaderStyle}>Checklist Template Name</th>
                       <th style={tableHeaderStyle}>Branch</th>
                       <th style={tableHeaderStyle}>Department</th>
-                      <th style={tableHeaderStyle}>Tasks Count</th>
+                      <th style={tableHeaderStyle}>Content / Tasks</th>
                       <th style={tableHeaderStyle}>Created By</th>
                       <th style={tableHeaderStyle}>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {templates.map((temp) => (
-                      <tr key={temp.id} style={{ borderBottom: '1px solid var(--border)', transition: 'background-color 0.15s' }}>
-                        <td style={{ ...tableCellStyle, fontWeight: 700 }}>{temp.name}</td>
-                        <td style={{ ...tableCellStyle, fontWeight: 600 }}>{temp.branch}</td>
-                        <td style={tableCellStyle}>{temp.department}</td>
-                        <td style={tableCellStyle}>{(temp.tasks || []).length} Task(s)</td>
-                        <td style={tableCellStyle}>{temp.created_by || '—'}</td>
-                        <td style={tableCellStyle}>
-                          <div style={{ display: 'flex', gap: '8px' }}>
-                            <button 
-                              onClick={() => handleOpenTemplateModal(temp)} 
-                              className="auth-btn"
-                              style={{ width: 'auto', padding: '6px 12px', fontSize: '12px', backgroundColor: '#e2e8f0', color: 'var(--text-main)', border: 'none' }}
-                            >
-                              Edit Template
-                            </button>
-                            <button 
-                              onClick={() => handleDeleteTemplate(temp.id)} 
-                              className="auth-btn"
-                              style={{ width: 'auto', padding: '6px 12px', fontSize: '12px', backgroundColor: 'rgba(239, 68, 68, 0.1)', color: 'var(--danger)', border: 'none' }}
-                            >
-                              <Trash2 size={12} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                    {templates.map((temp) => {
+                      const normalized = normalizeTasks(temp.tasks || []);
+                      return (
+                        <tr key={temp.id} style={{ borderBottom: '1px solid var(--border)', transition: 'background-color 0.15s' }}>
+                          <td style={{ ...tableCellStyle, fontWeight: 700 }}>{temp.name}</td>
+                          <td style={{ ...tableCellStyle, fontWeight: 600 }}>{temp.branch}</td>
+                          <td style={tableCellStyle}>{temp.department}</td>
+                          <td style={tableCellStyle}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                              <span style={{ fontWeight: 700, fontSize: '13px', color: 'var(--primary)' }}>
+                                {normalized.length} Item(s)
+                              </span>
+                              {normalized.length > 0 && (
+                                <span style={{ fontSize: '11.5px', color: 'var(--text-muted)', maxWidth: '240px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  • {normalized.slice(0, 2).map(t => getTaskText(t)).join(', ')}
+                                  {normalized.length > 2 ? ` (+${normalized.length - 2} more)` : ''}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td style={tableCellStyle}>{temp.created_by || '—'}</td>
+                          <td style={tableCellStyle}>
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                              <button 
+                                onClick={() => {
+                                  setPreviewTemplate(temp);
+                                  setShowPreviewModal(true);
+                                }} 
+                                className="auth-btn"
+                                style={{ width: 'auto', padding: '6px 12px', fontSize: '12px', backgroundColor: 'var(--primary)', color: '#ffffff', border: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                              >
+                                <Eye size={13} /> View Content
+                              </button>
+                              <button 
+                                onClick={() => handleOpenTemplateModal(temp)} 
+                                className="auth-btn"
+                                style={{ width: 'auto', padding: '6px 12px', fontSize: '12px', backgroundColor: '#e2e8f0', color: 'var(--text-main)', border: 'none' }}
+                              >
+                                Edit
+                              </button>
+                              <button 
+                                onClick={() => handleDeleteTemplate(temp.id)} 
+                                className="auth-btn"
+                                style={{ width: 'auto', padding: '6px 12px', fontSize: '12px', backgroundColor: 'rgba(239, 68, 68, 0.1)', color: 'var(--danger)', border: 'none' }}
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
             )}
           </div>
         </>
+      )}
+
+      {/* TEMPLATE CONTENT PREVIEW MODAL */}
+      {showPreviewModal && previewTemplate && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(15, 23, 42, 0.6)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          padding: '20px'
+        }}>
+          <div style={{
+            backgroundColor: '#ffffff',
+            borderRadius: '16px',
+            width: '100%',
+            maxWidth: '900px',
+            height: '88vh',
+            maxHeight: '900px',
+            display: 'flex',
+            flexDirection: 'column',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+            overflow: 'hidden'
+          }}>
+            <div style={{
+              padding: '20px',
+              borderBottom: '1px solid var(--border)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}>
+              <div>
+                <h2 style={{ fontSize: '18px', fontWeight: 800 }}>{previewTemplate.name}</h2>
+                <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                  Branch: <strong>{previewTemplate.branch}</strong> • Department: <strong>{previewTemplate.department}</strong>
+                </p>
+              </div>
+              <button 
+                onClick={() => setShowPreviewModal(false)}
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div style={{ padding: '20px', overflowY: 'auto', flex: 1 }}>
+              <h3 style={{ fontSize: '14px', fontWeight: 700, marginBottom: '12px', color: 'var(--text-main)' }}>
+                Checklist Tasks ({normalizeTasks(previewTemplate.tasks || []).length} Items)
+              </h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {normalizeTasks(previewTemplate.tasks || []).length === 0 ? (
+                  <p style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>No tasks found in this checklist.</p>
+                ) : (
+                  normalizeTasks(previewTemplate.tasks || []).map((task, idx) => {
+                    let typeBadge = '☑️ Check';
+                    if (task.type === 'number') typeBadge = '🔢 Number';
+                    if (task.type === 'photo') typeBadge = '📷 Photo';
+
+                    return (
+                      <div key={idx} style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        backgroundColor: '#f8fafc',
+                        border: '1px solid var(--border)',
+                        padding: '10px 14px',
+                        borderRadius: '8px'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <span style={{
+                            width: '24px',
+                            height: '24px',
+                            borderRadius: '50%',
+                            backgroundColor: '#e2e8f0',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '12px',
+                            fontWeight: 700,
+                            color: '#475569'
+                          }}>
+                            {idx + 1}
+                          </span>
+                          <span style={{ fontSize: '14px', fontWeight: 600, color: '#1e293b' }}>
+                            {getTaskText(task)}
+                          </span>
+                        </div>
+                        <span style={{
+                          fontSize: '11px',
+                          fontWeight: 700,
+                          padding: '3px 8px',
+                          borderRadius: '12px',
+                          backgroundColor: '#e0f2fe',
+                          color: '#0369a1'
+                        }}>
+                          {typeBadge}
+                        </span>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
+            <div style={{
+              padding: '16px 20px',
+              borderTop: '1px solid var(--border)',
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: '10px',
+              backgroundColor: '#f8fafc'
+            }}>
+              <button 
+                onClick={() => {
+                  setShowPreviewModal(false);
+                  handleOpenTemplateModal(previewTemplate);
+                }}
+                className="auth-btn"
+                style={{ width: 'auto', padding: '8px 16px', fontSize: '13px' }}
+              >
+                Edit Checklist Template
+              </button>
+              <button 
+                onClick={() => setShowPreviewModal(false)}
+                className="auth-btn"
+                style={{ width: 'auto', padding: '8px 16px', fontSize: '13px', backgroundColor: '#e2e8f0', color: 'var(--text-main)', border: 'none' }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* SUBMISSION DETAIL MODAL */}
@@ -650,11 +843,12 @@ export default function ChecklistsScreen({ user }: { user: any }) {
             backgroundColor: '#ffffff',
             borderRadius: '16px',
             width: '100%',
-            maxWidth: '650px',
-            maxHeight: '90vh',
+            maxWidth: '900px',
+            height: '88vh',
+            maxHeight: '900px',
             display: 'flex',
             flexDirection: 'column',
-            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
             overflow: 'hidden'
           }}>
             {/* Modal Header */}
@@ -805,11 +999,12 @@ export default function ChecklistsScreen({ user }: { user: any }) {
             backgroundColor: '#ffffff',
             borderRadius: '16px',
             width: '100%',
-            maxWidth: '600px',
-            maxHeight: '90vh',
+            maxWidth: '900px',
+            height: '88vh',
+            maxHeight: '900px',
             display: 'flex',
             flexDirection: 'column',
-            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
             overflow: 'hidden'
           }}>
             {/* Modal Header */}
@@ -820,7 +1015,7 @@ export default function ChecklistsScreen({ user }: { user: any }) {
               justifyContent: 'space-between',
               alignItems: 'center'
             }}>
-              <h2 style={{ fontSize: '16px', fontWeight: 800 }}>
+              <h2 style={{ fontSize: '18px', fontWeight: 800 }}>
                 {editingTemplate ? 'Edit Checklist Template' : 'Create Checklist Template'}
               </h2>
               <button 
@@ -833,7 +1028,7 @@ export default function ChecklistsScreen({ user }: { user: any }) {
 
             <form onSubmit={handleSaveTemplate} style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', flex: 1 }}>
               {/* Modal Body */}
-              <div style={{ padding: '20px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ padding: '24px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '20px' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                   <label style={{ fontSize: '13px', fontWeight: 600 }}>Checklist Name</label>
                   <input 
@@ -875,32 +1070,42 @@ export default function ChecklistsScreen({ user }: { user: any }) {
                 </div>
 
                 {/* Tasks List Editor */}
-                <div style={{ borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
-                  <h3 style={{ fontSize: '14px', fontWeight: 700, marginBottom: '10px' }}>Tasks / Questions</h3>
+                <div style={{ borderTop: '1px solid var(--border)', paddingTop: '16px', display: 'flex', flexDirection: 'column', flex: 1 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                    <h3 style={{ fontSize: '15px', fontWeight: 700 }}>Tasks / Questions ({templateTasks.length} Items)</h3>
+                    <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Configure tasks and verification response types</span>
+                  </div>
                   
                   {/* Render Tasks List */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px', maxHeight: '180px', overflowY: 'auto' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px', flex: 1, minHeight: '250px', maxHeight: '420px', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px', backgroundColor: '#f8fafc' }}>
                     {templateTasks.length === 0 ? (
-                      <span style={{ fontSize: '13px', color: 'var(--text-muted)', fontStyle: 'italic' }}>No tasks added yet. Add tasks using the builder below.</span>
+                      <span style={{ fontSize: '13px', color: 'var(--text-muted)', fontStyle: 'italic', textAlign: 'center', margin: 'auto' }}>No tasks added yet. Add tasks using the builder below.</span>
                     ) : (
                       templateTasks.map((task, idx) => {
                         let typeIcon = '☑️';
-                        if (task.type === 'number') typeIcon = '🔢';
-                        if (task.type === 'photo') typeIcon = '📷';
+                        let typeText = 'Check';
+                        if (task.type === 'number') { typeIcon = '🔢'; typeText = 'Number'; }
+                        if (task.type === 'photo') { typeIcon = '📷'; typeText = 'Photo'; }
                         
                         return (
-                          <div key={task.id || idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#f8fafc', border: '1px solid var(--border)', padding: '8px 12px', borderRadius: '6px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13.5px' }}>
+                          <div key={task.id || idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#ffffff', border: '1px solid var(--border)', padding: '10px 14px', borderRadius: '8px', boxShadow: '0 1px 2px 0 rgba(0,0,0,0.05)' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '14px', flex: 1 }}>
+                              <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)', width: '22px' }}>#{idx + 1}</span>
                               <span>{typeIcon}</span>
-                              <span>{task.text}</span>
+                              <span style={{ fontWeight: 600, color: '#1e293b' }}>{getTaskText(task)}</span>
                             </div>
-                            <button 
-                              type="button" 
-                              onClick={() => handleRemoveTask(idx)}
-                              style={{ border: 'none', background: 'transparent', color: 'var(--danger)', cursor: 'pointer', fontWeight: 700 }}
-                            >
-                              ✕
-                            </button>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                              <span style={{ fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '10px', backgroundColor: '#e0f2fe', color: '#0369a1' }}>
+                                {typeText}
+                              </span>
+                              <button 
+                                type="button" 
+                                onClick={() => handleRemoveTask(idx)}
+                                style={{ border: 'none', background: 'transparent', color: 'var(--danger)', cursor: 'pointer', fontWeight: 700, fontSize: '16px', padding: '2px 6px' }}
+                              >
+                                ✕
+                              </button>
+                            </div>
                           </div>
                         );
                       })

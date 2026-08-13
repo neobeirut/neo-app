@@ -13,7 +13,7 @@ import TipsDistributionScreen from './screens/TipsDistributionScreen';
 import PermissionsScreen from './screens/PermissionsScreen';
 import SOPsScreen from './screens/SOPsScreen';
 import SOPFormScreen from './screens/SOPFormScreen';
-import { LayoutDashboard, ChefHat, Users, LogOut, DollarSign, Shield, BookOpen, TrendingUp, MessageSquare, Newspaper, AlertTriangle, Sparkles, Trash2, History, Coins, Truck, ShoppingBag, Calendar, ClipboardList, Package, CheckSquare, Receipt, Briefcase, Store, ChevronDown, ChevronRight } from 'lucide-react';
+import { LayoutDashboard, ChefHat, Users, LogOut, DollarSign, Shield, BookOpen, TrendingUp, MessageSquare, Newspaper, AlertTriangle, Sparkles, Trash2, History, Coins, Truck, ShoppingBag, Calendar, ClipboardList, Package, CheckSquare, Receipt, Briefcase, Store, ChevronDown, ChevronRight, Clock } from 'lucide-react';
 import { api } from './api/client';
 import FinanceDashboardScreen from './screens/FinanceDashboardScreen';
 import PaymentDetailsScreen from './screens/PaymentDetailsScreen';
@@ -44,12 +44,13 @@ import SupplierPriceIntelligenceScreen from './screens/SupplierPriceIntelligence
 import BranchManagementScreen from './screens/BranchManagementScreen';
 import ReelCreditScreen from './screens/ReelCreditScreen';
 import SuperAdminScreen from './screens/SuperAdminScreen';
+import InventoryScreen from './screens/InventoryScreen';
 
   function Sidebar({ onLogout, permissions, user }: { onLogout: () => void; permissions: any; user: any }) {
     const location = useLocation();
     const roleLower = (user?.role || '').toString().toLowerCase().trim();
-    const isPrivileged = roleLower === 'admin' || roleLower === 'manager' || roleLower === 'superadmin';
-    const isAdminOrSuper = roleLower === 'admin' || roleLower === 'superadmin';
+    const isPrivileged = roleLower === 'admin' || roleLower === 'manager' || roleLower === 'superadmin' || roleLower.includes('admin') || roleLower === 'owner';
+    const isAdminOrSuper = roleLower === 'admin' || roleLower === 'superadmin' || roleLower.includes('admin');
 
     const [collapsedGroups, setCollapsedGroups] = useState<{ [key: string]: boolean }>({
       Operations: false,
@@ -68,6 +69,7 @@ import SuperAdminScreen from './screens/SuperAdminScreen';
     };
 
     const isSectionEnabled = (key: string) => {
+      if (isPrivileged || key === 'inventory_reporting' || key === 'inventory' || key === 'attendance') return true;
       const enabledSections = user?.restaurants?.settings?.enabled_sections;
       if (!enabledSections) return true; // Default to enabled if not configured
       return enabledSections.includes(key);
@@ -83,59 +85,60 @@ import SuperAdminScreen from './screens/SuperAdminScreen';
       {
         name: 'Operations',
         items: [
-          { to: '/orders', label: 'Branch Orders', icon: <ShoppingBag size={18} />, key: 'orders' },
-          { to: '/client-orders', label: 'Client Orders', icon: <Briefcase size={18} />, visible: !!permissions?.can_view_client_orders, key: 'client_orders' },
-          { to: '/reservations', label: 'Table Reservations', icon: <Calendar size={18} />, key: 'reservations' },
-          { to: '/checklists', label: 'Daily Checklists', icon: <ClipboardList size={18} />, key: 'checklists' },
-          { to: '/tasks', label: 'Task Manager', icon: <CheckSquare size={18} />, visible: !!permissions?.can_manage_tasks, key: 'tasks' }
+          { to: '/orders', label: 'Branch Orders', icon: <ShoppingBag size={18} />, visible: isAdminOrSuper || permissions?.can_create_orders !== false || permissions?.can_receive_orders !== false, key: 'orders' },
+          { to: '/client-orders', label: 'Client Orders', icon: <Briefcase size={18} />, visible: isAdminOrSuper || !!permissions?.can_view_client_orders, key: 'client_orders' },
+          { to: '/reservations', label: 'Table Reservations', icon: <Calendar size={18} />, visible: isAdminOrSuper || !!permissions?.can_manage_reservations, key: 'reservations' },
+          { to: '/checklists', label: 'Daily Checklists', icon: <ClipboardList size={18} />, visible: isAdminOrSuper || permissions?.can_manage_checklists !== false || permissions?.can_fill_checklists !== false, key: 'checklists' },
+          { to: '/tasks', label: 'Task Manager', icon: <CheckSquare size={18} />, visible: isAdminOrSuper || !!permissions?.can_manage_tasks, key: 'tasks' }
         ]
       },
       {
         name: 'Inventory',
         items: [
-          {to: '/catalog', label: 'Item Catalog', icon: <Package size={18} />, visible: isAdminOrSuper || !!permissions?.can_view_catalog, key: 'catalog' },
-          { to: '/purchasing', label: 'Purchasing & Procurement', icon: <Truck size={18} />, key: 'purchasing' },
-          { to: '/suppliers', label: 'Supplier Management', icon: <Store size={18} />, visible: isAdminOrSuper || !!permissions?.can_view_suppliers, key: 'suppliers' },
-          { to: '/price-intelligence', label: 'Supplier Price Intelligence', icon: <TrendingUp size={18} />, visible: isAdminOrSuper || !!permissions?.can_view_price_intelligence, key: 'price_intelligence' },
-          { to: '/waste', label: 'Waste Management', icon: <Trash2 size={18} />, key: 'waste' },
-          { to: '/86', label: '86 Missing Items', icon: <AlertTriangle size={18} />, key: 'missing_items' },
-          { to: '/inventory-reporting', label: 'Inventory Reporting (to be added)', icon: <TrendingUp size={18} />, key: 'inventory_reporting' },
-          { to: '/voids', label: 'Void Receipts', icon: <Receipt size={18} />, visible: !!permissions?.can_view_voids, key: 'voids' }
+          { to: '/catalog', label: 'Item Catalog', icon: <Package size={18} />, visible: isAdminOrSuper || permissions?.can_view_catalog !== false, key: 'catalog' },
+          { to: '/purchasing', label: 'Purchasing & Procurement', icon: <Truck size={18} />, visible: isAdminOrSuper || permissions?.can_create_purchasing !== false || permissions?.can_receive_purchasing !== false, key: 'purchasing' },
+          { to: '/suppliers', label: 'Supplier Management', icon: <Store size={18} />, visible: isAdminOrSuper || permissions?.can_view_suppliers !== false, key: 'suppliers' },
+          { to: '/price-intelligence', label: 'Supplier Price Intelligence', icon: <TrendingUp size={18} />, visible: isAdminOrSuper || permissions?.can_view_price_intelligence !== false, key: 'price_intelligence' },
+          { to: '/waste', label: 'Waste Management', icon: <Trash2 size={18} />, visible: isAdminOrSuper || permissions?.can_view_waste_report !== false || permissions?.can_log_waste !== false, key: 'waste' },
+          { to: '/86', label: '86 Missing Items', icon: <AlertTriangle size={18} />, visible: isAdminOrSuper || permissions?.can_view_86 !== false || permissions?.can_manage_86 !== false, key: 'missing_items' },
+          { to: '/inventory-reporting', label: 'Inventory Management', icon: <ClipboardList size={18} />, visible: isAdminOrSuper || !!permissions?.can_view_inventory || !!permissions?.can_manage_inventory, key: 'inventory_reporting' },
+          { to: '/voids', label: 'Void Receipts', icon: <Receipt size={18} />, visible: isAdminOrSuper || !!permissions?.can_view_voids, key: 'voids' }
         ]
       },
       {
         name: 'People',
         items: [
-          { to: '/employees', label: 'Employees', icon: <Users size={18} />, visible: isPrivileged || !!permissions?.can_manage_hr, key: 'employees' },
-          { to: '/tips', label: 'Tips Config', icon: <DollarSign size={18} />, visible: isPrivileged || !!permissions?.can_manage_tips, key: 'tips' },
-          { to: '/permissions', label: 'Security & Matrix', icon: <Shield size={18} />, visible: isPrivileged, key: 'permissions' },
-          { to: '/signin-logs', label: 'Sign-In Logs', icon: <History size={18} />, visible: !!permissions?.can_view_signin_logs, key: 'signin_logs' }
+          { to: '/employees', label: 'Employees', icon: <Users size={18} />, visible: isAdminOrSuper || !!permissions?.can_manage_hr, key: 'employees' },
+          { to: '/attendance', label: 'Attendance & Timesheets', icon: <Clock size={18} />, visible: isAdminOrSuper || !!permissions?.can_manage_attendance || permissions?.can_punch_clock !== false, key: 'attendance' },
+          { to: '/tips', label: 'Tips Config', icon: <DollarSign size={18} />, visible: isAdminOrSuper || !!permissions?.can_manage_tips, key: 'tips' },
+          { to: '/permissions', label: 'Security & Matrix', icon: <Shield size={18} />, visible: isAdminOrSuper, key: 'permissions' },
+          { to: '/signin-logs', label: 'Sign-In Logs', icon: <History size={18} />, visible: isAdminOrSuper || !!permissions?.can_view_signin_logs, key: 'signin_logs' }
         ]
       },
       {
         name: 'Customers',
         items: [
-          { to: '/complaints', label: 'Client Complaints', icon: <MessageSquare size={18} />, visible: permissions?.can_view_complaints, key: 'complaints' },
-          { to: '/specials', label: 'Specials & Upsell', icon: <Sparkles size={18} />, visible: permissions?.can_view_upsell, key: 'specials' }
+          { to: '/complaints', label: 'Client Complaints', icon: <MessageSquare size={18} />, visible: isAdminOrSuper || !!permissions?.can_view_complaints, key: 'complaints' },
+          { to: '/specials', label: 'Specials & Upsell', icon: <Sparkles size={18} />, visible: isAdminOrSuper || !!permissions?.can_view_upsell, key: 'specials' }
         ]
       },
       {
         name: 'Analytics',
         items: [
-          { to: '/finance', label: 'Financial Analytics', icon: <TrendingUp size={18} />, visible: permissions?.can_view_finance_dashboard, key: 'finance' },
-          { to: '/finance/payments', label: 'Payment Details', icon: <Coins size={18} />, visible: permissions?.can_view_finance_dashboard, key: 'finance' },
-          { to: '/reel-credit', label: 'Reel Credit', icon: <Receipt size={18} />, visible: permissions?.can_view_finance_dashboard, key: 'finance' }
+          { to: '/finance', label: 'Financial Analytics', icon: <TrendingUp size={18} />, visible: isAdminOrSuper || !!permissions?.can_view_finance_dashboard, key: 'finance' },
+          { to: '/finance/payments', label: 'Payment Details', icon: <Coins size={18} />, visible: isAdminOrSuper || !!permissions?.can_view_finance_dashboard, key: 'finance' },
+          { to: '/reel-credit', label: 'Reel Credit', icon: <Receipt size={18} />, visible: isAdminOrSuper || !!permissions?.can_view_finance_dashboard, key: 'finance' }
         ]
       },
       {
         name: 'Administration',
         items: [
           { to: '/super-admin', label: 'Super Admin', icon: <Shield size={18} />, visible: user.role?.toLowerCase() === 'superadmin' },
-          { to: '/branch-management', label: 'Branch Management', icon: <Store size={18} />, visible: isPrivileged, key: 'branch_management' },
-          { to: '/wallets', label: 'Manage E-Wallets', icon: <Coins size={18} />, visible: isPrivileged, key: 'branch_management' },
-          { to: '/news', label: 'News Management', icon: <Newspaper size={18} />, visible: isPrivileged, key: 'news' },
-          { to: '/sops', label: 'SOPs & Training', icon: <BookOpen size={18} />, visible: isPrivileged, key: 'sops' },
-          { to: '/menu', label: 'Menu Manual', icon: <ChefHat size={18} />, visible: isPrivileged, key: 'menu' }
+          { to: '/branch-management', label: 'Branch Management', icon: <Store size={18} />, visible: isAdminOrSuper || !!permissions?.can_manage_branches, key: 'branch_management' },
+          { to: '/wallets', label: 'Manage E-Wallets', icon: <Coins size={18} />, visible: isAdminOrSuper || !!permissions?.can_manage_wallets, key: 'branch_management' },
+          { to: '/news', label: 'News Management', icon: <Newspaper size={18} />, visible: isAdminOrSuper || !!permissions?.can_manage_news, key: 'news' },
+          { to: '/sops', label: 'SOPs & Training', icon: <BookOpen size={18} />, visible: isAdminOrSuper || !!permissions?.can_manage_training, key: 'sops' },
+          { to: '/menu', label: 'Menu Manual', icon: <ChefHat size={18} />, visible: isAdminOrSuper || permissions?.can_view_menu_manual !== false, key: 'menu' }
         ]
       }
     ];
@@ -248,8 +251,8 @@ import SuperAdminScreen from './screens/SuperAdminScreen';
             <LogOut size={18} />
           </button>
           <div style={{ fontSize: '11px', color: 'var(--text-muted)', textAlign: 'right' }}>
-            <div style={{ fontWeight: 600, color: 'var(--text-main)' }}>Flow Admin v1.0.6</div>
-            <div style={{ fontSize: '10px' }}>Build: July 23, 2026</div>
+            <div style={{ fontWeight: 600, color: 'var(--text-main)' }}>Flow Admin v1.0.7</div>
+            <div style={{ fontSize: '10px' }}>Build: July 24, 2026</div>
           </div>
         </div>
       </div>
@@ -259,6 +262,7 @@ import SuperAdminScreen from './screens/SuperAdminScreen';
 
 function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () => void; onUpdateUser: (user: any) => void }) {
   const isSectionEnabled = (key: string) => {
+    if (key === 'inventory_reporting' || key === 'inventory') return true;
     const enabledSections = user?.restaurants?.settings?.enabled_sections;
     if (!enabledSections) return true; // Default to enabled if not configured
     return enabledSections.includes(key);
@@ -275,7 +279,13 @@ function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () 
     can_manage_upsell: isPrivileged,
     can_view_signin_logs: isPrivileged,
     can_view_voids: isPrivileged,
-    can_manage_tasks: isPrivileged
+    can_manage_tasks: isPrivileged,
+    can_view_catalog: isPrivileged,
+    can_manage_catalog: isPrivileged,
+    can_view_suppliers: isPrivileged,
+    can_manage_suppliers: isPrivileged,
+    can_view_price_intelligence: isPrivileged,
+    can_manage_price_intelligence: isPrivileged
   });
   const [branchesList, setBranchesList] = useState<string[]>([]);
 
@@ -325,7 +335,7 @@ function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () 
               <span style={{ fontSize: '12px', background: '#eef2f5', color: 'var(--primary)', padding: '4px 8px', borderRadius: '12px' }}>{user.role}</span>
               <span style={{ fontSize: '11px', background: '#dcfce7', color: '#15803d', padding: '3px 8px', borderRadius: '12px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
                 <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#22c55e' }} />
-                v1.0.6 • GPS Punch Module
+                v1.0.7 • Multi-Storage & Department Sync
               </span>
             </div>
           </div>
@@ -474,13 +484,7 @@ function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () 
             {isSectionEnabled('inventory_reporting') && (
               <Route 
                 path="/inventory-reporting" 
-                element={
-                  <div className="placeholder-screen" style={{ padding: '40px', textAlign: 'center', backgroundColor: '#fff', borderRadius: '12px', border: '1px solid var(--border)', margin: '20px' }}>
-                    <TrendingUp size={48} color="var(--primary)" style={{ marginBottom: '20px' }} />
-                    <h2 style={{ fontSize: '24px', fontWeight: 700, marginBottom: '10px', color: 'var(--text-main)' }}>Inventory Reporting</h2>
-                    <p style={{ color: 'var(--text-muted)' }}>This module is currently under development. Stay tuned for advanced analytics!</p>
-                  </div>
-                } 
+                element={<InventoryScreen user={user} permissions={permissions} />} 
               />
             )}
             {user.role?.toLowerCase() === 'superadmin' && (

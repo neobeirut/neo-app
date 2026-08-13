@@ -133,16 +133,21 @@ export default function ItemCatalogScreen({ user, permissions }: { user: any; pe
         setSuppliers([]);
       }
 
-      if (locationsRes && locationsRes.success && locationsRes.data) {
-        setInventoryLocations(locationsRes.data);
-      } else {
-        setInventoryLocations([
-          { id: '1', name: 'Walk-in Fridge' },
-          { id: '2', name: 'Walk-in Freezer' },
-          { id: '3', name: 'Dry Storage' },
-          { id: '4', name: 'Prep Station' }
-        ]);
-      }
+      const DEFAULT_LOCATIONS = [
+        { id: 'loc-1', name: 'Main Kitchen' },
+        { id: 'loc-2', name: 'Bar' },
+        { id: 'loc-3', name: 'Cold Room / Fridge' },
+        { id: 'loc-4', name: 'Bar Fridge' },
+        { id: 'loc-5', name: 'Dry Storage' },
+        { id: 'loc-6', name: 'Main Warehouse' }
+      ];
+
+      const dbLocs = (locationsRes && locationsRes.success && locationsRes.data) ? locationsRes.data : [];
+      const locsMap = new Map();
+      DEFAULT_LOCATIONS.forEach(l => locsMap.set(l.name, l));
+      dbLocs.forEach((l: any) => locsMap.set(l.name, l));
+
+      setInventoryLocations(Array.from(locsMap.values()));
     } catch (e) {
       console.error('Error loading lookups:', e);
     }

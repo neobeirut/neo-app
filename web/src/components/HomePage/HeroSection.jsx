@@ -1,5 +1,6 @@
 import { ChevronRight, ChevronLeft } from "lucide-react";
 import { useState, useEffect } from "react";
+import { openOrderApp } from "@/utils/deviceDetection";
 
 export function HeroSection({ sliderData }) {
   const { sliderImages, currentSlide, nextSlide, prevSlide, goToSlide } =
@@ -78,13 +79,13 @@ export function HeroSection({ sliderData }) {
             {currentImage?.subtitle || "Flavors Worth Savoring"}
           </p>
         </div>
-        <a
-          href="/shop"
+        <button
+          onClick={(e) => openOrderApp(e)}
           className="inline-flex items-center gap-2 px-8 py-4 bg-[#2D5F5D] text-white font-semibold hover:bg-[#1f4342] transition-all rounded-lg shadow-lg hover:shadow-xl cursor-pointer"
         >
           Explore Our Menu
           <ChevronRight size={24} />
-        </a>
+        </button>
       </div>
     </section>
   );

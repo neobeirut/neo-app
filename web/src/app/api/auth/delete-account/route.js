@@ -147,7 +147,7 @@ export async function POST(request) {
           image = NULL,
           push_token = NULL,
           is_active = false,
-          emailverified = NULL,
+          "emailVerified" = NULL,
           points = 0,
           total_spent = 0
         WHERE id = ${userId}

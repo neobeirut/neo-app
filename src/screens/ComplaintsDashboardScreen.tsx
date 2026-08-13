@@ -388,13 +388,13 @@ CREATE POLICY "Enable write access for all authenticated users" ON public.compla
         <div style={{ display: 'flex', gap: '12px' }}>
           <button 
             onClick={() => navigate('/complaints/analytics')}
-            style={{ 
-              display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 18px', 
-              backgroundColor: '#fff', border: '1px solid #c8e6c9', borderRadius: 'var(--radius)', 
-              fontWeight: 600, cursor: 'pointer', color: '#2e7d32', transition: 'all 0.2s'
-            }}
-            onMouseOver={(e) => { e.currentTarget.style.backgroundColor = '#f1f8e9'; }}
-            onMouseOut={(e) => { e.currentTarget.style.backgroundColor = '#fff'; }}
+              style={{ 
+                display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 18px', 
+                backgroundColor: '#fff', border: '1px solid var(--primary)', borderRadius: 'var(--radius)', 
+                fontWeight: 600, cursor: 'pointer', color: 'var(--primary)', transition: 'all 0.2s'
+              }}
+            onMouseOver={(e) => { e.currentTarget.style.backgroundColor = 'var(--primary)'; e.currentTarget.style.color = '#fff'; }}
+            onMouseOut={(e) => { e.currentTarget.style.backgroundColor = '#fff'; e.currentTarget.style.color = 'var(--primary)'; }}
           >
             <BarChart3 size={18} />
             Analytics Dashboard
@@ -404,8 +404,8 @@ CREATE POLICY "Enable write access for all authenticated users" ON public.compla
               onClick={() => navigate('/complaints/new')}
               style={{ 
                 display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', 
-                backgroundColor: '#2e7d32', color: 'white', border: 'none', borderRadius: 'var(--radius)', 
-                fontWeight: 600, cursor: 'pointer', boxShadow: '0 2px 4px rgba(46,125,50,0.2)'
+                backgroundColor: 'var(--primary)', color: 'white', border: 'none', borderRadius: 'var(--radius)', 
+                fontWeight: 600, cursor: 'pointer', boxShadow: '0 2px 4px rgba(0,0,0,0.15)'
               }}
             >
               <Plus size={18} />
