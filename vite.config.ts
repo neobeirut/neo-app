@@ -7,6 +7,8 @@ export default defineConfig({
   base: './',
   resolve: {
     alias: {
+      '@auth/create/react': '@hono/auth-js/react',
+      '@auth/create': resolve(__dirname, 'web/src/__create/@auth/create.js'),
       '@/auth.js': resolve(__dirname, 'web/src/auth.js'),
       '@/auth': resolve(__dirname, 'web/src/auth.js'),
       '@': resolve(__dirname, 'web/src'),
