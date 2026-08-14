@@ -456,15 +456,13 @@ export function Layout({ children }: { children: ReactNode }) {
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-        <meta name="apple-mobile-web-app-title" content="OVR LOAD POS" />
-        <link rel="apple-touch-icon" href="/pwa-icon-192.png" />
-        <link rel="apple-touch-icon" sizes="192x192" href="/pwa-icon-192.png" />
-        <link rel="apple-touch-icon" sizes="512x512" href="/pwa-icon-512.png" />
+        <meta name="apple-mobile-web-app-title" content="Neo Beirut" />
+        <link rel="apple-touch-icon" href="https://ucarecdn.com/07124162-e932-4dab-85f2-704f1fd1aad2/-/format/auto/" />
         <link rel="manifest" href="/manifest.json" />
         <Meta />
         <Links />
         {/* dev-error-overlay removed — it doesn't exist in production and causes silent script failures on some tablet browsers */}
-        <link rel="icon" href="/pwa-icon-192.png" />
+        <link rel="icon" type="image/png" href="https://ucarecdn.com/07124162-e932-4dab-85f2-704f1fd1aad2/-/format/auto/" />
         {LoadFontsSSR ? <LoadFontsSSR /> : null}
         {/* FontAwesome — loaded in head so icons are ready before first paint */}
         <link rel="preconnect" href="https://ka-p.fontawesome.com" crossOrigin="anonymous" />
@@ -501,7 +499,7 @@ export function Layout({ children }: { children: ReactNode }) {
             letterSpacing: '3px',
           }}
         >
-          OVR LOAD POS…
+          Neo Beirut…
         </div>
         <script
           dangerouslySetInnerHTML={{
