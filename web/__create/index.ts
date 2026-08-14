@@ -301,6 +301,10 @@ export default createHonoServer({
   app,
   hostname: '0.0.0.0',
   defaultLogger: false,
+  beforeAll: (app) => {
+    app.get('/health', (c) => c.text('OK', 200));
+    app.get('/api/health', (c) => c.text('OK', 200));
+  },
   serveStaticOptions: {
     publicAssets: {
       onNotFound: (path, c) => {
