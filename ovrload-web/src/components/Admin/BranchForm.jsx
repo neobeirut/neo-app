@@ -302,9 +302,14 @@ export function BranchForm({ editingItem, onSave, onCancel }) {
               </label>
               <select
                 value={formData.operational_status}
-                onChange={(e) =>
-                  setFormData({ ...formData, operational_status: e.target.value })
-                }
+                onChange={(e) => {
+                  const newStatus = e.target.value;
+                  setFormData((prev) => ({
+                    ...prev,
+                    operational_status: newStatus,
+                    closure_reason: prev.closure_reason || "Overloaded"
+                  }));
+                }}
                 className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-semibold bg-white shadow-sm focus:ring-2 focus:ring-amber-500"
               >
                 <option value="open">🟢 Open / Active (Accepting Orders)</option>
@@ -327,11 +332,12 @@ export function BranchForm({ editingItem, onSave, onCancel }) {
                   Closure Reason
                 </label>
                 <select
-                  value={formData.closure_reason}
-                  onChange={(e) =>
-                    setFormData({ ...formData, closure_reason: e.target.value })
-                  }
-                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-medium bg-white shadow-sm"
+                  value={formData.closure_reason || "Overloaded"}
+                  onChange={(e) => {
+                    const selected = e.target.value;
+                    setFormData((prev) => ({ ...prev, closure_reason: selected }));
+                  }}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-medium bg-white shadow-sm cursor-pointer"
                 >
                   <option value="Overloaded">⚡ Overloaded (High order volume)</option>
                   <option value="Out of Stock">📦 Out of Stock</option>

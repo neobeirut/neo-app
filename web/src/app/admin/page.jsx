@@ -596,6 +596,7 @@ export default function AdminPage() {
         )}
         {showForm && activeTab === "branches" && (
           <BranchForm
+            key={editingItem?.id || "new"}
             editingItem={editingItem}
             onSave={handleSaveBranch}
             onCancel={handleCancelForm}
