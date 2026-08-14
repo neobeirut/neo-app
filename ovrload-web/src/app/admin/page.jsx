@@ -105,6 +105,7 @@ export default function AdminPage() {
     const map = {
       orders: "orders",
       product_status: "product-status",
+      reports: "reports",
     };
 
     const tabsFromRoles = roleList.map((r) => map[r]).filter(Boolean);
@@ -656,6 +657,11 @@ export default function AdminPage() {
 
         {/* Admin Users View */}
         {activeTab === "admin-users" && <AdminUsersView />}
+
+        {/* Reports View */}
+        {activeTab === "reports" && allowedTabs.includes("reports") && (
+          <ReportsView />
+        )}
 
         {/* Orders View */}
         {activeTab === "orders" && allowedTabs.includes("orders") && (

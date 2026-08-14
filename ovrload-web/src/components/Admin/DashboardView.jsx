@@ -68,9 +68,18 @@ export function DashboardView({
 }) {
   const [isMounted, setIsMounted] = useState(false);
   const [shortcutsExpanded, setShortcutsExpanded] = useState(false);
+  const [apiCategories, setApiCategories] = useState([]);
 
   useEffect(() => {
     setIsMounted(true);
+    fetch('/api/admin/reports?range=all')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && Array.isArray(data.categories)) {
+          setApiCategories(data.categories);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   // Filter completed/delivered/ready orders for positive revenue mapping
@@ -173,6 +182,67 @@ export function DashboardView({
       value
     }));
   }, [orders]);
+
+  // 5. Category Breakdown: Total Items & Total Amount per Category
+  const categoryReportData = useMemo(() => {
+    if (apiCategories && apiCategories.length > 0) {
+      return apiCategories.map((cat) => {
+        const catProds = (products || []).filter(
+          (p) => (p.category || p.category_name) === cat.category_name
+        );
+        return {
+          category: cat.category_name,
+          total_products: catProds.length,
+          total_inventory_amount: catProds.reduce(
+            (sum, p) => sum + parseFloat(p.unit_price_usd || p.price || 0),
+            0
+          ),
+          total_items_sold: parseInt(cat.total_qty || 0, 10),
+          total_sales_amount: parseFloat(cat.total_revenue || 0),
+        };
+      }).sort((a, b) => b.total_sales_amount - a.total_sales_amount);
+    }
+
+    const map = {};
+
+    // Populate catalog products
+    (products || []).forEach(p => {
+      const catName = p.category || p.category_name || "Uncategorized";
+      if (!map[catName]) {
+        map[catName] = {
+          category: catName,
+          total_products: 0,
+          total_inventory_amount: 0,
+          total_items_sold: 0,
+          total_sales_amount: 0
+        };
+      }
+      map[catName].total_products += 1;
+      map[catName].total_inventory_amount += parseFloat(p.unit_price_usd || p.price || 0);
+    });
+
+    // Populate items sold & sales amount from completed orders
+    completedOrders.forEach(o => {
+      (o.items || []).forEach(item => {
+        const catName = item.category || item.category_name || "Uncategorized";
+        if (!map[catName]) {
+          map[catName] = {
+            category: catName,
+            total_products: 0,
+            total_inventory_amount: 0,
+            total_items_sold: 0,
+            total_sales_amount: 0
+          };
+        }
+        const qty = parseInt(item.quantity || 0, 10);
+        const price = parseFloat(item.total_price || item.unit_price_usd || item.price || 0);
+        map[catName].total_items_sold += qty;
+        map[catName].total_sales_amount += price;
+      });
+    });
+
+    return Object.values(map).sort((a, b) => a.category.localeCompare(b.category));
+  }, [apiCategories, products, completedOrders]);
 
   // Recent Orders Feed (Last 5 orders)
   const recentOrders = useMemo(() => {
@@ -457,6 +527,79 @@ export function DashboardView({
           </div>
         </div>
       )}
+
+      {/* Category Summary Report Table: Total Items & Total Amount per Category */}
+      <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm">
+        <div className="flex justify-between items-center mb-6">
+          <div>
+            <h4 className="text-base font-bold text-slate-800 flex items-center gap-2">
+              📊 Category Summary Report
+            </h4>
+            <p className="text-slate-500 text-xs">Total items and revenue breakdown per product category</p>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse text-sm">
+            <thead>
+              <tr className="border-b border-slate-100 text-slate-500 text-xs font-bold uppercase tracking-wider">
+                <th className="pb-3 pr-4">Category</th>
+                <th className="pb-3 pr-4 text-center">Catalog Products</th>
+                <th className="pb-3 pr-4 text-right">Catalog Value ($)</th>
+                <th className="pb-3 pr-4 text-center">Items Sold</th>
+                <th className="pb-3 pr-4 text-right">Sales Amount ($)</th>
+                <th className="pb-3 text-center w-32">Sales Share</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {categoryReportData.length === 0 ? (
+                <tr>
+                  <td colSpan="6" className="py-6 text-center text-slate-400 text-sm">No category report data available</td>
+                </tr>
+              ) : (
+                categoryReportData.map((row) => {
+                  const sharePct = kpis.totalSales > 0
+                    ? Math.round((row.total_sales_amount / kpis.totalSales) * 100)
+                    : 0;
+
+                  return (
+                    <tr key={row.category} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="py-4 pr-4 font-bold text-slate-800">
+                        <span className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 text-xs font-bold">
+                          {row.category}
+                        </span>
+                      </td>
+                      <td className="py-4 pr-4 text-center font-semibold text-slate-700">
+                        {row.total_products}
+                      </td>
+                      <td className="py-4 pr-4 text-right font-semibold text-cyan-600">
+                        {formatCurrency(row.total_inventory_amount)}
+                      </td>
+                      <td className="py-4 pr-4 text-center font-bold text-indigo-600">
+                        {row.total_items_sold}
+                      </td>
+                      <td className="py-4 pr-4 text-right font-bold text-emerald-600">
+                        {formatCurrency(row.total_sales_amount)}
+                      </td>
+                      <td className="py-4 text-center">
+                        <div className="flex items-center gap-2 justify-center">
+                          <div className="w-16 bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                            <div
+                              className="bg-indigo-600 h-full rounded-full"
+                              style={{ width: `${sharePct}%` }}
+                            ></div>
+                          </div>
+                          <span className="text-[11px] font-semibold text-slate-500 w-7">{sharePct}%</span>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
       {/* Recent Orders activity table */}
       <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm">

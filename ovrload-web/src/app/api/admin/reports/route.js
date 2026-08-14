@@ -7,32 +7,30 @@ export async function GET(request) {
     const startDateParam = searchParams.get("startDate");
     const endDateParam = searchParams.get("endDate");
 
-    // Timezone offset for Beirut (UTC+3) — use interval addition for reliability
     let dateWhereClause = "";
     let dateWhereClauseO = "";
 
     if (range === "today") {
-      dateWhereClause  = "AND (created_at + INTERVAL '3 hours')::date = (CURRENT_TIMESTAMP + INTERVAL '3 hours')::date";
-      dateWhereClauseO = "AND (o.created_at + INTERVAL '3 hours')::date = (CURRENT_TIMESTAMP + INTERVAL '3 hours')::date";
+      dateWhereClause = "AND (created_at >= CURRENT_DATE OR created_at >= NOW() - INTERVAL '24 hours' OR created_at IS NULL)";
+      dateWhereClauseO = "AND (o.created_at >= CURRENT_DATE OR o.created_at >= NOW() - INTERVAL '24 hours' OR o.created_at IS NULL)";
     } else if (range === "yesterday") {
-      dateWhereClause  = "AND (created_at + INTERVAL '3 hours')::date = (CURRENT_TIMESTAMP + INTERVAL '3 hours')::date - INTERVAL '1 day'";
-      dateWhereClauseO = "AND (o.created_at + INTERVAL '3 hours')::date = (CURRENT_TIMESTAMP + INTERVAL '3 hours')::date - INTERVAL '1 day'";
+      dateWhereClause = "AND created_at >= CURRENT_DATE - INTERVAL '1 day' AND created_at < CURRENT_DATE";
+      dateWhereClauseO = "AND o.created_at >= CURRENT_DATE - INTERVAL '1 day' AND o.created_at < CURRENT_DATE";
     } else if (range === "7days") {
-      dateWhereClause  = "AND (created_at + INTERVAL '3 hours')::date >= (CURRENT_TIMESTAMP + INTERVAL '3 hours')::date - INTERVAL '6 days'";
-      dateWhereClauseO = "AND (o.created_at + INTERVAL '3 hours')::date >= (CURRENT_TIMESTAMP + INTERVAL '3 hours')::date - INTERVAL '6 days'";
+      dateWhereClause = "AND (created_at >= CURRENT_DATE - INTERVAL '7 days' OR created_at IS NULL)";
+      dateWhereClauseO = "AND (o.created_at >= CURRENT_DATE - INTERVAL '7 days' OR o.created_at IS NULL)";
     } else if (range === "thismonth") {
-      dateWhereClause  = "AND DATE_TRUNC('month', created_at + INTERVAL '3 hours') = DATE_TRUNC('month', CURRENT_TIMESTAMP + INTERVAL '3 hours')";
-      dateWhereClauseO = "AND DATE_TRUNC('month', o.created_at + INTERVAL '3 hours') = DATE_TRUNC('month', CURRENT_TIMESTAMP + INTERVAL '3 hours')";
+      dateWhereClause = "AND (created_at >= DATE_TRUNC('month', CURRENT_DATE) OR created_at IS NULL)";
+      dateWhereClauseO = "AND (o.created_at >= DATE_TRUNC('month', CURRENT_DATE) OR o.created_at IS NULL)";
     } else if (range === "all") {
-      dateWhereClause  = "";
+      dateWhereClause = "";
       dateWhereClauseO = "";
     } else if (range === "custom" && startDateParam && endDateParam) {
       const cleanStart = startDateParam.replace(/[^0-9-]/g, "");
-      const cleanEnd   = endDateParam.replace(/[^0-9-]/g, "");
-      dateWhereClause  = `AND (created_at + INTERVAL '3 hours')::date >= '${cleanStart}' AND (created_at + INTERVAL '3 hours')::date <= '${cleanEnd}'`;
-      dateWhereClauseO = `AND (o.created_at + INTERVAL '3 hours')::date >= '${cleanStart}' AND (o.created_at + INTERVAL '3 hours')::date <= '${cleanEnd}'`;
+      const cleanEnd = endDateParam.replace(/[^0-9-]/g, "");
+      dateWhereClause = `AND created_at >= '${cleanStart} 00:00:00' AND created_at <= '${cleanEnd} 23:59:59'`;
+      dateWhereClauseO = `AND o.created_at >= '${cleanStart} 00:00:00' AND o.created_at <= '${cleanEnd} 23:59:59'`;
     }
-
 
     // Valid completed sales status (includes completed, approved, paid, etc. - excludes cancelled/voided)
     const salesStatusFilter = "COALESCE(status, 'completed') NOT IN ('cancelled', 'voided', 'pending')";
@@ -55,13 +53,13 @@ export async function GET(request) {
     // 2. Sales Channel Breakdown
     const channels = await sql.unsafe(`
       SELECT 
-        CASE WHEN COALESCE(order_source, 'POS') IN ('POS', 'In-Store', '') THEN 'In-Store' ELSE order_source END as channel,
+        COALESCE(order_source, 'In-Store') as channel,
         COUNT(*)::int as order_count,
         COALESCE(SUM(total_amount::float), 0) as total_revenue,
         COALESCE(SUM(discount_amount::float), 0) as total_discount
       FROM orders
       WHERE ${salesStatusFilter} ${dateWhereClause}
-      GROUP BY CASE WHEN COALESCE(order_source, 'POS') IN ('POS', 'In-Store', '') THEN 'In-Store' ELSE order_source END
+      GROUP BY COALESCE(order_source, 'In-Store')
       ORDER BY total_revenue DESC
     `);
 
@@ -144,35 +142,6 @@ export async function GET(request) {
       ORDER BY hour ASC
     `);
 
-    // 8. Meal Period Breakdown (Beirut = UTC+3, using interval)
-    const mealPeriodSales = await sql.unsafe(`
-      SELECT * FROM (
-        SELECT
-          CASE
-            WHEN EXTRACT(HOUR FROM created_at + INTERVAL '3 hours') >= 7
-             AND EXTRACT(HOUR FROM created_at + INTERVAL '3 hours') < 15 THEN 'Lunch'
-            WHEN EXTRACT(HOUR FROM created_at + INTERVAL '3 hours') >= 15
-             AND EXTRACT(HOUR FROM created_at + INTERVAL '3 hours') < 19 THEN 'Afternoon'
-            WHEN EXTRACT(HOUR FROM created_at + INTERVAL '3 hours') >= 19
-             AND EXTRACT(HOUR FROM created_at + INTERVAL '3 hours') <= 23 THEN 'Dinner'
-            ELSE 'Other'
-          END as meal_period,
-          COUNT(*)::int as order_count,
-          COALESCE(SUM(total_amount::float), 0) as total_revenue,
-          COALESCE(AVG(total_amount::float), 0) as avg_order_value
-        FROM orders
-        WHERE ${salesStatusFilter} ${dateWhereClause}
-        GROUP BY 1
-      ) sub
-      ORDER BY
-        CASE meal_period
-          WHEN 'Lunch'     THEN 1
-          WHEN 'Afternoon' THEN 2
-          WHEN 'Dinner'    THEN 3
-          ELSE 4
-        END
-    `);
-
     return Response.json({
       summary,
       channels,
@@ -181,8 +150,7 @@ export async function GET(request) {
       categories,
       voidedSummary: voidedSummaryRows[0] || { void_count: 0, total_voided_amount: 0 },
       voidedOrders,
-      hourlySales,
-      mealPeriodSales
+      hourlySales
     });
   } catch (error) {
     console.error("Error in GET /api/admin/reports:", error);

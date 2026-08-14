@@ -91,6 +91,14 @@ export default function ReportsView() {
     (topProducts || []).forEach((item) => {
       csvContent += `"${item.product_name}",${item.category_name},${item.total_qty},$${(item.total_revenue || 0).toFixed(2)}\n`;
     });
+    csvContent += "\n";
+
+    // Category Breakdown
+    csvContent += "CATEGORY PERFORMANCE REPORT\n";
+    csvContent += "Category Name,Total Items Sold,Total Sales Revenue\n";
+    (categories || []).forEach((cat) => {
+      csvContent += `"${cat.category_name}",${cat.total_qty || 0},$${(cat.total_revenue || 0).toFixed(2)}\n`;
+    });
 
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
@@ -109,15 +117,6 @@ export default function ReportsView() {
   const voidedSummary = reportData?.voidedSummary || {};
   const voidedOrders = reportData?.voidedOrders || [];
   const hourlySales = reportData?.hourlySales || [];
-  const mealPeriodSales = reportData?.mealPeriodSales || [];
-
-  const mealConfig = {
-    Lunch:     { emoji: '☀️',  label: 'Lunch',     time: '7:00 AM – 3:00 PM',  color: '#f59e0b', bg: 'rgba(245,158,11,0.08)',  border: 'rgba(245,158,11,0.25)' },
-    Afternoon: { emoji: '🌇',  label: 'Afternoon', time: '3:01 PM – 7:00 PM',  color: '#eb660c', bg: 'rgba(235,102,12,0.08)',  border: 'rgba(235,102,12,0.25)' },
-    Dinner:    { emoji: '🌙',  label: 'Dinner',    time: '7:01 PM – 11:59 PM', color: '#818cf8', bg: 'rgba(129,140,248,0.08)', border: 'rgba(129,140,248,0.25)' },
-  };
-  const allPeriods = ['Lunch', 'Afternoon', 'Dinner'];
-
 
   const maxChannelRevenue = Math.max(...channels.map((c) => c.total_revenue || 0), 1);
 
@@ -404,46 +403,62 @@ export default function ReportsView() {
         </div>
       </div>
 
-      {/* MEAL PERIOD BREAKDOWN */}
+      {/* CATEGORY PERFORMANCE & REVENUE BREAKDOWN: TOTAL ITEMS & AMOUNT PER CATEGORY */}
       <div className="bg-[#181C24] border border-[#262D3D] rounded-2xl p-5 space-y-4 shadow-lg">
         <div className="flex justify-between items-center border-b border-[#262D3D] pb-3">
           <h2 className="text-base font-extrabold text-white flex items-center gap-2">
-            🕐 Order Period Breakdown
+            <span>📊</span> Category Performance & Revenue Breakdown
           </h2>
-          <span className="text-xs text-gray-400 font-semibold">Beirut time</span>
+          <span className="text-xs text-gray-400 font-bold">{categories.length} Categories</span>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {allPeriods.map((period) => {
-            const cfg  = mealConfig[period];
-            const data = mealPeriodSales.find((r) => r.meal_period === period) || { order_count: 0, total_revenue: 0, avg_order_value: 0 };
-            const totalOrders = mealPeriodSales.reduce((s, r) => s + (r.order_count || 0), 0) || 1;
-            const pct = Math.round((data.order_count / totalOrders) * 100);
-            return (
-              <div key={period} style={{ background: cfg.bg, borderColor: cfg.border }} className="rounded-xl border p-4 flex flex-col gap-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-2xl">{cfg.emoji}</span>
-                  <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ color: cfg.color, background: cfg.border }}>{pct}% of orders</span>
-                </div>
-                <div>
-                  <p className="text-base font-black text-white">{cfg.label}</p>
-                  <p className="text-[11px] text-gray-400">{cfg.time}</p>
-                </div>
-                <div className="flex justify-between items-end">
-                  <div>
-                    <p className="text-2xl font-black" style={{ color: cfg.color }}>{data.order_count}</p>
-                    <p className="text-[10px] text-gray-400 uppercase font-bold">Orders</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-lg font-black text-white">${(data.total_revenue || 0).toFixed(2)}</p>
-                    <p className="text-[10px] text-gray-400">Avg ${(data.avg_order_value || 0).toFixed(2)}</p>
-                  </div>
-                </div>
-                <div className="h-1.5 rounded-full bg-[#262D3D] overflow-hidden">
-                  <div className="h-full rounded-full transition-all duration-700" style={{ width: `${pct}%`, background: cfg.color }} />
-                </div>
-              </div>
-            );
-          })}
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead>
+              <tr className="border-b border-[#262D3D] text-gray-400 font-bold uppercase text-[10px]">
+                <th className="pb-3 pl-2">Category</th>
+                <th className="pb-3 text-center">Items Sold (Qty)</th>
+                <th className="pb-3 text-right pr-4">Total Revenue ($)</th>
+                <th className="pb-3 text-center w-36">Sales Share</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#262D3D]/50 text-gray-300 font-semibold">
+              {categories.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="text-center py-8 text-gray-500">No category sales found for this period</td>
+                </tr>
+              ) : (
+                categories.map((cat, idx) => {
+                  const totalRev = summary.total_revenue || 1;
+                  const sharePct = totalRev > 0 ? Math.round(((cat.total_revenue || 0) / totalRev) * 100) : 0;
+
+                  return (
+                    <tr key={cat.category_name || idx} className="hover:bg-[#0F1115]/50 transition-colors">
+                      <td className="py-3 pl-2 font-bold text-white">
+                        <span className="px-2.5 py-1 rounded-lg bg-[#0F1115] border border-[#262D3D] text-xs font-bold text-gray-200">
+                          {cat.category_name}
+                        </span>
+                      </td>
+                      <td className="py-3 text-center font-black text-[#eb660c]">
+                        {cat.total_qty || 0}
+                      </td>
+                      <td className="py-3 text-right pr-4 font-black text-emerald-400">
+                        ${(cat.total_revenue || 0).toFixed(2)}
+                      </td>
+                      <td className="py-3 text-center">
+                        <div className="flex items-center gap-2 justify-center">
+                          <div className="w-20 bg-[#0F1115] h-2 rounded-full overflow-hidden border border-[#262D3D]">
+                            <div className="bg-[#eb660c] h-full rounded-full" style={{ width: `${Math.min(100, sharePct)}%` }}></div>
+                          </div>
+                          <span className="text-[11px] font-bold text-gray-400 w-8">{sharePct}%</span>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
 
