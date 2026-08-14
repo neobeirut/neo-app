@@ -1,5 +1,7 @@
 "use client";
 
+// Neo Beirut Storefront - Updated 2026-08-14
+
 import { useState, useEffect } from "react";
 import { Header } from "@/components/HomePage/Header";
 import { HeroSection } from "@/components/HomePage/HeroSection";
