@@ -142,6 +142,40 @@ export async function GET(request) {
       ORDER BY hour ASC
     `);
 
+    // 8. Time of Day Breakdown (Morning 6-12, Afternoon 12-18, Night 18-6)
+    const timeOfDayRows = await sql.unsafe(`
+      SELECT 
+        CASE 
+          WHEN EXTRACT(HOUR FROM created_at) >= 6 AND EXTRACT(HOUR FROM created_at) < 12 THEN 'Morning'
+          WHEN EXTRACT(HOUR FROM created_at) >= 12 AND EXTRACT(HOUR FROM created_at) < 18 THEN 'Afternoon'
+          ELSE 'Night'
+        END as period,
+        COUNT(*)::int as order_count,
+        COALESCE(SUM(total_amount::float), 0) as total_revenue
+      FROM orders
+      WHERE ${salesStatusFilter} ${dateWhereClause}
+      GROUP BY 
+        CASE 
+          WHEN EXTRACT(HOUR FROM created_at) >= 6 AND EXTRACT(HOUR FROM created_at) < 12 THEN 'Morning'
+          WHEN EXTRACT(HOUR FROM created_at) >= 12 AND EXTRACT(HOUR FROM created_at) < 18 THEN 'Afternoon'
+          ELSE 'Night'
+        END
+    `);
+
+    const timeOfDayMap = {
+      morning: { period: 'Morning', order_count: 0, total_revenue: 0 },
+      afternoon: { period: 'Afternoon', order_count: 0, total_revenue: 0 },
+      night: { period: 'Night', order_count: 0, total_revenue: 0 }
+    };
+
+    timeOfDayRows.forEach((r) => {
+      const key = (r.period || '').toLowerCase();
+      if (timeOfDayMap[key]) {
+        timeOfDayMap[key].order_count = parseInt(r.order_count, 10) || 0;
+        timeOfDayMap[key].total_revenue = parseFloat(r.total_revenue) || 0;
+      }
+    });
+
     return Response.json({
       summary,
       channels,
@@ -150,7 +184,8 @@ export async function GET(request) {
       categories,
       voidedSummary: voidedSummaryRows[0] || { void_count: 0, total_voided_amount: 0 },
       voidedOrders,
-      hourlySales
+      hourlySales,
+      timeOfDay: timeOfDayMap
     });
   } catch (error) {
     console.error("Error in GET /api/admin/reports:", error);
