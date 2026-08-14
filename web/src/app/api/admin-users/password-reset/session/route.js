@@ -1,11 +1,11 @@
 import sql from "@/app/api/utils/sql";
-import { auth } from "@/auth.js";
+import { getAdminWithRolesFromRequest } from "@/app/api/utils/adminAuth";
 import { hash } from "argon2";
 
 export async function POST(request) {
   try {
-    const session = await auth();
-    const sessionEmail = (session?.user?.email || "").trim().toLowerCase();
+    const currentAdmin = await getAdminWithRolesFromRequest(request);
+    const sessionEmail = (currentAdmin?.email || "").trim().toLowerCase();
 
     if (!sessionEmail) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
