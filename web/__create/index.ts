@@ -305,6 +305,10 @@ export default createHonoServer({
     app.get('/health', (c) => c.text('OK', 200));
     app.get('/api/health', (c) => c.text('OK', 200));
   },
+  configure: (app) => {
+    app.get('/health', (c) => c.text('OK', 200));
+    app.get('/api/health', (c) => c.text('OK', 200));
+  },
   serveStaticOptions: {
     publicAssets: {
       onNotFound: (path, c) => {
