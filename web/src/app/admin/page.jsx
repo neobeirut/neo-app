@@ -1,5 +1,7 @@
 "use client";
 
+// Neo Beirut Admin - Updated 2026-08-14
+
 import { useState, useEffect, useMemo } from "react";
 import { PlusCircle, Upload, LogOut, Menu, ChevronRight } from "lucide-react";
 import { useAdminData } from "@/hooks/useAdminData";
