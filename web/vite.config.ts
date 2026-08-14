@@ -80,6 +80,11 @@ export default defineConfig({
       stripe: path.resolve(__dirname, './src/__create/stripe'),
       '@auth/create/react': '@hono/auth-js/react',
       '@auth/create': path.resolve(__dirname, './src/__create/@auth/create.js'),
+      '@auth/core/providers/credentials': path.resolve(__dirname, './node_modules/@auth/core/providers/credentials.js'),
+      '@auth/core/providers/google': path.resolve(__dirname, './node_modules/@auth/core/providers/google.js'),
+      '@auth/core/errors': path.resolve(__dirname, './node_modules/@auth/core/errors.js'),
+      '@auth/core/jwt': path.resolve(__dirname, './node_modules/@auth/core/jwt.js'),
+      '@auth/core': path.resolve(__dirname, './node_modules/@auth/core/index.js'),
       '@': path.resolve(__dirname, 'src'),
     },
     extensions: ['.mjs', '.js', '.ts', '.jsx', '.tsx', '.json'],
@@ -105,4 +110,4 @@ export default defineConfig({
   },
 });
 
-// bust cache 9
+// bust cache 10
