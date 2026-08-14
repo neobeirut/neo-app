@@ -19,6 +19,12 @@ export function CustomerInfo({ order }) {
           <p className="text-sm text-gray-600">Branch</p>
           <p className="font-medium">{order.branch_name || "N/A"}</p>
         </div>
+        {order.driver_phone && (
+          <div className="col-span-2 bg-blue-50 border border-blue-200 rounded-lg p-2.5 mt-1">
+            <p className="text-xs text-blue-700 font-bold uppercase tracking-wider">🛵 Assigned Driver Phone</p>
+            <p className="font-black text-blue-900 text-base">+{order.driver_phone.replace(/^\+/, '')}</p>
+          </div>
+        )}
       </div>
     </div>
   );
