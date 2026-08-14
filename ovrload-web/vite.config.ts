@@ -81,6 +81,8 @@ export default defineConfig({
       stripe: path.resolve(__dirname, './src/__create/stripe'),
       '@auth/create/react': '@hono/auth-js/react',
       '@auth/create': path.resolve(__dirname, './src/__create/@auth/create'),
+      '@/auth': path.resolve(__dirname, 'src/auth.js'),
+      '@/auth.js': path.resolve(__dirname, 'src/auth.js'),
       '@': path.resolve(__dirname, 'src'),
     },
     dedupe: ['react', 'react-dom'],

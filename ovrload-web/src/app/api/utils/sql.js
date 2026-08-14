@@ -1,53 +1,35 @@
 import postgres from 'postgres';
+import fs from 'node:fs';
+import path from 'node:path';
 
-const NullishQueryFunction = () => {
-  throw new Error(
-    'No database connection string was provided. Please configure DATABASE_URL in your environment variables.'
-  );
-};
-NullishQueryFunction.transaction = () => {
-  throw new Error(
-    'No database connection string was provided. Please configure DATABASE_URL in your environment variables.'
-  );
-};
-NullishQueryFunction.unsafe = NullishQueryFunction;
-
-// LazyQuery wraps query execution so that queries are only run when awaited
-// or executed together inside a transaction block.
-class LazyQuery {
-  constructor(db, stringsOrQuery, values) {
-    this.db = db;
-    this.stringsOrQuery = stringsOrQuery;
-    this.values = values;
-  }
-
-  async then(onfulfilled, onrejected) {
-    try {
-      let result;
-      if (typeof this.stringsOrQuery === 'string') {
-        result = await this.db.unsafe(this.stringsOrQuery, this.values);
-      } else {
-        result = await this.db(this.stringsOrQuery, ...this.values);
+// Automatic local .env loader fallback if DATABASE_URL is not yet in process.env
+if (!process.env.DATABASE_URL) {
+  try {
+    const envPaths = [
+      path.resolve(process.cwd(), '.env'),
+      path.resolve(process.cwd(), 'ovrload-web/.env'),
+      path.resolve(process.cwd(), '../.env'),
+    ];
+    for (const envPath of envPaths) {
+      if (fs.existsSync(envPath)) {
+        const content = fs.readFileSync(envPath, 'utf8');
+        for (const line of content.split('\n')) {
+          const trimmed = line.trim();
+          if (trimmed && !trimmed.startsWith('#') && trimmed.includes('=')) {
+            const [key, ...val] = trimmed.split('=');
+            const k = key.trim();
+            let v = val.join('=').trim();
+            if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+              v = v.slice(1, -1);
+            }
+            if (!process.env[k]) {
+              process.env[k] = v;
+            }
+          }
+        }
       }
-      return onfulfilled ? onfulfilled(result) : result;
-    } catch (err) {
-      if (onrejected) return onrejected(err);
-      throw err;
     }
-  }
-
-  async catch(onrejected) {
-    return this.then(null, onrejected);
-  }
-
-  async finally(onfinally) {
-    try {
-      const res = await this;
-      return res;
-    } finally {
-      if (onfinally) onfinally();
-    }
-  }
+  } catch (e) {}
 }
 
 let sql;
