@@ -11,17 +11,17 @@ export async function GET(request) {
     let dateWhereClauseO = "";
 
     if (range === "today") {
-      dateWhereClause = "AND (created_at >= CURRENT_DATE OR created_at >= NOW() - INTERVAL '24 hours' OR created_at IS NULL)";
-      dateWhereClauseO = "AND (o.created_at >= CURRENT_DATE OR o.created_at >= NOW() - INTERVAL '24 hours' OR o.created_at IS NULL)";
+      dateWhereClause = "AND created_at >= CURRENT_DATE";
+      dateWhereClauseO = "AND o.created_at >= CURRENT_DATE";
     } else if (range === "yesterday") {
       dateWhereClause = "AND created_at >= CURRENT_DATE - INTERVAL '1 day' AND created_at < CURRENT_DATE";
       dateWhereClauseO = "AND o.created_at >= CURRENT_DATE - INTERVAL '1 day' AND o.created_at < CURRENT_DATE";
     } else if (range === "7days") {
-      dateWhereClause = "AND (created_at >= CURRENT_DATE - INTERVAL '7 days' OR created_at IS NULL)";
-      dateWhereClauseO = "AND (o.created_at >= CURRENT_DATE - INTERVAL '7 days' OR o.created_at IS NULL)";
+      dateWhereClause = "AND created_at >= CURRENT_DATE - INTERVAL '7 days'";
+      dateWhereClauseO = "AND o.created_at >= CURRENT_DATE - INTERVAL '7 days'";
     } else if (range === "thismonth") {
-      dateWhereClause = "AND (created_at >= DATE_TRUNC('month', CURRENT_DATE) OR created_at IS NULL)";
-      dateWhereClauseO = "AND (o.created_at >= DATE_TRUNC('month', CURRENT_DATE) OR o.created_at IS NULL)";
+      dateWhereClause = "AND created_at >= DATE_TRUNC('month', CURRENT_DATE)";
+      dateWhereClauseO = "AND o.created_at >= DATE_TRUNC('month', CURRENT_DATE)";
     } else if (range === "all") {
       dateWhereClause = "";
       dateWhereClauseO = "";
