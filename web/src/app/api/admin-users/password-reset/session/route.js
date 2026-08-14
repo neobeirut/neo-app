@@ -1,5 +1,5 @@
-import sql from "../../utils/sql.js";
-import { getAdminWithRolesFromRequest } from "../../utils/adminAuth.js";
+import sql from "@/app/api/utils/sql";
+import { getAdminWithRolesFromRequest } from "@/app/api/utils/adminAuth";
 import { hash } from "argon2";
 
 export async function POST(request) {
