@@ -37,7 +37,7 @@ export default function OrdersView({
 }) {
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [filterStatus, setFilterStatus] = useState("");
-  const [filterType, setFilterType] = useState("");
+  const [filterOrigin, setFilterOrigin] = useState("");
   const [openWhatsAppOnMount, setOpenWhatsAppOnMount] = useState(false);
   
   // Track expanded order IDs for inline row expansion
@@ -65,9 +65,39 @@ export default function OrdersView({
     }
   };
 
+  const getOriginBadge = (order) => {
+    const raw = String(order.order_source || order.origin || order.channel || order.source || order.order_type || "App").toLowerCase();
+    
+    if (raw.includes("toters")) {
+      return { label: "Toters", emoji: "🛵", className: "bg-amber-50 text-amber-800 border-amber-300" };
+    }
+    if (raw.includes("noknok") || raw.includes("nok")) {
+      return { label: "NokNok", emoji: "📦", className: "bg-pink-50 text-pink-800 border-pink-300" };
+    }
+    if (raw.includes("whatsapp") || raw.includes("wa")) {
+      return { label: "WhatsApp", emoji: "💬", className: "bg-emerald-50 text-emerald-800 border-emerald-300" };
+    }
+    if (raw.includes("store") || raw.includes("pos") || raw.includes("instore") || raw.includes("in-store")) {
+      return { label: "In-Store", emoji: "🏪", className: "bg-slate-100 text-slate-800 border-slate-300" };
+    }
+    if (raw.includes("app") || raw.includes("web") || raw.includes("online")) {
+      return { label: "App", emoji: "📱", className: "bg-indigo-50 text-indigo-800 border-indigo-300" };
+    }
+    return { label: order.order_source || order.origin || "App", emoji: "🌐", className: "bg-slate-100 text-slate-700 border-slate-200" };
+  };
+
   const filteredOrders = orders.filter((order) => {
     if (filterStatus && order.status !== filterStatus) return false;
-    if (filterType && order.order_type !== filterType) return false;
+    
+    if (filterOrigin) {
+      const raw = String(order.order_source || order.origin || order.channel || order.source || order.order_type || "").toLowerCase();
+      if (filterOrigin === "toters" && !raw.includes("toters")) return false;
+      if (filterOrigin === "noknok" && !raw.includes("noknok") && !raw.includes("nok")) return false;
+      if (filterOrigin === "whatsapp" && !raw.includes("whatsapp") && !raw.includes("wa")) return false;
+      if (filterOrigin === "in-store" && !raw.includes("store") && !raw.includes("pos") && !raw.includes("instore")) return false;
+      if (filterOrigin === "app" && !raw.includes("app") && !raw.includes("web") && !raw.includes("online")) return false;
+    }
+
     return true;
   });
 
@@ -142,16 +172,19 @@ export default function OrdersView({
         </div>
         <div className="flex-1">
           <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-            Filter Origin / Type
+            Filter Origin
           </label>
           <select
-            value={filterType}
-            onChange={(e) => setFilterType(e.target.value)}
+            value={filterOrigin}
+            onChange={(e) => setFilterOrigin(e.target.value)}
             className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white shadow-sm"
           >
-            <option value="">All Origins / Types</option>
-            <option value="pickup">Pickup</option>
-            <option value="delivery">Delivery</option>
+            <option value="">All Origins (Toters, NokNok, WhatsApp, In-Store, App)</option>
+            <option value="toters">🛵 Toters</option>
+            <option value="noknok">📦 NokNok</option>
+            <option value="whatsapp">💬 WhatsApp</option>
+            <option value="in-store">🏪 In-Store</option>
+            <option value="app">📱 App</option>
           </select>
         </div>
       </div>
@@ -195,12 +228,7 @@ export default function OrdersView({
               ) : (
                 filteredOrders.map((order) => {
                   const isExpanded = !!expandedOrderIds[order.id];
-                  const originText =
-                    order.origin ||
-                    order.channel ||
-                    order.order_type ||
-                    order.source ||
-                    "Online";
+                  const originBadge = getOriginBadge(order);
 
                   return (
                     <React.Fragment key={order.id}>
@@ -255,10 +283,10 @@ export default function OrdersView({
 
                         {/* Origin Column */}
                         <td className="px-4 py-4 whitespace-nowrap">
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200 capitalize">
-                            <Building2 size={12} className="text-slate-400" />
-                            {originText}
-                            {order.branch_name ? ` (${order.branch_name})` : ""}
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold border shadow-xs ${originBadge.className}`}>
+                            <span>{originBadge.emoji}</span>
+                            <span>{originBadge.label}</span>
+                            {order.branch_name ? <span className="opacity-75 font-normal">({order.branch_name})</span> : ""}
                           </span>
                         </td>
 

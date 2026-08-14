@@ -37,7 +37,7 @@ export default function OrdersView({
 }) {
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [filterStatus, setFilterStatus] = useState("");
-  const [filterType, setFilterType] = useState("");
+  const [filterOrigin, setFilterOrigin] = useState("");
   const [openWhatsAppOnMount, setOpenWhatsAppOnMount] = useState(false);
   
   // Track expanded order IDs for inline row expansion
@@ -65,9 +65,39 @@ export default function OrdersView({
     }
   };
 
+  const getOriginBadge = (order) => {
+    const raw = String(order.order_source || order.origin || order.channel || order.source || order.order_type || "App").toLowerCase();
+    
+    if (raw.includes("toters")) {
+      return { label: "Toters", emoji: "🛵", className: "bg-amber-50 text-amber-800 border-amber-300" };
+    }
+    if (raw.includes("noknok") || raw.includes("nok")) {
+      return { label: "NokNok", emoji: "📦", className: "bg-pink-50 text-pink-800 border-pink-300" };
+    }
+    if (raw.includes("whatsapp") || raw.includes("wa")) {
+      return { label: "WhatsApp", emoji: "💬", className: "bg-emerald-50 text-emerald-800 border-emerald-300" };
+    }
+    if (raw.includes("store") || raw.includes("pos") || raw.includes("instore") || raw.includes("in-store")) {
+      return { label: "In-Store", emoji: "🏪", className: "bg-slate-100 text-slate-800 border-slate-300" };
+    }
+    if (raw.includes("app") || raw.includes("web") || raw.includes("online")) {
+      return { label: "App", emoji: "📱", className: "bg-indigo-50 text-indigo-800 border-indigo-300" };
+    }
+    return { label: order.order_source || order.origin || "App", emoji: "🌐", className: "bg-slate-100 text-slate-700 border-slate-200" };
+  };
+
   const filteredOrders = orders.filter((order) => {
     if (filterStatus && order.status !== filterStatus) return false;
-    if (filterType && order.order_type !== filterType) return false;
+    
+    if (filterOrigin) {
+      const raw = String(order.order_source || order.origin || order.channel || order.source || order.order_type || "").toLowerCase();
+      if (filterOrigin === "toters" && !raw.includes("toters")) return false;
+      if (filterOrigin === "noknok" && !raw.includes("noknok") && !raw.includes("nok")) return false;
+      if (filterOrigin === "whatsapp" && !raw.includes("whatsapp") && !raw.includes("wa")) return false;
+      if (filterOrigin === "in-store" && !raw.includes("store") && !raw.includes("pos") && !raw.includes("instore")) return false;
+      if (filterOrigin === "app" && !raw.includes("app") && !raw.includes("web") && !raw.includes("online")) return false;
+    }
+
     return true;
   });
 
@@ -142,16 +172,19 @@ export default function OrdersView({
         </div>
         <div className="flex-1">
           <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-            Filter Origin / Type
+            Filter Origin
           </label>
           <select
-            value={filterType}
-            onChange={(e) => setFilterType(e.target.value)}
+            value={filterOrigin}
+            onChange={(e) => setFilterOrigin(e.target.value)}
             className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white shadow-sm"
           >
-            <option value="">All Origins / Types</option>
-            <option value="pickup">Pickup</option>
-            <option value="delivery">Delivery</option>
+            <option value="">All Origins (Toters, NokNok, WhatsApp, In-Store, App)</option>
+            <option value="toters">🛵 Toters</option>
+            <option value="noknok">📦 NokNok</option>
+            <option value="whatsapp">💬 WhatsApp</option>
+            <option value="in-store">🏪 In-Store</option>
+            <option value="app">📱 App</option>
           </select>
         </div>
       </div>
@@ -195,12 +228,7 @@ export default function OrdersView({
               ) : (
                 filteredOrders.map((order) => {
                   const isExpanded = !!expandedOrderIds[order.id];
-                  const originText =
-                    order.origin ||
-                    order.channel ||
-                    order.order_type ||
-                    order.source ||
-                    "Online";
+                  const originBadge = getOriginBadge(order);
 
                   return (
                     <React.Fragment key={order.id}>
@@ -255,10 +283,10 @@ export default function OrdersView({
 
                         {/* Origin Column */}
                         <td className="px-4 py-4 whitespace-nowrap">
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200 capitalize">
-                            <Building2 size={12} className="text-slate-400" />
-                            {originText}
-                            {order.branch_name ? ` (${order.branch_name})` : ""}
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold border shadow-xs ${originBadge.className}`}>
+                            <span>{originBadge.emoji}</span>
+                            <span>{originBadge.label}</span>
+                            {order.branch_name ? <span className="opacity-75 font-normal">({order.branch_name})</span> : ""}
                           </span>
                         </td>
 
@@ -274,233 +302,129 @@ export default function OrdersView({
                         </td>
 
                         {/* Total Column */}
-                        <td className="px-4 py-4 whitespace-nowrap text-sm font-bold text-slate-900">
-                          ${parseFloat(order.total_amount || 0).toFixed(2)}
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          <div className="font-bold text-slate-900 text-sm">
+                            ${Number(order.total_amount || 0).toFixed(2)}
+                          </div>
                         </td>
 
                         {/* Status Column */}
                         <td className="px-4 py-4 whitespace-nowrap">
-                          <span
-                            className={`px-2.5 py-1 inline-flex text-xs leading-5 font-bold rounded-full border capitalize shadow-xs ${
-                              statusColors[order.status] || "bg-slate-100 text-slate-800 border-slate-200"
-                            }`}
+                          <select
+                            value={order.status}
+                            onChange={(e) => onStatusChange(order.id, e.target.value)}
+                            onClick={(e) => e.stopPropagation()}
+                            disabled={isOrderLocked(order.status)}
+                            className={`border rounded-lg px-2.5 py-1 text-xs font-semibold uppercase tracking-wider ${
+                              statusColors[order.status] || "bg-slate-100 text-slate-800"
+                            } ${isOrderLocked(order.status) ? "opacity-80 cursor-not-allowed" : "cursor-pointer"}`}
                           >
-                            {(order.status || "pending").replace(/_/g, " ")}
-                          </span>
+                            <option value="pending">Pending</option>
+                            <option value="accepted">Accepted</option>
+                            <option value="preparing">Preparing</option>
+                            <option value="ready">Ready</option>
+                            <option value="out_for_delivery">Out for Delivery</option>
+                            <option value="completed">Completed</option>
+                            <option value="cancelled">Cancelled</option>
+                          </select>
                         </td>
 
-                        {/* Action Column (Kept on the far right) */}
-                        <td className="px-4 py-4 whitespace-nowrap text-sm font-medium sticky right-0 bg-white shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.08)] z-10 text-right">
-                          <div
-                            className="flex gap-2 items-center justify-end"
-                            onClick={(e) => e.stopPropagation()}
-                          >
+                        {/* Action Column */}
+                        <td className="px-4 py-4 whitespace-nowrap text-right sticky right-0 bg-white shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.08)] z-10">
+                          <div className="flex items-center justify-end gap-2">
+                            {/* Quick Accept Button for Pending Orders */}
                             {order.status === "pending" && (
                               <button
-                                onClick={() => handleQuickAccept(order.id)}
-                                className="p-1.5 rounded-lg bg-purple-50 text-purple-600 hover:bg-purple-100 transition-colors"
-                                title="Accept Order (Set to Preparing)"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleQuickAccept(order.id);
+                                }}
+                                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold shadow-sm transition-colors flex items-center gap-1"
                               >
-                                <CheckCircle size={18} />
+                                <CheckCircle size={14} />
+                                Accept
                               </button>
                             )}
 
+                            {/* View Details Button */}
                             <button
-                              onClick={() => handleWhatsAppRowClick(order)}
-                              className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition-colors"
-                              title="Send WhatsApp for Delivery"
-                            >
-                              <MessageCircle size={18} />
-                            </button>
-
-                            <button
-                              onClick={() =>
-                                handleOpenOrder(order, { openWhatsApp: false })
-                              }
-                              className="p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
-                              title={
-                                isOrderLocked(order.status)
-                                  ? "View Details Modal (items locked)"
-                                  : "View / Edit Order Modal"
-                              }
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenOrder(order);
+                              }}
+                              className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition-colors"
+                              title="View Details"
                             >
                               <Eye size={18} />
                             </button>
 
+                            {/* WhatsApp Button */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleWhatsAppRowClick(order);
+                              }}
+                              className="p-1.5 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors"
+                              title="Send WhatsApp"
+                            >
+                              <MessageCircle size={18} />
+                            </button>
+
+                            {/* Delete Button */}
                             <button
                               onClick={(e) => handleDeleteClick(e, order.id)}
-                              className="p-1.5 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100 transition-colors"
+                              className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors"
                               title="Delete Order"
                             >
                               <Trash2 size={18} />
                             </button>
-
-                            {isOrderLocked(order.status) && (
-                              <span
-                                className="text-slate-400 text-xs"
-                                title="Items are locked for this order"
-                              >
-                                🔒
-                              </span>
-                            )}
                           </div>
                         </td>
                       </tr>
 
-                      {/* Expandable Order Details Row */}
+                      {/* Expandable Order Items / Details Row */}
                       {isExpanded && (
-                        <tr className="bg-slate-50/80 border-b border-slate-200">
-                          <td colSpan="7" className="p-4 md:p-6">
-                            <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm space-y-5">
-                              <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-3">
-                                <div className="flex items-center gap-2">
-                                  <Package className="text-indigo-600" size={20} />
-                                  <h4 className="font-bold text-slate-900 text-base">
-                                    Order Details — #{order.id}
-                                  </h4>
-                                </div>
-                                <div className="text-xs font-semibold text-slate-500 bg-slate-100 px-3 py-1 rounded-full">
-                                  {(order.items || []).length} Item(s)
-                                </div>
-                              </div>
-
-                              {/* Items & Addons List */}
-                              <div className="space-y-3">
-                                <h5 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                                  Ordered Items
-                                </h5>
-                                {(!order.items || order.items.length === 0) ? (
-                                  <p className="text-sm text-slate-400 italic py-2">
-                                    No item details found for this order.
-                                  </p>
-                                ) : (
-                                  <div className="divide-y divide-slate-100 border border-slate-100 rounded-lg overflow-hidden">
-                                    {order.items.map((item, idx) => (
-                                      <div
-                                        key={item.id || idx}
-                                        className="p-3.5 bg-slate-50/50 hover:bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-sm"
-                                      >
-                                        <div className="space-y-1">
-                                          <div className="font-bold text-slate-800 flex items-center gap-2">
-                                            <span className="w-6 h-6 rounded-md bg-indigo-100 text-indigo-700 text-xs font-bold flex items-center justify-center">
-                                              {item.quantity}x
-                                            </span>
-                                            {item.product_name || item.name || "Product Item"}
-                                          </div>
-
-                                          {/* Customizations / Addons */}
-                                          {item.addons && item.addons.length > 0 && (
-                                            <div className="text-xs text-slate-500 pl-8 space-y-0.5">
-                                              <span className="font-semibold text-slate-600">Addons: </span>
-                                              {item.addons.map((addon) => (
-                                                <span
-                                                  key={addon.id || addon.name}
-                                                  className="inline-block bg-slate-200/60 text-slate-700 px-2 py-0.5 rounded text-[11px] mr-1.5"
-                                                >
-                                                  +{addon.name} (${parseFloat(addon.price || 0).toFixed(2)})
-                                                </span>
-                                              ))}
-                                            </div>
-                                          )}
-
-                                          {/* Customizations Text */}
-                                          {item.customizations && (
-                                            <div className="text-xs text-indigo-600 italic pl-8">
-                                              Notes: {typeof item.customizations === "string" ? item.customizations : JSON.stringify(item.customizations)}
-                                            </div>
-                                          )}
-
-                                          {/* Item Comment */}
-                                          {item.comment && (
-                                            <div className="text-xs text-amber-700 bg-amber-50 px-2 py-1 rounded border border-amber-200/60 pl-8 mt-1">
-                                              Instruction: {item.comment}
-                                            </div>
-                                          )}
-                                        </div>
-
-                                        <div className="text-right font-bold text-slate-900 whitespace-nowrap pl-8 sm:pl-0">
-                                          ${parseFloat(item.total_price || (item.unit_price * item.quantity) || 0).toFixed(2)}
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
+                        <tr className="bg-indigo-50/30 border-b border-indigo-100">
+                          <td colSpan="7" className="px-6 py-4">
+                            <div className="space-y-3">
+                              <div className="flex items-center justify-between">
+                                <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                                  <Package size={14} className="text-indigo-600" />
+                                  Order Items ({order.items?.length || 0})
+                                </h4>
+                                {order.delivery_address && (
+                                  <span className="text-xs text-slate-600 font-medium flex items-center gap-1">
+                                    <MapPin size={12} className="text-slate-400" />
+                                    Address: {order.delivery_address}
+                                  </span>
                                 )}
                               </div>
 
-                              {/* Order Metadata & Summary Details Grid */}
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-3 border-t border-slate-100 text-xs">
-                                {/* Customer & Delivery Info */}
-                                <div className="space-y-2 bg-slate-50 p-3.5 rounded-lg border border-slate-200/60">
-                                  <div className="font-bold text-slate-800 flex items-center gap-1.5 text-sm">
-                                    <User size={14} className="text-indigo-600" />
-                                    Customer & Address
-                                  </div>
-                                  <div className="text-slate-700">
-                                    <span className="font-semibold">Name: </span>
-                                    {order.customer_name || "N/A"}
-                                  </div>
-                                  <div className="text-slate-700">
-                                    <span className="font-semibold">Phone: </span>
-                                    {order.customer_phone || "N/A"}
-                                  </div>
-                                  <div className="text-slate-700">
-                                    <span className="font-semibold">Delivery Address: </span>
-                                    {order.address_line1 || order.delivery_address || (
-                                      <span className="text-slate-400 italic">Pickup Order / No Address</span>
-                                    )}
-                                  </div>
-                                  {order.building && (
-                                    <div className="text-slate-600">
-                                      Building: {order.building} {order.company_name ? `(${order.company_name})` : ""}
+                              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                                {(order.items || []).map((item, idx) => (
+                                  <div
+                                    key={idx}
+                                    className="bg-white p-2.5 rounded-lg border border-slate-200 text-xs shadow-2xs"
+                                  >
+                                    <div className="font-semibold text-slate-900 flex justify-between">
+                                      <span>
+                                        {item.quantity}x {item.product_name || item.name}
+                                      </span>
+                                      <span className="text-slate-600">
+                                        ${Number(item.total_price || (item.unit_price * item.quantity) || 0).toFixed(2)}
+                                      </span>
                                     </div>
-                                  )}
-                                  {order.latitude && order.longitude && (
-                                    <a
-                                      href={`https://maps.google.com/?q=${order.latitude},${order.longitude}`}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="inline-flex items-center gap-1 text-indigo-600 hover:underline font-semibold mt-1"
-                                    >
-                                      <MapPin size={12} />
-                                      View Map Location ({Number(order.latitude).toFixed(4)}, {Number(order.longitude).toFixed(4)})
-                                    </a>
-                                  )}
-                                </div>
-
-                                {/* Order Summary Breakdown */}
-                                <div className="space-y-2 bg-slate-50 p-3.5 rounded-lg border border-slate-200/60 flex flex-col justify-between">
-                                  <div className="space-y-2">
-                                    <div className="font-bold text-slate-800 flex items-center gap-1.5 text-sm">
-                                      <DollarSign size={14} className="text-emerald-600" />
-                                      Financial Summary
-                                    </div>
-                                    <div className="flex justify-between text-slate-600">
-                                      <span>Origin Channel:</span>
-                                      <span className="font-semibold capitalize text-slate-800">{originText}</span>
-                                    </div>
-                                    {order.reward_title && (
-                                      <div className="flex justify-between text-amber-700 font-semibold bg-amber-50 px-2 py-0.5 rounded">
-                                        <span className="flex items-center gap-1">
-                                          <Tag size={11} /> Reward Applied:
-                                        </span>
-                                        <span>{order.reward_title}</span>
-                                      </div>
-                                    )}
-                                    {order.delivery_fee > 0 && (
-                                      <div className="flex justify-between text-slate-600">
-                                        <span>Delivery Fee:</span>
-                                        <span>${parseFloat(order.delivery_fee).toFixed(2)}</span>
+                                    {item.addons && item.addons.length > 0 && (
+                                      <div className="mt-1 text-[11px] text-slate-500 space-y-0.5 pl-2 border-l-2 border-slate-200">
+                                        {item.addons.map((a, ai) => (
+                                          <div key={ai}>
+                                            + {a.ingredient || a.name} (${Number(a.price || 0).toFixed(2)})
+                                          </div>
+                                        ))}
                                       </div>
                                     )}
                                   </div>
-
-                                  <div className="pt-2 border-t border-slate-200 flex justify-between items-center text-sm font-bold text-slate-900">
-                                    <span>Total Amount:</span>
-                                    <span className="text-base text-emerald-700">
-                                      ${parseFloat(order.total_amount || 0).toFixed(2)}
-                                    </span>
-                                  </div>
-                                </div>
+                                ))}
                               </div>
                             </div>
                           </td>
@@ -515,14 +439,11 @@ export default function OrdersView({
         </div>
       </div>
 
-      {/* Order Details Modal (when explicitly opened via Eye/Edit button) */}
+      {/* Order Details Modal */}
       {selectedOrder && (
         <OrderDetailsModal
           order={selectedOrder}
-          onClose={() => {
-            setSelectedOrder(null);
-            setOpenWhatsAppOnMount(false);
-          }}
+          onClose={() => setSelectedOrder(null)}
           onStatusChange={onStatusChange}
           onUpdateItems={onUpdateItems}
           openWhatsAppOnMount={openWhatsAppOnMount}
