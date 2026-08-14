@@ -74,7 +74,7 @@ export async function POST(request) {
       customerPhone = "",
       deliveryAddress = "",
       specialInstructions = "",
-      status = "completed",
+      status = "preparing",
       items = [],
       subtotal = 0,
       deliveryFee = 0,
