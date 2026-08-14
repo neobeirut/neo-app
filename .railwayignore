@@ -1,7 +1,8 @@
 **/node_modules
-**/.expo
+**/.git
 **/build
 **/dist
+**/.expo
 **/.react-router
 mobile/android
 mobile/ios
