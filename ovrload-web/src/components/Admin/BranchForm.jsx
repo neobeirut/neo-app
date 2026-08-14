@@ -110,20 +110,24 @@ export function BranchForm({ editingItem, onSave, onCancel }) {
       return;
     }
 
+    // Derived flags for backward compatibility & closure reasons
     const finalOrdersActive = formData.operational_status === "open";
     const finalIsActive = formData.operational_status !== "closed";
+    const finalReason = formData.operational_status !== "open" ? (formData.closure_reason || "Overloaded") : null;
 
     const dataToSave = editingItem
       ? { 
           ...formData, 
           id: editingItem.id,
           orders_active: finalOrdersActive,
-          is_active: finalIsActive
+          is_active: finalIsActive,
+          closure_reason: finalReason
         }
       : {
           ...formData,
           orders_active: finalOrdersActive,
-          is_active: finalIsActive
+          is_active: finalIsActive,
+          closure_reason: finalReason
         };
 
     const success = await onSave(dataToSave);
