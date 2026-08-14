@@ -20,7 +20,16 @@ const DEFAULT_SCHEDULE = {
   sunday: { active: true, open: "09:00", close: "23:00" },
 };
 
+const formatTimeHHMM = (timeStr) => {
+  if (!timeStr) return "09:00";
+  const s = String(timeStr).trim();
+  if (s.length >= 5) return s.slice(0, 5);
+  return s;
+};
+
 export function BranchForm({ editingItem, onSave, onCancel }) {
+  const [isSaving, setIsSaving] = useState(false);
+
   const initialSchedule = (() => {
     if (editingItem?.weekday_schedule) {
       if (typeof editingItem.weekday_schedule === "string") {
@@ -50,10 +59,10 @@ export function BranchForm({ editingItem, onSave, onCancel }) {
       editingItem?.delivery_radius_km === undefined
         ? 10
         : Number(editingItem.delivery_radius_km),
-    opening_time: editingItem?.opening_time || "09:00",
-    closing_time: editingItem?.closing_time || "21:00",
-    delivery_start_time: editingItem?.delivery_start_time || "11:00",
-    delivery_end_time: editingItem?.delivery_end_time || "20:00",
+    opening_time: formatTimeHHMM(editingItem?.opening_time || "09:00"),
+    closing_time: formatTimeHHMM(editingItem?.closing_time || "21:00"),
+    delivery_start_time: formatTimeHHMM(editingItem?.delivery_start_time || "11:00"),
+    delivery_end_time: formatTimeHHMM(editingItem?.delivery_end_time || "20:00"),
     orders_active: editingItem?.orders_active ?? true,
     operational_status: initialStatus,
     closure_reason: editingItem?.closure_reason || "Overloaded",
@@ -130,9 +139,17 @@ export function BranchForm({ editingItem, onSave, onCancel }) {
           closure_reason: finalReason
         };
 
-    const success = await onSave(dataToSave);
-    if (success) {
-      onCancel();
+    setIsSaving(true);
+    try {
+      const success = await onSave(dataToSave);
+      if (success) {
+        onCancel();
+      }
+    } catch (e) {
+      console.error("Error saving branch form:", e);
+      alert("Failed to save branch: " + e.message);
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -422,9 +439,12 @@ export function BranchForm({ editingItem, onSave, onCancel }) {
       <div className="flex gap-2 mt-6">
         <button
           onClick={handleSubmit}
-          className="bg-amber-600 hover:bg-amber-700 text-white px-5 py-2.5 rounded-lg text-sm font-extrabold shadow-sm transition-colors"
+          disabled={isSaving}
+          className={`px-5 py-2.5 rounded-lg text-sm font-extrabold shadow-sm transition-colors text-white ${
+            isSaving ? "bg-slate-400 cursor-not-allowed" : "bg-amber-600 hover:bg-amber-700"
+          }`}
         >
-          Save Branch Settings
+          {isSaving ? "Saving..." : "Save Branch Settings"}
         </button>
         <button
           onClick={onCancel}
