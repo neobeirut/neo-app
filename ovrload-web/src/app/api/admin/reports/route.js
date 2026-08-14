@@ -7,29 +7,33 @@ export async function GET(request) {
     const startDateParam = searchParams.get("startDate");
     const endDateParam = searchParams.get("endDate");
 
+    const beirutTimeExpr = "(created_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Beirut')";
+    const beirutTimeExprO = "(o.created_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Beirut')";
+    const beirutNowDate = "(NOW() AT TIME ZONE 'Asia/Beirut')::date";
+
     let dateWhereClause = "";
     let dateWhereClauseO = "";
 
     if (range === "today") {
-      dateWhereClause = "AND created_at >= CURRENT_DATE";
-      dateWhereClauseO = "AND o.created_at >= CURRENT_DATE";
+      dateWhereClause = `AND ${beirutTimeExpr}::date = ${beirutNowDate}`;
+      dateWhereClauseO = `AND ${beirutTimeExprO}::date = ${beirutNowDate}`;
     } else if (range === "yesterday") {
-      dateWhereClause = "AND created_at >= CURRENT_DATE - INTERVAL '1 day' AND created_at < CURRENT_DATE";
-      dateWhereClauseO = "AND o.created_at >= CURRENT_DATE - INTERVAL '1 day' AND o.created_at < CURRENT_DATE";
+      dateWhereClause = `AND ${beirutTimeExpr}::date = (${beirutNowDate} - INTERVAL '1 day')::date`;
+      dateWhereClauseO = `AND ${beirutTimeExprO}::date = (${beirutNowDate} - INTERVAL '1 day')::date`;
     } else if (range === "7days") {
-      dateWhereClause = "AND created_at >= CURRENT_DATE - INTERVAL '7 days'";
-      dateWhereClauseO = "AND o.created_at >= CURRENT_DATE - INTERVAL '7 days'";
+      dateWhereClause = `AND ${beirutTimeExpr}::date >= (${beirutNowDate} - INTERVAL '7 days')::date`;
+      dateWhereClauseO = `AND ${beirutTimeExprO}::date >= (${beirutNowDate} - INTERVAL '7 days')::date`;
     } else if (range === "thismonth") {
-      dateWhereClause = "AND created_at >= DATE_TRUNC('month', CURRENT_DATE)";
-      dateWhereClauseO = "AND o.created_at >= DATE_TRUNC('month', CURRENT_DATE)";
+      dateWhereClause = `AND ${beirutTimeExpr}::date >= DATE_TRUNC('month', ${beirutNowDate})::date`;
+      dateWhereClauseO = `AND ${beirutTimeExprO}::date >= DATE_TRUNC('month', ${beirutNowDate})::date`;
     } else if (range === "all") {
       dateWhereClause = "";
       dateWhereClauseO = "";
     } else if (range === "custom" && startDateParam && endDateParam) {
       const cleanStart = startDateParam.replace(/[^0-9-]/g, "");
       const cleanEnd = endDateParam.replace(/[^0-9-]/g, "");
-      dateWhereClause = `AND created_at >= '${cleanStart} 00:00:00' AND created_at <= '${cleanEnd} 23:59:59'`;
-      dateWhereClauseO = `AND o.created_at >= '${cleanStart} 00:00:00' AND o.created_at <= '${cleanEnd} 23:59:59'`;
+      dateWhereClause = `AND ${beirutTimeExpr}::date >= '${cleanStart}'::date AND ${beirutTimeExpr}::date <= '${cleanEnd}'::date`;
+      dateWhereClauseO = `AND ${beirutTimeExprO}::date >= '${cleanStart}'::date AND ${beirutTimeExprO}::date <= '${cleanEnd}'::date`;
     }
 
     // Valid completed sales status (includes completed, approved, paid, etc. - excludes cancelled/voided)
@@ -130,24 +134,24 @@ export async function GET(request) {
       LIMIT 20
     `);
 
-    // 7. Hourly Peak Sales Distribution
+    // 7. Hourly Peak Sales Distribution (Asia/Beirut Time)
     const hourlySales = await sql.unsafe(`
       SELECT 
-        EXTRACT(HOUR FROM created_at)::int as hour,
+        EXTRACT(HOUR FROM ${beirutTimeExpr})::int as hour,
         COUNT(*)::int as order_count,
         COALESCE(SUM(total_amount::float), 0) as total_revenue
       FROM orders
       WHERE ${salesStatusFilter} ${dateWhereClause}
-      GROUP BY EXTRACT(HOUR FROM created_at)
+      GROUP BY EXTRACT(HOUR FROM ${beirutTimeExpr})
       ORDER BY hour ASC
     `);
 
-    // 8. Time of Day Breakdown (Morning 6-12, Afternoon 12-18, Night 18-6)
+    // 8. Time of Day Breakdown (Asia/Beirut Time: Morning 6-12, Afternoon 12-18, Night 18-6)
     const timeOfDayRows = await sql.unsafe(`
       SELECT 
         CASE 
-          WHEN EXTRACT(HOUR FROM created_at) >= 6 AND EXTRACT(HOUR FROM created_at) < 12 THEN 'Morning'
-          WHEN EXTRACT(HOUR FROM created_at) >= 12 AND EXTRACT(HOUR FROM created_at) < 18 THEN 'Afternoon'
+          WHEN EXTRACT(HOUR FROM ${beirutTimeExpr}) >= 6 AND EXTRACT(HOUR FROM ${beirutTimeExpr}) < 12 THEN 'Morning'
+          WHEN EXTRACT(HOUR FROM ${beirutTimeExpr}) >= 12 AND EXTRACT(HOUR FROM ${beirutTimeExpr}) < 18 THEN 'Afternoon'
           ELSE 'Night'
         END as period,
         COUNT(*)::int as order_count,
@@ -156,8 +160,8 @@ export async function GET(request) {
       WHERE ${salesStatusFilter} ${dateWhereClause}
       GROUP BY 
         CASE 
-          WHEN EXTRACT(HOUR FROM created_at) >= 6 AND EXTRACT(HOUR FROM created_at) < 12 THEN 'Morning'
-          WHEN EXTRACT(HOUR FROM created_at) >= 12 AND EXTRACT(HOUR FROM created_at) < 18 THEN 'Afternoon'
+          WHEN EXTRACT(HOUR FROM ${beirutTimeExpr}) >= 6 AND EXTRACT(HOUR FROM ${beirutTimeExpr}) < 12 THEN 'Morning'
+          WHEN EXTRACT(HOUR FROM ${beirutTimeExpr}) >= 12 AND EXTRACT(HOUR FROM ${beirutTimeExpr}) < 18 THEN 'Afternoon'
           ELSE 'Night'
         END
     `);
