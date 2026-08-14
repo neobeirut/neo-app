@@ -251,120 +251,99 @@ function Adapter(client) {
     },
   };
 }
-const pool = new Pool({
+let authInstance = null;
+
+function getAuthInstance() {
+  if (!authInstance) {
+    const pool = new Pool({
       connectionString: process.env.DATABASE_URL,
     });
-const adapter = Adapter(pool);
+    const adapter = Adapter(pool);
+    authInstance = CreateAuth({
+      providers: [
+        Credentials({
+          id: 'credentials-signin',
+          name: 'Credentials Sign in',
+          credentials: {
+            email: { label: 'Email', type: 'email' },
+            password: { label: 'Password', type: 'password' },
+          },
+          authorize: async (credentials) => {
+            const { email, password } = credentials;
+            if (!email || !password || typeof email !== 'string' || typeof password !== 'string') {
+              return null;
+            }
+            const user = await adapter.getUserByEmail(email);
+            if (!user) {
+              const error = new CredentialsSignin();
+              error.code = 'no-account';
+              throw error;
+            }
+            const matchingAccount = user.accounts.find((account) => account.provider === 'credentials');
+            const accountPassword = matchingAccount?.password;
+            if (!accountPassword) throw new CredentialsSignin();
+            const isValid = await verify(accountPassword, password);
+            if (!isValid) throw new CredentialsSignin();
+            return user;
+          },
+        }),
+        Credentials({
+          id: 'credentials-signup',
+          name: 'Credentials Sign up',
+          credentials: {
+            email: { label: 'Email', type: 'email' },
+            password: { label: 'Password', type: 'password' },
+            name: { label: 'Name', type: 'text', required: false },
+            image: { label: 'Image', type: 'text', required: false },
+          },
+          authorize: async (credentials) => {
+            const { email, password } = credentials;
+            if (!email || !password || typeof email !== 'string' || typeof password !== 'string') {
+              return null;
+            }
+            const user = await adapter.getUserByEmail(email);
+            if (!user) {
+              const newUser = await adapter.createUser({
+                emailVerified: null,
+                email,
+                name: typeof credentials.name === 'string' && credentials.name.trim().length > 0 ? credentials.name : undefined,
+                image: typeof credentials.image === 'string' ? credentials.image : undefined,
+              });
+              await adapter.linkAccount({
+                extraData: { password: await hash(password) },
+                type: 'credentials',
+                userId: newUser.id,
+                providerAccountId: newUser.id,
+                provider: 'credentials',
+              });
+              return newUser;
+            }
+            return null;
+          },
+        }),
+        Google({
+          id: 'google',
+          clientId: process.env.GOOGLE_CLIENT_ID,
+          clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+        }),
+      ],
+      pages: {
+        signIn: '/account/signin',
+        signOut: '/account/logout',
+      },
+    });
+  }
+  return authInstance;
+}
 
-export const { auth } = CreateAuth({
-  providers: [Credentials({
-  id: 'credentials-signin',
-  name: 'Credentials Sign in',
-  credentials: {
-    email: {
-      label: 'Email',
-      type: 'email',
-    },
-    password: {
-      label: 'Password',
-      type: 'password',
-    },
-  },
-  authorize: async (credentials) => {
-    const { email, password } = credentials;
-    if (!email || !password) {
-      return null;
+export const auth = async (...args) => {
+  try {
+    const instance = getAuthInstance();
+    if (instance && typeof instance.auth === 'function') {
+      return await instance.auth(...args);
     }
-    if (typeof email !== 'string' || typeof password !== 'string') {
-      return null;
-    }
-
-    // logic to verify if user exists
-    const user = await adapter.getUserByEmail(email);
-    if (!user) {
-      const error = new CredentialsSignin();
-      error.code = 'no-account';
-      throw error;
-    }
-    const matchingAccount = user.accounts.find(
-      (account) => account.provider === 'credentials'
-    );
-    const accountPassword = matchingAccount?.password;
-    if (!accountPassword) {
-      throw new CredentialsSignin();
-    }
-
-    const isValid = await verify(accountPassword, password);
-    if (!isValid) {
-      throw new CredentialsSignin();
-    }
-
-    // return user object with the their profile data
-    return user;
-  },
-}),
-  Credentials({
-  id: 'credentials-signup',
-  name: 'Credentials Sign up',
-  credentials: {
-    email: {
-      label: 'Email',
-      type: 'email',
-    },
-    password: {
-      label: 'Password',
-      type: 'password',
-    },
-    name: { label: 'Name', type: 'text', required: false },
-    image: { label: 'Image', type: 'text', required: false },
-  },
-  authorize: async (credentials) => {
-    const { email, password } = credentials;
-    if (!email || !password) {
-      return null;
-    }
-    if (typeof email !== 'string' || typeof password !== 'string') {
-      return null;
-    }
-
-    // logic to verify if user exists
-    const user = await adapter.getUserByEmail(email);
-    if (!user) {
-      const newUser = await adapter.createUser({
-        emailVerified: null,
-        email,
-        name:
-          typeof credentials.name === 'string' &&
-          credentials.name.trim().length > 0
-            ? credentials.name
-            : undefined,
-        image:
-          typeof credentials.image === 'string'
-            ? credentials.image
-            : undefined,
-      });
-      await adapter.linkAccount({
-        extraData: {
-          password: await hash(password),
-        },
-        type: 'credentials',
-        userId: newUser.id,
-        providerAccountId: newUser.id,
-        provider: 'credentials',
-      });
-      return newUser;
-    }
-    return null;
-  },
-}),
-  Google({
-        id: 'google',
-        clientId: process.env.GOOGLE_CLIENT_ID,
-        clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-        
-      })],
-  pages: {
-    signIn: '/account/signin',
-    signOut: '/account/logout',
-  },
-})
+  } catch (e) {
+    console.error("[auth] Error executing auth session:", e);
+  }
+  return null;
+};
