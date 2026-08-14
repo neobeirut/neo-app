@@ -1,8 +1,11 @@
-// Safe PWA Service Worker (No fetch hijacking to ensure 100% reliable page loads)
+// Safe PWA Service Worker (Clears legacy caches & updates instantly)
 self.addEventListener("install", (event) => {
   self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
+  event.waitUntil(
+    caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k))))
+  );
   self.clients.claim();
 });

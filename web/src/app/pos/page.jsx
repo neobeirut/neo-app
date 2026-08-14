@@ -1540,10 +1540,6 @@ export default function TabletPOSPage() {
         </div>
       )}
 
-          </div>
-        </div>
-      )}
-
       {/* PAYMENT METHOD SELECTION MODAL (CASH vs WHISH) */}
       {activeTabModal === "payment" && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:hidden">
