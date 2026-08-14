@@ -1,25 +1,3 @@
 {
-  "cleanUrls": true,
-  "redirects": [
-    {
-      "source": "/admin",
-      "destination": "https://app.neobeirut.com/admin",
-      "permanent": false
-    },
-    {
-      "source": "/admin/:path*",
-      "destination": "https://app.neobeirut.com/admin/:path*",
-      "permanent": false
-    }
-  ],
-  "rewrites": [
-    {
-      "source": "/admin",
-      "destination": "https://app.neobeirut.com/admin"
-    },
-    {
-      "source": "/admin/:path*",
-      "destination": "https://app.neobeirut.com/admin/:path*"
-    }
-  ]
+  "cleanUrls": true
 }

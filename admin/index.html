@@ -8,12 +8,6 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Ovrload Admin</title>
-    <script>
-      if (window.location.hostname.includes('neobeirut.com')) {
-        var subPath = window.location.pathname.replace(/^\/admin\/?/, '');
-        window.location.href = 'https://app.neobeirut.com/admin' + (subPath ? '/' + subPath : '') + window.location.search + window.location.hash;
-      }
-    </script>
   </head>
   <body>
     <div id="root"></div>
