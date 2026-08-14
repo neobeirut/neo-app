@@ -1,5 +1,5 @@
 import sql from "@/app/api/utils/sql";
-import { auth } from "@/auth";
+import { auth } from "@/auth.js";
 import { resolveOrderId } from "../utils/orderIdResolver";
 
 // Helper: load all known push tokens for a user (new table), falling back to legacy auth_users.push_token

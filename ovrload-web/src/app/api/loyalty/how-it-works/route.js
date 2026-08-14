@@ -1,4 +1,4 @@
-import { auth } from "@/auth";
+import { auth } from "@/auth.js";
 import sql from "@/app/api/utils/sql";
 import { getToken } from "@auth/core/jwt";
 import { corsJson, corsOptions } from "@/app/api/utils/cors";

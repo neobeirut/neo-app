@@ -1,5 +1,5 @@
 import sql from "@/app/api/utils/sql";
-import { auth } from "@/auth";
+import { auth } from "@/auth.js";
 import { corsJson, corsOptions } from "@/app/api/utils/cors";
 import { getAdminFromRequest } from "@/app/api/utils/adminAuth";
 

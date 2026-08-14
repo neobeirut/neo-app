@@ -4,3 +4,4 @@
 export const auth = async () => {
   return null;
 };
+export default auth;

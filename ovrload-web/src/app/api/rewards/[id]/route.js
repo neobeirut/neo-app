@@ -1,5 +1,5 @@
 import sql from "@/app/api/utils/sql";
-import { auth } from "@/auth";
+import { auth } from "@/auth.js";
 import { getAdminFromRequest } from "@/app/api/utils/adminAuth";
 
 export async function PUT(request, { params }) {

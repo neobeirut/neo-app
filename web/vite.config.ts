@@ -86,7 +86,7 @@ export default defineConfig({
       '@auth/core/jwt': path.resolve(__dirname, './node_modules/@auth/core/jwt.js'),
       '@auth/core': path.resolve(__dirname, './node_modules/@auth/core/index.js'),
       '@/auth.js': path.resolve(__dirname, 'src/auth.js'),
-      '@/auth': path.resolve(__dirname, 'src/auth.js'),
+      '@/auth.js': path.resolve(__dirname, 'src/auth.js'),
       '@': path.resolve(__dirname, 'src'),
     },
     extensions: ['.mjs', '.js', '.ts', '.jsx', '.tsx', '.json'],

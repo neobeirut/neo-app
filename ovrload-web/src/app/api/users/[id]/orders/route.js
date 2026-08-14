@@ -1,5 +1,5 @@
 import sql from "@/app/api/utils/sql";
-import { auth } from "@/auth";
+import { auth } from "@/auth.js";
 
 export async function GET(request, { params }) {
   try {
