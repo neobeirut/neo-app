@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "react-router dev",
     "typecheck": "react-router typegen && tsc --noEmit",
-    "build": "node -e \"import('fs').then(f => ['build','.react-router'].forEach(d => { try { f.rmSync(d, {recursive:true, force:true}); } catch(e){} }))\" && react-router build",
+    "build": "node -e \"const fs=require('fs'); console.log('=== BUILD DIAGNOSTICS ==='); console.log('cwd:', process.cwd()); try { console.log('src files:', fs.readdirSync('./src')); } catch(e){ console.log(e.message); } try { console.log('root files:', fs.readdirSync('.')); } catch(e){ console.log(e.message); }\" && node -e \"import('fs').then(f => ['build','.react-router'].forEach(d => { try { f.rmSync(d, {recursive:true, force:true}); } catch(e){} }))\" && react-router build",
     "start": "node ./build/server/index.js"
   },
   "dependencies": {
