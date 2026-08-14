@@ -1457,24 +1457,42 @@ export default function TabletPOSPage() {
         </div>
       )}
 
-      {/* MANDATORY SELECT ORDER ORIGIN MODAL (FIRST STEP FOR NEW TICKET) */}
+      {/* MANDATORY SELECT ORDER ORIGIN MODAL POPUP */}
       {(!selectedChannel && !editingOrderId && activeTabModal === null) && (
-        <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center p-4 print:hidden animate-fade-in select-none">
-          <div className="bg-[#181C24] border border-[#262D3D] rounded-3xl w-full max-w-lg p-6 space-y-6 shadow-2xl text-center">
-            
+        <div 
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setSelectedChannel("In-Store");
+            }
+          }}
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:hidden animate-fade-in select-none cursor-pointer"
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()} 
+            className="bg-[#181C24] border border-[#262D3D] rounded-3xl w-full max-w-md p-6 space-y-5 shadow-2xl text-center relative cursor-default max-h-[90vh] overflow-y-auto"
+          >
+            {/* Close Button */}
+            <button
+              onClick={() => setSelectedChannel("In-Store")}
+              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-[#262D3D] hover:bg-[#323B4E] text-gray-400 hover:text-white flex items-center justify-center text-sm font-bold transition-colors"
+              title="Close (Default: In-Store)"
+            >
+              ✕
+            </button>
+
             {/* Header */}
-            <div className="space-y-2">
-              <div className="w-14 h-14 rounded-2xl bg-[#eb660c]/20 text-[#eb660c] border border-[#eb660c]/40 flex items-center justify-center text-2xl mx-auto shadow-inner">
+            <div className="space-y-1.5 pt-1">
+              <div className="w-12 h-12 rounded-2xl bg-[#eb660c]/20 text-[#eb660c] border border-[#eb660c]/40 flex items-center justify-center text-2xl mx-auto shadow-inner">
                 🛵
               </div>
-              <h2 className="text-2xl font-black text-white tracking-wide">Select Order Origin</h2>
+              <h2 className="text-xl font-black text-white tracking-wide">Select Order Origin</h2>
               <p className="text-xs text-gray-400 font-medium">
-                Step 1 of 2: Choose the sales channel for this order to unlock the POS catalog.
+                Choose the sales channel for this order or click outside to dismiss.
               </p>
             </div>
 
-            {/* Channels Big Touch Buttons Grid */}
-            <div className="grid grid-cols-1 gap-3">
+            {/* Channels Grid */}
+            <div className="grid grid-cols-1 gap-2.5">
               {[
                 { name: "Toters", icon: "🟢", desc: `Toters Delivery (${totersDiscountPercent}% Auto-Discount • Auto-Paid)`, color: "bg-[#00C49F] hover:bg-[#00b391] text-black border-[#00C49F]" },
                 { name: "WhatsApp", icon: "💬", desc: "WhatsApp Order Direct", color: "bg-[#25D366] hover:bg-[#20bd5a] text-black border-[#25D366]" },
@@ -1501,23 +1519,26 @@ export default function TabletPOSPage() {
                       setSelectedPaymentMethod("Cash");
                     }
                   }}
-                  className={`p-4 rounded-2xl border font-black text-sm flex items-center justify-between transition-all active:scale-98 shadow-md group ${ch.color}`}
+                  className={`p-3.5 rounded-2xl border font-black text-sm flex items-center justify-between transition-all active:scale-98 shadow-md group ${ch.color}`}
                 >
                   <div className="flex items-center gap-3 text-left">
-                    <span className="text-2xl">{ch.icon}</span>
+                    <span className="text-xl">{ch.icon}</span>
                     <div>
-                      <div className="font-black text-base">{ch.name}</div>
-                      <div className="text-[11px] opacity-80 font-semibold">{ch.desc}</div>
+                      <div className="font-black text-sm">{ch.name}</div>
+                      <div className="text-[10px] opacity-80 font-semibold">{ch.desc}</div>
                     </div>
                   </div>
-                  <span className="text-xl opacity-60 group-hover:translate-x-1 transition-transform">➔</span>
+                  <span className="text-lg opacity-60 group-hover:translate-x-1 transition-transform">➔</span>
                 </button>
               ))}
             </div>
 
-            <div className="pt-2 text-[11px] text-gray-500 font-semibold">
-              OVR LOAD POS • Select Origin to Begin
+            <div className="pt-1 text-[11px] text-gray-500 font-semibold">
+              Click outside or ✕ to select In-Store
             </div>
+          </div>
+        </div>
+      )}
 
           </div>
         </div>
