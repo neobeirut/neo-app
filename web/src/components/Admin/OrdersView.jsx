@@ -14,7 +14,8 @@ import {
   Mail,
   Building2,
   DollarSign,
-  Tag
+  Tag,
+  Calendar
 } from "lucide-react";
 import { toast } from "sonner";
 import OrderDetailsModal from "@/components/Admin/OrderDetailsModal";
@@ -38,6 +39,9 @@ export default function OrdersView({
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [filterStatus, setFilterStatus] = useState("");
   const [filterOrigin, setFilterOrigin] = useState("");
+  const [range, setRange] = useState("today");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   const [openWhatsAppOnMount, setOpenWhatsAppOnMount] = useState(false);
   
   // Track expanded order IDs for inline row expansion
@@ -86,6 +90,33 @@ export default function OrdersView({
     return { label: order.order_source || order.origin || "App", emoji: "🌐", className: "bg-slate-100 text-slate-700 border-slate-200" };
   };
 
+  const getBeirutDateStr = (dateInput) => {
+    if (!dateInput) return "";
+    const d = new Date(dateInput);
+    if (isNaN(d.getTime())) return "";
+    return d.toLocaleDateString("en-CA", { timeZone: "Asia/Beirut" });
+  };
+
+  const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Beirut" });
+
+  const getYesterdayStr = () => {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return d.toLocaleDateString("en-CA", { timeZone: "Asia/Beirut" });
+  };
+
+  const getNDaysAgoStr = (n) => {
+    const d = new Date();
+    d.setDate(d.getDate() - n);
+    return d.toLocaleDateString("en-CA", { timeZone: "Asia/Beirut" });
+  };
+
+  const getFirstOfMonthStr = () => {
+    const d = new Date();
+    const monthStr = d.toLocaleDateString("en-CA", { timeZone: "Asia/Beirut" }).slice(0, 7);
+    return `${monthStr}-01`;
+  };
+
   const filteredOrders = orders.filter((order) => {
     if (filterStatus && order.status !== filterStatus) return false;
     
@@ -96,6 +127,21 @@ export default function OrdersView({
       if (filterOrigin === "whatsapp" && !raw.includes("whatsapp") && !raw.includes("wa")) return false;
       if (filterOrigin === "in-store" && !raw.includes("store") && !raw.includes("pos") && !raw.includes("instore")) return false;
       if (filterOrigin === "app" && !raw.includes("app") && !raw.includes("web") && !raw.includes("online")) return false;
+    }
+
+    // Date Range Filter (Matching Reports View)
+    if (range !== "all") {
+      const orderDateStr = getBeirutDateStr(order.created_at || order.scheduled_date);
+      if (orderDateStr) {
+        if (range === "today" && orderDateStr !== todayStr) return false;
+        if (range === "yesterday" && orderDateStr !== getYesterdayStr()) return false;
+        if (range === "7days" && orderDateStr < getNDaysAgoStr(7)) return false;
+        if (range === "thismonth" && orderDateStr < getFirstOfMonthStr()) return false;
+        if (range === "custom") {
+          if (startDate && orderDateStr < startDate) return false;
+          if (endDate && orderDateStr > endDate) return false;
+        }
+      }
     }
 
     return true;
@@ -149,6 +195,66 @@ export default function OrdersView({
 
   return (
     <div className="space-y-6">
+      {/* Date Range Filter Bar (Same as Reports View) */}
+      <div className="bg-[#181C24] border border-[#262D3D] rounded-2xl p-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-lg text-white">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-lg bg-[#eb660c]/20 text-[#eb660c] flex items-center justify-center font-bold">
+            <Calendar className="w-5 h-5" />
+          </div>
+          <div>
+            <h2 className="text-base font-black text-white">Filter Orders by Date</h2>
+            <p className="text-xs text-gray-400">Select date window for order records (Asia/Beirut Time)</p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {[
+            { id: "today", label: "Today" },
+            { id: "yesterday", label: "Yesterday" },
+            { id: "7days", label: "Last 7 Days" },
+            { id: "thismonth", label: "This Month" },
+            { id: "all", label: "All Time" },
+            { id: "custom", label: "Custom Range" }
+          ].map((btn) => (
+            <button
+              key={btn.id}
+              onClick={() => setRange(btn.id)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all ${
+                range === btn.id
+                  ? "bg-[#eb660c] text-white shadow-md"
+                  : "bg-[#0F1115] text-gray-400 hover:text-white border border-[#262D3D]"
+              }`}
+            >
+              {btn.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Custom Date Inputs (when Custom Range selected) */}
+      {range === "custom" && (
+        <div className="bg-[#181C24] border border-[#262D3D] rounded-2xl p-4 flex flex-wrap items-end gap-4 shadow-sm text-white">
+          <div>
+            <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1">Start Date</label>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="bg-[#0F1115] border border-[#262D3D] text-white rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-[#eb660c] outline-none"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1">End Date</label>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="bg-[#0F1115] border border-[#262D3D] text-white rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-[#eb660c] outline-none"
+            />
+          </div>
+        </div>
+      )}
+
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-4 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
         <div className="flex-1">
