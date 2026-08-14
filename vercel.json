@@ -3,12 +3,17 @@
   "redirects": [
     {
       "source": "/admin",
-      "destination": "/admin/",
-      "permanent": true
+      "destination": "https://app.neobeirut.com/admin",
+      "permanent": false
+    },
+    {
+      "source": "/admin/:path*",
+      "destination": "https://app.neobeirut.com/admin/:path*",
+      "permanent": false
     }
   ],
   "routes": [
-    { "src": "/admin/(.*)", "dest": "/admin/index.html" },
+    { "src": "/admin/(.*)", "dest": "https://app.neobeirut.com/admin/$1" },
     { "src": "/(?!assets/.*|admin/.*).*", "dest": "/index.html" }
   ]
 }

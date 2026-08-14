@@ -3,14 +3,23 @@
   "redirects": [
     {
       "source": "/admin",
-      "destination": "/admin/",
-      "permanent": true
+      "destination": "https://app.neobeirut.com/admin",
+      "permanent": false
+    },
+    {
+      "source": "/admin/:path*",
+      "destination": "https://app.neobeirut.com/admin/:path*",
+      "permanent": false
     }
   ],
   "rewrites": [
     {
+      "source": "/admin",
+      "destination": "https://app.neobeirut.com/admin"
+    },
+    {
       "source": "/admin/:path*",
-      "destination": "https://neo-web-admin.vercel.app/:path*"
+      "destination": "https://app.neobeirut.com/admin/:path*"
     }
   ]
 }

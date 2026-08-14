@@ -251,7 +251,7 @@ import InventoryScreen from './screens/InventoryScreen';
             <LogOut size={18} />
           </button>
           <div style={{ fontSize: '11px', color: 'var(--text-muted)', textAlign: 'right' }}>
-            <div style={{ fontWeight: 600, color: 'var(--text-main)' }}>Flow Admin v1.0.7</div>
+            <div style={{ fontWeight: 600, color: 'var(--text-main)' }}>Ovrload Admin v1.0.7</div>
             <div style={{ fontSize: '10px' }}>Build: July 24, 2026</div>
           </div>
         </div>
@@ -550,7 +550,7 @@ function App() {
       // Revert to default
       document.documentElement.style.setProperty('--primary', '#2563eb');
       document.documentElement.style.setProperty('--primary-hover', '#1d4ed8');
-      document.title = import.meta.env.VITE_APP_NAME || "FLOW Admin";
+      document.title = import.meta.env.VITE_APP_NAME || "Ovrload Admin";
     }
   }, [user]);
 
