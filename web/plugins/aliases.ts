@@ -11,15 +11,16 @@ export function aliases(): Plugin {
       const sourcePath = source.slice('@/'.length);
 
       // Check exact file path first (handles files with explicit extensions like @/auth.js)
-      const exactPath = path.resolve(__dirname, '../', 'src', `./${sourcePath}`);
-      if (existsSync(exactPath) && !exactPath.endsWith('/src') && !exactPath.endsWith('\\src')) {
+      const rootSrc = path.resolve(process.cwd(), 'src');
+      const exactPath = path.resolve(rootSrc, `./${sourcePath}`);
+      if (existsSync(exactPath) && exactPath !== rootSrc) {
         return exactPath;
       }
 
       const extensions = ['.ts', '.js', '.tsx', '.jsx'];
 
       for (const ext of extensions) {
-        const filePath = path.resolve(__dirname, '../', 'src', `./${sourcePath}${ext}`);
+        const filePath = path.resolve(rootSrc, `./${sourcePath}${ext}`);
 
         if (existsSync(filePath)) {
           return filePath;
