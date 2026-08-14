@@ -85,6 +85,9 @@ export default defineConfig({
     extensions: ['.mjs', '.js', '.ts', '.jsx', '.tsx', '.json'],
     dedupe: ['react', 'react-dom'],
   },
+  ssr: {
+    noExternal: ['@auth/core', '@hono/auth-js', '@lshay/ui'],
+  },
   clearScreen: false,
   server: {
     allowedHosts: true,
@@ -102,4 +105,4 @@ export default defineConfig({
   },
 });
 
-// bust cache 8
+// bust cache 9
