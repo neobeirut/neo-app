@@ -63,6 +63,7 @@ export async function PUT(request, { params: { id } }) {
     const isClosedIndefinitely = operational_status === "closed";
     const finalIsActive = isClosedIndefinitely ? false : (is_active ?? true);
     const finalOrdersActive = operational_status === "open";
+    const jsonSchedule = weekday_schedule ? JSON.stringify(weekday_schedule) : null;
 
     const [branch] = await sql`
       UPDATE branches 
@@ -83,7 +84,7 @@ export async function PUT(request, { params: { id } }) {
           orders_active = ${finalOrdersActive},
           operational_status = ${operational_status},
           closure_reason = ${closure_reason || null},
-          weekday_schedule = ${weekday_schedule ? sql.json(weekday_schedule) : null}
+          weekday_schedule = ${jsonSchedule}::jsonb
       WHERE id = ${id}
       RETURNING *
     `;

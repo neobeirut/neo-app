@@ -110,6 +110,7 @@ export async function POST(request) {
     const isClosedIndefinitely = operational_status === "closed";
     const finalIsActive = isClosedIndefinitely ? false : (is_active ?? true);
     const finalOrdersActive = operational_status === "open";
+    const jsonSchedule = weekday_schedule ? JSON.stringify(weekday_schedule) : null;
 
     // Get max display_order if not provided
     let finalDisplayOrder = display_order;
@@ -118,8 +119,6 @@ export async function POST(request) {
         await sql`SELECT COALESCE(MAX(display_order), 0) + 1 as next_order FROM branches`;
       finalDisplayOrder = maxOrder.next_order;
     }
-
-    const jsonWeekdaySchedule = weekday_schedule ? JSON.stringify(weekday_schedule) : null;
 
     const [branch] = await sql`
       INSERT INTO branches (
@@ -131,7 +130,7 @@ export async function POST(request) {
         ${name}, ${address || null}, ${phone || null}, ${whatsapp_phone || null}, ${location || null}, ${finalIsActive},
         ${discount_percentage || 0}, ${image_url || null}, ${parsedRadius}, ${finalDisplayOrder},
         ${opening_time || "09:00:00"}, ${closing_time || "21:00:00"}, ${delivery_start_time || "11:00:00"}, ${delivery_end_time || "20:00:00"}, ${finalOrdersActive},
-        ${operational_status}, ${closure_reason || null}, ${jsonWeekdaySchedule ? sql.json(weekday_schedule) : null}
+        ${operational_status}, ${closure_reason || null}, ${jsonSchedule}::jsonb
       )
       RETURNING *
     `;
