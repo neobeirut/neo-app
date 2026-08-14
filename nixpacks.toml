@@ -3,6 +3,7 @@ providers = ["node"]
 
 [variables]
 PUPPETEER_SKIP_DOWNLOAD = "true"
+HOST = "0.0.0.0"
 
 [phases.setup]
 nixPkgs = ["nodejs_22"]

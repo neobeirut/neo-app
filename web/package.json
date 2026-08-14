@@ -6,7 +6,7 @@
     "dev": "react-router dev",
     "typecheck": "react-router typegen && tsc --noEmit",
     "build": "node -e \"const fs = require('fs'), execSync = require('child_process').execSync; function run(cmd) { console.log('=== ' + cmd + ' ==='); try { console.log(execSync(cmd, {encoding:'utf8'})); } catch(e){ console.log(e.message); } } run('pwd'); run('ls -la'); run('ls -la src'); run('find /app -maxdepth 5 -iname \\\"auth*\\\" -print'); run('git rev-parse HEAD'); run('git branch --show-current'); run('git ls-files | grep -i auth');\" && node -e \"import('fs').then(f => ['build','.react-router'].forEach(d => { try { f.rmSync(d, {recursive:true, force:true}); } catch(e){} }))\" && react-router build",
-    "start": "node ./build/server/index.js"
+    "start": "HOST=0.0.0.0 node ./build/server/index.js"
   },
   "dependencies": {
     "@auth/core": "^0.37.2",
