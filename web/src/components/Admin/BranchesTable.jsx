@@ -111,15 +111,37 @@ export function BranchesTable({ branches, onEdit, onDelete, onReorder }) {
                 </div>
               </td>
               <td className="px-6 py-4 whitespace-nowrap">
-                <span
-                  className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                    branch.is_active
-                      ? "bg-green-100 text-green-800"
-                      : "bg-red-100 text-red-800"
-                  }`}
-                >
-                  {branch.is_active ? "Active" : "Inactive"}
-                </span>
+                {(() => {
+                  const status = branch.operational_status || (branch.orders_active === false ? "closed" : (branch.is_active ? "open" : "closed"));
+                  const reason = branch.closure_reason ? ` (${branch.closure_reason})` : "";
+                  
+                  if (status === "open") {
+                    return (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+                        🟢 Open / Active
+                      </span>
+                    );
+                  }
+                  if (status === "closed_hour") {
+                    return (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-full bg-amber-100 text-amber-900 border border-amber-300">
+                        ⏳ Closed 1 Hour{reason}
+                      </span>
+                    );
+                  }
+                  if (status === "closed_today") {
+                    return (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-full bg-purple-100 text-purple-900 border border-purple-300">
+                        🌙 Closed Today{reason}
+                      </span>
+                    );
+                  }
+                  return (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-full bg-rose-100 text-rose-800 border border-rose-300">
+                      🔴 Closed (Hidden){reason}
+                    </span>
+                  );
+                })()}
               </td>
               <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                 <button

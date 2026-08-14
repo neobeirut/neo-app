@@ -12,21 +12,37 @@ export async function GET(request) {
 
     let branches;
 
-    // Only filter by is_active if explicitly provided
+    // Filter active branches for customer / POS dropdowns
     if (is_active !== null) {
       const isActiveBoolean = is_active === "true";
-      branches = await sql`
-        SELECT id, name, address, phone, whatsapp_phone, location, is_active, created_at, discount_percentage, image_url, delivery_radius_km, display_order,
-               opening_time, closing_time, delivery_start_time, delivery_end_time, orders_active
-        FROM branches 
-        WHERE is_active = ${isActiveBoolean}
-        ORDER BY display_order, name
-      `;
+      if (isActiveBoolean) {
+        // Active branches must be enabled AND not marked as 'closed'
+        branches = await sql`
+          SELECT id, name, address, phone, whatsapp_phone, location, is_active, created_at, discount_percentage, image_url, delivery_radius_km, display_order,
+                 opening_time, closing_time, delivery_start_time, delivery_end_time, orders_active,
+                 COALESCE(operational_status, 'open') as operational_status, closure_reason, closed_until, weekday_schedule
+          FROM branches 
+          WHERE is_active = true 
+            AND COALESCE(operational_status, 'open') != 'closed'
+            AND COALESCE(orders_active, true) = true
+          ORDER BY display_order, name
+        `;
+      } else {
+        branches = await sql`
+          SELECT id, name, address, phone, whatsapp_phone, location, is_active, created_at, discount_percentage, image_url, delivery_radius_km, display_order,
+                 opening_time, closing_time, delivery_start_time, delivery_end_time, orders_active,
+                 COALESCE(operational_status, 'open') as operational_status, closure_reason, closed_until, weekday_schedule
+          FROM branches 
+          WHERE is_active = false
+          ORDER BY display_order, name
+        `;
+      }
     } else {
-      // No filter, get all branches
+      // No filter, get all branches for admin management
       branches = await sql`
         SELECT id, name, address, phone, whatsapp_phone, location, is_active, created_at, discount_percentage, image_url, delivery_radius_km, display_order,
-               opening_time, closing_time, delivery_start_time, delivery_end_time, orders_active
+               opening_time, closing_time, delivery_start_time, delivery_end_time, orders_active,
+               COALESCE(operational_status, 'open') as operational_status, closure_reason, closed_until, weekday_schedule
         FROM branches 
         ORDER BY display_order, name
       `;
@@ -37,7 +53,7 @@ export async function GET(request) {
     console.error("Error fetching branches:", error);
     return corsJson(
       request,
-      { error: "Failed to fetch branches" },
+      { error: "Failed to fetch branches: " + error.message },
       { status: 500 },
     );
   }
@@ -61,6 +77,9 @@ export async function POST(request) {
       delivery_start_time,
       delivery_end_time,
       orders_active,
+      operational_status = "open",
+      closure_reason = null,
+      weekday_schedule = null,
     } = await request.json();
 
     if (!name) {
@@ -87,6 +106,11 @@ export async function POST(request) {
       );
     }
 
+    // Determine derived is_active & orders_active status based on operational_status choice
+    const isClosedIndefinitely = operational_status === "closed";
+    const finalIsActive = isClosedIndefinitely ? false : (is_active ?? true);
+    const finalOrdersActive = operational_status === "open";
+
     // Get max display_order if not provided
     let finalDisplayOrder = display_order;
     if (finalDisplayOrder === null || finalDisplayOrder === undefined) {
@@ -95,29 +119,29 @@ export async function POST(request) {
       finalDisplayOrder = maxOrder.next_order;
     }
 
+    const jsonWeekdaySchedule = weekday_schedule ? JSON.stringify(weekday_schedule) : null;
+
     const [branch] = await sql`
       INSERT INTO branches (
         name, address, phone, whatsapp_phone, location, is_active, 
         discount_percentage, image_url, delivery_radius_km, display_order,
-        opening_time, closing_time, delivery_start_time, delivery_end_time, orders_active
-      )
-      VALUES (
-        ${name}, ${address || null}, ${phone || null}, ${whatsapp_phone || null}, 
-        ${location || null}, ${is_active ?? true}, ${discount_percentage || 0}, 
-        ${image_url || null}, ${parsedRadius}, ${finalDisplayOrder},
-        ${opening_time || "09:00:00"}, ${closing_time || "21:00:00"}, 
-        ${delivery_start_time || "11:00:00"}, ${delivery_end_time || "20:00:00"}, 
-        ${orders_active ?? true}
+        opening_time, closing_time, delivery_start_time, delivery_end_time, orders_active,
+        operational_status, closure_reason, weekday_schedule
+      ) VALUES (
+        ${name}, ${address || null}, ${phone || null}, ${whatsapp_phone || null}, ${location || null}, ${finalIsActive},
+        ${discount_percentage || 0}, ${image_url || null}, ${parsedRadius}, ${finalDisplayOrder},
+        ${opening_time || "09:00:00"}, ${closing_time || "21:00:00"}, ${delivery_start_time || "11:00:00"}, ${delivery_end_time || "20:00:00"}, ${finalOrdersActive},
+        ${operational_status}, ${closure_reason || null}, ${jsonWeekdaySchedule ? sql.json(weekday_schedule) : null}
       )
       RETURNING *
     `;
 
-    return corsJson(request, { branch });
+    return corsJson(request, { branch }, { status: 201 });
   } catch (error) {
     console.error("Error creating branch:", error);
     return corsJson(
       request,
-      { error: `Failed to create branch: ${error.message}` },
+      { error: "Failed to create branch: " + error.message },
       { status: 500 },
     );
   }

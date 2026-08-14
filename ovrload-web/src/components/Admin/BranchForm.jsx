@@ -1,6 +1,41 @@
 import { useState } from "react";
 
+const DAYS_OF_WEEK = [
+  { id: "monday", label: "Monday" },
+  { id: "tuesday", label: "Tuesday" },
+  { id: "wednesday", label: "Wednesday" },
+  { id: "thursday", label: "Thursday" },
+  { id: "friday", label: "Friday" },
+  { id: "saturday", label: "Saturday" },
+  { id: "sunday", label: "Sunday" },
+];
+
+const DEFAULT_SCHEDULE = {
+  monday: { active: true, open: "09:00", close: "23:00" },
+  tuesday: { active: true, open: "09:00", close: "23:00" },
+  wednesday: { active: true, open: "09:00", close: "23:00" },
+  thursday: { active: true, open: "09:00", close: "23:00" },
+  friday: { active: true, open: "09:00", close: "23:00" },
+  saturday: { active: true, open: "09:00", close: "23:00" },
+  sunday: { active: true, open: "09:00", close: "23:00" },
+};
+
 export function BranchForm({ editingItem, onSave, onCancel }) {
+  const initialSchedule = (() => {
+    if (editingItem?.weekday_schedule) {
+      if (typeof editingItem.weekday_schedule === "string") {
+        try {
+          return JSON.parse(editingItem.weekday_schedule);
+        } catch (e) {}
+      } else if (typeof editingItem.weekday_schedule === "object") {
+        return editingItem.weekday_schedule;
+      }
+    }
+    return DEFAULT_SCHEDULE;
+  })();
+
+  const initialStatus = editingItem?.operational_status || (editingItem?.orders_active === false ? "closed" : "open");
+
   const [formData, setFormData] = useState({
     name: editingItem?.name || "",
     address: editingItem?.address || "",
@@ -20,6 +55,9 @@ export function BranchForm({ editingItem, onSave, onCancel }) {
     delivery_start_time: editingItem?.delivery_start_time || "11:00",
     delivery_end_time: editingItem?.delivery_end_time || "20:00",
     orders_active: editingItem?.orders_active ?? true,
+    operational_status: initialStatus,
+    closure_reason: editingItem?.closure_reason || "Overloaded",
+    weekday_schedule: initialSchedule,
   });
 
   const [imageError, setImageError] = useState(null);
@@ -38,6 +76,19 @@ export function BranchForm({ editingItem, onSave, onCancel }) {
       setImageError("Please enter a valid URL");
       return false;
     }
+  };
+
+  const handleWeekdayChange = (dayId, field, value) => {
+    setFormData((prev) => ({
+      ...prev,
+      weekday_schedule: {
+        ...prev.weekday_schedule,
+        [dayId]: {
+          ...(prev.weekday_schedule[dayId] || { active: true, open: "09:00", close: "23:00" }),
+          [field]: value,
+        },
+      },
+    }));
   };
 
   const handleSubmit = async () => {
@@ -59,20 +110,21 @@ export function BranchForm({ editingItem, onSave, onCancel }) {
       return;
     }
 
-    // Validate time windows
-    if (formData.opening_time >= formData.closing_time) {
-      alert("Closing time must be after opening time");
-      return;
-    }
-
-    if (formData.delivery_start_time >= formData.delivery_end_time) {
-      alert("Delivery end time must be after delivery start time");
-      return;
-    }
+    const finalOrdersActive = formData.operational_status === "open";
+    const finalIsActive = formData.operational_status !== "closed";
 
     const dataToSave = editingItem
-      ? { ...formData, id: editingItem.id }
-      : formData;
+      ? { 
+          ...formData, 
+          id: editingItem.id,
+          orders_active: finalOrdersActive,
+          is_active: finalIsActive
+        }
+      : {
+          ...formData,
+          orders_active: finalOrdersActive,
+          is_active: finalIsActive
+        };
 
     const success = await onSave(dataToSave);
     if (success) {
@@ -81,29 +133,37 @@ export function BranchForm({ editingItem, onSave, onCancel }) {
   };
 
   return (
-    <div className="bg-white p-6 rounded-lg shadow-md mb-6">
-      <h3 className="text-lg font-semibold mb-4">
+    <div className="bg-white p-6 rounded-lg shadow-md mb-6 border border-slate-200">
+      <h3 className="text-lg font-semibold mb-4 text-slate-900">
         {editingItem ? "Edit Branch" : "Add New Branch"}
       </h3>
+
       <div className="grid grid-cols-2 gap-4">
-        <input
-          type="text"
-          placeholder="Branch Name"
-          value={formData.name}
-          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-          className="border rounded px-3 py-2 placeholder:text-gray-400"
-        />
-        <input
-          type="text"
-          placeholder="Phone Number"
-          value={formData.phone}
-          onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-          className="border rounded px-3 py-2 placeholder:text-gray-400"
-        />
+        <div>
+          <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Branch Name</label>
+          <input
+            type="text"
+            placeholder="Branch Name"
+            value={formData.name}
+            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+            className="border rounded px-3 py-2 w-full text-sm placeholder:text-gray-400"
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Phone Number</label>
+          <input
+            type="text"
+            placeholder="Phone Number"
+            value={formData.phone}
+            onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+            className="border rounded px-3 py-2 w-full text-sm placeholder:text-gray-400"
+          />
+        </div>
 
         {/* WhatsApp phone */}
         <div className="col-span-2">
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
             Store WhatsApp Phone (E.164)
           </label>
           <input
@@ -113,36 +173,42 @@ export function BranchForm({ editingItem, onSave, onCancel }) {
             onChange={(e) =>
               setFormData({ ...formData, whatsapp_phone: e.target.value })
             }
-            className="border rounded px-3 py-2 w-full placeholder:text-gray-400"
+            className="border rounded px-3 py-2 w-full text-sm placeholder:text-gray-400"
           />
           <p className="text-xs text-gray-500 mt-1">
-            Used by the Admin “Send WhatsApp for Delivery” button. If empty,
-            we’ll fall back to the branch Phone Number.
+            Used by the Admin “Send WhatsApp for Delivery” button. If empty, fall back to Phone Number.
           </p>
         </div>
 
-        <textarea
-          placeholder="Address"
-          value={formData.address}
-          onChange={(e) =>
-            setFormData({ ...formData, address: e.target.value })
-          }
-          className="border rounded px-3 py-2 col-span-2 placeholder:text-gray-400"
-          rows="3"
-        />
-        <input
-          type="text"
-          placeholder="Location (e.g., address or coordinates)"
-          value={formData.location}
-          onChange={(e) =>
-            setFormData({ ...formData, location: e.target.value })
-          }
-          className="border rounded px-3 py-2 col-span-2 placeholder:text-gray-400"
-        />
+        <div className="col-span-2">
+          <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Address</label>
+          <textarea
+            placeholder="Address"
+            value={formData.address}
+            onChange={(e) =>
+              setFormData({ ...formData, address: e.target.value })
+            }
+            className="border rounded px-3 py-2 w-full text-sm placeholder:text-gray-400"
+            rows="2"
+          />
+        </div>
+
+        <div className="col-span-2">
+          <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Location Coordinates (lat,lng)</label>
+          <input
+            type="text"
+            placeholder="e.g., 33.8938,35.5018"
+            value={formData.location}
+            onChange={(e) =>
+              setFormData({ ...formData, location: e.target.value })
+            }
+            className="border rounded px-3 py-2 w-full text-sm placeholder:text-gray-400"
+          />
+        </div>
 
         {/* Image URL Field */}
         <div className="col-span-2">
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
             Branch Image URL
           </label>
           <input
@@ -153,42 +219,15 @@ export function BranchForm({ editingItem, onSave, onCancel }) {
               setFormData({ ...formData, image_url: e.target.value });
               validateImageUrl(e.target.value);
             }}
-            className={`border rounded px-3 py-2 w-full placeholder:text-gray-400 ${imageError ? "border-red-500" : "border-gray-300"}`}
+            className={`border rounded px-3 py-2 w-full text-sm placeholder:text-gray-400 ${imageError ? "border-red-500" : "border-gray-300"}`}
           />
           {imageError && (
-            <p className="text-red-500 text-sm mt-1">{imageError}</p>
-          )}
-          {formData.image_url && !imageError && (
-            <div className="mt-3">
-              <p className="text-sm text-gray-600 mb-2">Preview:</p>
-              <img
-                src={formData.image_url}
-                alt="Branch preview"
-                className="max-w-xs h-40 object-cover rounded border border-gray-300"
-                onError={(e) => {
-                  e.target.style.display = "none";
-                  setImageError("Failed to load image from URL");
-                }}
-                onLoad={() => setImageError(null)}
-              />
-            </div>
+            <p className="text-red-500 text-xs mt-1">{imageError}</p>
           )}
         </div>
 
-        <div className="flex items-center gap-2">
-          <label className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={formData.is_active}
-              onChange={(e) =>
-                setFormData({ ...formData, is_active: e.target.checked })
-              }
-            />
-            Active
-          </label>
-        </div>
         <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-gray-700">
+          <label className="text-xs font-semibold text-slate-700 uppercase tracking-wider">
             Discount Percentage (%)
           </label>
           <input
@@ -204,15 +243,12 @@ export function BranchForm({ editingItem, onSave, onCancel }) {
                 discount_percentage: parseFloat(e.target.value) || 0,
               })
             }
-            className="border rounded px-3 py-2 placeholder:text-gray-400"
+            className="border rounded px-3 py-2 text-sm placeholder:text-gray-400"
           />
-          <p className="text-xs text-gray-500">
-            Applied to all products at this branch
-          </p>
         </div>
 
         <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-gray-700">
+          <label className="text-xs font-semibold text-slate-700 uppercase tracking-wider">
             Delivery Radius (km)
           </label>
           <input
@@ -227,47 +263,131 @@ export function BranchForm({ editingItem, onSave, onCancel }) {
                 delivery_radius_km: parseFloat(e.target.value) || 0,
               })
             }
-            className="border rounded px-3 py-2 placeholder:text-gray-400"
+            className="border rounded px-3 py-2 text-sm placeholder:text-gray-400"
           />
-          <p className="text-xs text-gray-500">
-            Delivery is allowed within this distance from the branch location.
-          </p>
-          <p className="text-xs text-gray-500">
-            Branch Location should be a "lat,lng" pair (example:
-            33.8938,35.5018).
-          </p>
         </div>
 
-        {/* Operational Controls Section */}
+        {/* OPERATIONAL CONTROLS SECTION */}
         <div className="col-span-2 mt-4 pt-4 border-t border-gray-200">
-          <h4 className="text-md font-semibold mb-3 text-gray-700">
-            Operational Controls
+          <h4 className="text-md font-bold mb-3 text-slate-800 flex items-center gap-2">
+            ⚙️ Operational Controls & Branch Closure Status
           </h4>
 
-          {/* Orders Active Checkbox */}
-          <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={formData.orders_active}
+          {/* Operational Status Select */}
+          <div className="mb-4 p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                Orders Active / Operational Status
+              </label>
+              <select
+                value={formData.operational_status}
                 onChange={(e) =>
-                  setFormData({ ...formData, orders_active: e.target.checked })
+                  setFormData({ ...formData, operational_status: e.target.value })
                 }
-                className="w-4 h-4"
-              />
-              <span className="font-medium">Orders Active</span>
-            </label>
-            <p className="text-xs text-gray-600 mt-1 ml-6">
-              When unchecked, this branch will immediately stop accepting
-              orders. Users cannot add items to cart or place orders.
-            </p>
+                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-semibold bg-white shadow-sm focus:ring-2 focus:ring-amber-500"
+              >
+                <option value="open">🟢 Open / Active (Accepting Orders)</option>
+                <option value="closed_hour">⏳ Closed For an Hour (60 Minutes)</option>
+                <option value="closed_today">🌙 Closed For Today (Until Midnight)</option>
+                <option value="closed">🔴 Closed (Hidden from Customers & POS)</option>
+              </select>
+              <p className="text-xs text-slate-600 mt-1.5">
+                {formData.operational_status === "open" && "Branch is currently open and accepting online & POS orders normally."}
+                {formData.operational_status === "closed_hour" && "Branch will pause taking orders for 60 minutes."}
+                {formData.operational_status === "closed_today" && "Branch will remain closed for the rest of today."}
+                {formData.operational_status === "closed" && "Branch is set to Closed and WILL NOT APPEAR in origin selection or customer site."}
+              </p>
+            </div>
+
+            {/* Closure Reason Selector */}
+            {formData.operational_status !== "open" && (
+              <div className="pt-2 border-t border-slate-200">
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                  Closure Reason
+                </label>
+                <select
+                  value={formData.closure_reason}
+                  onChange={(e) =>
+                    setFormData({ ...formData, closure_reason: e.target.value })
+                  }
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-medium bg-white shadow-sm"
+                >
+                  <option value="Overloaded">⚡ Overloaded (High order volume)</option>
+                  <option value="Out of Stock">📦 Out of Stock</option>
+                  <option value="Maintenance">🛠️ Maintenance</option>
+                  <option value="Holiday">🌴 Holiday</option>
+                </select>
+              </div>
+            )}
           </div>
 
-          {/* Opening Hours */}
-          <div className="grid grid-cols-2 gap-4 mb-4">
+          {/* WEEKDAYS OPENING SCHEDULE */}
+          <div className="mt-6">
+            <h4 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-3">
+              📅 Weekdays Opening Schedule (Operating Hours)
+            </h4>
+            <div className="space-y-2 bg-slate-50 p-3 rounded-xl border border-slate-200">
+              {DAYS_OF_WEEK.map((day) => {
+                const dayConfig = formData.weekday_schedule?.[day.id] || {
+                  active: true,
+                  open: "09:00",
+                  close: "23:00",
+                };
+
+                return (
+                  <div
+                    key={day.id}
+                    className="flex flex-wrap items-center justify-between gap-3 bg-white p-2.5 rounded-lg border border-slate-200 text-xs shadow-2xs"
+                  >
+                    <label className="flex items-center gap-2 font-bold text-slate-800 min-w-[110px]">
+                      <input
+                        type="checkbox"
+                        checked={!!dayConfig.active}
+                        onChange={(e) =>
+                          handleWeekdayChange(day.id, "active", e.target.checked)
+                        }
+                        className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500"
+                      />
+                      {day.label}
+                    </label>
+
+                    {dayConfig.active ? (
+                      <div className="flex items-center gap-2">
+                        <span className="text-slate-500 text-[11px] font-medium">Open:</span>
+                        <input
+                          type="time"
+                          value={dayConfig.open || "09:00"}
+                          onChange={(e) =>
+                            handleWeekdayChange(day.id, "open", e.target.value)
+                          }
+                          className="border rounded px-2 py-1 text-xs font-semibold text-slate-800"
+                        />
+                        <span className="text-slate-500 text-[11px] font-medium">Close:</span>
+                        <input
+                          type="time"
+                          value={dayConfig.close || "23:00"}
+                          onChange={(e) =>
+                            handleWeekdayChange(day.id, "close", e.target.value)
+                          }
+                          className="border rounded px-2 py-1 text-xs font-semibold text-slate-800"
+                        />
+                      </div>
+                    ) : (
+                      <span className="text-rose-600 font-bold uppercase text-[11px] bg-rose-50 px-2.5 py-1 rounded border border-rose-200">
+                        Closed on {day.label}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Standard Opening / Delivery Hours Fallbacks */}
+          <div className="grid grid-cols-2 gap-4 mt-6">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Opening Time
+              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                Default Opening Time
               </label>
               <input
                 type="time"
@@ -275,12 +395,12 @@ export function BranchForm({ editingItem, onSave, onCancel }) {
                 onChange={(e) =>
                   setFormData({ ...formData, opening_time: e.target.value })
                 }
-                className="border rounded px-3 py-2 w-full"
+                className="border rounded px-3 py-2 text-sm w-full"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Closing Time
+              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                Default Closing Time
               </label>
               <input
                 type="time"
@@ -288,64 +408,23 @@ export function BranchForm({ editingItem, onSave, onCancel }) {
                 onChange={(e) =>
                   setFormData({ ...formData, closing_time: e.target.value })
                 }
-                className="border rounded px-3 py-2 w-full"
+                className="border rounded px-3 py-2 text-sm w-full"
               />
             </div>
           </div>
-          <p className="text-xs text-gray-500 mb-4">
-            Pickup orders can only be scheduled during these hours
-          </p>
-
-          {/* Delivery Hours */}
-          <div className="grid grid-cols-2 gap-4 mb-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Delivery Start Time
-              </label>
-              <input
-                type="time"
-                value={formData.delivery_start_time}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    delivery_start_time: e.target.value,
-                  })
-                }
-                className="border rounded px-3 py-2 w-full"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Delivery End Time
-              </label>
-              <input
-                type="time"
-                value={formData.delivery_end_time}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    delivery_end_time: e.target.value,
-                  })
-                }
-                className="border rounded px-3 py-2 w-full"
-              />
-            </div>
-          </div>
-          <p className="text-xs text-gray-500">
-            Delivery orders can only be scheduled during these hours
-          </p>
         </div>
       </div>
-      <div className="flex gap-2 mt-4">
+
+      <div className="flex gap-2 mt-6">
         <button
           onClick={handleSubmit}
-          className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+          className="bg-amber-600 hover:bg-amber-700 text-white px-5 py-2.5 rounded-lg text-sm font-extrabold shadow-sm transition-colors"
         >
-          Save
+          Save Branch Settings
         </button>
         <button
           onClick={onCancel}
-          className="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600"
+          className="bg-slate-500 hover:bg-slate-600 text-white px-5 py-2.5 rounded-lg text-sm font-bold transition-colors"
         >
           Cancel
         </button>
