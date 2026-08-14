@@ -50,6 +50,36 @@ class LazyQuery {
   }
 }
 
+// Automatic local .env loader fallback if DATABASE_URL is not yet in process.env
+if (!process.env.DATABASE_URL) {
+  try {
+    const envPaths = [
+      path.resolve(process.cwd(), '.env'),
+      path.resolve(process.cwd(), 'web/.env'),
+      path.resolve(process.cwd(), '../.env'),
+    ];
+    for (const envPath of envPaths) {
+      if (fs.existsSync(envPath)) {
+        const content = fs.readFileSync(envPath, 'utf8');
+        for (const line of content.split('\n')) {
+          const trimmed = line.trim();
+          if (trimmed && !trimmed.startsWith('#') && trimmed.includes('=')) {
+            const [key, ...val] = trimmed.split('=');
+            const k = key.trim();
+            let v = val.join('=').trim();
+            if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+              v = v.slice(1, -1);
+            }
+            if (!process.env[k]) {
+              process.env[k] = v;
+            }
+          }
+        }
+      }
+    }
+  } catch (e) {}
+}
+
 let sql;
 
 if (process.env.DATABASE_URL) {
