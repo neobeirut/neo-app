@@ -296,6 +296,7 @@ app.route(API_BASENAME, api);
 
 export default createHonoServer({
   app,
+  hostname: '0.0.0.0',
   defaultLogger: false,
   serveStaticOptions: {
     publicAssets: {
