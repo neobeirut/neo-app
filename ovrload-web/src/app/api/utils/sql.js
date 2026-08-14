@@ -2,6 +2,56 @@ import postgres from 'postgres';
 import fs from 'node:fs';
 import path from 'node:path';
 
+const NullishQueryFunction = () => {
+  throw new Error(
+    'No database connection string was provided. Please configure DATABASE_URL in your environment variables.'
+  );
+};
+NullishQueryFunction.transaction = () => {
+  throw new Error(
+    'No database connection string was provided. Please configure DATABASE_URL in your environment variables.'
+  );
+};
+NullishQueryFunction.unsafe = NullishQueryFunction;
+
+// LazyQuery wraps query execution so that queries are only run when awaited
+// or executed together inside a transaction block.
+class LazyQuery {
+  constructor(db, stringsOrQuery, values) {
+    this.db = db;
+    this.stringsOrQuery = stringsOrQuery;
+    this.values = values;
+  }
+
+  async then(onfulfilled, onrejected) {
+    try {
+      let result;
+      if (typeof this.stringsOrQuery === 'string') {
+        result = await this.db.unsafe(this.stringsOrQuery, this.values);
+      } else {
+        result = await this.db(this.stringsOrQuery, ...this.values);
+      }
+      return onfulfilled ? onfulfilled(result) : result;
+    } catch (err) {
+      if (onrejected) return onrejected(err);
+      throw err;
+    }
+  }
+
+  async catch(onrejected) {
+    return this.then(null, onrejected);
+  }
+
+  async finally(onfinally) {
+    try {
+      const res = await this;
+      return res;
+    } finally {
+      if (onfinally) onfinally();
+    }
+  }
+}
+
 // Automatic local .env loader fallback if DATABASE_URL is not yet in process.env
 if (!process.env.DATABASE_URL) {
   try {
