@@ -4,6 +4,8 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "cd web && npm run start"
+    "startCommand": "cd web && npm run start",
+    "healthcheckPath": "/health",
+    "healthcheckTimeout": 100
   }
 }

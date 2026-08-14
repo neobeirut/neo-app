@@ -42,6 +42,9 @@ const adapter = NeonAdapter(pool);
 
 const app = new Hono();
 
+app.get('/health', (c) => c.json({ status: 'ok' }, 200));
+app.get('/api/health', (c) => c.json({ status: 'ok' }, 200));
+
 app.use('*', requestId());
 
 app.use('*', (c, next) => {
