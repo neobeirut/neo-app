@@ -1,11 +1,19 @@
-# Workspace Rule: Dual-Folder Admin Synchronization
+# Project Architecture & Routing Rules
 
-This repository (`neobeirut/neo-app`) has two Railway services configured:
-1. **`gregarious-curiosity`** — Root directory: `/web`
-2. **`ovrload-backend`** (`https://ovrload-backend-production.up.railway.app`) — Root directory: `/ovrload-web`
+This repository (`neobeirut/neo-app`) contains two distinct projects:
+
+1. **Ovrload Admin / POS** (`ovrload-backend`):
+   - Railway service: `ovrload-backend`
+   - Root directory: `/ovrload-web`
+   - Live URL: `https://ovrload-backend-production.up.railway.app`
+   - Target files: `ovrload-web/**`
+
+2. **Neo Admin / Web** (`gregarious-curiosity`):
+   - Railway service: `gregarious-curiosity`
+   - Root directory: `/web`
+   - Target files: `web/**`
 
 ## Directive:
-Whenever creating, updating, or debugging any Admin, POS, or API features:
-- **ALWAYS** apply the changes to both `web/` AND `ovrload-web/`.
-- Ensure all component files (`BranchForm.jsx`, `BranchesTable.jsx`, `OrdersView.jsx`, etc.) and API routes (`/api/branches`, `/api/orders`, etc.) in `web/` and `ovrload-web/` remain **100% identical**.
-- Never update `web/` without immediately mirroring the exact same changes to `ovrload-web/` before committing.
+- For all Ovrload requests, modify and deploy code directly in `ovrload-web/`.
+- For all Neo requests, modify and deploy code in `web/`.
+- Do not confuse the two project directories.
