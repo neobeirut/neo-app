@@ -312,7 +312,7 @@ export function BranchForm({ editingItem, onSave, onCancel }) {
                 }}
                 className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-semibold bg-white shadow-sm focus:ring-2 focus:ring-amber-500"
               >
-                <option value="open">🟢 Open / Active (Accepting Orders)</option>
+                <option value="open">🟢 Normal / Auto Schedule (Open during operating hours)</option>
                 <option value="closed_hour">⏳ Closed For an Hour (60 Minutes)</option>
                 <option value="closed_today">🌙 Closed For Today (Until Midnight)</option>
                 <option value="closed">🔴 Closed (Hidden from Customers & POS)</option>

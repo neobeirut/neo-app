@@ -151,6 +151,101 @@ export default function TabletPOSPage() {
     }
   };
 
+  const getRealtimeBranchStatusInfo = (branch, currentPosStatus, currentReason) => {
+    if (!branch) return { text: "🟢 Open", description: "Store is Open", badgeClass: "bg-emerald-900/40 text-emerald-300 border-emerald-500/50", isOpen: true };
+
+    const status = currentPosStatus || branch.operational_status || "open";
+    const reasonText = currentReason ? ` (${currentReason})` : "";
+
+    // 1. Manually closed indefinitely
+    if (status === "closed") {
+      return {
+        text: `🔴 Closed (Hidden)`,
+        description: `Store is Closed${reasonText}`,
+        badgeClass: "bg-rose-900/40 text-rose-300 border-rose-500/50",
+        isOpen: false
+      };
+    }
+
+    // 2. Weekday schedule & operating hours check (Asia/Beirut)
+    const nowBeirutWeekday = new Date().toLocaleDateString("en-US", { timeZone: "Asia/Beirut", weekday: "long" }).toLowerCase();
+    const currentHHMM = new Date().toLocaleTimeString("en-GB", { timeZone: "Asia/Beirut", hour: "2-digit", minute: "2-digit" });
+
+    let sched = branch.weekday_schedule;
+    if (typeof sched === "string") {
+      try { sched = JSON.parse(sched); } catch(e){}
+    }
+
+    let openTime = (branch.opening_time || "12:00").slice(0, 5);
+    let closeTime = (branch.closing_time || "23:00").slice(0, 5);
+    let isWeekdayActive = true;
+
+    if (sched && typeof sched === "object" && sched[nowBeirutWeekday]) {
+      const dayConfig = sched[nowBeirutWeekday];
+      if (dayConfig.active === false) {
+        isWeekdayActive = false;
+      } else {
+        if (dayConfig.open) openTime = dayConfig.open.slice(0, 5);
+        if (dayConfig.close) closeTime = dayConfig.close.slice(0, 5);
+      }
+    }
+
+    const capitalizedDay = nowBeirutWeekday.charAt(0).toUpperCase() + nowBeirutWeekday.slice(1);
+
+    if (!isWeekdayActive) {
+      return {
+        text: `📅 Closed on ${capitalizedDay}`,
+        description: `Kitchen Closed on ${capitalizedDay}${reasonText}`,
+        badgeClass: "bg-rose-900/40 text-rose-300 border-rose-500/50",
+        isOpen: false
+      };
+    }
+
+    // 3. Outside operating hours (Before openTime or After closeTime)
+    if (currentHHMM < openTime || currentHHMM >= closeTime) {
+      if (currentHHMM < openTime) {
+        return {
+          text: `🕒 Closed (Opens ${openTime})`,
+          description: `Store is Closed (Opens today at ${openTime})`,
+          badgeClass: "bg-amber-900/40 text-amber-300 border-amber-500/50",
+          isOpen: false
+        };
+      } else {
+        return {
+          text: `🕒 Closed (${openTime}-${closeTime})`,
+          description: `Store is Closed (Operating Hours: ${openTime} - ${closeTime})`,
+          badgeClass: "bg-amber-900/40 text-amber-300 border-amber-500/50",
+          isOpen: false
+        };
+      }
+    }
+
+    // 4. Temporary operational closures during active hours
+    if (status === "closed_hour") {
+      return {
+        text: `⏳ Closed 1h${reasonText}`,
+        description: `Store is Closed For an Hour${reasonText}`,
+        badgeClass: "bg-amber-900/40 text-amber-300 border-amber-500/50",
+        isOpen: false
+      };
+    } else if (status === "closed_today") {
+      return {
+        text: `🌙 Closed Today${reasonText}`,
+        description: `Store is Closed For Today${reasonText}`,
+        badgeClass: "bg-purple-900/40 text-purple-300 border-purple-500/50",
+        isOpen: false
+      };
+    }
+
+    // 5. Open normally
+    return {
+      text: `🟢 Open / Accepting Orders`,
+      description: `Store is Open (Operating Hours: ${openTime} - ${closeTime})`,
+      badgeClass: "bg-emerald-900/40 text-emerald-300 border-emerald-500/50",
+      isOpen: true
+    };
+  };
+
   const handleCustomerSearch = async (query) => {
     if (!query || query.trim().length < 2) {
       setCustomerSearchResults([]);
@@ -1058,32 +1153,21 @@ export default function TabletPOSPage() {
         {/* Queues & Quick Actions */}
         <div className="flex items-center gap-3">
           {/* Branch Operational Status Quick Control Button */}
-          <button
-            onClick={() => {
-              fetchBranchStatusAndPrompt();
-              setShowBranchStatusModal(true);
-            }}
-            className={`px-3 py-2 rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition-all shadow-md border ${
-              posOperationalStatus === "open"
-                ? "bg-emerald-900/40 text-emerald-300 border-emerald-500/50 hover:bg-emerald-900/60"
-                : posOperationalStatus === "closed_hour"
-                ? "bg-amber-900/40 text-amber-300 border-amber-500/50 hover:bg-amber-900/60"
-                : posOperationalStatus === "closed_today"
-                ? "bg-purple-900/40 text-purple-300 border-purple-500/50 hover:bg-purple-900/60"
-                : "bg-rose-900/40 text-rose-300 border-rose-500/50 hover:bg-rose-900/60"
-            }`}
-            title="Click to view & edit Store Operational Status"
-          >
-            <span>
-              {posOperationalStatus === "open" && "🟢 Open"}
-              {posOperationalStatus === "closed_hour" && "⏳ Closed 1h"}
-              {posOperationalStatus === "closed_today" && "🌙 Closed Today"}
-              {posOperationalStatus === "closed" && "🔴 Closed"}
-            </span>
-            {posClosureReason && posOperationalStatus !== "open" && (
-              <span className="opacity-80 text-[11px] font-medium">({posClosureReason})</span>
-            )}
-          </button>
+          {(() => {
+            const info = getRealtimeBranchStatusInfo(branchStatus, posOperationalStatus, posClosureReason);
+            return (
+              <button
+                onClick={() => {
+                  fetchBranchStatusAndPrompt();
+                  setShowBranchStatusModal(true);
+                }}
+                className={`px-3 py-2 rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition-all shadow-md border ${info.badgeClass}`}
+                title="Click to view & edit Store Operational Status"
+              >
+                <span>{info.text}</span>
+              </button>
+            );
+          })()}
 
           {/* Pending WhatsApp Orders Queue Button */}
           <button
@@ -2239,30 +2323,22 @@ export default function TabletPOSPage() {
             </div>
 
             {/* Current status summary card */}
-            <div className={`p-4 rounded-xl border flex items-center justify-between ${
-              posOperationalStatus === "open"
-                ? "bg-emerald-950/40 border-emerald-500/40 text-emerald-300"
-                : posOperationalStatus === "closed_hour"
-                ? "bg-amber-950/40 border-amber-500/40 text-amber-300"
-                : posOperationalStatus === "closed_today"
-                ? "bg-purple-950/40 border-purple-500/40 text-purple-300"
-                : "bg-rose-950/40 border-rose-500/40 text-rose-300"
-            }`}>
-              <div>
-                <span className="text-xs uppercase font-extrabold tracking-wider block opacity-75">Current Status</span>
-                <span className="text-sm font-black">
-                  {posOperationalStatus === "open" && "🟢 Open / Accepting Orders"}
-                  {posOperationalStatus === "closed_hour" && "⏳ Closed For an Hour"}
-                  {posOperationalStatus === "closed_today" && "🌙 Closed For Today"}
-                  {posOperationalStatus === "closed" && "🔴 Closed (Hidden)"}
-                </span>
-              </div>
-              {posOperationalStatus !== "open" && (
-                <span className="px-2.5 py-1 rounded-lg bg-black/40 text-xs font-bold border border-white/10">
-                  {posClosureReason || "Overloaded"}
-                </span>
-              )}
-            </div>
+            {(() => {
+              const info = getRealtimeBranchStatusInfo(branchStatus, posOperationalStatus, posClosureReason);
+              return (
+                <div className={`p-4 rounded-xl border flex items-center justify-between ${info.badgeClass}`}>
+                  <div>
+                    <span className="text-xs uppercase font-extrabold tracking-wider block opacity-75">Real-Time Store Status</span>
+                    <span className="text-sm font-black block mt-0.5">{info.description}</span>
+                  </div>
+                  {!info.isOpen && (
+                    <span className="px-2.5 py-1 rounded-lg bg-black/40 text-xs font-bold border border-white/10 shrink-0 ml-2">
+                      Notice Active
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
 
             <div className="space-y-4 text-xs">
               {/* Feature 1: Orders Active / Operational Status */}
@@ -2275,7 +2351,7 @@ export default function TabletPOSPage() {
                   onChange={(e) => setPosOperationalStatus(e.target.value)}
                   className="w-full bg-[#0F1115] border border-[#262D3D] rounded-xl px-3.5 py-2.5 text-xs font-bold text-white shadow-inner focus:outline-none focus:border-[#eb660c]"
                 >
-                  <option value="open">🟢 Open / Active (Accepting Orders)</option>
+                  <option value="open">🟢 Normal / Auto Schedule (Open during operating hours)</option>
                   <option value="closed_hour">⏳ Closed For an Hour (60 Minutes)</option>
                   <option value="closed_today">🌙 Closed For Today (Until Midnight)</option>
                   <option value="closed">🔴 Closed (Hidden from Customers & POS)</option>
