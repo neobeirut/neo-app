@@ -271,6 +271,22 @@ export default function TabletPOSPage() {
     };
   };
 
+  const handleSelectChannelSource = (sourceId) => {
+    const channelValue = sourceId === "POS" ? null : sourceId;
+    setSelectedChannel(channelValue);
+
+    // Automatically apply channel discount based on order source
+    if (sourceId === "Toters") {
+      setDiscountType("toters");
+    } else if (sourceId === "NokNok") {
+      setDiscountType("noknok");
+    } else if (sourceId === "WhatsApp") {
+      setDiscountType("wa15");
+    } else {
+      setDiscountType("none");
+    }
+  };
+
   const handleCustomerSearch = async (query) => {
     if (!query || query.trim().length < 2) {
       setCustomerSearchResults([]);
@@ -1113,9 +1129,9 @@ export default function TabletPOSPage() {
               </div>
               <div className="grid grid-cols-5 gap-1 p-1 bg-[#0F1115] rounded-xl border border-[#262D3D]">
                 {[
-                  { id: "POS", label: "POS" },
-                  { id: "WhatsApp", label: "WA 📱" },
                   { id: "Toters", label: "Toters 🟢" },
+                  { id: "WhatsApp", label: "WA 📱" },
+                  { id: "POS", label: "POS" },
                   { id: "NokNok", label: "NokNok 🔴" },
                   { id: "App", label: "App 📲" },
                 ].map((src) => {
@@ -1124,7 +1140,7 @@ export default function TabletPOSPage() {
                     <button
                       key={src.id}
                       type="button"
-                      onClick={() => setSelectedChannel(src.id === "POS" ? null : src.id)}
+                      onClick={() => handleSelectChannelSource(src.id)}
                       className={`py-1.5 px-1 rounded-lg text-[11px] font-black transition-all text-center truncate ${
                         isCurrent
                           ? "bg-[#eb660c] text-white shadow-sm"
