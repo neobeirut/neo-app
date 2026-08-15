@@ -19,6 +19,33 @@ export default function TabletPOSPage() {
   const [products, setProducts] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState("⭐ Favorites");
 
+  // Favorites persistence state (localStorage)
+  const [favoriteProductIds, setFavoriteProductIds] = useState(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem("pos_favorite_product_ids");
+        return saved ? JSON.parse(saved) : [];
+      } catch (e) {}
+    }
+    return [];
+  });
+
+  const toggleFavoriteProduct = (productId, e) => {
+    if (e) e.stopPropagation();
+    let updated;
+    if (favoriteProductIds.includes(productId)) {
+      updated = favoriteProductIds.filter((id) => id !== productId);
+    } else {
+      updated = [...favoriteProductIds, productId];
+    }
+    setFavoriteProductIds(updated);
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem("pos_favorite_product_ids", JSON.stringify(updated));
+      } catch (e) {}
+    }
+  };
+
   // Order States
   const [selectedChannel, setSelectedChannel] = useState(null); // Toters, WhatsApp, NokNok, App, In-Store
   const [orderType, setOrderType] = useState("delivery"); // pickup, delivery, dine_in
@@ -391,30 +418,31 @@ export default function TabletPOSPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // Category Filtering
+  // Dynamic Category List Generation
+  const dbCatNames = Array.from(new Set(categories.map((c) => c.name).filter(Boolean)));
   const availableCategoryList = [
     "⭐ Favorites",
-    "Meals",
-    "Wraps",
-    "Quesa",
-    "Sweets",
-    "Shakes",
-    "Sides",
-    "Drinks",
-    "Dips",
+    "All",
+    ...(dbCatNames.length > 0 ? dbCatNames : ["Meals", "Wraps", "Quesa", "Sweets", "Shakes", "Sides", "Drinks", "Dips"]),
   ];
 
   const filteredProducts = products.filter((p) => {
     if (selectedCategory === "⭐ Favorites") {
+      if (favoriteProductIds.length > 0) {
+        return favoriteProductIds.includes(p.id);
+      }
       const pName = (p.name || "").toLowerCase();
       const isFav = FAVORITE_PRODUCT_NAMES.some((fav) => pName.includes(fav));
       if (isFav) return true;
       const anyFavMatch = products.some((item) => FAVORITE_PRODUCT_NAMES.some((f) => (item.name || "").toLowerCase().includes(f)));
-      if (!anyFavMatch) return true; // Fallback to all if no items matched
+      if (!anyFavMatch) return true;
       return false;
     }
     if (selectedCategory === "All") return true;
-    return p.category_name?.toLowerCase() === selectedCategory.toLowerCase();
+
+    const catLower = selectedCategory.toLowerCase();
+    const pCatLower = (p.category_name || "").toLowerCase();
+    return pCatLower === catLower || pCatLower.includes(catLower) || catLower.includes(pCatLower);
   });
 
   const handleQuickAddProduct = (product) => {
@@ -988,6 +1016,16 @@ export default function TabletPOSPage() {
                         <h4 className="font-extrabold text-xs text-white group-hover:text-[#eb660c] transition-colors line-clamp-1 leading-snug">
                           {p.name}
                         </h4>
+                        <button
+                          type="button"
+                          onClick={(e) => toggleFavoriteProduct(p.id, e)}
+                          className={`text-xs px-1 hover:scale-125 transition-all ${
+                            favoriteProductIds.includes(p.id) ? "text-amber-400 opacity-100" : "text-gray-500 opacity-30 hover:opacity-100"
+                          }`}
+                          title={favoriteProductIds.includes(p.id) ? "Starred as Favorite" : "Add to Favorites"}
+                        >
+                          ★
+                        </button>
                       </div>
                       {hasOptions && (
                         <span className="inline-block mt-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#eb660c]/15 text-[#eb660c] border border-[#eb660c]/30">
