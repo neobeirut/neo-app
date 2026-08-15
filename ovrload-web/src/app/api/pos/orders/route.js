@@ -68,7 +68,7 @@ export async function POST(request) {
     const {
       branchId = 1,
       orderType = "pickup",
-      orderSource = "In-Store",
+      orderSource = "POS",
       paymentMethod = "Cash",
       customerName = "",
       customerPhone = "",
