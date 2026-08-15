@@ -2,47 +2,57 @@
 
 import { useState, useEffect, useRef } from "react";
 
+const FAVORITE_PRODUCT_NAMES = [
+  "caesar loaded wrap",
+  "crispy loaded wrap",
+  "beef quesa",
+  "fries",
+  "pepsi",
+  "diet pepsi",
+  "chocolate load",
+  "banoffee overload",
+];
+
 export default function TabletPOSPage() {
   // Data States
   const [categories, setCategories] = useState([]);
   const [products, setProducts] = useState([]);
-  const [selectedCategory, setSelectedCategory] = useState("All");
+  const [selectedCategory, setSelectedCategory] = useState("⭐ Favorites");
 
   // Order States
-  // 1. Order Origin should NOT have a default value and is required. First channel is "Toters".
   const [selectedChannel, setSelectedChannel] = useState(null); // Toters, WhatsApp, NokNok, App, In-Store
-  // 2. By default Delivery not Pickup
-  const [orderType, setOrderType] = useState("delivery"); // delivery, pickup, dine_in
+  const [orderType, setOrderType] = useState("delivery"); // pickup, delivery, dine_in
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [deliveryFee, setDeliveryFee] = useState(0);
-  
-  // Admin Configured Channel Discounts (Fetched from admin settings)
+
+  // Admin Configured Channel Discounts
   const [totersDiscountPercent, setTotersDiscountPercent] = useState(15);
   const [noknokDiscountPercent, setNoknokDiscountPercent] = useState(15);
 
   // Discount Selection State
-  const [discountType, setDiscountType] = useState("none"); // "none", "15%", "toters", "noknok", "custom"
+  const [discountType, setDiscountType] = useState("none"); // "none", "5%", "10%", "15%", "wa15", "toters", "noknok", "custom"
   const [discountValInput, setDiscountValInput] = useState(10);
-  const [discountIsPercent, setDiscountIsPercent] = useState(true); // true = %, false = $ USD
+  const [discountIsPercent, setDiscountIsPercent] = useState(true);
+  const [showDiscountModal, setShowDiscountModal] = useState(false);
 
-  // Print Server Settings (configured in Admin → Settings → Printer)
+  // Print Server Settings
   const [printServerIP, setPrintServerIP] = useState("");
   const [printServerPort, setPrintServerPort] = useState(9191);
 
   const [ticketItems, setTicketItems] = useState([]);
-  const [editingOrderId, setEditingOrderId] = useState(null); // Track if editing an incoming WhatsApp order
+  const [editingOrderId, setEditingOrderId] = useState(null);
 
   // Queue & Modal States
   const [heldOrders, setHeldOrders] = useState([]);
   const [pendingOrders, setPendingOrders] = useState([]);
-  const [activeTabModal, setActiveTabModal] = useState(null); // 'held', 'incoming', 'payment', 'customization', 'void_item', 'receipt'
+  const [activeTabModal, setActiveTabModal] = useState(null); // 'held', 'incoming', 'payment', 'customization', 'void_item', 'receipt', 'settings'
 
-  // Notification tracking refs (no re-render needed)
-  const knownOrderIdsRef = useRef(null); // Set of order IDs already seen
-  const isFirstPollRef   = useRef(true); // Skip alerts on initial page load
-  
+  // Notification tracking refs
+  const knownOrderIdsRef = useRef(null);
+  const isFirstPollRef = useRef(true);
+
   // Customization Modal State
   const [currentProduct, setCurrentProduct] = useState(null);
   const [editingItemIndex, setEditingItemIndex] = useState(null);
@@ -61,14 +71,7 @@ export default function TabletPOSPage() {
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [validationError, setValidationError] = useState("");
-  const [copiedWaMsg, setCopiedWaMsg] = useState(false);
   const [dispatchStatusMsg, setDispatchStatusMsg] = useState("");
-  const [deliveryCompanyPhone, setDeliveryCompanyPhone] = useState(() => {
-    if (typeof window !== "undefined") {
-      return localStorage.getItem("pos_delivery_company_phone") || "";
-    }
-    return "";
-  });
 
   // Order History & Reprint State
   const [completedOrdersHistory, setCompletedOrdersHistory] = useState([]);
@@ -157,7 +160,6 @@ export default function TabletPOSPage() {
     const status = currentPosStatus || branch.operational_status || "open";
     const reasonText = currentReason ? ` (${currentReason})` : "";
 
-    // 1. Manually closed indefinitely
     if (status === "closed") {
       return {
         text: `🔴 Closed (Hidden)`,
@@ -167,7 +169,6 @@ export default function TabletPOSPage() {
       };
     }
 
-    // 2. Weekday schedule & operating hours check (Asia/Beirut)
     const nowBeirutWeekday = new Date().toLocaleDateString("en-US", { timeZone: "Asia/Beirut", weekday: "long" }).toLowerCase();
     const currentHHMM = new Date().toLocaleTimeString("en-GB", { timeZone: "Asia/Beirut", hour: "2-digit", minute: "2-digit" });
 
@@ -201,7 +202,6 @@ export default function TabletPOSPage() {
       };
     }
 
-    // 3. Outside operating hours (Before openTime or After closeTime)
     if (currentHHMM < openTime || currentHHMM >= closeTime) {
       if (currentHHMM < openTime) {
         return {
@@ -220,7 +220,6 @@ export default function TabletPOSPage() {
       }
     }
 
-    // 4. Temporary operational closures during active hours
     if (status === "closed_hour") {
       return {
         text: `⏳ Closed 1h${reasonText}`,
@@ -237,7 +236,6 @@ export default function TabletPOSPage() {
       };
     }
 
-    // 5. Open normally
     return {
       text: `🟢 Open / Accepting Orders`,
       description: `Store is Open (Operating Hours: ${openTime} - ${closeTime})`,
@@ -277,11 +275,8 @@ export default function TabletPOSPage() {
     setShowCustomerDropdown(false);
   };
 
-  // Auto-calculate delivery fee in POS when delivery address is entered
   useEffect(() => {
-    if (orderType !== "delivery" || !deliveryAddress.trim()) {
-      return;
-    }
+    if (orderType !== "delivery" || !deliveryAddress.trim()) return;
     const timer = setTimeout(async () => {
       try {
         const res = await fetch("/api/delivery/calculate-cost", {
@@ -300,9 +295,6 @@ export default function TabletPOSPage() {
     return () => clearTimeout(timer);
   }, [deliveryAddress, orderType]);
 
-  const receiptPrintRef = useRef(null);
-
-  // Load Products & Categories
   const fetchProducts = async () => {
     try {
       const res = await fetch("/api/pos/products");
@@ -312,7 +304,7 @@ export default function TabletPOSPage() {
       if (data.settings) {
         if (data.settings.toters_discount_percent !== undefined) setTotersDiscountPercent(data.settings.toters_discount_percent);
         if (data.settings.noknok_discount_percent !== undefined) setNoknokDiscountPercent(data.settings.noknok_discount_percent);
-        if (data.settings.print_server_ip)   setPrintServerIP(data.settings.print_server_ip);
+        if (data.settings.print_server_ip) setPrintServerIP(data.settings.print_server_ip);
         if (data.settings.print_server_port) setPrintServerPort(Number(data.settings.print_server_port));
       }
     } catch (err) {
@@ -322,15 +314,13 @@ export default function TabletPOSPage() {
     }
   };
 
-  // Load Pending WhatsApp & Held Orders
-  // ── WhatsApp Order Notification Helpers ─────────────────────────────────
   const playNotificationBeep = () => {
     try {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
       if (!AudioCtx) return;
       const ctx = new AudioCtx();
       const beep = (freq, startAt, dur) => {
-        const osc  = ctx.createOscillator();
+        const osc = ctx.createOscillator();
         const gain = ctx.createGain();
         osc.connect(gain);
         gain.connect(ctx.destination);
@@ -341,17 +331,17 @@ export default function TabletPOSPage() {
         osc.start(ctx.currentTime + startAt);
         osc.stop(ctx.currentTime + startAt + dur + 0.05);
       };
-      beep(880,  0,    0.18);
+      beep(880, 0, 0.18);
       beep(1100, 0.22, 0.18);
       beep(1320, 0.44, 0.30);
-    } catch (e) { /* Audio blocked before user gesture — ignored */ }
+    } catch (e) {}
   };
 
   const fireOrderNotification = (order) => {
     playNotificationBeep();
     if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
       const notif = new Notification("🛵 New WhatsApp Order!", {
-        body: `${order.customer_name || "Customer"}  •  $${parseFloat(order.total_amount || 0).toFixed(2)}`,
+        body: `${order.customer_name || "Customer"} • $${parseFloat(order.total_amount || 0).toFixed(2)}`,
         icon: "/icon-192x192.png",
         tag: `wa-order-${order.id}`,
         renotify: true,
@@ -371,74 +361,91 @@ export default function TabletPOSPage() {
         fetch("/api/pos/orders?type=held")
       ]);
       const pendingData = await pendingRes.json();
-      const heldData    = await heldRes.json();
+      const heldData = await heldRes.json();
 
       if (pendingData.orders) {
         const incoming = pendingData.orders;
         setPendingOrders(incoming);
-
-        // Detect brand-new orders and notify (skip on first load)
         if (!isFirstPollRef.current && knownOrderIdsRef.current) {
           incoming
             .filter((o) => !knownOrderIdsRef.current.has(o.id))
             .forEach((o) => fireOrderNotification(o));
         }
         knownOrderIdsRef.current = new Set(incoming.map((o) => o.id));
-        isFirstPollRef.current   = false;
+        isFirstPollRef.current = false;
       }
-
       if (heldData.orders) setHeldOrders(heldData.orders);
     } catch (err) {
       console.error("Error fetching orders queue:", err);
     }
   };
 
-
-  // PWA Install State
-  const [deferredInstallPrompt, setDeferredInstallPrompt] = useState(null);
-
   useEffect(() => {
-    const handleBeforeInstallPrompt = (e) => {
-      e.preventDefault();
-      setDeferredInstallPrompt(e);
-    };
-    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
-    return () => window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
-  }, []);
-
-  const handleInstallPWA = async () => {
-    if (deferredInstallPrompt) {
-      deferredInstallPrompt.prompt();
-      const choice = await deferredInstallPrompt.userChoice;
-      if (choice.outcome === "accepted") {
-        setDeferredInstallPrompt(null);
-      }
-    } else {
-      setActiveTabModal("install_guide");
-    }
-  };
-
-  useEffect(() => {
-    // Request notification permission silently on mount
     if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "default") {
       Notification.requestPermission();
     }
     fetchProducts();
     fetchOrdersQueue();
     fetchBranchStatusAndPrompt();
-    const interval = setInterval(fetchOrdersQueue, 10000); // Polling pending orders every 10s
+    const interval = setInterval(fetchOrdersQueue, 10000);
     return () => clearInterval(interval);
   }, []);
 
-  // Filter Products by Category (No search required)
+  // Category Filtering
+  const availableCategoryList = [
+    "⭐ Favorites",
+    "Meals",
+    "Wraps",
+    "Quesa",
+    "Sweets",
+    "Shakes",
+    "Sides",
+    "Drinks",
+    "Dips",
+  ];
+
   const filteredProducts = products.filter((p) => {
-    return (
-      selectedCategory === "All" ||
-      p.category_name?.toLowerCase() === selectedCategory.toLowerCase()
-    );
+    if (selectedCategory === "⭐ Favorites") {
+      const pName = (p.name || "").toLowerCase();
+      const isFav = FAVORITE_PRODUCT_NAMES.some((fav) => pName.includes(fav));
+      if (isFav) return true;
+      const anyFavMatch = products.some((item) => FAVORITE_PRODUCT_NAMES.some((f) => (item.name || "").toLowerCase().includes(f)));
+      if (!anyFavMatch) return true; // Fallback to all if no items matched
+      return false;
+    }
+    if (selectedCategory === "All") return true;
+    return p.category_name?.toLowerCase() === selectedCategory.toLowerCase();
   });
 
-  // Open Customization Modal
+  const handleQuickAddProduct = (product) => {
+    if (product.customizations && product.customizations.length > 0) {
+      handleOpenCustomization(product);
+      return;
+    }
+    const existingIndex = ticketItems.findIndex(
+      (item) => item.product_id === product.id && (!item.selectedCustomizations || item.selectedCustomizations.length === 0) && !item.note
+    );
+
+    if (existingIndex > -1) {
+      const updated = [...ticketItems];
+      updated[existingIndex].qty += 1;
+      setTicketItems(updated);
+    } else {
+      setTicketItems([
+        ...ticketItems,
+        {
+          product_id: product.id,
+          name: product.name,
+          base_price: product.unit_price_usd || 0,
+          unit_price: product.unit_price_usd || 0,
+          qty: 1,
+          selectedCustomizations: [],
+          note: "",
+        },
+      ]);
+    }
+  };
+
   const handleOpenCustomization = (product, itemIndex = null) => {
     setCurrentProduct(product);
     setEditingItemIndex(itemIndex);
@@ -450,7 +457,6 @@ export default function TabletPOSPage() {
       setItemNote(existing.note || "");
       setCustomizationQty(existing.qty || 1);
     } else {
-      // No default selection (Drinks & options start unselected and are required)
       setSelectedCustomizations([]);
       setItemNote("");
       setCustomizationQty(1);
@@ -458,7 +464,6 @@ export default function TabletPOSPage() {
     setActiveTabModal("customization");
   };
 
-  // Toggle Customization Option
   const handleToggleOption = (custOption, isMultiSelect) => {
     setCustomizationError("");
     if (isMultiSelect) {
@@ -475,11 +480,9 @@ export default function TabletPOSPage() {
     }
   };
 
-  // Save Customization to Ticket Cart (Enforces Drinks/Required groups)
   const handleSaveCustomizationToCart = () => {
     if (!currentProduct) return;
 
-    // Validate Required Groups (e.g. Drinks)
     if (currentProduct.customizations?.length > 0) {
       const grouped = currentProduct.customizations.reduce((acc, c) => {
         const group = c.option_group_name || (c.customization_type === "remove" ? "Remove Ingredients" : "Custom Options");
@@ -493,7 +496,7 @@ export default function TabletPOSPage() {
         if (isReq) {
           const hasSelected = selectedCustomizations.some((c) => opts.some((o) => o.id === c.id));
           if (!hasSelected) {
-            setCustomizationError(`⚠️ Selection for "${groupName}" is REQUIRED! Please choose one.`);
+            setCustomizationError(`⚠️ Selection for "${groupName}" is REQUIRED!`);
             return;
           }
         }
@@ -530,7 +533,6 @@ export default function TabletPOSPage() {
     setCustomizationError("");
   };
 
-  // Change Quantity in Ticket
   const handleUpdateQty = (index, delta) => {
     const updated = [...ticketItems];
     const item = updated[index];
@@ -543,7 +545,6 @@ export default function TabletPOSPage() {
     setTicketItems(updated);
   };
 
-  // Open Void Item Dialog
   const handlePromptVoid = (index) => {
     setVoidingItemIndex(index);
     setVoidReason("");
@@ -560,49 +561,42 @@ export default function TabletPOSPage() {
     setActiveTabModal(null);
   };
 
-  // Totals & Dynamic Discount Calculations (Toters & NokNok rates managed by Admin)
   const subtotal = ticketItems.reduce((sum, item) => sum + item.unit_price * item.qty, 0);
 
   const calculatedDiscount = (() => {
-    if (discountType === "15%") {
-      return subtotal * 0.15;
-    }
-    if (discountType === "toters") {
-      return subtotal * (totersDiscountPercent / 100);
-    }
-    if (discountType === "noknok") {
-      return subtotal * (noknokDiscountPercent / 100);
-    }
+    if (discountType === "5%") return subtotal * 0.05;
+    if (discountType === "10%") return subtotal * 0.10;
+    if (discountType === "15%" || discountType === "wa15") return subtotal * 0.15;
+    if (discountType === "toters") return subtotal * (totersDiscountPercent / 100);
+    if (discountType === "noknok") return subtotal * (noknokDiscountPercent / 100);
     if (discountType === "custom") {
       const val = parseFloat(discountValInput) || 0;
-      if (discountIsPercent) {
-        return subtotal * (val / 100);
-      }
+      if (discountIsPercent) return subtotal * (val / 100);
       return Math.min(subtotal, val);
     }
     return 0;
   })();
 
   const discountAmount = calculatedDiscount;
-  const total = Math.max(0, subtotal + (Number(deliveryFee) || 0) - discountAmount);
+  const total = Math.max(0, subtotal + (orderType === "delivery" ? (Number(deliveryFee) || 0) : 0) - discountAmount);
 
-  // Human-readable discount label for receipt
   const discountLabel = (() => {
-    if (discountType === "15%")    return "15% Off";
+    if (discountType === "5%") return "5%";
+    if (discountType === "10%") return "10%";
+    if (discountType === "15%") return "15%";
+    if (discountType === "wa15") return "WhatsApp 15%";
     if (discountType === "toters") return `Toters (${totersDiscountPercent}%)`;
     if (discountType === "noknok") return `NokNok (${noknokDiscountPercent}%)`;
-    if (discountType === "custom") return discountIsPercent ? `Custom (${discountValInput}%)` : "Custom Discount";
+    if (discountType === "custom") return discountIsPercent ? `${discountValInput}%` : `$${discountValInput}`;
     return "Discount";
   })();
 
-  // Send print job to local print server (Form POST bypasses HTTPS Mixed Content blocking)
   const handlePrint = async (orderData) => {
     const ip = printServerIP || "192.168.18.195";
     const port = printServerPort || "9191";
     const url = `http://${ip}:${port}/print`;
 
     try {
-      // 1. Try direct fetch first
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -610,15 +604,9 @@ export default function TabletPOSPage() {
         signal: AbortSignal.timeout(2000),
       });
       const result = await res.json();
-      if (result && result.success) {
-        console.log(`Direct HTTP Printed: ${(result.printed || []).join(" + ")}`);
-        return;
-      }
-    } catch (err) {
-      console.warn("Fetch blocked or timed out, submitting print job via form POST:", err.message);
-    }
+      if (result && result.success) return;
+    } catch (err) {}
 
-    // 2. Form POST submission to hidden iframe bypasses HTTPS Mixed Content restrictions on tablet
     try {
       let iframe = document.getElementById("print_iframe");
       if (!iframe) {
@@ -645,26 +633,20 @@ export default function TabletPOSPage() {
       setTimeout(() => {
         try { document.body.removeChild(form); } catch (e) {}
       }, 1000);
-      console.log("Submitted print job via Form POST to local print server.");
-    } catch (formErr) {
-      console.error("Print form error:", formErr.message);
-    }
+    } catch (formErr) {}
   };
 
-  // Validate Order Origin
   const validateOrder = () => {
     if (!selectedChannel && !editingOrderId) {
-      setValidationError("⚠️ Order Origin is REQUIRED! Please select Toters, WhatsApp, NokNok, etc. at the top.");
-      return false;
+      setSelectedChannel("POS");
     }
     setValidationError("");
     return true;
   };
 
-  // Hold Current Order
   const handleHoldOrder = async () => {
     if (ticketItems.length === 0) return;
-    if (!validateOrder()) return;
+    validateOrder();
 
     setIsSubmitting(true);
     try {
@@ -673,21 +655,21 @@ export default function TabletPOSPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           orderType,
-          orderSource: selectedChannel,
+          orderSource: selectedChannel || "POS",
           paymentMethod: selectedPaymentMethod,
           customerName,
           customerPhone,
           deliveryAddress,
           status: "held",
           subtotal,
-          deliveryFee: (parseFloat(deliveryFee) || 0),
+          deliveryFee: orderType === "delivery" ? (parseFloat(deliveryFee) || 0) : 0,
           discountAmount,
           total,
           items: ticketItems.map((item) => ({
             product_id: item.product_id,
             quantity: item.qty,
             unit_price: item.unit_price,
-            customizations: item.selectedCustomizations.map((c) => c.ingredient || c.name),
+            customizations: (item.selectedCustomizations || []).map((c) => c.ingredient || c.name || c),
             comment: item.note
           }))
         })
@@ -698,7 +680,7 @@ export default function TabletPOSPage() {
         setCustomerName("");
         setCustomerPhone("");
         setDeliveryAddress("");
-        setSelectedChannel(null); // Reset origin
+        setSelectedChannel(null);
         setEditingOrderId(null);
         setDeliveryFee(0);
         setOrderType("delivery");
@@ -711,65 +693,59 @@ export default function TabletPOSPage() {
     }
   };
 
-  // Complete Order & Trigger Print (or Save Edited WhatsApp Order)
   const handleFinalizePayment = async () => {
     if (ticketItems.length === 0) return;
-    // Default to In-Store if no channel selected instead of blocking
-    if (!selectedChannel && !editingOrderId) setSelectedChannel("In-Store");
-    if (!validateOrder()) return;
+    const effectiveChannel = selectedChannel || "POS";
+    if (!selectedChannel && !editingOrderId) setSelectedChannel("POS");
 
     setIsSubmitting(true);
     try {
       let data;
       if (editingOrderId) {
-        // If editing an existing WhatsApp order, update status to approved & update items
         const updateRes = await fetch(`/api/pos/orders/${editingOrderId}/status`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             status: "preparing",
             subtotal,
-            deliveryFee: (parseFloat(deliveryFee) || 0),
+            deliveryFee: orderType === "delivery" ? (parseFloat(deliveryFee) || 0) : 0,
             discountAmount,
             total,
             customerName,
             customerPhone,
             deliveryAddress,
             orderType,
-            orderSource: selectedChannel || "WhatsApp",
+            orderSource: effectiveChannel,
             items: ticketItems.map((item) => ({
               product_id: item.product_id,
               quantity: item.qty,
               unit_price: item.unit_price,
-              customizations: item.selectedCustomizations.map((c) => c.ingredient || c.name),
+              customizations: (item.selectedCustomizations || []).map((c) => c.ingredient || c.name || c),
               comment: item.note
             }))
           })
         });
         data = await updateRes.json();
-        if (data.success) {
-          data.orderId = editingOrderId;
-        }
+        if (data.success) data.orderId = editingOrderId;
       } else {
         const actualPaymentMethod =
-          selectedChannel === "Toters" ? "Toters" :
-          selectedChannel === "NokNok" ? "NokNok" :
+          effectiveChannel === "Toters" ? "Toters" :
+          effectiveChannel === "NokNok" ? "NokNok" :
           selectedPaymentMethod;
 
-        // Create brand new POS order
         const createRes = await fetch("/api/pos/orders", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             orderType,
-            orderSource: selectedChannel,
+            orderSource: effectiveChannel,
             paymentMethod: actualPaymentMethod,
             customerName,
             customerPhone,
             deliveryAddress,
             status: "preparing",
             subtotal,
-            deliveryFee: (parseFloat(deliveryFee) || 0),
+            deliveryFee: orderType === "delivery" ? (parseFloat(deliveryFee) || 0) : 0,
             discountAmount,
             total,
             items: ticketItems.map((item) => ({
@@ -787,8 +763,6 @@ export default function TabletPOSPage() {
       }
 
       if (data && data.success) {
-        // Normalize items to same clean shape used by handleReprintOrder
-        // so the print server always receives consistent data
         const normalizedItems = ticketItems.map((item) => ({
           qty: item.qty || item.quantity || 1,
           name: item.name || item.product_name || "Item",
@@ -801,40 +775,38 @@ export default function TabletPOSPage() {
 
         const completedOrderData = {
           id: data.orderId || editingOrderId,
-          order_source: selectedChannel,
+          order_source: effectiveChannel,
           order_type: orderType,
           payment_method:
-            selectedChannel === "Toters" ? "Toters" :
-            selectedChannel === "NokNok" ? "NokNok" :
+            effectiveChannel === "Toters" ? "Toters" :
+            effectiveChannel === "NokNok" ? "NokNok" :
             selectedPaymentMethod,
           customer_name: customerName,
           customer_phone: customerPhone,
           delivery_address: deliveryAddress,
           subtotal_amount: subtotal,
-          delivery_fee: (parseFloat(deliveryFee) || 0),
+          delivery_fee: orderType === "delivery" ? (parseFloat(deliveryFee) || 0) : 0,
           discount_amount: discountAmount,
           discount_label: discountAmount > 0 ? discountLabel : null,
           total_amount: total,
           items: normalizedItems,
           created_at: new Date().toISOString()
         };
-        // Fire print job (non-blocking — order saved regardless of print result)
-        console.log("[POS] Firing print for order #" + completedOrderData.id, completedOrderData);
+
         handlePrint(completedOrderData);
         setLastCompletedOrder(completedOrderData);
         setTicketItems([]);
         setCustomerName("");
         setCustomerPhone("");
         setDeliveryAddress("");
-        setSelectedChannel(null); // Reset origin
+        setSelectedChannel(null);
         setEditingOrderId(null);
         setDiscountType("none");
-        setDiscountValInput(15);
+        setDiscountValInput(10);
         setDiscountIsPercent(true);
         setDeliveryFee(0);
         setOrderType("delivery");
-        // Toters & NokNok handle their own delivery — skip driver modal, go straight back
-        setActiveTabModal(["Toters", "NokNok"].includes(selectedChannel) ? null : "receipt");
+        setActiveTabModal(["Toters", "NokNok"].includes(effectiveChannel) ? null : "receipt");
         fetchOrdersQueue();
       } else if (data && data.error) {
         setValidationError(`⚠️ ${data.error}`);
@@ -847,81 +819,16 @@ export default function TabletPOSPage() {
     }
   };
 
-  // Reject Incoming WhatsApp Order
-  const handleRejectPendingOrder = async (orderId) => {
-    try {
-      const res = await fetch(`/api/pos/orders/${orderId}/status`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "cancelled", voidReason: "Rejected by POS Operator" })
-      });
-      const data = await res.json();
-      if (data.success) {
-        fetchOrdersQueue();
-      }
-    } catch (err) {
-      console.error("Error rejecting order:", err);
-    }
-  };
-
-  // Send Silent WhatsApp Driver Request via Infobip Backend API (+961 3 826 136)
-  const handleSendDeliveryWhatsApp = async (etaMinutes, mode = "silent") => {
-    if (!lastCompletedOrder) return;
-    const cleanPhone = "9613826136";
-    const timeText = etaMinutes === "Now" ? "Now" : etaMinutes ? `${etaMinutes}'` : "15'";
-    const msg = `🛵 Hello, need driver in ${timeText} for Order #${lastCompletedOrder.id}`;
-
-    // Always copy message to clipboard as fallback
-    if (typeof navigator !== "undefined" && navigator.clipboard) {
-      try { navigator.clipboard.writeText(msg); } catch (e) {}
-    }
-
-    if (mode === "manual") {
-      const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`;
-      window.open(waUrl, "_blank");
-      // Close modal after manual open
-      setTimeout(() => setActiveTabModal(null), 800);
-      return;
-    }
-
-    // Silent Background API Send (<0.3s) - 0 Tabs, 0 Popups!
-    setDispatchStatusMsg(`Sending driver request (${timeText})... ⏳`);
-    try {
-      const res = await fetch("/api/pos/dispatch-driver", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          orderId: lastCompletedOrder.id,
-          etaMinutes: etaMinutes || "15",
-          phone: cleanPhone
-        })
-      });
-      const data = await res.json();
-      setDispatchStatusMsg(`Driver Requested in ${timeText}! ✓`);
-    } catch (err) {
-      setDispatchStatusMsg(`Request Sent (${timeText}) ✓`);
-    }
-    // Auto-close after 1.2s so staff sees the confirmation tick
-    setTimeout(() => {
-      setDispatchStatusMsg("");
-      setActiveTabModal(null);
-    }, 1200);
-  };
-
-  // Fetch Order History for POS
   const fetchOrderHistory = async () => {
     try {
       const res = await fetch("/api/pos/orders?type=all");
       const data = await res.json();
-      if (data.orders) {
-        setCompletedOrdersHistory(data.orders);
-      }
+      if (data.orders) setCompletedOrdersHistory(data.orders);
     } catch (err) {
       console.error("Error fetching order history:", err);
     }
   };
 
-  // Reprint Receipt for Past Order
   const handleReprintOrder = (order) => {
     const orderData = {
       id: order.id,
@@ -944,546 +851,354 @@ export default function TabletPOSPage() {
       })),
       created_at: order.created_at || new Date().toISOString()
     };
-
     handlePrint(orderData);
     setLastCompletedOrder(orderData);
     setReprintSuccessMsg(`Order #${order.id} sent to thermal printer! 🖨️`);
-    setTimeout(() => setReprintSuccessMsg(""), 4000);
-  };
-  const handleApprovePendingOrder = async (order) => {
-    try {
-      const res = await fetch(`/api/pos/orders/${order.id}/status`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "preparing" })
-      });
-      const data = await res.json();
-      if (data.success) {
-        // Build print data from the order (same format as handleReprintOrder)
-        const printData = {
-          id: order.id,
-          order_source: order.order_source || "WhatsApp",
-          order_type: order.order_type || "delivery",
-          payment_method: order.payment_method || "Cash",
-          customer_name: order.customer_name || "",
-          customer_phone: order.customer_phone || "",
-          delivery_address: order.delivery_address || "",
-          subtotal_amount: order.subtotal_amount || 0,
-          delivery_fee: order.delivery_fee || 0,
-          discount_amount: order.discount_amount || 0,
-          total_amount: order.total_amount || 0,
-          items: (order.items || []).map((i) => ({
-            qty: i.quantity || i.qty || 1,
-            name: i.product_name || i.name || "Item",
-            unit_price: i.unit_price || 0,
-            selectedCustomizations: i.customizations ? [{ name: i.customizations }] : [],
-            note: i.comment || ""
-          })),
-          created_at: order.created_at || new Date().toISOString()
-        };
-        // Fire print job before opening receipt modal
-        handlePrint(printData);
-        setLastCompletedOrder(order);
-        setActiveTabModal("receipt");
-        fetchOrdersQueue();
-      }
-    } catch (err) {
-      console.error("Error approving order:", err);
-    }
-  };
-
-  // Edit & Approve Incoming WhatsApp Order (Load into POS active ticket)
-  const handleEditAndApproveOrder = (order) => {
-    setEditingOrderId(order.id);
-    setSelectedChannel(order.order_source || "WhatsApp");
-    setOrderType(order.order_type || "delivery");
-    setCustomerName(order.customer_name || "");
-    setCustomerPhone(order.customer_phone || "");
-    setDeliveryAddress(order.delivery_address || "");
-    const initialFee = order.delivery_fee !== undefined && order.delivery_fee !== null
-      ? parseFloat(order.delivery_fee)
-      : 0;
-    setDeliveryFee(initialFee);
-
-    const mappedItems = (order.items || []).map((i) => ({
-      product_id: i.product_id,
-      name: i.product_name || `Product #${i.product_id}`,
-      unit_price: i.unit_price,
-      qty: i.quantity,
-      selectedCustomizations: i.customizations ? [{ name: i.customizations }] : [],
-      note: i.comment || ""
-    }));
-
-    setTicketItems(mappedItems);
-    setActiveTabModal(null); // Close modal so user can edit items on the POS grid & ticket
-  };
-
-  // Resume Held Order
-  const handleResumeHeldOrder = (order) => {
-    setEditingOrderId(null);
-    setSelectedChannel(order.order_source || "Toters");
-    setOrderType(order.order_type || "delivery");
-    setCustomerName(order.customer_name || "");
-    setCustomerPhone(order.customer_phone || "");
-    setDeliveryAddress(order.delivery_address || "");
-
-    const items = (order.items || []).map((i) => ({
-      product_id: i.product_id,
-      name: i.product_name || `Product #${i.product_id}`,
-      unit_price: i.unit_price,
-      qty: i.quantity,
-      selectedCustomizations: i.customizations ? [{ name: i.customizations }] : [],
-      note: i.comment || ""
-    }));
-
-    setTicketItems(items);
-    setActiveTabModal(null);
-  };
-
-  // Print Thermal Ticket
-  const handlePrintThermalTicket = () => {
-    if (typeof window !== "undefined") {
-      window.print();
-    }
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#121417] text-white flex items-center justify-center">
+      <div className="h-screen bg-[#0F1115] text-white flex items-center justify-center font-bold text-lg">
         <div className="flex flex-col items-center gap-3">
-          <div className="w-10 h-10 border-4 border-[#eb660c] border-t-transparent rounded-full animate-spin"></div>
-          <p className="text-gray-400 font-medium">Loading OVR LOAD Tablet POS...</p>
+          <span className="w-10 h-10 border-4 border-[#eb660c] border-t-transparent rounded-full animate-spin"></span>
+          <span>Loading OVRLOAD POS...</span>
         </div>
       </div>
     );
   }
 
+  const realtimeStatus = getRealtimeBranchStatusInfo(branchStatus, posOperationalStatus, posClosureReason);
+
   return (
-    <div className="h-screen max-h-screen bg-[#0F1115] text-[#E0E6ED] font-sans overflow-hidden flex flex-col select-none">
-      {/* Printable Thermal Receipt Container */}
-      {lastCompletedOrder && (
-        <div className="hidden print:block print:w-[80mm] print:text-black print:p-2 text-xs font-mono">
-          <div className="text-center font-bold text-sm mb-1">*** OVR LOAD KITCHEN TICKET ***</div>
-          <div className="text-center mb-2">Order #{lastCompletedOrder.id} • {lastCompletedOrder.order_source}</div>
-          <hr className="border-black mb-2" />
-          <div>Type: {lastCompletedOrder.order_type?.toUpperCase()}</div>
-          <div>Payment: {lastCompletedOrder.payment_method}</div>
-          <div className="font-extrabold text-sm my-1">
-            CLIENT: {lastCompletedOrder.customer_name || (lastCompletedOrder.order_source === "In-Store" ? "Walk-in Guest" : "N/A")}
-          </div>
-          {lastCompletedOrder.customer_phone && <div>Phone: {lastCompletedOrder.customer_phone}</div>}
-          {lastCompletedOrder.delivery_address && <div>Addr: {lastCompletedOrder.delivery_address}</div>}
-          <hr className="border-black my-2" />
-          <div className="space-y-1">
-            {(lastCompletedOrder.items || []).map((item, idx) => (
-              <div key={idx}>
-                <div className="flex justify-between font-bold">
-                  <span>{item.qty || item.quantity}x {item.name || item.product_name}</span>
-                  <span>${((item.unit_price || 0) * (item.qty || item.quantity || 1)).toFixed(2)}</span>
-                </div>
-                {item.selectedCustomizations?.length > 0 && (
-                  <div className="pl-3 text-[10px] text-gray-700">
-                    {item.selectedCustomizations.map((c) => c.name || c.ingredient).join(", ")}
-                  </div>
-                )}
-                {item.note && (
-                  <div className="pl-3 text-[10px] text-black font-bold">
-                    NOTE: {item.note}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-          <hr className="border-black my-2" />
-          <div className="flex justify-between font-bold text-sm">
-            <span>TOTAL:</span>
-            <span>${(lastCompletedOrder.total_amount || lastCompletedOrder.total || 0).toFixed(2)}</span>
-          </div>
-          <div className="text-center mt-3 text-[10px]">Thank you for ordering with OVR LOAD!</div>
-        </div>
-      )}
-
-      {/* TOP TABLET HEADER */}
-      <header className="h-16 bg-[#181C24] border-b border-[#262D3D] px-6 flex items-center justify-between shadow-md print:hidden flex-shrink-0">
+    <div className="h-screen max-h-screen flex flex-col bg-[#0F1115] text-white font-sans overflow-hidden select-none">
+      {/* SIMPLIFIED HEADER */}
+      <header className="h-14 bg-[#181C24] border-b border-[#262D3D] px-5 flex items-center justify-between shadow-md print:hidden flex-shrink-0 z-10">
         {/* Brand */}
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <span className="w-8 h-8 rounded-lg bg-[#eb660c] flex items-center justify-center font-black text-white text-base">
-              O
-            </span>
-            <span className="font-extrabold text-xl tracking-wider text-white">
-              OVR<span className="text-[#eb660c]">LOAD</span> <span className="text-xs px-2 py-0.5 rounded bg-[#eb660c]/20 text-[#eb660c] font-semibold">POS TABLET v2.5.4</span>
-            </span>
-          </div>
-        </div>
-
-        {/* Active Origin Display & Switch Button */}
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-bold text-gray-400">Order Origin:</span>
-          {selectedChannel ? (
-            <div className="flex items-center gap-2">
-              <span className={`px-3 py-1.5 rounded-xl text-xs font-extrabold flex items-center gap-1.5 shadow-md ${
-                selectedChannel === "Toters" ? "bg-[#00C49F] text-black" :
-                selectedChannel === "WhatsApp" ? "bg-[#25D366] text-black" :
-                selectedChannel === "NokNok" ? "bg-[#FF5A5F] text-white" :
-                selectedChannel === "App" ? "bg-[#3B82F6] text-white" :
-                "bg-[#E5C07B] text-black"
-              }`}>
-                {selectedChannel}
-              </span>
-              <button
-                type="button"
-                onClick={() => setSelectedChannel(null)}
-                className="text-[11px] font-bold text-gray-400 hover:text-white underline px-2 py-1"
-              >
-                Switch Channel
-              </button>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setSelectedChannel(null)}
-              className="px-3.5 py-1.5 bg-[#eb660c] hover:bg-[#d55909] text-white rounded-xl text-xs font-extrabold shadow-md animate-pulse"
-            >
-              Select Origin ➔
-            </button>
-          )}
-        </div>
-
-        {/* Queues & Quick Actions */}
         <div className="flex items-center gap-3">
-          {/* Branch Operational Status Quick Control Button */}
-          {(() => {
-            const info = getRealtimeBranchStatusInfo(branchStatus, posOperationalStatus, posClosureReason);
-            return (
-              <button
-                onClick={() => {
-                  fetchBranchStatusAndPrompt();
-                  setShowBranchStatusModal(true);
-                }}
-                className={`px-3 py-2 rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition-all shadow-md border ${info.badgeClass}`}
-                title="Click to view & edit Store Operational Status"
-              >
-                <span>{info.text}</span>
-              </button>
-            );
-          })()}
+          <span className="w-7 h-7 rounded-lg bg-[#eb660c] flex items-center justify-center font-black text-white text-sm">
+            O
+          </span>
+          <span className="font-extrabold text-lg tracking-wider text-white">
+            OVR<span className="text-[#eb660c]">LOAD</span> <span className="text-[#eb660c] font-black text-xs ml-1">POS</span>
+          </span>
+        </div>
 
-          {/* Pending WhatsApp Orders Queue Button */}
+        {/* Header Action Buttons */}
+        <div className="flex items-center gap-2.5">
+          {/* Store Operational Status Badge Button */}
+          <button
+            onClick={() => {
+              fetchBranchStatusAndPrompt();
+              setShowBranchStatusModal(true);
+            }}
+            className={`px-3 py-1.5 rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition-all shadow-sm border ${realtimeStatus.badgeClass}`}
+            title="Click to view & edit Store Operational Status"
+          >
+            <span>{realtimeStatus.text}</span>
+          </button>
+
+          {/* WhatsApp Orders Button */}
           <button
             onClick={() => setActiveTabModal("incoming")}
-            className="relative px-3.5 py-2 bg-[#262D3D] hover:bg-[#323B4E] rounded-xl text-xs font-bold text-white transition-all flex items-center gap-2 border border-[#3A455C]"
+            className="px-3 py-1.5 bg-[#262D3D] hover:bg-[#323B4E] rounded-xl text-xs font-bold text-white transition-all flex items-center gap-1.5 border border-[#3A455C]"
           >
-            <span>📱 WhatsApp Orders</span>
+            <span>📱 WhatsApp</span>
             {pendingOrders.length > 0 && (
-              <span className="w-5 h-5 rounded-full bg-[#eb660c] text-white text-[11px] font-black flex items-center justify-center animate-pulse">
+              <span className="px-1.5 py-0.5 rounded-full bg-[#eb660c] text-white text-[10px] font-black animate-pulse">
                 {pendingOrders.length}
               </span>
             )}
           </button>
 
-          {/* Held Orders Queue Button */}
+          {/* Held Orders Button */}
           <button
             onClick={() => setActiveTabModal("held")}
-            className="px-3.5 py-2 bg-[#262D3D] hover:bg-[#323B4E] rounded-xl text-xs font-bold text-white transition-all flex items-center gap-2 border border-[#3A455C]"
+            className="px-3 py-1.5 bg-[#262D3D] hover:bg-[#323B4E] rounded-xl text-xs font-bold text-white transition-all flex items-center gap-1.5 border border-[#3A455C]"
           >
             <span>⏸️ Held ({heldOrders.length})</span>
           </button>
 
-          {/* Order History Button */}
+          {/* History Button */}
           <button
             onClick={() => {
               fetchOrderHistory();
               setActiveTabModal("history");
             }}
-            className="px-3.5 py-2 bg-[#262D3D] hover:bg-[#323B4E] rounded-xl text-xs font-bold text-white transition-all flex items-center gap-2 border border-[#3A455C]"
+            className="px-3 py-1.5 bg-[#262D3D] hover:bg-[#323B4E] rounded-xl text-xs font-bold text-white transition-all flex items-center gap-1 border border-[#3A455C]"
           >
-            <span>📜 Order History</span>
+            <span>📜 History</span>
+          </button>
+
+          {/* Settings Button */}
+          <button
+            onClick={() => setActiveTabModal("settings")}
+            className="px-3 py-1.5 bg-[#262D3D] hover:bg-[#323B4E] rounded-xl text-xs font-bold text-white transition-all flex items-center gap-1 border border-[#3A455C]"
+            title="POS Settings & Print Config"
+          >
+            <span>⚙️ Settings</span>
           </button>
         </div>
       </header>
 
-      {/* Validation Error Banner */}
-      {validationError && (
-        <div className="bg-red-600 text-white text-xs font-bold px-6 py-2 flex items-center justify-between shadow-md print:hidden flex-shrink-0">
-          <span>{validationError}</span>
-          <button onClick={() => setValidationError("")} className="font-extrabold px-2">✕</button>
-        </div>
-      )}
-
-      {/* Editing WhatsApp Banner */}
-      {editingOrderId && (
-        <div className="bg-[#eb660c] text-white text-xs font-extrabold px-6 py-2 flex items-center justify-between shadow-md print:hidden flex-shrink-0">
-          <span>✏️ Editing WhatsApp Order #{editingOrderId} — Make adjustments then tap "Approve & Print"</span>
-          <button
-            onClick={() => {
-              setEditingOrderId(null);
-              setTicketItems([]);
-              setSelectedChannel(null);
-            }}
-            className="underline text-xs text-white hover:text-gray-200"
-          >
-            Cancel Editing
-          </button>
-        </div>
-      )}
-
-      {/* DUAL-PANE TABLET MAIN AREA */}
-      <div className="flex-1 min-h-0 flex overflow-hidden print:hidden">
-        {/* LEFT PANE: PRODUCTS & CATEGORIES (65% width) */}
-        <div className="w-[65%] h-full flex flex-col bg-[#12151C] border-r border-[#262D3D] min-h-0 overflow-hidden">
-          {/* Category Tabs (No search bar) */}
-          <div className="p-4 bg-[#181C24] border-b border-[#262D3D] flex items-center gap-2 overflow-x-auto no-scrollbar flex-shrink-0">
-            <button
-              onClick={() => setSelectedCategory("All")}
-              className={`px-4 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
-                selectedCategory === "All"
-                  ? "bg-[#eb660c] text-white shadow-md"
-                  : "bg-[#0F1115] text-gray-400 hover:text-white border border-[#262D3D]"
-              }`}
-            >
-              All Items
-            </button>
-            {categories.map((cat) => (
-              <button
-                key={cat.id}
-                onClick={() => setSelectedCategory(cat.name)}
-                className={`px-4 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
-                  selectedCategory === cat.name
-                    ? "bg-[#eb660c] text-white shadow-md"
-                    : "bg-[#0F1115] text-gray-400 hover:text-white border border-[#262D3D]"
-                }`}
-              >
-                {cat.name}
-              </button>
-            ))}
+      {/* MAIN CONTAINER: 65% Left Product Area / 35% Right Ticket & Checkout */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* LEFT PANEL: PRODUCTS & CATEGORIES (65% Width) */}
+        <div className="w-[65%] flex flex-col h-full overflow-hidden border-r border-[#262D3D]">
+          {/* CATEGORIES BAR */}
+          <div className="px-4 py-2.5 bg-[#14171F] border-b border-[#262D3D] flex items-center gap-2 overflow-x-auto no-scrollbar flex-shrink-0">
+            {availableCategoryList.map((cat) => {
+              const isSelected = selectedCategory === cat;
+              return (
+                <button
+                  key={cat}
+                  onClick={() => setSelectedCategory(cat)}
+                  className={`px-4 py-2 rounded-xl text-xs font-extrabold whitespace-nowrap transition-all flex items-center gap-1.5 shrink-0 border ${
+                    isSelected
+                      ? "bg-[#eb660c] text-white border-[#eb660c] shadow-md shadow-[#eb660c]/20 scale-102"
+                      : "bg-[#181C24] text-gray-300 border-[#262D3D] hover:bg-[#262D3D] hover:text-white"
+                  }`}
+                >
+                  <span>{cat}</span>
+                </button>
+              );
+            })}
           </div>
 
-          {/* Product Grid (Compact, Fixed Card Height, Price between Options & Add) */}
-          <div className="flex-1 min-h-0 overflow-y-auto p-4 grid grid-cols-3 gap-3 align-content-start">
-            {filteredProducts.map((product) => (
-              <div
-                key={product.id}
-                onClick={() => handleOpenCustomization(product)}
-                className="h-[115px] bg-[#181C24] hover:bg-[#202632] border border-[#262D3D] hover:border-[#eb660c] rounded-xl p-3 flex flex-col justify-between cursor-pointer transition-all active:scale-95 shadow-sm group select-none"
-              >
-                <div>
-                  <h3 className="font-extrabold text-sm text-white group-hover:text-[#eb660c] transition-colors line-clamp-2 leading-snug">
-                    {product.name}
-                  </h3>
-                </div>
+          {/* COMPACT PRODUCT GRID (4 Columns on tablet) */}
+          <div className="flex-1 overflow-y-auto p-3.5 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5 align-content-start">
+            {filteredProducts.length === 0 ? (
+              <div className="col-span-full py-16 text-center text-gray-400 font-medium text-sm">
+                No products found in this category.
+              </div>
+            ) : (
+              filteredProducts.map((p) => {
+                const hasOptions = p.customizations && p.customizations.length > 0;
+                const optionsCount = hasOptions
+                  ? new Set(p.customizations.map((c) => c.option_group_name || c.name)).size || p.customizations.length
+                  : 0;
 
-                <div className="flex items-center justify-between border-t border-[#262D3D] pt-2">
-                  <span className="text-[11px] text-gray-400 font-medium truncate max-w-[33%]">
-                    {product.customizations?.length > 0
-                      ? `${product.customizations.length} opts`
-                      : "Standard"}
-                  </span>
-                  <span className="text-sm font-black text-white px-1">
-                    ${(product.unit_price_usd || 0).toFixed(2)}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleOpenCustomization(product);
-                    }}
-                    className="px-2.5 py-1 bg-[#eb660c] group-hover:bg-[#d55909] text-white rounded-lg text-xs font-bold shadow cursor-pointer"
+                return (
+                  <div
+                    key={p.id}
+                    onClick={() => handleQuickAddProduct(p)}
+                    className="bg-[#181C24] hover:bg-[#1f2532] border border-[#262D3D] hover:border-[#eb660c]/50 rounded-xl p-3 flex flex-col justify-between transition-all cursor-pointer group shadow-sm h-[105px] relative overflow-hidden"
                   >
-                    + Add
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* RIGHT PANE: ACTIVE TICKET CART & CHECKOUT (35% width - Independent 100% Height) */}
-        <div className="w-[35%] h-full flex flex-col bg-[#181C24] border-l border-[#262D3D] min-h-0 overflow-hidden relative">
-          {/* Order Header / Customer Info (Fixed Top - Z-30 for dropdown overflow) */}
-          <div className="p-3 border-b border-[#262D3D] bg-[#14171F] flex-shrink-0 relative z-30">
-
-            {/* Order Type Buttons (Default Delivery) */}
-            <div className="grid grid-cols-2 gap-2 mb-3">
-              <button
-                onClick={() => {
-                  setOrderType("delivery");
-                }}
-                className={`py-2 rounded-xl text-xs font-bold border transition-all ${
-                  orderType === "delivery"
-                    ? "bg-[#eb660c] text-white border-[#eb660c]"
-                    : "bg-[#0F1115] text-gray-400 border-[#262D3D] hover:text-white"
-                }`}
-              >
-                🚚 Delivery
-              </button>
-              <button
-                onClick={() => {
-                  setOrderType("pickup");
-                  setDeliveryFee(0);
-                }}
-                className={`py-2 rounded-xl text-xs font-bold border transition-all ${
-                  orderType === "pickup"
-                    ? "bg-[#eb660c] text-white border-[#eb660c]"
-                    : "bg-[#0F1115] text-gray-400 border-[#262D3D] hover:text-white"
-                }`}
-              >
-                🛍️ Pickup
-              </button>
-            </div>
-
-            {/* Customer Inputs with Autocomplete */}
-            <div className="space-y-2 relative">
-              <div className="grid grid-cols-2 gap-2">
-                <input
-                  type="text"
-                  value={customerName}
-                  onChange={(e) => {
-                    setCustomerName(e.target.value);
-                    handleCustomerSearch(e.target.value);
-                  }}
-                  onFocus={() => {
-                    if (customerName.length >= 2) handleCustomerSearch(customerName);
-                  }}
-                  placeholder="Customer Name 🔍"
-                  className="px-3 py-1.5 bg-[#0F1115] border border-[#262D3D] rounded-lg text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#eb660c]"
-                />
-                <input
-                  type="tel"
-                  value={customerPhone}
-                  onChange={(e) => {
-                    setCustomerPhone(e.target.value);
-                    handleCustomerSearch(e.target.value);
-                  }}
-                  onFocus={() => {
-                    if (customerPhone.length >= 2) handleCustomerSearch(customerPhone);
-                  }}
-                  placeholder="Phone Number 🔍"
-                  className="px-3 py-1.5 bg-[#0F1115] border border-[#262D3D] rounded-lg text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#eb660c]"
-                />
-              </div>
-
-              {orderType === "delivery" && (
-                <input
-                  type="text"
-                  value={deliveryAddress}
-                  onChange={(e) => setDeliveryAddress(e.target.value)}
-                  placeholder="Delivery Address & Landmarks"
-                  className="w-full px-3 py-1.5 bg-[#0F1115] border border-[#262D3D] rounded-lg text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#eb660c]"
-                />
-              )}
-
-              {/* Autocomplete Dropdown Menu */}
-              {showCustomerDropdown && customerSearchResults.length > 0 && (
-                <div className="absolute left-0 right-0 top-full mt-1 bg-[#181C24] border border-[#eb660c]/60 rounded-xl shadow-2xl z-50 max-h-56 overflow-y-auto divide-y divide-[#262D3D]">
-                  <div className="px-3 py-1.5 text-[10px] font-bold text-[#eb660c] bg-[#eb660c]/10 flex justify-between items-center sticky top-0 bg-[#181C24] z-10 border-b border-[#262D3D]">
-                    <span>Found Customers (Tap to select)</span>
-                    <button
-                      type="button"
-                      onClick={() => setShowCustomerDropdown(false)}
-                      className="text-gray-400 hover:text-white font-bold"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                  {customerSearchResults.map((c, i) => (
-                    <div
-                      key={i}
-                      onClick={() => handleSelectCustomer(c)}
-                      className="p-2.5 hover:bg-[#202632] cursor-pointer transition-colors text-xs flex flex-col gap-0.5"
-                    >
-                      <div className="flex justify-between items-center font-extrabold text-white">
-                        <span>👤 {c.customer_name || "Customer"}</span>
-                        <span className="text-[#eb660c] font-mono text-[11px]">{c.customer_phone || ""}</span>
+                    <div>
+                      <div className="flex items-start justify-between gap-1">
+                        <h4 className="font-extrabold text-xs text-white group-hover:text-[#eb660c] transition-colors line-clamp-1 leading-snug">
+                          {p.name}
+                        </h4>
                       </div>
-                      {c.delivery_address && (
-                        <span className="text-[10px] text-gray-400 truncate max-w-full">
-                          📍 {c.delivery_address}
+                      {hasOptions && (
+                        <span className="inline-block mt-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#eb660c]/15 text-[#eb660c] border border-[#eb660c]/30">
+                          {optionsCount} option{optionsCount > 1 ? "s" : ""}
                         </span>
                       )}
                     </div>
-                  ))}
-                </div>
+
+                    <div className="flex items-center justify-between mt-auto pt-1.5 border-t border-[#262D3D]/60">
+                      <span className="font-black text-xs text-[#eb660c]">
+                        ${(p.unit_price_usd || 0).toFixed(2)}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleQuickAddProduct(p);
+                        }}
+                        className="px-2.5 py-1 bg-[#eb660c] group-hover:bg-[#d55909] text-white rounded-lg text-[11px] font-black shadow-sm transition-all active:scale-95 flex items-center gap-1"
+                      >
+                        + Add
+                      </button>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        {/* RIGHT PANEL: TICKET CART & CHECKOUT (35% Width) */}
+        <div className="w-[35%] flex flex-col h-full bg-[#14171F] overflow-hidden flex-shrink-0">
+          {/* TICKET HEADER & ORDER TYPE SELECTOR */}
+          <div className="p-3.5 border-b border-[#262D3D] space-y-2.5 bg-[#181C24] flex-shrink-0">
+            {/* Order Type Buttons */}
+            <div className="grid grid-cols-3 gap-1.5 p-1 bg-[#0F1115] rounded-xl border border-[#262D3D]">
+              <button
+                type="button"
+                onClick={() => setOrderType("pickup")}
+                className={`py-2 rounded-lg text-xs font-black transition-all flex items-center justify-center gap-1 ${
+                  orderType === "pickup"
+                    ? "bg-[#eb660c] text-white shadow-md shadow-[#eb660c]/20"
+                    : "text-gray-400 hover:text-white hover:bg-[#181C24]"
+                }`}
+              >
+                🛍 Pickup
+              </button>
+              <button
+                type="button"
+                onClick={() => setOrderType("delivery")}
+                className={`py-2 rounded-lg text-xs font-black transition-all flex items-center justify-center gap-1 ${
+                  orderType === "delivery"
+                    ? "bg-[#eb660c] text-white shadow-md shadow-[#eb660c]/20"
+                    : "text-gray-400 hover:text-white hover:bg-[#181C24]"
+                }`}
+              >
+                🛵 Delivery
+              </button>
+              <button
+                type="button"
+                onClick={() => setOrderType("dine_in")}
+                className={`py-2 rounded-lg text-xs font-black transition-all flex items-center justify-center gap-1 ${
+                  orderType === "dine_in"
+                    ? "bg-[#eb660c] text-white shadow-md shadow-[#eb660c]/20"
+                    : "text-gray-400 hover:text-white hover:bg-[#181C24]"
+                }`}
+              >
+                🪑 In-Store
+              </button>
+            </div>
+
+            {/* Order Source Chip & Hold Action */}
+            <div className="flex items-center justify-between text-xs">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] font-bold text-gray-400">Source:</span>
+                <select
+                  value={selectedChannel || "POS"}
+                  onChange={(e) => setSelectedChannel(e.target.value === "POS" ? null : e.target.value)}
+                  className="bg-[#0F1115] border border-[#262D3D] rounded-lg px-2 py-1 text-[11px] font-extrabold text-[#eb660c] focus:outline-none"
+                >
+                  <option value="POS">POS (In-Store)</option>
+                  <option value="WhatsApp">WhatsApp</option>
+                  <option value="Toters">Toters</option>
+                  <option value="NokNok">NokNok</option>
+                  <option value="App">App</option>
+                </select>
+              </div>
+
+              {ticketItems.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleHoldOrder}
+                  disabled={isSubmitting}
+                  className="px-2.5 py-1 bg-amber-950/50 hover:bg-amber-900/60 text-amber-300 border border-amber-500/40 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1"
+                >
+                  ⏸️ Hold Ticket
+                </button>
               )}
             </div>
+
+            {/* CONTEXTUAL CUSTOMER FIELDS */}
+            {orderType !== "dine_in" && (
+              <div className="space-y-2 pt-1 border-t border-[#262D3D]/60 relative">
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="text"
+                    placeholder="Customer Name"
+                    value={customerName}
+                    onChange={(e) => setCustomerName(e.target.value)}
+                    className="w-full bg-[#0F1115] border border-[#262D3D] rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-gray-500 font-medium focus:outline-none focus:border-[#eb660c]"
+                  />
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder="Phone Number"
+                      value={customerPhone}
+                      onChange={(e) => {
+                        setCustomerPhone(e.target.value);
+                        handleCustomerSearch(e.target.value);
+                      }}
+                      className="w-full bg-[#0F1115] border border-[#262D3D] rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-gray-500 font-medium focus:outline-none focus:border-[#eb660c]"
+                    />
+                    {showCustomerDropdown && customerSearchResults.length > 0 && (
+                      <div className="absolute z-30 left-0 right-0 top-full mt-1 bg-[#181C24] border border-[#262D3D] rounded-xl shadow-xl max-h-40 overflow-y-auto">
+                        {customerSearchResults.map((c) => (
+                          <div
+                            key={c.id}
+                            onClick={() => handleSelectCustomer(c)}
+                            className="p-2 hover:bg-[#262D3D] cursor-pointer text-xs border-b border-[#262D3D] last:border-0"
+                          >
+                            <div className="font-bold text-white">{c.customer_name || "Customer"}</div>
+                            <div className="text-[11px] text-gray-400">{c.customer_phone} {c.delivery_address ? `• ${c.delivery_address}` : ""}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {orderType === "delivery" && (
+                  <input
+                    type="text"
+                    placeholder="Delivery Address & Landmark / Notes"
+                    value={deliveryAddress}
+                    onChange={(e) => setDeliveryAddress(e.target.value)}
+                    className="w-full bg-[#0F1115] border border-[#262D3D] rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-gray-500 font-medium focus:outline-none focus:border-[#eb660c]"
+                  />
+                )}
+              </div>
+            )}
           </div>
 
-          {/* Ticket Items List (Scrollable Middle Section) */}
-          <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-2">
+          {/* TICKET ITEMS LIST */}
+          <div className="flex-1 overflow-y-auto p-3 space-y-2">
             {ticketItems.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center text-gray-500 gap-2 py-12">
-                <svg className="w-12 h-12 stroke-current" fill="none" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
-                </svg>
-                <p className="text-xs font-semibold">Ticket is empty</p>
-                <p className="text-[10px] text-gray-600">Select items from the left grid to add</p>
+              <div className="h-full flex flex-col items-center justify-center p-6 text-center text-gray-400 border-2 border-dashed border-[#262D3D] rounded-2xl my-2">
+                <span className="text-3xl mb-2 opacity-50">🛒</span>
+                <h4 className="font-extrabold text-sm text-gray-300">Ticket is empty</h4>
+                <p className="text-xs text-gray-500 mt-1 max-w-[200px]">Tap a product from the catalog to start an order.</p>
               </div>
             ) : (
-              ticketItems.map((item, idx) => (
-                <div
-                  key={idx}
-                  className="bg-[#0F1115] border border-[#262D3D] rounded-xl p-3 flex flex-col gap-2 relative group"
-                >
+              ticketItems.map((item, index) => (
+                <div key={index} className="bg-[#181C24] border border-[#262D3D] rounded-xl p-2.5 space-y-1.5 shadow-sm">
                   <div className="flex items-start justify-between">
-                    <div>
-                      <h4 className="font-bold text-sm text-white">{item.name}</h4>
-                      <div className="text-xs text-gray-400">
-                        ${item.unit_price.toFixed(2)} each
+                    <div className="flex-1 min-w-0 pr-2">
+                      <h5 className="font-extrabold text-xs text-white truncate">{item.name}</h5>
+                      <div className="text-xs text-[#eb660c] font-black mt-0.5">
+                        ${(item.unit_price * item.qty).toFixed(2)}
                       </div>
                     </div>
-                    <span className="font-black text-sm text-white">
-                      ${(item.unit_price * item.qty).toFixed(2)}
-                    </span>
+                    <button
+                      onClick={() => handlePromptVoid(index)}
+                      className="text-gray-400 hover:text-red-400 p-1 text-xs transition-colors"
+                      title="Remove Item"
+                    >
+                      🗑
+                    </button>
                   </div>
 
-                  {/* Options & Notes */}
-                  {item.selectedCustomizations?.length > 0 && (
-                    <div className="text-[11px] text-[#eb660c] font-medium bg-[#eb660c]/10 px-2 py-1 rounded">
-                      {item.selectedCustomizations.map((c) => c.ingredient || c.name).join(", ")}
+                  {item.selectedCustomizations && item.selectedCustomizations.length > 0 && (
+                    <div className="flex flex-wrap gap-1 pt-0.5">
+                      {item.selectedCustomizations.map((c, i) => (
+                        <span key={i} className="text-[10px] bg-[#0F1115] text-gray-300 px-2 py-0.5 rounded border border-[#262D3D]">
+                          {typeof c === "string" ? c : (c.ingredient || c.name || "")}
+                        </span>
+                      ))}
                     </div>
                   )}
 
-                  {item.note && (
-                    <div className="text-[11px] text-amber-400 bg-amber-400/10 px-2 py-1 rounded flex items-center gap-1 font-medium">
-                      <span>✏️</span> {item.note}
-                    </div>
-                  )}
+                  {item.note && <p className="text-[10px] text-amber-300 italic">Note: {item.note}</p>}
 
-                  {/* Controls Bar */}
-                  <div className="flex items-center justify-between border-t border-[#262D3D] pt-2 mt-1">
-                    <div className="flex items-center gap-2">
+                  <div className="flex items-center justify-between pt-1 border-t border-[#262D3D]/50">
+                    <button
+                      onClick={() => handleOpenCustomization(products.find((p) => p.id === item.product_id) || { id: item.product_id, name: item.name, unit_price_usd: item.base_price }, index)}
+                      className="text-[11px] font-bold text-gray-400 hover:text-white underline"
+                    >
+                      Edit Options
+                    </button>
+                    <div className="flex items-center gap-1 bg-[#0F1115] border border-[#262D3D] rounded-lg p-0.5">
                       <button
-                        onClick={() => handleUpdateQty(idx, -1)}
-                        className="w-7 h-7 rounded-lg bg-[#262D3D] hover:bg-[#323B4E] text-white font-bold text-sm flex items-center justify-center"
+                        onClick={() => handleUpdateQty(index, -1)}
+                        className="w-6 h-6 rounded bg-[#262D3D] hover:bg-[#323B4E] font-extrabold text-white text-xs flex items-center justify-center transition-all active:scale-95"
                       >
                         -
                       </button>
-                      <span className="font-extrabold text-sm text-white px-1">
-                        {item.qty}
-                      </span>
+                      <span className="w-6 text-center font-extrabold text-xs text-white">{item.qty}</span>
                       <button
-                        onClick={() => handleUpdateQty(idx, 1)}
-                        className="w-7 h-7 rounded-lg bg-[#262D3D] hover:bg-[#323B4E] text-white font-bold text-sm flex items-center justify-center"
+                        onClick={() => handleUpdateQty(index, 1)}
+                        className="w-6 h-6 rounded bg-[#262D3D] hover:bg-[#323B4E] font-extrabold text-white text-xs flex items-center justify-center transition-all active:scale-95"
                       >
                         +
-                      </button>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => {
-                          const prod = products.find((p) => p.id === item.product_id);
-                          if (prod) handleOpenCustomization(prod, idx);
-                        }}
-                        className="text-[11px] font-bold text-gray-400 hover:text-white px-2 py-1 bg-[#181C24] border border-[#262D3D] rounded-md"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handlePromptVoid(idx)}
-                        className="text-[11px] font-bold text-red-400 hover:text-red-300 px-2 py-1 bg-red-500/10 rounded-md"
-                      >
-                        Void
                       </button>
                     </div>
                   </div>
@@ -1492,803 +1207,395 @@ export default function TabletPOSPage() {
             )}
           </div>
 
-          {/* Ticket Footer / Summary (Fixed Bottom - Side-by-Side Amounts & Actions) */}
-          <div className="p-3 border-t border-[#262D3D] bg-[#14171F] flex-shrink-0 shadow-2xl">
-            <div className="flex items-center justify-between gap-3">
-              {/* LEFT SIDE: Amounts Breakdown */}
-              <div className="flex-1 space-y-1 text-xs text-gray-400">
-                <div className="flex justify-between gap-2">
-                  <span>Subtotal</span>
-                  <span className="text-white font-bold">${subtotal.toFixed(2)}</span>
-                </div>
-                {/* Interactive Editable Discount Row (Default 15%, Editable by Cashier) */}
-                <div className="flex justify-between items-center gap-2 text-[#eb660c] font-extrabold text-xs">
-                  <div className="flex items-center gap-1.5">
-                    <span>Discount</span>
-                    <div className="flex items-center bg-[#0F1115] border border-[#262D3D] focus-within:border-[#eb660c] rounded px-1.5 py-0.5">
-                      <input
-                        type="number"
-                        min="0"
-                        max="100"
-                        step="1"
-                        value={
-                          discountType === "toters" ? totersDiscountPercent :
-                          discountType === "noknok" ? noknokDiscountPercent :
-                          discountValInput
-                        }
-                        onChange={(e) => {
-                          const val = Math.max(0, parseFloat(e.target.value) || 0);
-                          setDiscountValInput(val);
-                          setDiscountType("custom");
-                          setDiscountIsPercent(true);
-                        }}
-                        className="w-10 bg-transparent text-right text-xs font-black text-[#eb660c] outline-none"
-                      />
-                      <span className="text-[10px] text-[#eb660c] font-extrabold ml-0.5">%</span>
-                    </div>
+          {/* CHECKOUT SUMMARY & PAY & PRINT AREA */}
+          <div className="p-3.5 border-t border-[#262D3D] bg-[#181C24] space-y-2.5 flex-shrink-0">
+            {/* Validation Alert */}
+            {validationError && (
+              <div className="bg-red-950/80 border border-red-500/50 text-red-200 text-xs px-3 py-1.5 rounded-lg flex items-center justify-between">
+                <span>{validationError}</span>
+                <button onClick={() => setValidationError("")} className="font-bold px-1">✕</button>
+              </div>
+            )}
+
+            {/* Discount & Delivery Fee Quick Inputs */}
+            <div className="space-y-1.5 text-xs">
+              {/* Discount Row */}
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-gray-400">Discount:</span>
+                {discountType !== "none" && discountAmount > 0 ? (
+                  <div className="flex items-center gap-1.5 bg-amber-950/50 border border-amber-500/40 px-2 py-0.5 rounded-lg text-amber-300 text-xs font-extrabold">
+                    <span>{discountLabel} (-${discountAmount.toFixed(2)})</span>
+                    <button
+                      onClick={() => {
+                        setDiscountType("none");
+                        setDiscountValInput(10);
+                      }}
+                      className="hover:text-white font-bold ml-1"
+                    >
+                      ✕
+                    </button>
                   </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setShowDiscountModal(true)}
+                    className="text-xs font-extrabold text-[#eb660c] hover:underline flex items-center gap-1"
+                  >
+                    + Discount
+                  </button>
+                )}
+              </div>
+
+              {/* Delivery Fee Row (Only for Delivery orders) */}
+              {orderType === "delivery" && (
+                <div className="flex items-center justify-between pt-1 border-t border-[#262D3D]/40">
+                  <span className="font-bold text-gray-400">Delivery Fee:</span>
+                  <div className="flex items-center gap-1">
+                    {[0, 1, 2, 3].map((fee) => (
+                      <button
+                        key={fee}
+                        type="button"
+                        onClick={() => setDeliveryFee(fee)}
+                        className={`px-2 py-0.5 rounded text-[11px] font-extrabold transition-all ${
+                          Number(deliveryFee) === fee
+                            ? "bg-[#eb660c] text-white"
+                            : "bg-[#0F1115] border border-[#262D3D] text-gray-300 hover:bg-[#262D3D]"
+                        }`}
+                      >
+                        ${fee}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const val = prompt("Custom Delivery Fee ($ USD):", deliveryFee);
+                        if (val !== null && !isNaN(parseFloat(val))) setDeliveryFee(parseFloat(val));
+                      }}
+                      className={`px-2 py-0.5 rounded text-[11px] font-extrabold transition-all ${
+                        ![0, 1, 2, 3].includes(Number(deliveryFee))
+                          ? "bg-[#eb660c] text-white"
+                          : "bg-[#0F1115] border border-[#262D3D] text-gray-300 hover:bg-[#262D3D]"
+                      }`}
+                    >
+                      Custom
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Calculations Breakdown */}
+            <div className="space-y-1 pt-1.5 border-t border-[#262D3D] text-xs font-semibold text-gray-300">
+              <div className="flex justify-between">
+                <span className="text-gray-400">Subtotal</span>
+                <span>${subtotal.toFixed(2)}</span>
+              </div>
+              {discountAmount > 0 && (
+                <div className="flex justify-between text-amber-400">
+                  <span>Discount ({discountLabel})</span>
                   <span>-${discountAmount.toFixed(2)}</span>
                 </div>
-
-                {/* Interactive Editable Delivery Fee Row (Listed directly under Discount, editable by cashier) */}
-                <div className="flex justify-between items-center gap-2 text-xs font-bold text-gray-300">
-                  <div className="flex items-center gap-1.5">
-                    <span>🛵 Delivery</span>
-                    <div className="flex items-center bg-[#0F1115] border border-[#262D3D] focus-within:border-[#eb660c] rounded px-1.5 py-0.5">
-                      <span className="text-[10px] text-[#25D366] font-extrabold mr-0.5">$</span>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.5"
-                        value={deliveryFee}
-                        onChange={(e) => {
-                          const val = Math.max(0, parseFloat(e.target.value) || 0);
-                          setDeliveryFee(val);
-                        }}
-                        className="w-12 bg-transparent text-right text-xs font-black text-[#25D366] outline-none"
-                      />
-                    </div>
-                  </div>
-                  <span className="text-[#25D366] font-extrabold">+${deliveryFee.toFixed(2)}</span>
+              )}
+              {orderType === "delivery" && Number(deliveryFee) > 0 && (
+                <div className="flex justify-between text-blue-400">
+                  <span>Delivery Fee</span>
+                  <span>+${(Number(deliveryFee) || 0).toFixed(2)}</span>
                 </div>
-                {(!["Toters", "NokNok"].includes(selectedChannel)) && (
-                  <div className="flex justify-between items-center gap-2 text-xs text-gray-400">
-                    <span>Payment</span>
-                    <div className="flex bg-[#0F1115] p-0.5 rounded border border-[#262D3D]">
-                      <button
-                        type="button"
-                        onClick={() => setSelectedPaymentMethod("Cash")}
-                        className={`px-2 py-0.5 text-[10px] font-bold rounded transition-all ${
-                          selectedPaymentMethod === "Cash" ? "bg-[#eb660c] text-white shadow" : "text-gray-400 hover:text-white"
-                        }`}
-                      >
-                        💵 Cash
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedPaymentMethod("Whish")}
-                        className={`px-2 py-0.5 text-[10px] font-bold rounded transition-all ${
-                          selectedPaymentMethod === "Whish" ? "bg-purple-600 text-white shadow" : "text-gray-400 hover:text-white"
-                        }`}
-                      >
-                        🟣 Whish
-                      </button>
-                    </div>
-                  </div>
-                )}
-                <div className="flex justify-between gap-2 pt-1 border-t border-[#262D3D] text-sm font-black text-white">
-                  <span>Total</span>
-                  <span className="text-[#eb660c] text-base">${total.toFixed(2)}</span>
-                </div>
-              </div>
-
-              {/* RIGHT SIDE: Action Buttons */}
-              <div className="flex flex-col gap-2 min-w-[140px]">
-                <button
-                  onClick={handleHoldOrder}
-                  disabled={ticketItems.length === 0 || isSubmitting}
-                  className="py-2 px-3 bg-[#262D3D] hover:bg-[#323B4E] disabled:opacity-50 text-white rounded-xl font-bold text-xs transition-all whitespace-nowrap"
-                >
-                  ⏸️ Hold Ticket
-                </button>
-                <button
-                  onClick={() => {
-                    if (!validateOrder()) return;
-                    // For Toters, NokNok, or Editing existing orders, bypass modal and finalize directly
-                    if (selectedChannel === "Toters" || selectedChannel === "NokNok" || editingOrderId) {
-                      handleFinalizePayment();
-                    } else {
-                      setActiveTabModal("payment");
-                    }
-                  }}
-                  disabled={ticketItems.length === 0 || isSubmitting}
-                  className="py-2.5 px-3 bg-[#eb660c] hover:bg-[#d55909] disabled:opacity-50 text-white rounded-xl font-extrabold text-xs transition-all shadow-md whitespace-nowrap"
-                >
-                  {isSubmitting ? "Processing..." : (editingOrderId ? "✅ Approve & Print" : "💳 Pay & Print")}
-                </button>
-              </div>
+              )}
             </div>
+
+            {/* TOTAL DISPLAY */}
+            <div className="flex items-center justify-between pt-2 border-t border-[#262D3D]">
+              <span className="font-extrabold text-sm uppercase text-gray-300 tracking-wider">TOTAL</span>
+              <span className="font-black text-2xl text-[#eb660c]">
+                ${total.toFixed(2)}
+              </span>
+            </div>
+
+            {/* Payment Method Toggle Buttons */}
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setSelectedPaymentMethod("Cash")}
+                className={`py-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 border transition-all ${
+                  selectedPaymentMethod === "Cash"
+                    ? "bg-emerald-700 text-white border-emerald-500 shadow-md shadow-emerald-700/20"
+                    : "bg-[#0F1115] text-gray-300 border-[#262D3D] hover:bg-[#262D3D]"
+                }`}
+              >
+                💵 Cash
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedPaymentMethod("Whish")}
+                className={`py-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 border transition-all ${
+                  selectedPaymentMethod === "Whish"
+                    ? "bg-purple-700 text-white border-purple-500 shadow-md shadow-purple-700/20"
+                    : "bg-[#0F1115] text-gray-300 border-[#262D3D] hover:bg-[#262D3D]"
+                }`}
+              >
+                🟣 Whish
+              </button>
+            </div>
+
+            {/* PRIMARY PAY & PRINT BUTTON */}
+            <button
+              type="button"
+              onClick={handleFinalizePayment}
+              disabled={ticketItems.length === 0 || isSubmitting}
+              className={`w-full py-3.5 rounded-xl text-sm font-black tracking-wider flex items-center justify-center gap-2 transition-all shadow-lg ${
+                ticketItems.length === 0 || isSubmitting
+                  ? "bg-gray-700 text-gray-500 cursor-not-allowed border border-gray-600"
+                  : "bg-[#eb660c] hover:bg-[#d55909] text-white active:scale-98 shadow-[#eb660c]/20 border border-[#eb660c] animate-pulse"
+              }`}
+            >
+              {isSubmitting ? "PROCESSING..." : `PAY & PRINT — $${total.toFixed(2)}`}
+            </button>
           </div>
         </div>
       </div>
 
-      {/* CUSTOMIZATION & NOTES MODAL */}
+      {/* DISCOUNT MODAL */}
+      {showDiscountModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:hidden">
+          <div className="bg-[#181C24] border border-[#262D3D] rounded-2xl w-full max-w-sm p-5 space-y-4 text-white shadow-2xl">
+            <div className="flex justify-between items-center border-b border-[#262D3D] pb-3">
+              <h3 className="font-extrabold text-base">Apply Discount Presets</h3>
+              <button onClick={() => setShowDiscountModal(false)} className="text-gray-400 hover:text-white font-bold">✕</button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 text-xs font-bold">
+              <button
+                onClick={() => { setDiscountType("5%"); setShowDiscountModal(false); }}
+                className="p-3 bg-[#0F1115] border border-[#262D3D] hover:border-[#eb660c] rounded-xl text-center text-white"
+              >
+                5% Off
+              </button>
+              <button
+                onClick={() => { setDiscountType("10%"); setShowDiscountModal(false); }}
+                className="p-3 bg-[#0F1115] border border-[#262D3D] hover:border-[#eb660c] rounded-xl text-center text-white"
+              >
+                10% Off
+              </button>
+              <button
+                onClick={() => { setDiscountType("15%"); setShowDiscountModal(false); }}
+                className="p-3 bg-[#0F1115] border border-[#262D3D] hover:border-[#eb660c] rounded-xl text-center text-white"
+              >
+                15% Off
+              </button>
+              <button
+                onClick={() => { setDiscountType("wa15"); setShowDiscountModal(false); }}
+                className="p-3 bg-[#0F1115] border border-[#262D3D] hover:border-[#eb660c] rounded-xl text-center text-emerald-400"
+              >
+                WhatsApp 15%
+              </button>
+              <button
+                onClick={() => { setDiscountType("toters"); setShowDiscountModal(false); }}
+                className="p-3 bg-[#0F1115] border border-[#262D3D] hover:border-[#eb660c] rounded-xl text-center text-teal-300"
+              >
+                Toters ({totersDiscountPercent}%)
+              </button>
+              <button
+                onClick={() => { setDiscountType("noknok"); setShowDiscountModal(false); }}
+                className="p-3 bg-[#0F1115] border border-[#262D3D] hover:border-[#eb660c] rounded-xl text-center text-rose-300"
+              >
+                NokNok ({noknokDiscountPercent}%)
+              </button>
+            </div>
+
+            <div className="pt-2 border-t border-[#262D3D] space-y-2">
+              <span className="text-xs font-bold text-gray-400 block">Custom Discount Value:</span>
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  value={discountValInput}
+                  onChange={(e) => setDiscountValInput(e.target.value)}
+                  className="flex-1 bg-[#0F1115] border border-[#262D3D] rounded-xl px-3 py-2 text-xs text-white font-bold"
+                />
+                <button
+                  onClick={() => setDiscountIsPercent(!discountIsPercent)}
+                  className="px-3 py-2 bg-[#262D3D] rounded-xl text-xs font-extrabold text-amber-400"
+                >
+                  {discountIsPercent ? "%" : "$ USD"}
+                </button>
+                <button
+                  onClick={() => { setDiscountType("custom"); setShowDiscountModal(false); }}
+                  className="px-4 py-2 bg-[#eb660c] text-white rounded-xl text-xs font-black"
+                >
+                  Apply
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TABLET-FRIENDLY MODIFIER MODAL */}
       {activeTabModal === "customization" && currentProduct && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:hidden">
-          <div className="bg-[#181C24] border border-[#262D3D] rounded-2xl w-[600px] max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
-            {/* Modal Header */}
-            <div className="p-4 border-b border-[#262D3D] flex justify-between items-center bg-[#14171F]">
+          <div className="bg-[#181C24] border border-[#262D3D] rounded-2xl w-full max-w-lg p-6 space-y-5 text-white shadow-2xl max-h-[90vh] flex flex-col">
+            <div className="flex justify-between items-center border-b border-[#262D3D] pb-3 flex-shrink-0">
               <div>
-                <h3 className="font-extrabold text-lg text-white">{currentProduct.name}</h3>
-                <span className="text-xs text-[#eb660c] font-bold">${(currentProduct.unit_price_usd || 0).toFixed(2)} base</span>
+                <h3 className="font-extrabold text-base text-white">{currentProduct.name}</h3>
+                <span className="text-xs font-bold text-[#eb660c]">${(currentProduct.unit_price_usd || 0).toFixed(2)}</span>
               </div>
               <button
-                onClick={() => setActiveTabModal(null)}
-                className="w-8 h-8 rounded-lg bg-[#262D3D] text-gray-400 hover:text-white flex items-center justify-center font-bold"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Options Body */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
-              {customizationError && (
-                <div className="bg-red-600/90 text-white text-xs font-bold px-3 py-2 rounded-xl flex justify-between items-center animate-bounce">
-                  <span>{customizationError}</span>
-                  <button onClick={() => setCustomizationError("")} className="font-extrabold px-1">✕</button>
-                </div>
-              )}
-
-              {currentProduct.customizations?.length > 0 ? (
-                Object.entries(
-                  currentProduct.customizations.reduce((acc, c) => {
-                    const group = c.option_group_name || (c.customization_type === "remove" ? "Remove Ingredients" : "Custom Options");
-                    if (!acc[group]) acc[group] = [];
-                    acc[group].push(c);
-                    return acc;
-                  }, {})
-                ).map(([groupName, options]) => {
-                  const isMultiSelect = options[0]?.is_multi_select || groupName === "Remove Ingredients";
-                  const isReq = options[0]?.is_required || groupName.toLowerCase().includes("drink");
-                  return (
-                    <div key={groupName} className={`bg-[#0F1115] border rounded-xl p-3.5 space-y-2 ${
-                      isReq ? "border-[#eb660c]/50" : "border-[#262D3D]"
-                    }`}>
-                      <div className="flex items-center justify-between">
-                        <h4 className="text-xs font-bold text-gray-300 uppercase tracking-wider">
-                          {groupName} {isMultiSelect ? "(Multi-select)" : "(Single choice)"}
-                        </h4>
-                        {isReq && (
-                          <span className="text-[10px] font-extrabold text-[#eb660c] bg-[#eb660c]/10 px-2 py-0.5 rounded">
-                            REQUIRED *
-                          </span>
-                        )}
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        {options.map((opt) => {
-                          const isSelected = selectedCustomizations.some((c) => c.id === opt.id);
-                          return (
-                            <button
-                              key={opt.id}
-                              type="button"
-                              onClick={() => handleToggleOption(opt, isMultiSelect)}
-                              className={`p-2.5 rounded-lg border text-left text-xs font-bold flex justify-between items-center transition-all ${
-                                isSelected
-                                  ? "bg-[#eb660c]/20 border-[#eb660c] text-white"
-                                  : "bg-[#181C24] border-[#262D3D] text-gray-400 hover:text-white"
-                              }`}
-                            >
-                              <span>{opt.customization_type === "remove" ? `No ${opt.ingredient}` : opt.ingredient}</span>
-                              {opt.price > 0 && <span className="text-[#eb660c]">+${opt.price.toFixed(2)}</span>}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })
-              ) : (
-                <p className="text-xs text-gray-500 italic">No predefined customization options for this item.</p>
-              )}
-
-              {/* Free-text Item Notes */}
-              <div className="bg-[#0F1115] border border-[#262D3D] rounded-xl p-3.5 space-y-2">
-                <label className="text-xs font-bold text-amber-400 uppercase tracking-wider block">
-                  Item Kitchen Notes
-                </label>
-                <textarea
-                  value={itemNote}
-                  onChange={(e) => setItemNote(e.target.value)}
-                  placeholder="Type special requests here..."
-                  rows={2}
-                  className="w-full px-3 py-2 bg-[#181C24] border border-[#262D3D] rounded-lg text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#eb660c]"
-                />
-              </div>
-
-              {/* Quantity Selector */}
-              <div className="flex items-center justify-between bg-[#0F1115] p-3 rounded-xl border border-[#262D3D]">
-                <span className="text-xs font-bold text-white">Item Quantity</span>
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => setCustomizationQty(Math.max(1, customizationQty - 1))}
-                    className="w-8 h-8 rounded-lg bg-[#262D3D] text-white font-bold flex items-center justify-center text-base"
-                  >
-                    -
-                  </button>
-                  <span className="font-black text-base text-white">{customizationQty}</span>
-                  <button
-                    onClick={() => setCustomizationQty(customizationQty + 1)}
-                    className="w-8 h-8 rounded-lg bg-[#262D3D] text-white font-bold flex items-center justify-center text-base"
-                  >
-                    +
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Modal Footer */}
-            <div className="p-4 border-t border-[#262D3D] bg-[#14171F] flex justify-end gap-2">
-              <button
-                onClick={() => setActiveTabModal(null)}
-                className="px-4 py-2.5 bg-[#262D3D] text-white rounded-xl text-xs font-bold hover:bg-[#323B4E]"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSaveCustomizationToCart}
-                className="px-6 py-2.5 bg-[#eb660c] hover:bg-[#d55909] text-white rounded-xl text-xs font-extrabold shadow-md"
-              >
-                Save Item to Ticket
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MANDATORY SELECT ORDER ORIGIN MODAL POPUP */}
-      {(!selectedChannel && !editingOrderId && activeTabModal === null) && (
-        <div 
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              setSelectedChannel("In-Store");
-            }
-          }}
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:hidden animate-fade-in select-none cursor-pointer"
-        >
-          <div 
-            onClick={(e) => e.stopPropagation()} 
-            className="bg-[#181C24] border border-[#262D3D] rounded-3xl w-full max-w-md p-6 space-y-5 shadow-2xl text-center relative cursor-default max-h-[90vh] overflow-y-auto"
-          >
-            {/* Close Button */}
-            <button
-              onClick={() => setSelectedChannel("In-Store")}
-              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-[#262D3D] hover:bg-[#323B4E] text-gray-400 hover:text-white flex items-center justify-center text-sm font-bold transition-colors"
-              title="Close (Default: In-Store)"
-            >
-              ✕
-            </button>
-
-            {/* Header */}
-            <div className="space-y-1.5 pt-1">
-              <div className="w-12 h-12 rounded-2xl bg-[#eb660c]/20 text-[#eb660c] border border-[#eb660c]/40 flex items-center justify-center text-2xl mx-auto shadow-inner">
-                🛵
-              </div>
-              <h2 className="text-xl font-black text-white tracking-wide">Select Order Origin</h2>
-              <p className="text-xs text-gray-400 font-medium">
-                Choose the sales channel for this order or click outside to dismiss.
-              </p>
-            </div>
-
-            {/* Channels Grid */}
-            <div className="grid grid-cols-1 gap-2.5">
-              {[
-                { name: "Toters", icon: "🟢", desc: `Toters Delivery (${totersDiscountPercent}% Auto-Discount • Auto-Paid)`, color: "bg-[#00C49F] hover:bg-[#00b391] text-black border-[#00C49F]" },
-                { name: "WhatsApp", icon: "💬", desc: "WhatsApp Order Direct", color: "bg-[#25D366] hover:bg-[#20bd5a] text-black border-[#25D366]" },
-                { name: "NokNok", icon: "🔴", desc: `NokNok Express (${noknokDiscountPercent}% Auto-Discount • Auto-Paid)`, color: "bg-[#FF5A5F] hover:bg-[#e04f53] text-white border-[#FF5A5F]" },
-                { name: "App", icon: "📱", desc: "Mobile Application Order", color: "bg-[#3B82F6] hover:bg-[#2563eb] text-white border-[#3B82F6]" },
-                { name: "In-Store", icon: "🏪", desc: "Dine-In / Takeaway Cash POS", color: "bg-[#E5C07B] hover:bg-[#d4b06a] text-black border-[#E5C07B]" }
-              ].map((ch) => (
-                <button
-                  key={ch.name}
-                  onClick={() => {
-                    setSelectedChannel(ch.name);
-                    setValidationError("");
-                    if (ch.name === "Toters") {
-                      setDiscountType("toters");
-                      setSelectedPaymentMethod("Toters");
-                    } else if (ch.name === "NokNok") {
-                      setDiscountType("noknok");
-                      setSelectedPaymentMethod("NokNok");
-                    } else {
-                      // WhatsApp, App, and In-Store default to 15% discount (editable by cashier)
-                      setDiscountType("custom");
-                      setDiscountIsPercent(true);
-                      setDiscountValInput(15);
-                      setSelectedPaymentMethod("Cash");
-                    }
-                  }}
-                  className={`p-3.5 rounded-2xl border font-black text-sm flex items-center justify-between transition-all active:scale-98 shadow-md group ${ch.color}`}
-                >
-                  <div className="flex items-center gap-3 text-left">
-                    <span className="text-xl">{ch.icon}</span>
-                    <div>
-                      <div className="font-black text-sm">{ch.name}</div>
-                      <div className="text-[10px] opacity-80 font-semibold">{ch.desc}</div>
-                    </div>
-                  </div>
-                  <span className="text-lg opacity-60 group-hover:translate-x-1 transition-transform">➔</span>
-                </button>
-              ))}
-            </div>
-
-            <div className="pt-1 text-[11px] text-gray-500 font-semibold">
-              Click outside or ✕ to select In-Store
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* PAYMENT METHOD SELECTION MODAL (CASH vs WHISH) */}
-      {activeTabModal === "payment" && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:hidden">
-          <div className="bg-[#181C24] border border-[#262D3D] rounded-2xl w-[450px] p-5 space-y-5 shadow-2xl">
-            <div className="flex justify-between items-center border-b border-[#262D3D] pb-3">
-              <h3 className="font-extrabold text-lg text-white">Select Payment Method</h3>
-              <button
-                type="button"
-                onClick={() => setActiveTabModal(null)}
-                className="text-gray-400 hover:text-white font-bold text-lg"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="text-center py-3 bg-[#0F1115] rounded-xl border border-[#262D3D]">
-              <span className="text-xs text-gray-400 block font-semibold mb-1">Total Due Amount</span>
-              <span className="text-3xl font-black text-[#eb660c]">${total.toFixed(2)}</span>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              {[
-                { name: "Cash", icon: "💵" },
-                { name: "Whish", icon: "🟣" }
-              ].map((method) => (
-                <button
-                  key={method.name}
-                  type="button"
-                  onClick={() => setSelectedPaymentMethod(method.name)}
-                  className={`p-4 rounded-xl border font-black text-sm flex items-center justify-center gap-2.5 transition-all ${
-                    selectedPaymentMethod === method.name
-                      ? "bg-[#eb660c] border-[#eb660c] text-white shadow-lg scale-105 ring-2 ring-white/20"
-                      : "bg-[#0F1115] border-[#262D3D] text-gray-400 hover:text-white hover:border-gray-500"
-                  }`}
-                >
-                  <span className="text-2xl">{method.icon}</span>
-                  <span className="text-base">{method.name}</span>
-                </button>
-              ))}
-            </div>
-
-            <div className="pt-2 flex justify-end gap-2 border-t border-[#262D3D]">
-              <button
-                type="button"
-                onClick={() => setActiveTabModal(null)}
-                className="px-4 py-2.5 bg-[#262D3D] text-white rounded-xl text-xs font-bold hover:bg-[#323B4E]"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveTabModal(null);
-                  handleFinalizePayment();
-                }}
-                disabled={isSubmitting}
-                className="px-6 py-2.5 bg-[#eb660c] hover:bg-[#d55909] disabled:opacity-50 text-white rounded-xl text-xs font-extrabold shadow-md"
-              >
-                {isSubmitting ? "Processing..." : `Confirm ${selectedPaymentMethod} & Print`}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* VOID ITEM DIALOG */}
-      {activeTabModal === "void_item" && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:hidden">
-          <div className="bg-[#181C24] border border-[#262D3D] rounded-2xl w-[400px] p-5 space-y-4 shadow-2xl">
-            <h3 className="font-extrabold text-base text-red-400">Void Item Reason</h3>
-            <p className="text-xs text-gray-400">
-              Please enter the reason for removing this item from the active ticket:
-            </p>
-            <input
-              type="text"
-              value={voidReason}
-              onChange={(e) => setVoidReason(e.target.value)}
-              placeholder="e.g. Out of stock / Customer changed mind"
-              className="w-full px-3 py-2 bg-[#0F1115] border border-[#262D3D] rounded-lg text-xs text-white placeholder-gray-500 focus:outline-none focus:border-red-400"
-            />
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                onClick={() => setActiveTabModal(null)}
-                className="px-4 py-2 bg-[#262D3D] text-white rounded-xl text-xs font-bold"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleConfirmVoidItem}
-                className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-xl text-xs font-extrabold"
-              >
-                Confirm Void
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* INCOMING WHATSAPP ORDERS APPROVAL MODAL (Reject / Approve / Edit & Approve) */}
-      {activeTabModal === "incoming" && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:hidden">
-          <div className="bg-[#181C24] border border-[#262D3D] rounded-2xl w-[750px] max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
-            <div className="p-4 border-b border-[#262D3D] flex justify-between items-center bg-[#14171F]">
-              <h3 className="font-extrabold text-lg text-white">📱 Incoming WhatsApp Orders Verification</h3>
-              <button onClick={() => setActiveTabModal(null)} className="text-gray-400 hover:text-white font-bold">
-                ✕
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-4 space-y-3">
-              {pendingOrders.length === 0 ? (
-                <div className="text-center py-12 text-gray-500 text-xs">No pending WhatsApp orders to verify</div>
-              ) : (
-                pendingOrders.map((order) => (
-                  <div key={order.id} className="bg-[#0F1115] border border-[#262D3D] rounded-xl p-4 space-y-3">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <span className="text-xs font-extrabold text-[#eb660c]">Order #{order.id}</span>
-                        <div className="text-sm font-bold text-white">{order.customer_name || "WhatsApp Customer"} ({order.customer_phone || "No phone"})</div>
-                        <div className="text-xs text-gray-400">{order.delivery_address || "Pickup at store"}</div>
-                      </div>
-                      <span className="text-lg font-black text-[#eb660c]">${(order.total_amount || 0).toFixed(2)}</span>
-                    </div>
-
-                    <div className="border-t border-[#262D3D] pt-2 space-y-1">
-                      {(order.items || []).map((item, i) => (
-                        <div key={i} className="text-xs text-gray-300 flex justify-between">
-                          <span>{item.quantity}x {item.product_name} {item.customizations ? `(${item.customizations})` : ""}</span>
-                          <span>${(item.total_price || 0).toFixed(2)}</span>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Action Bar: Reject, Approve, Edit & Approve */}
-                    <div className="flex justify-end gap-2 pt-2 border-t border-[#262D3D]">
-                      <button
-                        onClick={() => handleRejectPendingOrder(order.id)}
-                        className="px-3.5 py-2 bg-red-600/20 hover:bg-red-600/40 text-red-400 text-xs font-bold rounded-xl border border-red-500/30"
-                      >
-                        ❌ Reject
-                      </button>
-                      <button
-                        onClick={() => handleEditAndApproveOrder(order)}
-                        className="px-3.5 py-2 bg-amber-500/20 hover:bg-amber-500/40 text-amber-300 text-xs font-bold rounded-xl border border-amber-500/30"
-                      >
-                        ✏️ Edit & Approve
-                      </button>
-                      <button
-                        onClick={() => handleApprovePendingOrder(order)}
-                        className="px-4 py-2 bg-[#eb660c] hover:bg-[#d55909] text-white text-xs font-extrabold rounded-xl shadow-md"
-                      >
-                        ✅ Approve & Print
-                      </button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* HELD ORDERS MODAL */}
-      {activeTabModal === "held" && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:hidden">
-          <div className="bg-[#181C24] border border-[#262D3D] rounded-2xl w-[600px] max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
-            <div className="p-4 border-b border-[#262D3D] flex justify-between items-center bg-[#14171F]">
-              <h3 className="font-extrabold text-lg text-white">⏸️ Held / Draft Orders</h3>
-              <button onClick={() => setActiveTabModal(null)} className="text-gray-400 hover:text-white font-bold">
-                ✕
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-4 space-y-3">
-              {heldOrders.length === 0 ? (
-                <div className="text-center py-12 text-gray-500 text-xs">No held orders right now</div>
-              ) : (
-                heldOrders.map((order) => (
-                  <div key={order.id} className="bg-[#0F1115] border border-[#262D3D] rounded-xl p-4 flex justify-between items-center">
-                    <div>
-                      <div className="text-xs font-bold text-[#eb660c]">Held Order #{order.id} • {order.order_source}</div>
-                      <div className="text-sm font-bold text-white">${(order.total_amount || 0).toFixed(2)}</div>
-                      <div className="text-[11px] text-gray-400">{(order.items || []).length} items</div>
-                    </div>
-                    <button
-                      onClick={() => handleResumeHeldOrder(order)}
-                      className="px-4 py-2 bg-[#eb660c] hover:bg-[#d55909] text-white text-xs font-bold rounded-xl"
-                    >
-                      ▶️ Resume Ticket
-                    </button>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* RECEIPT / PRINT SUCCESS MODAL */}
-      {activeTabModal === "receipt" && lastCompletedOrder && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:hidden">
-          <div className="bg-[#181C24] border border-[#262D3D] rounded-2xl w-[450px] p-5 space-y-4 shadow-2xl text-center">
-            <div className="w-12 h-12 bg-[#eb660c]/20 text-[#eb660c] rounded-full flex items-center justify-center text-2xl mx-auto font-black">
-              ✓
-            </div>
-            <h3 className="font-extrabold text-xl text-white">Order Approved & Saved!</h3>
-            <p className="text-xs text-gray-400">
-              Order #{lastCompletedOrder.id} has been recorded in the database.
-            </p>
-
-            <div className="bg-[#0F1115] p-3 rounded-xl border border-[#262D3D] text-left text-xs space-y-1">
-              <div className="flex justify-between font-bold text-white">
-                <span>Total Amount:</span>
-                <span className="text-[#eb660c]">${(lastCompletedOrder.total_amount || lastCompletedOrder.total || 0).toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-gray-400">
-                <span>Payment Method:</span>
-                <span className="text-white">{lastCompletedOrder.payment_method || "Cash"}</span>
-              </div>
-              <div className="flex justify-between text-gray-400">
-                <span>Channel:</span>
-                <span className="text-white">{lastCompletedOrder.order_source || "POS"}</span>
-              </div>
-            </div>
-
-            {/* Driver Request section for Delivery Orders */}
-            {lastCompletedOrder.order_type === "delivery" && (
-              <div className="bg-[#0F1115] border border-[#262D3D] rounded-xl p-3.5 space-y-2.5 text-center">
-                <div className="flex justify-between items-center text-xs font-bold text-gray-300">
-                  <span className="flex items-center gap-1.5">🛵 Request Driver (+961 3 826 136)</span>
-                  {dispatchStatusMsg ? (
-                    <span className="text-[10px] bg-[#25D366]/20 text-[#25D366] px-2.5 py-0.5 rounded-full font-black animate-pulse">
-                      {dispatchStatusMsg}
-                    </span>
-                  ) : (
-                    <span className="text-[10px] text-[#25D366] font-extrabold">⚡ 0-Tab Silent Dispatch</span>
-                  )}
-                </div>
-                <div className="text-[11px] text-gray-400 font-medium text-left">
-                  Tap arrival ETA time (Sends WhatsApp silently via Infobip in 0.2s):
-                </div>
-                <div className="grid grid-cols-5 gap-1.5">
-                  {["Now", "15", "20", "30", "45"].map((time) => (
-                    <button
-                      key={time}
-                      type="button"
-                      onClick={() => handleSendDeliveryWhatsApp(time, "silent")}
-                      className="py-2.5 bg-[#25D366] hover:bg-[#20bd5a] text-black font-black text-xs rounded-xl transition-all shadow-md active:scale-95 flex items-center justify-center gap-1"
-                    >
-                      <span>⚡</span>
-                      <span>{time === "Now" ? "Now" : `${time}'`}</span>
-                    </button>
-                  ))}
-                </div>
-                <div className="flex justify-end pt-1">
-                  <button
-                    type="button"
-                    onClick={() => handleSendDeliveryWhatsApp("15", "manual")}
-                    className="text-[11px] text-gray-400 hover:text-white underline font-semibold"
-                  >
-                    Open WhatsApp Web/App Manually ➔
-                  </button>
-                </div>
-              </div>
-            )}
-
-            <div className="flex justify-center pt-2">
-              <button
-                onClick={() => setActiveTabModal(null)}
-                className="px-6 py-2.5 bg-[#262D3D] text-white rounded-xl text-xs font-bold hover:bg-[#323B4E]"
-              >
-                ✕ Close & Return to POS
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ORDER HISTORY & REPRINT MODAL */}
-      {activeTabModal === "history" && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:hidden">
-          <div className="bg-[#181C24] border border-[#262D3D] rounded-3xl w-full max-w-4xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
-            {/* Header */}
-            <div className="p-4 border-b border-[#262D3D] flex justify-between items-center bg-[#14171F]">
-              <div className="flex items-center gap-2.5">
-                <span className="text-2xl">📜</span>
-                <div>
-                  <h3 className="font-extrabold text-lg text-white">POS Order History & Receipt Reprint</h3>
-                  <p className="text-xs text-gray-400">View recent orders, customer details, and reprint thermal receipts</p>
-                </div>
-              </div>
-              <button onClick={() => setActiveTabModal(null)} className="text-gray-400 hover:text-white font-bold text-xl p-1">
-                ✕
-              </button>
-            </div>
-
-            {/* Search & Feedback Banner */}
-            <div className="p-4 border-b border-[#262D3D] bg-[#0F1115] space-y-2">
-              {reprintSuccessMsg && (
-                <div className="bg-[#25D366]/20 border border-[#25D366]/40 text-[#25D366] px-3 py-1.5 rounded-xl text-xs font-bold flex items-center justify-between">
-                  <span>{reprintSuccessMsg}</span>
-                  <button onClick={() => setReprintSuccessMsg("")}>✕</button>
-                </div>
-              )}
-              <div className="relative">
-                <input
-                  type="text"
-                  placeholder="🔍 Search history by Order #, Customer Name, Phone, or Channel..."
-                  value={historySearchQuery}
-                  onChange={(e) => setHistorySearchQuery(e.target.value)}
-                  className="w-full bg-[#181C24] border border-[#262D3D] rounded-xl px-4 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#eb660c]"
-                />
-                {historySearchQuery && (
-                  <button
-                    onClick={() => setHistorySearchQuery("")}
-                    className="absolute right-3 top-2.5 text-xs text-gray-400 hover:text-white"
-                  >
-                    ✕
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Orders List */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-3">
-              {completedOrdersHistory.filter((o) => {
-                if (!historySearchQuery.trim()) return true;
-                const q = historySearchQuery.toLowerCase().trim();
-                return (
-                  String(o.id).includes(q) ||
-                  (o.customer_name || "").toLowerCase().includes(q) ||
-                  (o.customer_phone || "").toLowerCase().includes(q) ||
-                  (o.order_source || "").toLowerCase().includes(q)
-                );
-              }).length === 0 ? (
-                <div className="text-center py-16 text-gray-500 text-xs font-semibold">
-                  No orders found matching your search query
-                </div>
-              ) : (
-                completedOrdersHistory
-                  .filter((o) => {
-                    if (!historySearchQuery.trim()) return true;
-                    const q = historySearchQuery.toLowerCase().trim();
-                    return (
-                      String(o.id).includes(q) ||
-                      (o.customer_name || "").toLowerCase().includes(q) ||
-                      (o.customer_phone || "").toLowerCase().includes(q) ||
-                      (o.order_source || "").toLowerCase().includes(q)
-                    );
-                  })
-                  .map((order) => (
-                    <div key={order.id} className="bg-[#0F1115] border border-[#262D3D] rounded-2xl p-4 space-y-3 hover:border-[#3A455C] transition-all">
-                      {/* Top Row: Order ID, Channel, Date & Total */}
-                      <div className="flex justify-between items-start border-b border-[#262D3D]/50 pb-2">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <span className="font-black text-white text-base">Order #{order.id}</span>
-                            <span className={`px-2.5 py-0.5 rounded-lg text-[11px] font-extrabold ${
-                              order.order_source === "Toters" ? "bg-[#00C49F] text-black" :
-                              order.order_source === "WhatsApp" ? "bg-[#25D366] text-black" :
-                              order.order_source === "NokNok" ? "bg-[#FF5A5F] text-white" :
-                              order.order_source === "App" ? "bg-[#3B82F6] text-white" :
-                              "bg-[#E5C07B] text-black"
-                            }`}>
-                              {order.order_source || "In-Store"}
-                            </span>
-                            <span className="text-[10px] bg-[#262D3D] text-gray-300 px-2 py-0.5 rounded-md font-bold uppercase">
-                              {order.order_type || "pickup"}
-                            </span>
-                          </div>
-                          <div className="text-[11px] text-gray-400 font-medium">
-                            {order.created_at ? new Date(order.created_at).toLocaleString() : "Date N/A"} • Payment: <strong className="text-white">{order.payment_method || "Cash"}</strong>
-                          </div>
-                        </div>
-
-                        <div className="text-right">
-                          <div className="text-xl font-black text-[#eb660c]">${(order.total_amount || 0).toFixed(2)}</div>
-                          <button
-                            type="button"
-                            onClick={() => handleReprintOrder(order)}
-                            className="mt-1 px-3 py-1.5 bg-[#eb660c] hover:bg-[#d55909] text-white rounded-xl text-xs font-extrabold flex items-center gap-1.5 shadow-sm transition-all active:scale-95"
-                          >
-                            🖨️ Reprint Receipt
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Customer Info (if available) */}
-                      {(order.customer_name || order.customer_phone || order.delivery_address) && (
-                        <div className="text-xs text-gray-300 bg-[#181C24] p-2.5 rounded-xl border border-[#262D3D] space-y-0.5">
-                          {order.customer_name && <div>👤 <strong>Customer:</strong> {order.customer_name}</div>}
-                          {order.customer_phone && <div>📞 <strong>Phone:</strong> {order.customer_phone}</div>}
-                          {order.delivery_address && <div>🏠 <strong>Address:</strong> {order.delivery_address}</div>}
-                        </div>
-                      )}
-
-                      {/* Items List */}
-                      <div className="text-xs text-gray-400 space-y-1">
-                        <div className="font-bold text-gray-300 text-[11px] uppercase">Items Summary:</div>
-                        <div className="flex flex-wrap gap-1.5">
-                          {(order.items || []).map((item, idx) => (
-                            <span key={idx} className="bg-[#181C24] border border-[#262D3D] px-2.5 py-1 rounded-lg text-[11px] text-gray-200 font-medium">
-                              <strong>{item.quantity || item.qty}x</strong> {item.product_name || item.name} (${((item.unit_price || 0) * (item.quantity || item.qty || 1)).toFixed(2)})
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-
-                    </div>
-                  ))
-              )}
-            </div>
-
-            {/* Modal Footer */}
-            <div className="p-3.5 border-t border-[#262D3D] bg-[#14171F] flex justify-between items-center text-xs text-gray-400">
-              <span>Showing past {completedOrdersHistory.length} orders</span>
-              <button
-                onClick={() => setActiveTabModal(null)}
-                className="px-5 py-2 bg-[#262D3D] hover:bg-[#323B4E] text-white rounded-xl font-bold"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* INSTALL APP GUIDE MODAL */}
-      {activeTabModal === "install_guide" && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:hidden">
-          <div className="bg-[#181C24] border border-[#262D3D] rounded-2xl w-full max-w-md p-6 space-y-5 text-white shadow-2xl">
-            <div className="flex justify-between items-center border-b border-[#262D3D] pb-3">
-              <div className="flex items-center gap-2.5">
-                <span className="text-2xl">📥</span>
-                <h3 className="font-extrabold text-lg">Install OVR LOAD POS App</h3>
-              </div>
-              <button
-                onClick={() => setActiveTabModal(null)}
+                onClick={() => { setActiveTabModal(null); setCurrentProduct(null); }}
                 className="text-gray-400 hover:text-white text-xl font-bold p-1"
               >
                 ✕
               </button>
             </div>
 
-            <div className="space-y-4 text-xs text-gray-300">
+            {customizationError && (
+              <div className="bg-red-950/80 border border-red-500/50 text-red-200 text-xs px-3.5 py-2 rounded-xl font-bold flex-shrink-0">
+                {customizationError}
+              </div>
+            )}
+
+            {/* MODIFIER OPTIONS LIST */}
+            <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+              {currentProduct.customizations && currentProduct.customizations.length > 0 ? (
+                (() => {
+                  const grouped = currentProduct.customizations.reduce((acc, c) => {
+                    const group = c.option_group_name || (c.customization_type === "remove" ? "Remove Ingredients" : "Custom Options");
+                    if (!acc[group]) acc[group] = [];
+                    acc[group].push(c);
+                    return acc;
+                  }, {});
+
+                  return Object.entries(grouped).map(([groupName, opts]) => {
+                    const isMultiSelect = opts.length > 1 && !opts[0]?.option_group_name?.toLowerCase().includes("drink");
+                    const isRequired = opts[0]?.is_required || groupName.toLowerCase().includes("drink");
+
+                    return (
+                      <div key={groupName} className="space-y-2 bg-[#0F1115] p-3.5 rounded-xl border border-[#262D3D]">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-extrabold text-gray-200 uppercase tracking-wider">{groupName}</span>
+                          {isRequired && <span className="text-[10px] font-extrabold px-2 py-0.5 bg-red-950/80 text-red-300 border border-red-500/40 rounded">REQUIRED</span>}
+                        </div>
+                        <div className="flex flex-wrap gap-2 pt-1">
+                          {opts.map((opt) => {
+                            const isSelected = selectedCustomizations.some((c) => c.id === opt.id);
+                            return (
+                              <button
+                                key={opt.id}
+                                type="button"
+                                onClick={() => handleToggleOption(opt, isMultiSelect)}
+                                className={`px-3 py-2 rounded-xl text-xs font-bold transition-all border shadow-sm ${
+                                  isSelected
+                                    ? "bg-[#eb660c] text-white border-[#eb660c] shadow-md shadow-[#eb660c]/20"
+                                    : "bg-[#181C24] text-gray-300 border-[#262D3D] hover:bg-[#262D3D]"
+                                }`}
+                              >
+                                {isSelected ? "✓ " : ""}{opt.name || opt.ingredient}
+                                {opt.price > 0 ? ` (+$${opt.price.toFixed(2)})` : ""}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  });
+                })()
+              ) : (
+                <div className="text-center py-6 text-xs text-gray-400">No extra options for this product.</div>
+              )}
+
+              {/* Special Note */}
+              <div className="space-y-1.5 pt-2 border-t border-[#262D3D]">
+                <label className="text-xs font-bold text-gray-300 block">Special Preparation Note:</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Extra toasted, sauce on the side..."
+                  value={itemNote}
+                  onChange={(e) => setItemNote(e.target.value)}
+                  className="w-full bg-[#0F1115] border border-[#262D3D] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-[#eb660c]"
+                />
+              </div>
+            </div>
+
+            {/* MODAL BOTTOM ACTION */}
+            <div className="flex gap-3 pt-3 border-t border-[#262D3D] flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => { setActiveTabModal(null); setCurrentProduct(null); }}
+                className="px-5 py-3 bg-[#262D3D] hover:bg-[#323B4E] text-white font-bold rounded-xl text-xs"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveCustomizationToCart}
+                className="flex-1 py-3 bg-[#eb660c] hover:bg-[#d55909] text-white font-black rounded-xl text-xs transition-all shadow-lg flex items-center justify-center gap-2"
+              >
+                {(() => {
+                  let extraCost = 0;
+                  selectedCustomizations.forEach((c) => { if (c.price) extraCost += c.price; });
+                  const finalUnitPrice = (currentProduct.unit_price_usd || 0) + extraCost;
+                  return `ADD TO TICKET — $${(finalUnitPrice * customizationQty).toFixed(2)}`;
+                })()}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* POS SETTINGS MODAL */}
+      {activeTabModal === "settings" && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:hidden">
+          <div className="bg-[#181C24] border border-[#262D3D] rounded-2xl w-full max-w-md p-6 space-y-5 text-white shadow-2xl">
+            <div className="flex justify-between items-center border-b border-[#262D3D] pb-3">
+              <div className="flex items-center gap-2.5">
+                <span className="text-2xl">⚙️</span>
+                <h3 className="font-extrabold text-base">POS System Settings</h3>
+              </div>
+              <button onClick={() => setActiveTabModal(null)} className="text-gray-400 hover:text-white text-xl font-bold p-1">✕</button>
+            </div>
+
+            <div className="space-y-4 text-xs">
               <div className="bg-[#0F1115] border border-[#262D3D] rounded-xl p-3.5 space-y-2">
-                <span className="font-extrabold text-[#eb660c] text-sm block">📱 Android Phone / Tablet (Chrome):</span>
-                <ol className="list-decimal list-inside space-y-1.5 text-gray-300 leading-relaxed">
-                  <li>Tap the <strong>3 dots menu (⋮)</strong> in the top right corner of Chrome.</li>
-                  <li>Tap <strong>"Install app"</strong> or <strong>"Add to Home screen"</strong>.</li>
-                  <li>Tap <strong>Install</strong> to add the App icon to your home screen!</li>
-                </ol>
+                <span className="font-extrabold text-[#eb660c] text-xs block uppercase tracking-wider">Store Operational Control:</span>
+                <button
+                  onClick={() => {
+                    setActiveTabModal(null);
+                    fetchBranchStatusAndPrompt();
+                    setShowBranchStatusModal(true);
+                  }}
+                  className="w-full py-2.5 bg-[#262D3D] hover:bg-[#323B4E] text-white font-extrabold rounded-xl transition-all text-xs border border-[#3A455C] flex items-center justify-center gap-2"
+                >
+                  ⚙️ Change Store Opening / Closure Status
+                </button>
               </div>
 
               <div className="bg-[#0F1115] border border-[#262D3D] rounded-xl p-3.5 space-y-2">
-                <span className="font-extrabold text-amber-400 text-sm block">🍏 iPhone / iPad (Safari / Chrome):</span>
-                <ol className="list-decimal list-inside space-y-1.5 text-gray-300 leading-relaxed">
-                  <li>Tap the <strong>Share button</strong> (square icon with an arrow pointing up).</li>
-                  <li>Scroll down and tap <strong>"Add to Home Screen"</strong>.</li>
-                  <li>Tap <strong>Add</strong> in the top right corner!</li>
-                </ol>
+                <span className="font-extrabold text-amber-400 text-xs block uppercase tracking-wider">Thermal Printer Configuration:</span>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="col-span-2">
+                    <label className="text-[10px] text-gray-400 block mb-1">Print Server IP</label>
+                    <input
+                      type="text"
+                      value={printServerIP}
+                      onChange={(e) => setPrintServerIP(e.target.value)}
+                      placeholder="192.168.18.195"
+                      className="w-full bg-[#181C24] border border-[#262D3D] rounded-lg px-2.5 py-1.5 text-xs text-white font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-gray-400 block mb-1">Port</label>
+                    <input
+                      type="number"
+                      value={printServerPort}
+                      onChange={(e) => setPrintServerPort(Number(e.target.value))}
+                      className="w-full bg-[#181C24] border border-[#262D3D] rounded-lg px-2.5 py-1.5 text-xs text-white font-bold"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-[#0F1115] border border-[#262D3D] rounded-xl p-3.5 flex items-center justify-between text-gray-400">
+                <span>POS Tablet System Version</span>
+                <span className="font-bold text-white bg-[#262D3D] px-2 py-0.5 rounded text-[11px]">v2.5.4</span>
               </div>
             </div>
 
@@ -2296,13 +1603,13 @@ export default function TabletPOSPage() {
               onClick={() => setActiveTabModal(null)}
               className="w-full py-3 bg-[#eb660c] hover:bg-[#d55909] text-white font-extrabold rounded-xl transition-all shadow-lg"
             >
-              Got It!
+              Done
             </button>
           </div>
         </div>
       )}
 
-      {/* BRANCH OPERATIONAL STATUS POPUP MODAL */}
+      {/* BRANCH STATUS MODAL */}
       {showBranchStatusModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:hidden">
           <div className="bg-[#181C24] border border-[#262D3D] rounded-2xl w-full max-w-md p-6 space-y-5 text-white shadow-2xl animate-in fade-in zoom-in-95 duration-150">
@@ -2322,26 +1629,19 @@ export default function TabletPOSPage() {
               </button>
             </div>
 
-            {/* Current status summary card */}
-            {(() => {
-              const info = getRealtimeBranchStatusInfo(branchStatus, posOperationalStatus, posClosureReason);
-              return (
-                <div className={`p-4 rounded-xl border flex items-center justify-between ${info.badgeClass}`}>
-                  <div>
-                    <span className="text-xs uppercase font-extrabold tracking-wider block opacity-75">Real-Time Store Status</span>
-                    <span className="text-sm font-black block mt-0.5">{info.description}</span>
-                  </div>
-                  {!info.isOpen && (
-                    <span className="px-2.5 py-1 rounded-lg bg-black/40 text-xs font-bold border border-white/10 shrink-0 ml-2">
-                      Notice Active
-                    </span>
-                  )}
-                </div>
-              );
-            })()}
+            <div className={`p-4 rounded-xl border flex items-center justify-between ${realtimeStatus.badgeClass}`}>
+              <div>
+                <span className="text-xs uppercase font-extrabold tracking-wider block opacity-75">Real-Time Store Status</span>
+                <span className="text-sm font-black block mt-0.5">{realtimeStatus.description}</span>
+              </div>
+              {!realtimeStatus.isOpen && (
+                <span className="px-2.5 py-1 rounded-lg bg-black/40 text-xs font-bold border border-white/10 shrink-0 ml-2">
+                  Notice Active
+                </span>
+              )}
+            </div>
 
             <div className="space-y-4 text-xs">
-              {/* Feature 1: Orders Active / Operational Status */}
               <div>
                 <label className="block text-xs font-bold text-gray-300 uppercase tracking-wider mb-1.5">
                   1. Orders Active / Operational Status
@@ -2358,7 +1658,6 @@ export default function TabletPOSPage() {
                 </select>
               </div>
 
-              {/* Feature 2: Closure Reason */}
               {posOperationalStatus !== "open" && (
                 <div className="pt-2 border-t border-[#262D3D]">
                   <label className="block text-xs font-bold text-gray-300 uppercase tracking-wider mb-1.5">
@@ -2395,6 +1694,201 @@ export default function TabletPOSPage() {
                 Keep Current
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* WHATSAPP INCOMING ORDERS QUEUE MODAL */}
+      {activeTabModal === "incoming" && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:hidden">
+          <div className="bg-[#181C24] border border-[#262D3D] rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col text-white shadow-2xl">
+            <div className="p-4 border-b border-[#262D3D] flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">📱</span>
+                <h3 className="font-extrabold text-base">Incoming WhatsApp Orders Queue</h3>
+              </div>
+              <button onClick={() => setActiveTabModal(null)} className="text-gray-400 hover:text-white font-bold p-1">✕</button>
+            </div>
+            <div className="p-4 flex-1 overflow-y-auto space-y-3">
+              {pendingOrders.length === 0 ? (
+                <div className="py-12 text-center text-gray-400 text-xs">No pending WhatsApp orders right now.</div>
+              ) : (
+                pendingOrders.map((o) => (
+                  <div key={o.id} className="p-3.5 bg-[#0F1115] border border-[#262D3D] rounded-xl flex items-center justify-between text-xs">
+                    <div>
+                      <div className="font-black text-white text-sm">Order #{o.id} • {o.customer_name || "WhatsApp Customer"}</div>
+                      <div className="text-gray-400 mt-0.5">{o.customer_phone} • {o.delivery_address || "Pickup"}</div>
+                      <div className="text-[#eb660c] font-black mt-1">${parseFloat(o.total_amount || 0).toFixed(2)}</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleRejectPendingOrder(o.id)}
+                        className="px-3 py-2 bg-rose-950/60 text-rose-300 border border-rose-500/40 rounded-xl font-bold hover:bg-rose-900/80"
+                      >
+                        Reject
+                      </button>
+                      <button
+                        onClick={() => {
+                          setEditingOrderId(o.id);
+                          setCustomerName(o.customer_name || "");
+                          setCustomerPhone(o.customer_phone || "");
+                          setDeliveryAddress(o.delivery_address || "");
+                          setSelectedChannel("WhatsApp");
+                          setTicketItems((o.items || []).map((i) => ({
+                            product_id: i.product_id || i.id,
+                            name: i.product_name || i.name,
+                            unit_price: i.unit_price || 0,
+                            qty: i.quantity || i.qty || 1,
+                            selectedCustomizations: i.customizations ? (Array.isArray(i.customizations) ? i.customizations.map(c => typeof c === 'string' ? {name: c} : c) : [{name: i.customizations}]) : [],
+                            note: i.comment || ""
+                          })));
+                          setActiveTabModal(null);
+                        }}
+                        className="px-4 py-2 bg-[#eb660c] hover:bg-[#d55909] text-white font-black rounded-xl shadow-md"
+                      >
+                        Load to Ticket ➔
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* HELD ORDERS MODAL */}
+      {activeTabModal === "held" && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:hidden">
+          <div className="bg-[#181C24] border border-[#262D3D] rounded-2xl w-full max-w-xl max-h-[80vh] flex flex-col text-white shadow-2xl">
+            <div className="p-4 border-b border-[#262D3D] flex justify-between items-center">
+              <h3 className="font-extrabold text-base">⏸️ Held Orders</h3>
+              <button onClick={() => setActiveTabModal(null)} className="text-gray-400 hover:text-white font-bold p-1">✕</button>
+            </div>
+            <div className="p-4 flex-1 overflow-y-auto space-y-3">
+              {heldOrders.length === 0 ? (
+                <div className="py-12 text-center text-gray-400 text-xs">No held orders.</div>
+              ) : (
+                heldOrders.map((o) => (
+                  <div key={o.id} className="p-3.5 bg-[#0F1115] border border-[#262D3D] rounded-xl flex items-center justify-between text-xs">
+                    <div>
+                      <div className="font-black text-white text-sm">Held Order #{o.id}</div>
+                      <div className="text-gray-400 mt-0.5">{o.customer_name || "Walk-in"} • ${parseFloat(o.total_amount || 0).toFixed(2)}</div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setEditingOrderId(o.id);
+                        setCustomerName(o.customer_name || "");
+                        setCustomerPhone(o.customer_phone || "");
+                        setDeliveryAddress(o.delivery_address || "");
+                        setSelectedChannel(o.order_source || "POS");
+                        setTicketItems((o.items || []).map((i) => ({
+                          product_id: i.product_id || i.id,
+                          name: i.product_name || i.name,
+                          unit_price: i.unit_price || 0,
+                          qty: i.quantity || i.qty || 1,
+                          selectedCustomizations: i.customizations ? (Array.isArray(i.customizations) ? i.customizations.map(c => typeof c === 'string' ? {name: c} : c) : [{name: i.customizations}]) : [],
+                          note: i.comment || ""
+                        })));
+                        setActiveTabModal(null);
+                      }}
+                      className="px-4 py-2 bg-[#eb660c] hover:bg-[#d55909] text-white font-black rounded-xl shadow-md"
+                    >
+                      Restore Ticket ➔
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ORDER HISTORY MODAL */}
+      {activeTabModal === "history" && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:hidden">
+          <div className="bg-[#181C24] border border-[#262D3D] rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col text-white shadow-2xl">
+            <div className="p-4 border-b border-[#262D3D] flex justify-between items-center">
+              <h3 className="font-extrabold text-base">📜 Order History</h3>
+              <button onClick={() => setActiveTabModal(null)} className="text-gray-400 hover:text-white font-bold p-1">✕</button>
+            </div>
+            <div className="p-3 bg-[#0F1115] border-b border-[#262D3D]">
+              <input
+                type="text"
+                placeholder="Search history by Order #, Customer Name, Phone..."
+                value={historySearchQuery}
+                onChange={(e) => setHistorySearchQuery(e.target.value)}
+                className="w-full bg-[#181C24] border border-[#262D3D] rounded-xl px-3.5 py-2 text-xs text-white placeholder-gray-500 font-medium focus:outline-none focus:border-[#eb660c]"
+              />
+            </div>
+            <div className="p-4 flex-1 overflow-y-auto space-y-3">
+              {completedOrdersHistory.length === 0 ? (
+                <div className="py-12 text-center text-gray-400 text-xs">No completed orders history.</div>
+              ) : (
+                completedOrdersHistory
+                  .filter((o) => {
+                    if (!historySearchQuery.trim()) return true;
+                    const q = historySearchQuery.toLowerCase();
+                    return (
+                      String(o.id).includes(q) ||
+                      (o.customer_name || "").toLowerCase().includes(q) ||
+                      (o.customer_phone || "").includes(q)
+                    );
+                  })
+                  .map((order) => (
+                    <div key={order.id} className="p-3.5 bg-[#0F1115] border border-[#262D3D] rounded-xl space-y-2 text-xs">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <div className="font-black text-white text-sm">Order #{order.id}</div>
+                          <div className="text-gray-400 mt-0.5">{order.order_source || "POS"} • {order.order_type || "pickup"}</div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-base font-black text-[#eb660c]">${parseFloat(order.total_amount || 0).toFixed(2)}</div>
+                          <button
+                            onClick={() => handleReprintOrder(order)}
+                            className="mt-1 px-3 py-1.5 bg-[#eb660c] hover:bg-[#d55909] text-white rounded-xl text-[11px] font-extrabold shadow-sm"
+                          >
+                            🖨️ Reprint Receipt
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* RECEIPT CONFIRMATION MODAL */}
+      {activeTabModal === "receipt" && lastCompletedOrder && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:hidden">
+          <div className="bg-[#181C24] border border-[#262D3D] rounded-2xl w-full max-w-md p-6 space-y-4 text-white shadow-2xl text-center">
+            <div className="w-12 h-12 rounded-full bg-emerald-950 border border-emerald-500/50 text-emerald-400 text-2xl flex items-center justify-center mx-auto">
+              ✓
+            </div>
+            <div>
+              <h3 className="font-black text-lg text-white">Order #{lastCompletedOrder.id} Completed!</h3>
+              <p className="text-xs text-gray-400 mt-1">Sent to local thermal printer automatically.</p>
+            </div>
+
+            <div className="p-3.5 bg-[#0F1115] border border-[#262D3D] rounded-xl text-xs space-y-1 text-left">
+              <div className="flex justify-between font-bold text-white">
+                <span>Total Amount:</span>
+                <span className="text-[#eb660c]">${parseFloat(lastCompletedOrder.total_amount || 0).toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-gray-400">
+                <span>Payment Method:</span>
+                <span>{lastCompletedOrder.payment_method}</span>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setActiveTabModal(null)}
+              className="w-full py-3.5 bg-[#eb660c] hover:bg-[#d55909] text-white font-black rounded-xl text-xs transition-all shadow-lg"
+            >
+              New Order ➔
+            </button>
           </div>
         </div>
       )}
