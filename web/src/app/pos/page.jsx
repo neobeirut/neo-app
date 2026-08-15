@@ -316,17 +316,31 @@ export default function TabletPOSPage() {
   };
 
   const handleSelectChannelSource = (sourceId) => {
-    const channelValue = sourceId === "POS" ? null : sourceId;
-    setSelectedChannel(channelValue);
-
-    // Automatically apply channel discount based on order source
-    if (sourceId === "Toters") {
+    if (sourceId === "Pick-up") {
+      setSelectedChannel(null); // POS source
+      setOrderType("pickup");
+      setDiscountType("none");
+      setDeliveryFee(0);
+    } else if (sourceId === "In-Store") {
+      setSelectedChannel(null); // POS source
+      setOrderType("dine_in");
+      setDiscountType("none");
+      setDeliveryFee(0);
+    } else if (sourceId === "Toters") {
+      setSelectedChannel("Toters");
+      setOrderType("delivery");
       setDiscountType("toters");
+      setDeliveryFee(0);
     } else if (sourceId === "NokNok") {
+      setSelectedChannel("NokNok");
+      setOrderType("delivery");
       setDiscountType("noknok");
+      setDeliveryFee(0);
     } else if (sourceId === "WhatsApp") {
+      setSelectedChannel("WhatsApp");
       setDiscountType("wa15");
-    } else {
+    } else if (sourceId === "App") {
+      setSelectedChannel("App");
       setDiscountType("none");
     }
   };
@@ -1200,85 +1214,84 @@ export default function TabletPOSPage() {
 
         {/* RIGHT PANEL: TICKET CART & CHECKOUT (35% Width) */}
         <div className="w-[35%] flex flex-col h-full bg-[#14171F] overflow-hidden flex-shrink-0">
-          {/* TICKET HEADER & ORDER TYPE SELECTOR */}
-          <div className="p-3.5 border-b border-[#262D3D] space-y-2.5 bg-[#181C24] flex-shrink-0">
-            {/* Order Type Buttons (Delivery first & default) */}
-            <div className="grid grid-cols-3 gap-1.5 p-1 bg-[#0F1115] rounded-xl border border-[#262D3D]">
-              <button
-                type="button"
-                onClick={() => setOrderType("delivery")}
-                className={`py-2 rounded-lg text-xs font-black transition-all flex items-center justify-center gap-1 ${
-                  orderType === "delivery"
-                    ? "bg-[#eb660c] text-white shadow-md shadow-[#eb660c]/20"
-                    : "text-gray-400 hover:text-white hover:bg-[#181C24]"
-                }`}
-              >
-                🛵 Delivery
-              </button>
-              <button
-                type="button"
-                onClick={() => setOrderType("pickup")}
-                className={`py-2 rounded-lg text-xs font-black transition-all flex items-center justify-center gap-1 ${
-                  orderType === "pickup"
-                    ? "bg-[#eb660c] text-white shadow-md shadow-[#eb660c]/20"
-                    : "text-gray-400 hover:text-white hover:bg-[#181C24]"
-                }`}
-              >
-                🛍 Pickup
-              </button>
-              <button
-                type="button"
-                onClick={() => setOrderType("dine_in")}
-                className={`py-2 rounded-lg text-xs font-black transition-all flex items-center justify-center gap-1 ${
-                  orderType === "dine_in"
-                    ? "bg-[#eb660c] text-white shadow-md shadow-[#eb660c]/20"
-                    : "text-gray-400 hover:text-white hover:bg-[#181C24]"
-                }`}
-              >
-                🪑 In-Store
-              </button>
+          {/* TICKET HEADER & UNIFIED SMART CHANNEL BAR */}
+          <div className="p-3 border-b border-[#262D3D] space-y-2 bg-[#181C24] flex-shrink-0">
+            {/* Hold Button if active items */}
+            {ticketItems.length > 0 && (
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleHoldOrder}
+                  disabled={isSubmitting}
+                  className="px-2.5 py-0.5 bg-amber-950/50 hover:bg-amber-900/60 text-amber-300 border border-amber-500/40 rounded-lg text-[10px] font-bold transition-all"
+                >
+                  ⏸️ Hold Ticket
+                </button>
+              </div>
+            )}
+
+            {/* UNIFIED 1-ROW SMART CHANNEL BAR */}
+            <div className="grid grid-cols-6 gap-1 p-1 bg-[#0F1115] rounded-xl border border-[#262D3D]">
+              {[
+                { id: "Toters", label: "Toters 🟢" },
+                { id: "WhatsApp", label: "WA 📱" },
+                { id: "NokNok", label: "NokNok 🔴" },
+                { id: "App", label: "App 📲" },
+                { id: "Pick-up", label: "Pick-up 🛍️" },
+                { id: "In-Store", label: "In-Store 🪑" },
+              ].map((src) => {
+                const isCurrent =
+                  src.id === "Pick-up" ? (!selectedChannel && orderType === "pickup") :
+                  src.id === "In-Store" ? (!selectedChannel && orderType === "dine_in") :
+                  selectedChannel === src.id;
+
+                return (
+                  <button
+                    key={src.id}
+                    type="button"
+                    onClick={() => handleSelectChannelSource(src.id)}
+                    className={`py-2 px-0.5 rounded-lg text-[11px] font-black transition-all text-center truncate ${
+                      isCurrent
+                        ? "bg-[#eb660c] text-white shadow-md shadow-[#eb660c]/20"
+                        : "text-gray-400 hover:text-white hover:bg-[#181C24]"
+                    }`}
+                  >
+                    {src.label}
+                  </button>
+                );
+              })}
             </div>
 
-            {/* Order Source Buttons (Large, touch-friendly) */}
-            <div className="space-y-1 pt-1">
-              {ticketItems.length > 0 && (
-                <div className="flex justify-end pb-0.5">
+            {/* Sub-toggle for WhatsApp and App (Delivery vs Pickup) */}
+            {["WhatsApp", "App"].includes(selectedChannel) && (
+              <div className="flex items-center justify-between px-2 py-1 bg-[#0F1115] rounded-lg border border-[#262D3D]">
+                <span className="text-[11px] font-bold text-gray-400">{selectedChannel} Type:</span>
+                <div className="flex items-center gap-1">
                   <button
                     type="button"
-                    onClick={handleHoldOrder}
-                    disabled={isSubmitting}
-                    className="px-2 py-0.5 bg-amber-950/50 hover:bg-amber-900/60 text-amber-300 border border-amber-500/40 rounded-lg text-[10px] font-bold transition-all"
+                    onClick={() => setOrderType("delivery")}
+                    className={`px-2.5 py-0.5 rounded text-[11px] font-black transition-all ${
+                      orderType === "delivery"
+                        ? "bg-[#eb660c] text-white shadow-sm"
+                        : "text-gray-400 hover:text-white hover:bg-[#181C24]"
+                    }`}
                   >
-                    ⏸️ Hold Ticket
+                    🛵 Delivery
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOrderType("pickup")}
+                    className={`px-2.5 py-0.5 rounded text-[11px] font-black transition-all ${
+                      orderType === "pickup"
+                        ? "bg-[#eb660c] text-white shadow-sm"
+                        : "text-gray-400 hover:text-white hover:bg-[#181C24]"
+                    }`}
+                  >
+                    🛍 Pickup
                   </button>
                 </div>
-              )}
-              <div className="grid grid-cols-5 gap-1 p-1 bg-[#0F1115] rounded-xl border border-[#262D3D]">
-                {[
-                  { id: "Toters", label: "Toters 🟢" },
-                  { id: "WhatsApp", label: "WA 📱" },
-                  { id: "POS", label: "POS" },
-                  { id: "NokNok", label: "NokNok 🔴" },
-                  { id: "App", label: "App 📲" },
-                ].map((src) => {
-                  const isCurrent = (selectedChannel || "POS") === src.id;
-                  return (
-                    <button
-                      key={src.id}
-                      type="button"
-                      onClick={() => handleSelectChannelSource(src.id)}
-                      className={`py-1.5 px-1 rounded-lg text-[11px] font-black transition-all text-center truncate ${
-                        isCurrent
-                          ? "bg-[#eb660c] text-white shadow-sm"
-                          : "text-gray-400 hover:text-white hover:bg-[#181C24]"
-                      }`}
-                    >
-                      {src.label}
-                    </button>
-                  );
-                })}
               </div>
-            </div>
+            )}
 
             {/* CONTEXTUAL CUSTOMER FIELDS */}
             {orderType !== "dine_in" && (
