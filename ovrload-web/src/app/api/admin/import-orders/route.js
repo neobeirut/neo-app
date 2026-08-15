@@ -1,9 +1,21 @@
-import { NextResponse } from 'next/server';
+import { corsJson, corsOptions } from "@/app/api/utils/cors";
 import { sql } from '@/lib/db';
 import fs from 'fs';
 import path from 'path';
 
+export async function OPTIONS(request) {
+  return corsOptions(request);
+}
+
+export async function GET(request) {
+  return handleImport(request);
+}
+
 export async function POST(request) {
+  return handleImport(request);
+}
+
+async function handleImport(request) {
   try {
     let ordersList = [];
     
@@ -26,7 +38,7 @@ export async function POST(request) {
     }
 
     if (!ordersList || ordersList.length === 0) {
-      return NextResponse.json({ success: false, error: 'No orders found to import' }, { status: 400 });
+      return corsJson(request, { success: false, error: 'No orders found to import' }, { status: 400 });
     }
 
     let insertedOrdersCount = 0;
@@ -99,7 +111,7 @@ export async function POST(request) {
       }
     }
 
-    return NextResponse.json({
+    return corsJson(request, {
       success: true,
       message: `Successfully imported ${insertedOrdersCount} orders and ${insertedItemsCount} order items into database.`,
       insertedOrdersCount,
@@ -107,6 +119,6 @@ export async function POST(request) {
     });
   } catch (error) {
     console.error('Error importing old orders:', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return corsJson(request, { success: false, error: error.message }, { status: 500 });
   }
 }
