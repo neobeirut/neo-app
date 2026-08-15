@@ -38,6 +38,10 @@ export default function TabletPOSPage() {
   const [heldOrders, setHeldOrders] = useState([]);
   const [pendingOrders, setPendingOrders] = useState([]);
   const [activeTabModal, setActiveTabModal] = useState(null); // 'held', 'incoming', 'payment', 'customization', 'void_item', 'receipt'
+
+  // Notification tracking refs (no re-render needed)
+  const knownOrderIdsRef = useRef(null); // Set of order IDs already seen
+  const isFirstPollRef   = useRef(true); // Skip alerts on initial page load
   
   // Customization Modal State
   const [currentProduct, setCurrentProduct] = useState(null);
@@ -75,6 +79,77 @@ export default function TabletPOSPage() {
   const [customerSearchResults, setCustomerSearchResults] = useState([]);
   const [isSearchingCustomers, setIsSearchingCustomers] = useState(false);
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+
+  // Branch Operational Status Modal States
+  const [branchStatus, setBranchStatus] = useState(null);
+  const [showBranchStatusModal, setShowBranchStatusModal] = useState(false);
+  const [hasShownInitialBranchModal, setHasShownInitialBranchModal] = useState(false);
+  const [posOperationalStatus, setPosOperationalStatus] = useState("open");
+  const [posClosureReason, setPosClosureReason] = useState("Overloaded");
+  const [isSavingBranchStatus, setIsSavingBranchStatus] = useState(false);
+
+  const fetchBranchStatusAndPrompt = async () => {
+    try {
+      const res = await fetch("/api/branches");
+      const data = await res.json();
+      if (data.branches && data.branches.length > 0) {
+        const mainBranch = data.branches[0];
+        const status = mainBranch.operational_status || (mainBranch.orders_active === false ? "closed" : "open");
+        const reason = mainBranch.closure_reason || "Overloaded";
+        
+        setBranchStatus(mainBranch);
+        setPosOperationalStatus(status);
+        setPosClosureReason(reason);
+
+        if (!hasShownInitialBranchModal) {
+          setHasShownInitialBranchModal(true);
+          setShowBranchStatusModal(true);
+        }
+      }
+    } catch (err) {
+      console.error("Error fetching branch status in POS:", err);
+    }
+  };
+
+  const handleSaveBranchStatusFromPos = async () => {
+    if (!branchStatus) return;
+    setIsSavingBranchStatus(true);
+    try {
+      const finalReason = posOperationalStatus !== "open" ? (posClosureReason || "Overloaded") : null;
+      const res = await fetch(`/api/branches/${branchStatus.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: branchStatus.name || "Cloud Kitchen",
+          operational_status: posOperationalStatus,
+          closure_reason: finalReason,
+          orders_active: posOperationalStatus === "open",
+          is_active: posOperationalStatus !== "closed",
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const updated = data.branch || {
+          ...branchStatus,
+          operational_status: posOperationalStatus,
+          closure_reason: finalReason,
+          orders_active: posOperationalStatus === "open",
+        };
+        setBranchStatus(updated);
+        setShowBranchStatusModal(false);
+        alert("Branch operational status updated successfully!");
+      } else {
+        const err = await res.json();
+        alert("Failed to update status: " + (err.error || "Unknown error"));
+      }
+    } catch (e) {
+      console.error("Error saving branch status from POS:", e);
+      alert("Error saving branch status: " + e.message);
+    } finally {
+      setIsSavingBranchStatus(false);
+    }
+  };
 
   const handleCustomerSearch = async (query) => {
     if (!query || query.trim().length < 2) {
@@ -153,6 +228,47 @@ export default function TabletPOSPage() {
   };
 
   // Load Pending WhatsApp & Held Orders
+  // ── WhatsApp Order Notification Helpers ─────────────────────────────────
+  const playNotificationBeep = () => {
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const beep = (freq, startAt, dur) => {
+        const osc  = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = "sine";
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.4, ctx.currentTime + startAt);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + startAt + dur);
+        osc.start(ctx.currentTime + startAt);
+        osc.stop(ctx.currentTime + startAt + dur + 0.05);
+      };
+      beep(880,  0,    0.18);
+      beep(1100, 0.22, 0.18);
+      beep(1320, 0.44, 0.30);
+    } catch (e) { /* Audio blocked before user gesture — ignored */ }
+  };
+
+  const fireOrderNotification = (order) => {
+    playNotificationBeep();
+    if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+      const notif = new Notification("🛵 New WhatsApp Order!", {
+        body: `${order.customer_name || "Customer"}  •  $${parseFloat(order.total_amount || 0).toFixed(2)}`,
+        icon: "/icon-192x192.png",
+        tag: `wa-order-${order.id}`,
+        renotify: true,
+        requireInteraction: true,
+      });
+      notif.onclick = () => {
+        window.focus();
+        setActiveTabModal("incoming");
+      };
+    }
+  };
+
   const fetchOrdersQueue = async () => {
     try {
       const [pendingRes, heldRes] = await Promise.all([
@@ -160,13 +276,28 @@ export default function TabletPOSPage() {
         fetch("/api/pos/orders?type=held")
       ]);
       const pendingData = await pendingRes.json();
-      const heldData = await heldRes.json();
-      if (pendingData.orders) setPendingOrders(pendingData.orders);
+      const heldData    = await heldRes.json();
+
+      if (pendingData.orders) {
+        const incoming = pendingData.orders;
+        setPendingOrders(incoming);
+
+        // Detect brand-new orders and notify (skip on first load)
+        if (!isFirstPollRef.current && knownOrderIdsRef.current) {
+          incoming
+            .filter((o) => !knownOrderIdsRef.current.has(o.id))
+            .forEach((o) => fireOrderNotification(o));
+        }
+        knownOrderIdsRef.current = new Set(incoming.map((o) => o.id));
+        isFirstPollRef.current   = false;
+      }
+
       if (heldData.orders) setHeldOrders(heldData.orders);
     } catch (err) {
       console.error("Error fetching orders queue:", err);
     }
   };
+
 
   // PWA Install State
   const [deferredInstallPrompt, setDeferredInstallPrompt] = useState(null);
@@ -193,8 +324,13 @@ export default function TabletPOSPage() {
   };
 
   useEffect(() => {
+    // Request notification permission silently on mount
+    if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
     fetchProducts();
     fetchOrdersQueue();
+    fetchBranchStatusAndPrompt();
     const interval = setInterval(fetchOrdersQueue, 10000); // Polling pending orders every 10s
     return () => clearInterval(interval);
   }, []);
@@ -556,6 +692,18 @@ export default function TabletPOSPage() {
       }
 
       if (data && data.success) {
+        // Normalize items to same clean shape used by handleReprintOrder
+        // so the print server always receives consistent data
+        const normalizedItems = ticketItems.map((item) => ({
+          qty: item.qty || item.quantity || 1,
+          name: item.name || item.product_name || "Item",
+          unit_price: item.unit_price || 0,
+          selectedCustomizations: (item.selectedCustomizations || []).map((c) =>
+            typeof c === "string" ? { name: c } : { name: c.ingredient || c.name || "" }
+          ),
+          note: item.note || ""
+        }));
+
         const completedOrderData = {
           id: data.orderId || editingOrderId,
           order_source: selectedChannel,
@@ -572,10 +720,11 @@ export default function TabletPOSPage() {
           discount_amount: discountAmount,
           discount_label: discountAmount > 0 ? discountLabel : null,
           total_amount: total,
-          items: ticketItems,
+          items: normalizedItems,
           created_at: new Date().toISOString()
         };
         // Fire print job (non-blocking — order saved regardless of print result)
+        console.log("[POS] Firing print for order #" + completedOrderData.id, completedOrderData);
         handlePrint(completedOrderData);
         setLastCompletedOrder(completedOrderData);
         setTicketItems([]);
@@ -589,7 +738,8 @@ export default function TabletPOSPage() {
         setDiscountIsPercent(true);
         setDeliveryFee(0);
         setOrderType("delivery");
-        setActiveTabModal("receipt");
+        // Toters & NokNok handle their own delivery — skip driver modal, go straight back
+        setActiveTabModal(["Toters", "NokNok"].includes(selectedChannel) ? null : "receipt");
         fetchOrdersQueue();
       } else if (data && data.error) {
         setValidationError(`⚠️ ${data.error}`);
@@ -634,6 +784,8 @@ export default function TabletPOSPage() {
     if (mode === "manual") {
       const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`;
       window.open(waUrl, "_blank");
+      // Close modal after manual open
+      setTimeout(() => setActiveTabModal(null), 800);
       return;
     }
 
@@ -650,15 +802,15 @@ export default function TabletPOSPage() {
         })
       });
       const data = await res.json();
-      if (data && data.success) {
-        setDispatchStatusMsg(`Driver Requested in ${timeText}! ✓`);
-      } else {
-        setDispatchStatusMsg(`Request Sent (${timeText}) ✓`);
-      }
+      setDispatchStatusMsg(`Driver Requested in ${timeText}! ✓`);
     } catch (err) {
       setDispatchStatusMsg(`Request Sent (${timeText}) ✓`);
     }
-    setTimeout(() => setDispatchStatusMsg(""), 4000);
+    // Auto-close after 1.2s so staff sees the confirmation tick
+    setTimeout(() => {
+      setDispatchStatusMsg("");
+      setActiveTabModal(null);
+    }, 1200);
   };
 
   // Fetch Order History for POS
@@ -712,6 +864,30 @@ export default function TabletPOSPage() {
       });
       const data = await res.json();
       if (data.success) {
+        // Build print data from the order (same format as handleReprintOrder)
+        const printData = {
+          id: order.id,
+          order_source: order.order_source || "WhatsApp",
+          order_type: order.order_type || "delivery",
+          payment_method: order.payment_method || "Cash",
+          customer_name: order.customer_name || "",
+          customer_phone: order.customer_phone || "",
+          delivery_address: order.delivery_address || "",
+          subtotal_amount: order.subtotal_amount || 0,
+          delivery_fee: order.delivery_fee || 0,
+          discount_amount: order.discount_amount || 0,
+          total_amount: order.total_amount || 0,
+          items: (order.items || []).map((i) => ({
+            qty: i.quantity || i.qty || 1,
+            name: i.product_name || i.name || "Item",
+            unit_price: i.unit_price || 0,
+            selectedCustomizations: i.customizations ? [{ name: i.customizations }] : [],
+            note: i.comment || ""
+          })),
+          created_at: order.created_at || new Date().toISOString()
+        };
+        // Fire print job before opening receipt modal
+        handlePrint(printData);
         setLastCompletedOrder(order);
         setActiveTabModal("receipt");
         fetchOrdersQueue();
@@ -881,6 +1057,34 @@ export default function TabletPOSPage() {
 
         {/* Queues & Quick Actions */}
         <div className="flex items-center gap-3">
+          {/* Branch Operational Status Quick Control Button */}
+          <button
+            onClick={() => {
+              fetchBranchStatusAndPrompt();
+              setShowBranchStatusModal(true);
+            }}
+            className={`px-3 py-2 rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition-all shadow-md border ${
+              posOperationalStatus === "open"
+                ? "bg-emerald-900/40 text-emerald-300 border-emerald-500/50 hover:bg-emerald-900/60"
+                : posOperationalStatus === "closed_hour"
+                ? "bg-amber-900/40 text-amber-300 border-amber-500/50 hover:bg-amber-900/60"
+                : posOperationalStatus === "closed_today"
+                ? "bg-purple-900/40 text-purple-300 border-purple-500/50 hover:bg-purple-900/60"
+                : "bg-rose-900/40 text-rose-300 border-rose-500/50 hover:bg-rose-900/60"
+            }`}
+            title="Click to view & edit Store Operational Status"
+          >
+            <span>
+              {posOperationalStatus === "open" && "🟢 Open"}
+              {posOperationalStatus === "closed_hour" && "⏳ Closed 1h"}
+              {posOperationalStatus === "closed_today" && "🌙 Closed Today"}
+              {posOperationalStatus === "closed" && "🔴 Closed"}
+            </span>
+            {posClosureReason && posOperationalStatus !== "open" && (
+              <span className="opacity-80 text-[11px] font-medium">({posClosureReason})</span>
+            )}
+          </button>
+
           {/* Pending WhatsApp Orders Queue Button */}
           <button
             onClick={() => setActiveTabModal("incoming")}
@@ -1806,18 +2010,12 @@ export default function TabletPOSPage() {
               </div>
             )}
 
-            <div className="flex justify-center gap-3 pt-2">
-              <button
-                onClick={handlePrintThermalTicket}
-                className="px-6 py-2.5 bg-[#eb660c] hover:bg-[#d55909] text-white rounded-xl text-xs font-extrabold flex items-center gap-2 shadow-md"
-              >
-                🖨️ Print Kitchen Ticket
-              </button>
+            <div className="flex justify-center pt-2">
               <button
                 onClick={() => setActiveTabModal(null)}
-                className="px-4 py-2.5 bg-[#262D3D] text-white rounded-xl text-xs font-bold hover:bg-[#323B4E]"
+                className="px-6 py-2.5 bg-[#262D3D] text-white rounded-xl text-xs font-bold hover:bg-[#323B4E]"
               >
-                Close
+                ✕ Close & Return to POS
               </button>
             </div>
           </div>
@@ -2016,6 +2214,111 @@ export default function TabletPOSPage() {
             >
               Got It!
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* BRANCH OPERATIONAL STATUS POPUP MODAL */}
+      {showBranchStatusModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:hidden">
+          <div className="bg-[#181C24] border border-[#262D3D] rounded-2xl w-full max-w-md p-6 space-y-5 text-white shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex justify-between items-center border-b border-[#262D3D] pb-3">
+              <div className="flex items-center gap-2.5">
+                <span className="text-2xl">⚙️</span>
+                <div>
+                  <h3 className="font-extrabold text-base text-white">Store Operational Status</h3>
+                  <p className="text-[11px] text-gray-400 font-medium">{branchStatus?.name || "Cloud Kitchen"}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowBranchStatusModal(false)}
+                className="text-gray-400 hover:text-white text-xl font-bold p-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Current status summary card */}
+            <div className={`p-4 rounded-xl border flex items-center justify-between ${
+              posOperationalStatus === "open"
+                ? "bg-emerald-950/40 border-emerald-500/40 text-emerald-300"
+                : posOperationalStatus === "closed_hour"
+                ? "bg-amber-950/40 border-amber-500/40 text-amber-300"
+                : posOperationalStatus === "closed_today"
+                ? "bg-purple-950/40 border-purple-500/40 text-purple-300"
+                : "bg-rose-950/40 border-rose-500/40 text-rose-300"
+            }`}>
+              <div>
+                <span className="text-xs uppercase font-extrabold tracking-wider block opacity-75">Current Status</span>
+                <span className="text-sm font-black">
+                  {posOperationalStatus === "open" && "🟢 Open / Accepting Orders"}
+                  {posOperationalStatus === "closed_hour" && "⏳ Closed For an Hour"}
+                  {posOperationalStatus === "closed_today" && "🌙 Closed For Today"}
+                  {posOperationalStatus === "closed" && "🔴 Closed (Hidden)"}
+                </span>
+              </div>
+              {posOperationalStatus !== "open" && (
+                <span className="px-2.5 py-1 rounded-lg bg-black/40 text-xs font-bold border border-white/10">
+                  {posClosureReason || "Overloaded"}
+                </span>
+              )}
+            </div>
+
+            <div className="space-y-4 text-xs">
+              {/* Feature 1: Orders Active / Operational Status */}
+              <div>
+                <label className="block text-xs font-bold text-gray-300 uppercase tracking-wider mb-1.5">
+                  1. Orders Active / Operational Status
+                </label>
+                <select
+                  value={posOperationalStatus}
+                  onChange={(e) => setPosOperationalStatus(e.target.value)}
+                  className="w-full bg-[#0F1115] border border-[#262D3D] rounded-xl px-3.5 py-2.5 text-xs font-bold text-white shadow-inner focus:outline-none focus:border-[#eb660c]"
+                >
+                  <option value="open">🟢 Open / Active (Accepting Orders)</option>
+                  <option value="closed_hour">⏳ Closed For an Hour (60 Minutes)</option>
+                  <option value="closed_today">🌙 Closed For Today (Until Midnight)</option>
+                  <option value="closed">🔴 Closed (Hidden from Customers & POS)</option>
+                </select>
+              </div>
+
+              {/* Feature 2: Closure Reason */}
+              {posOperationalStatus !== "open" && (
+                <div className="pt-2 border-t border-[#262D3D]">
+                  <label className="block text-xs font-bold text-gray-300 uppercase tracking-wider mb-1.5">
+                    2. Closure Reason
+                  </label>
+                  <select
+                    value={posClosureReason}
+                    onChange={(e) => setPosClosureReason(e.target.value)}
+                    className="w-full bg-[#0F1115] border border-[#262D3D] rounded-xl px-3.5 py-2.5 text-xs font-semibold text-white shadow-inner focus:outline-none focus:border-[#eb660c]"
+                  >
+                    <option value="Overloaded">⚡ Overloaded (High order volume)</option>
+                    <option value="Out of Stock">📦 Out of Stock</option>
+                    <option value="Maintenance">🛠️ Maintenance</option>
+                    <option value="Holiday">🌴 Holiday</option>
+                  </select>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                onClick={handleSaveBranchStatusFromPos}
+                disabled={isSavingBranchStatus}
+                className={`flex-1 py-3 font-extrabold rounded-xl text-xs transition-all shadow-lg text-white ${
+                  isSavingBranchStatus ? "bg-gray-600 cursor-not-allowed" : "bg-[#eb660c] hover:bg-[#d55909]"
+                }`}
+              >
+                {isSavingBranchStatus ? "Saving Status..." : "Save Status Changes"}
+              </button>
+              <button
+                onClick={() => setShowBranchStatusModal(false)}
+                className="px-4 py-3 bg-[#262D3D] hover:bg-[#323B4E] text-white font-bold rounded-xl text-xs"
+              >
+                Keep Current
+              </button>
+            </div>
           </div>
         </div>
       )}
