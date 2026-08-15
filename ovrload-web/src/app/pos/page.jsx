@@ -316,14 +316,9 @@ export default function TabletPOSPage() {
   };
 
   const handleSelectChannelSource = (sourceId) => {
-    if (sourceId === "Pick-up") {
+    if (sourceId === "Pick-up" || sourceId === "POS") {
       setSelectedChannel(null); // POS source
       setOrderType("pickup");
-      setDiscountType("none");
-      setDeliveryFee(0);
-    } else if (sourceId === "In-Store") {
-      setSelectedChannel(null); // POS source
-      setOrderType("dine_in");
       setDiscountType("none");
       setDeliveryFee(0);
     } else if (sourceId === "Toters") {
@@ -1230,33 +1225,32 @@ export default function TabletPOSPage() {
               </div>
             )}
 
-            {/* UNIFIED 1-ROW SMART CHANNEL BAR */}
-            <div className="grid grid-cols-6 gap-1 p-1 bg-[#0F1115] rounded-xl border border-[#262D3D]">
+            {/* UNIFIED 5-BUTTON SMART CHANNEL BAR */}
+            <div className="grid grid-cols-5 gap-1 p-1 bg-[#0F1115] rounded-xl border border-[#262D3D]">
               {[
                 { id: "Toters", label: "Toters 🟢" },
                 { id: "WhatsApp", label: "WA 📱" },
+                { id: "POS", label: "POS" },
                 { id: "NokNok", label: "NokNok 🔴" },
                 { id: "App", label: "App 📲" },
-                { id: "Pick-up", label: "Pick-up 🛍️" },
-                { id: "In-Store", label: "In-Store 🪑" },
               ].map((src) => {
                 const isCurrent =
-                  src.id === "Pick-up" ? (!selectedChannel && orderType === "pickup") :
-                  src.id === "In-Store" ? (!selectedChannel && orderType === "dine_in") :
-                  selectedChannel === src.id;
+                  src.id === "POS" || src.id === "Pick-up"
+                    ? !selectedChannel
+                    : selectedChannel === src.id;
 
                 return (
                   <button
                     key={src.id}
                     type="button"
-                    onClick={() => handleSelectChannelSource(src.id)}
-                    className={`py-2 px-0.5 rounded-lg text-[11px] font-black transition-all text-center truncate ${
+                    onClick={() => handleSelectChannelSource(src.id === "POS" ? "Pick-up" : src.id)}
+                    className={`py-2 px-1 rounded-lg text-[11px] font-black transition-all text-center truncate ${
                       isCurrent
                         ? "bg-[#eb660c] text-white shadow-md shadow-[#eb660c]/20"
                         : "text-gray-400 hover:text-white hover:bg-[#181C24]"
                     }`}
                   >
-                    {src.label}
+                    {src.id === "POS" ? "Pick-up 🛍️" : src.label}
                   </button>
                 );
               })}
@@ -1293,46 +1287,44 @@ export default function TabletPOSPage() {
               </div>
             )}
 
-            {/* CONTEXTUAL CUSTOMER FIELDS */}
-            {orderType !== "dine_in" && (
-              <div className="pt-1 border-t border-[#262D3D]/60 relative">
-                <div className="grid grid-cols-2 gap-2">
+            {/* CUSTOMER FIELDS */}
+            <div className="pt-1 border-t border-[#262D3D]/60 relative">
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  type="text"
+                  placeholder="Customer Name"
+                  value={customerName}
+                  onChange={(e) => setCustomerName(e.target.value)}
+                  className="w-full bg-[#0F1115] border border-[#262D3D] rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-gray-500 font-medium focus:outline-none focus:border-[#eb660c]"
+                />
+                <div className="relative">
                   <input
                     type="text"
-                    placeholder="Customer Name"
-                    value={customerName}
-                    onChange={(e) => setCustomerName(e.target.value)}
+                    placeholder="Phone Number"
+                    value={customerPhone}
+                    onChange={(e) => {
+                      setCustomerPhone(e.target.value);
+                      handleCustomerSearch(e.target.value);
+                    }}
                     className="w-full bg-[#0F1115] border border-[#262D3D] rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-gray-500 font-medium focus:outline-none focus:border-[#eb660c]"
                   />
-                  <div className="relative">
-                    <input
-                      type="text"
-                      placeholder="Phone Number"
-                      value={customerPhone}
-                      onChange={(e) => {
-                        setCustomerPhone(e.target.value);
-                        handleCustomerSearch(e.target.value);
-                      }}
-                      className="w-full bg-[#0F1115] border border-[#262D3D] rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-gray-500 font-medium focus:outline-none focus:border-[#eb660c]"
-                    />
-                    {showCustomerDropdown && customerSearchResults.length > 0 && (
-                      <div className="absolute z-30 left-0 right-0 top-full mt-1 bg-[#181C24] border border-[#262D3D] rounded-xl shadow-xl max-h-40 overflow-y-auto">
-                        {customerSearchResults.map((c) => (
-                          <div
-                            key={c.id}
-                            onClick={() => handleSelectCustomer(c)}
-                            className="p-2 hover:bg-[#262D3D] cursor-pointer text-xs border-b border-[#262D3D] last:border-0"
-                          >
-                            <div className="font-bold text-white">{c.customer_name || "Customer"}</div>
-                            <div className="text-[11px] text-gray-400">{c.customer_phone}</div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                  {showCustomerDropdown && customerSearchResults.length > 0 && (
+                    <div className="absolute z-30 left-0 right-0 top-full mt-1 bg-[#181C24] border border-[#262D3D] rounded-xl shadow-xl max-h-40 overflow-y-auto">
+                      {customerSearchResults.map((c) => (
+                        <div
+                          key={c.id}
+                          onClick={() => handleSelectCustomer(c)}
+                          className="p-2 hover:bg-[#262D3D] cursor-pointer text-xs border-b border-[#262D3D] last:border-0"
+                        >
+                          <div className="font-bold text-white">{c.customer_name || "Customer"}</div>
+                          <div className="text-[11px] text-gray-400">{c.customer_phone}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
-            )}
+            </div>
           </div>
 
           {/* TICKET ITEMS LIST */}
