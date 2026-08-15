@@ -1056,8 +1056,8 @@ export default function TabletPOSPage() {
             })}
           </div>
 
-          {/* COMPACT PRODUCT GRID (4 Columns on tablet) */}
-          <div className="flex-1 overflow-y-auto p-3.5 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5 align-content-start">
+          {/* PRODUCT GRID (3 Columns in a row) */}
+          <div className="flex-1 overflow-y-auto p-3.5 grid grid-cols-3 gap-3 align-content-start">
             {filteredProducts.length === 0 ? (
               <div className="col-span-full py-16 text-center text-gray-400 font-medium text-sm">
                 No products found in this category.
@@ -1073,11 +1073,11 @@ export default function TabletPOSPage() {
                   <div
                     key={p.id}
                     onClick={() => handleQuickAddProduct(p)}
-                    className="bg-[#181C24] hover:bg-[#1f2532] border border-[#262D3D] hover:border-[#eb660c]/50 rounded-xl p-3 flex flex-col justify-between transition-all cursor-pointer group shadow-sm h-[105px] relative overflow-hidden"
+                    className="bg-[#181C24] hover:bg-[#1f2532] border border-[#262D3D] hover:border-[#eb660c]/50 rounded-xl p-3 flex flex-col justify-between transition-all cursor-pointer group shadow-sm min-h-[105px] h-auto relative overflow-hidden"
                   >
                     <div>
                       <div className="flex items-start justify-between gap-1">
-                        <h4 className="font-extrabold text-xs text-white group-hover:text-[#eb660c] transition-colors line-clamp-1 leading-snug">
+                        <h4 className="font-extrabold text-xs text-white group-hover:text-[#eb660c] transition-colors leading-tight">
                           {p.name}
                         </h4>
                         <button
@@ -1257,7 +1257,7 @@ export default function TabletPOSPage() {
                 <div key={index} className="bg-[#181C24] border border-[#262D3D] rounded-xl p-2.5 space-y-1.5 shadow-sm">
                   <div className="flex items-start justify-between">
                     <div className="flex-1 min-w-0 pr-2">
-                      <h5 className="font-extrabold text-xs text-white truncate">{item.name}</h5>
+                      <h5 className="font-extrabold text-xs text-white leading-tight">{item.name}</h5>
                       <div className="text-xs text-[#eb660c] font-black mt-0.5">
                         ${(item.unit_price * item.qty).toFixed(2)}
                       </div>
