@@ -13,6 +13,50 @@ const FAVORITE_PRODUCT_NAMES = [
   "banoffee overload",
 ];
 
+const partitionCustomizations = (customizations) => {
+  const addons = [];
+  const removals = [];
+
+  if (!customizations) return { addons, removals };
+
+  const itemsList = Array.isArray(customizations)
+    ? customizations
+    : typeof customizations === "string"
+    ? customizations.split(",").map((s) => s.trim())
+    : [customizations];
+
+  itemsList.forEach((c) => {
+    const obj = typeof c === "string" ? { name: c } : c;
+    const nameStr = (obj.name || obj.ingredient || obj.customization_name || "").trim();
+    if (!nameStr) return;
+
+    const nameLower = nameStr.toLowerCase();
+    const groupLower = (obj.option_group_name || "").toLowerCase();
+    const typeLower = (obj.customization_type || obj.type || "").toLowerCase();
+
+    const isRemoval =
+      typeLower === "remove" ||
+      groupLower.includes("remove") ||
+      nameLower.startsWith("no ") ||
+      nameLower.startsWith("no-") ||
+      nameLower.startsWith("remove ") ||
+      nameLower.startsWith("without ");
+
+    let cleanName = nameStr;
+    if (isRemoval) {
+      cleanName = cleanName.replace(/^(no\s+|no-|remove\s+|without\s+)/i, "").trim();
+    }
+
+    if (isRemoval) {
+      removals.push(cleanName || nameStr);
+    } else {
+      addons.push(nameStr);
+    }
+  });
+
+  return { addons, removals };
+};
+
 export default function TabletPOSPage() {
   // Data States
   const [categories, setCategories] = useState([]);
@@ -821,15 +865,30 @@ export default function TabletPOSPage() {
       }
 
       if (data && data.success) {
-        const normalizedItems = ticketItems.map((item) => ({
-          qty: item.qty || item.quantity || 1,
-          name: item.name || item.product_name || "Item",
-          unit_price: item.unit_price || 0,
-          selectedCustomizations: (item.selectedCustomizations || []).map((c) =>
-            typeof c === "string" ? { name: c } : { name: c.ingredient || c.name || "" }
-          ),
-          note: item.note || ""
-        }));
+        const normalizedItems = ticketItems.map((item) => {
+          const rawCusts = item.selectedCustomizations || [];
+          const { addons, removals } = partitionCustomizations(rawCusts);
+
+          const printCustomizationLines = [];
+          addons.forEach((a) => printCustomizationLines.push(`+ ${a}`));
+          if (removals.length > 0) {
+            printCustomizationLines.push(`REMOVE:`);
+            removals.forEach((r) => printCustomizationLines.push(`  - ${r}`));
+          }
+
+          return {
+            qty: item.qty || item.quantity || 1,
+            name: item.name || item.product_name || "Item",
+            unit_price: item.unit_price || 0,
+            selectedCustomizations: rawCusts.map((c) =>
+              typeof c === "string" ? { name: c } : { name: c.ingredient || c.name || "" }
+            ),
+            addons,
+            removals,
+            customizations_print_text: printCustomizationLines,
+            note: item.note || ""
+          };
+        });
 
         const completedOrderData = {
           id: data.orderId || editingOrderId,
@@ -943,13 +1002,32 @@ export default function TabletPOSPage() {
       delivery_fee: order.delivery_fee || 0,
       discount_amount: order.discount_amount || 0,
       total_amount: order.total_amount || 0,
-      items: (order.items || []).map((i) => ({
-        qty: i.quantity || i.qty || 1,
-        name: i.product_name || i.name || "Item",
-        unit_price: i.unit_price || 0,
-        selectedCustomizations: i.customizations ? [{ name: i.customizations }] : [],
-        note: i.comment || ""
-      })),
+      items: (order.items || []).map((i) => {
+        const rawCusts = i.customizations
+          ? Array.isArray(i.customizations)
+            ? i.customizations.map((c) => (typeof c === "string" ? { name: c } : c))
+            : [{ name: String(i.customizations) }]
+          : [];
+        const { addons, removals } = partitionCustomizations(rawCusts);
+
+        const printCustomizationLines = [];
+        addons.forEach((a) => printCustomizationLines.push(`+ ${a}`));
+        if (removals.length > 0) {
+          printCustomizationLines.push(`REMOVE:`);
+          removals.forEach((r) => printCustomizationLines.push(`  - ${r}`));
+        }
+
+        return {
+          qty: i.quantity || i.qty || 1,
+          name: i.product_name || i.name || "Item",
+          unit_price: i.unit_price || 0,
+          selectedCustomizations: rawCusts,
+          addons,
+          removals,
+          customizations_print_text: printCustomizationLines,
+          note: i.comment || ""
+        };
+      }),
       created_at: order.created_at || new Date().toISOString()
     };
     handlePrint(orderData);
@@ -1271,15 +1349,34 @@ export default function TabletPOSPage() {
                     </button>
                   </div>
 
-                  {item.selectedCustomizations && item.selectedCustomizations.length > 0 && (
-                    <div className="flex flex-wrap gap-1 pt-0.5">
-                      {item.selectedCustomizations.map((c, i) => (
-                        <span key={i} className="text-[10px] bg-[#0F1115] text-gray-300 px-2 py-0.5 rounded border border-[#262D3D]">
-                          {typeof c === "string" ? c : (c.ingredient || c.name || "")}
-                        </span>
-                      ))}
-                    </div>
-                  )}
+                  {item.selectedCustomizations && item.selectedCustomizations.length > 0 && (() => {
+                    const { addons, removals } = partitionCustomizations(item.selectedCustomizations);
+                    return (
+                      <div className="space-y-1 pt-0.5">
+                        {addons.length > 0 && (
+                          <div className="flex flex-wrap gap-1">
+                            {addons.map((a, i) => (
+                              <span key={i} className="text-[10px] bg-[#0F1115] text-gray-300 px-2 py-0.5 rounded border border-[#262D3D] font-medium">
+                                + {a}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        {removals.length > 0 && (
+                          <div className="space-y-0.5 pt-0.5">
+                            <span className="text-[10px] font-black text-rose-400 uppercase tracking-wider block">REMOVE:</span>
+                            <div className="flex flex-wrap gap-1">
+                              {removals.map((r, i) => (
+                                <span key={i} className="text-[10px] bg-rose-950/60 text-rose-300 px-2 py-0.5 rounded border border-rose-500/40 font-extrabold">
+                                  - {r}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   {item.note && <p className="text-[10px] text-amber-300 italic">Note: {item.note}</p>}
 
@@ -2061,11 +2158,23 @@ export default function TabletPOSPage() {
                                     <div className="font-bold text-white">
                                       <span className="text-[#eb660c] font-black">{item.quantity || item.qty}x</span> {item.product_name || item.name}
                                     </div>
-                                    {item.customizations && (
-                                      <div className="text-[10px] text-gray-400 mt-0.5">
-                                        Options: {typeof item.customizations === 'string' ? item.customizations : (Array.isArray(item.customizations) ? item.customizations.map(c => typeof c === 'string' ? c : (c.ingredient || c.name || "")).join(", ") : "")}
-                                      </div>
-                                    )}
+                                    {item.customizations && (() => {
+                                      const { addons, removals } = partitionCustomizations(item.customizations);
+                                      return (
+                                        <div className="text-[10px] space-y-0.5 mt-0.5">
+                                          {addons.length > 0 && (
+                                            <div className="text-gray-300">
+                                              <strong className="text-gray-400">+ Addons:</strong> {addons.join(", ")}
+                                            </div>
+                                          )}
+                                          {removals.length > 0 && (
+                                            <div className="text-rose-400 font-extrabold">
+                                              <strong>REMOVE:</strong> {removals.join(", ")}
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    })()}
                                     {item.comment && (
                                       <div className="text-[10px] text-amber-300 italic">Note: {item.comment}</div>
                                     )}
