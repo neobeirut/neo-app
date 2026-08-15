@@ -1157,9 +1157,8 @@ export default function TabletPOSPage() {
 
             {/* Order Source Buttons (Large, touch-friendly) */}
             <div className="space-y-1 pt-1">
-              <div className="flex items-center justify-between text-[11px] font-bold text-gray-400 px-0.5">
-                <span>Order Source / Origin:</span>
-                {ticketItems.length > 0 && (
+              {ticketItems.length > 0 && (
+                <div className="flex justify-end pb-0.5">
                   <button
                     type="button"
                     onClick={handleHoldOrder}
@@ -1168,8 +1167,8 @@ export default function TabletPOSPage() {
                   >
                     ⏸️ Hold Ticket
                   </button>
-                )}
-              </div>
+                </div>
+              )}
               <div className="grid grid-cols-5 gap-1 p-1 bg-[#0F1115] rounded-xl border border-[#262D3D]">
                 {[
                   { id: "Toters", label: "Toters 🟢" },
@@ -1199,7 +1198,7 @@ export default function TabletPOSPage() {
 
             {/* CONTEXTUAL CUSTOMER FIELDS */}
             {orderType !== "dine_in" && (
-              <div className="space-y-2 pt-1 border-t border-[#262D3D]/60 relative">
+              <div className="pt-1 border-t border-[#262D3D]/60 relative">
                 <div className="grid grid-cols-2 gap-2">
                   <input
                     type="text"
@@ -1228,23 +1227,13 @@ export default function TabletPOSPage() {
                             className="p-2 hover:bg-[#262D3D] cursor-pointer text-xs border-b border-[#262D3D] last:border-0"
                           >
                             <div className="font-bold text-white">{c.customer_name || "Customer"}</div>
-                            <div className="text-[11px] text-gray-400">{c.customer_phone} {c.delivery_address ? `• ${c.delivery_address}` : ""}</div>
+                            <div className="text-[11px] text-gray-400">{c.customer_phone}</div>
                           </div>
                         ))}
                       </div>
                     )}
                   </div>
                 </div>
-
-                {orderType === "delivery" && (
-                  <input
-                    type="text"
-                    placeholder="Delivery Address & Landmark / Notes"
-                    value={deliveryAddress}
-                    onChange={(e) => setDeliveryAddress(e.target.value)}
-                    className="w-full bg-[#0F1115] border border-[#262D3D] rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-gray-500 font-medium focus:outline-none focus:border-[#eb660c]"
-                  />
-                )}
               </div>
             )}
           </div>
@@ -1328,151 +1317,157 @@ export default function TabletPOSPage() {
 
             {/* Discount & Delivery Fee Quick Inputs */}
             <div className="space-y-1.5 text-xs">
-              {/* Discount Row */}
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-gray-400">Discount:</span>
-                {discountType !== "none" && discountAmount > 0 ? (
-                  <div className="flex items-center gap-1.5 bg-amber-950/50 border border-amber-500/40 px-2 py-0.5 rounded-lg text-amber-300 text-xs font-extrabold">
-                    <span>{discountLabel} (-${discountAmount.toFixed(2)})</span>
-                    <button
-                      onClick={() => {
-                        setDiscountType("none");
-                        setDiscountValInput(10);
-                      }}
-                      className="hover:text-white font-bold ml-1"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setShowDiscountModal(true)}
-                    className="text-xs font-extrabold text-[#eb660c] hover:underline flex items-center gap-1"
-                  >
-                    + Discount
-                  </button>
-                )}
-              </div>
-
-              {/* Delivery Fee Row (Only for Delivery orders) */}
-              {orderType === "delivery" && (
-                <div className="flex items-center justify-between pt-1 border-t border-[#262D3D]/40">
-                  <span className="font-bold text-gray-400">Delivery Fee:</span>
-                  <div className="flex items-center gap-1">
-                    {[0, 1, 2, 3].map((fee) => (
+            {/* 2-COLUMN CONTROLS & CALCULATIONS GRID */}
+            <div className="grid grid-cols-2 gap-2.5 pt-1.5 border-t border-[#262D3D]">
+              {/* LEFT SIDE: Discount & Delivery Fee Controls */}
+              <div className="space-y-2 text-xs pr-2 border-r border-[#262D3D]/60 flex flex-col justify-between">
+                {/* Discount Control */}
+                <div className="space-y-1">
+                  <span className="font-bold text-gray-400 text-[11px] block">Discount:</span>
+                  {discountType !== "none" && discountAmount > 0 ? (
+                    <div className="flex items-center justify-between bg-amber-950/50 border border-amber-500/40 px-2 py-1 rounded-lg text-amber-300 text-xs font-extrabold">
+                      <span className="truncate">{discountLabel} (-${discountAmount.toFixed(2)})</span>
                       <button
-                        key={fee}
+                        onClick={() => {
+                          setDiscountType("none");
+                          setDiscountValInput(10);
+                        }}
+                        className="hover:text-white font-bold ml-1"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setShowDiscountModal(true)}
+                      className="px-2 py-1 bg-[#0F1115] border border-[#262D3D] hover:border-[#eb660c] rounded-lg text-[11px] font-extrabold text-[#eb660c] transition-all"
+                    >
+                      + Discount
+                    </button>
+                  )}
+                </div>
+
+                {/* Delivery Fee Control (Only for Delivery orders) */}
+                {orderType === "delivery" && (
+                  <div className="space-y-1 pt-1 border-t border-[#262D3D]/40">
+                    <span className="font-bold text-gray-400 text-[11px] block">Delivery Fee:</span>
+                    <div className="flex flex-wrap items-center gap-1">
+                      {[0, 1, 2, 3].map((fee) => (
+                        <button
+                          key={fee}
+                          type="button"
+                          onClick={() => setDeliveryFee(fee)}
+                          className={`px-2 py-0.5 rounded text-[11px] font-extrabold transition-all ${
+                            Number(deliveryFee) === fee
+                              ? "bg-[#eb660c] text-white"
+                              : "bg-[#0F1115] border border-[#262D3D] text-gray-300 hover:bg-[#262D3D]"
+                          }`}
+                        >
+                          ${fee}
+                        </button>
+                      ))}
+                      <button
                         type="button"
-                        onClick={() => setDeliveryFee(fee)}
+                        onClick={() => {
+                          const val = prompt("Custom Delivery Fee ($ USD):", deliveryFee);
+                          if (val !== null && !isNaN(parseFloat(val))) setDeliveryFee(parseFloat(val));
+                        }}
                         className={`px-2 py-0.5 rounded text-[11px] font-extrabold transition-all ${
-                          Number(deliveryFee) === fee
+                          ![0, 1, 2, 3].includes(Number(deliveryFee))
                             ? "bg-[#eb660c] text-white"
                             : "bg-[#0F1115] border border-[#262D3D] text-gray-300 hover:bg-[#262D3D]"
                         }`}
                       >
-                        ${fee}
+                        Custom
                       </button>
-                    ))}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const val = prompt("Custom Delivery Fee ($ USD):", deliveryFee);
-                        if (val !== null && !isNaN(parseFloat(val))) setDeliveryFee(parseFloat(val));
-                      }}
-                      className={`px-2 py-0.5 rounded text-[11px] font-extrabold transition-all ${
-                        ![0, 1, 2, 3].includes(Number(deliveryFee))
-                          ? "bg-[#eb660c] text-white"
-                          : "bg-[#0F1115] border border-[#262D3D] text-gray-300 hover:bg-[#262D3D]"
-                      }`}
-                    >
-                      Custom
-                    </button>
+                    </div>
                   </div>
-                </div>
-              )}
-            </div>
-
-            {/* Calculations Breakdown */}
-            <div className="space-y-1 pt-1.5 border-t border-[#262D3D] text-xs font-semibold text-gray-300">
-              <div className="flex justify-between">
-                <span className="text-gray-400">Subtotal</span>
-                <span>${subtotal.toFixed(2)}</span>
+                )}
               </div>
-              {discountAmount > 0 && (
-                <div className="flex justify-between text-amber-400">
-                  <span>Discount ({discountLabel})</span>
-                  <span>-${discountAmount.toFixed(2)}</span>
-                </div>
-              )}
-              {orderType === "delivery" && Number(deliveryFee) > 0 && (
-                <div className="flex justify-between text-blue-400">
-                  <span>Delivery Fee</span>
-                  <span>+${(Number(deliveryFee) || 0).toFixed(2)}</span>
-                </div>
-              )}
-            </div>
 
-            {/* TOTAL DISPLAY */}
-            <div className="flex items-center justify-between pt-2 border-t border-[#262D3D]">
-              <span className="font-extrabold text-sm uppercase text-gray-300 tracking-wider">TOTAL</span>
-              <span className="font-black text-2xl text-[#eb660c]">
-                ${total.toFixed(2)}
-              </span>
-            </div>
+              {/* RIGHT SIDE: Subtotal, Discount, Delivery Fee, TOTAL */}
+              <div className="space-y-1 text-xs font-semibold text-gray-300 flex flex-col justify-between">
+                <div className="space-y-1">
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Subtotal</span>
+                    <span>${subtotal.toFixed(2)}</span>
+                  </div>
+                  {discountAmount > 0 && (
+                    <div className="flex justify-between text-amber-400">
+                      <span>Discount ({discountLabel})</span>
+                      <span>-${discountAmount.toFixed(2)}</span>
+                    </div>
+                  )}
+                  {orderType === "delivery" && (
+                    <div className="flex justify-between text-blue-400">
+                      <span>Delivery Fee</span>
+                      <span>+${(Number(deliveryFee) || 0).toFixed(2)}</span>
+                    </div>
+                  )}
+                </div>
 
-            {/* Payment Method Toggle Buttons (Shown ONLY if not Toters/NokNok) */}
-            {!["Toters", "NokNok"].includes(selectedChannel) ? (
-              <div className="grid grid-cols-2 gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={() => setSelectedPaymentMethod("Cash")}
-                  className={`py-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 border transition-all ${
-                    selectedPaymentMethod === "Cash"
-                      ? "bg-emerald-700 text-white border-emerald-500 shadow-md shadow-emerald-700/20"
-                      : "bg-[#0F1115] text-gray-300 border-[#262D3D] hover:bg-[#262D3D]"
-                  }`}
-                >
-                  💵 Cash
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSelectedPaymentMethod("Whish")}
-                  className={`py-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 border transition-all ${
-                    selectedPaymentMethod === "Whish"
-                      ? "bg-purple-700 text-white border-purple-500 shadow-md shadow-purple-700/20"
-                      : "bg-[#0F1115] text-gray-300 border-[#262D3D] hover:bg-[#262D3D]"
-                  }`}
-                >
-                  🟣 Whish
-                </button>
-              </div>
-            ) : (
-              <div className="pt-1">
-                <div className="py-2 px-3 bg-[#0F1115] border border-[#262D3D] rounded-xl text-xs font-extrabold flex items-center justify-between text-gray-300">
-                  <span>Payment Method:</span>
-                  <span className={`px-2.5 py-0.5 rounded-lg text-xs font-black ${
-                    selectedChannel === "Toters" ? "bg-[#00C49F] text-black" : "bg-[#FF5A5F] text-white"
-                  }`}>
-                    {selectedChannel} (Prepaid)
+                <div className="flex items-center justify-between pt-1 border-t border-[#262D3D]">
+                  <span className="font-extrabold text-xs uppercase text-gray-300 tracking-wider">TOTAL</span>
+                  <span className="font-black text-xl text-[#eb660c]">
+                    ${total.toFixed(2)}
                   </span>
                 </div>
               </div>
-            )}
+            </div>
 
-            {/* PRIMARY PAY & PRINT BUTTON */}
-            <button
-              type="button"
-              onClick={handleFinalizePayment}
-              disabled={ticketItems.length === 0 || isSubmitting}
-              className={`w-full py-3.5 rounded-xl text-sm font-black tracking-wider flex items-center justify-center gap-2 transition-all shadow-lg ${
-                ticketItems.length === 0 || isSubmitting
-                  ? "bg-gray-700 text-gray-500 cursor-not-allowed border border-gray-600"
-                  : "bg-[#eb660c] hover:bg-[#d55909] text-white active:scale-98 shadow-[#eb660c]/20 border border-[#eb660c] animate-pulse"
-              }`}
-            >
-              {isSubmitting ? "PROCESSING..." : `PAY & PRINT — $${total.toFixed(2)}`}
-            </button>
+            {/* SAME HORIZONTAL LINE: Payment Buttons on Left & PAY & PRINT on Right */}
+            <div className="flex items-center gap-2 pt-2 border-t border-[#262D3D]">
+              {/* LEFT SIDE: Cash / Whish or Prepaid Channel Badge */}
+              {!["Toters", "NokNok"].includes(selectedChannel) ? (
+                <div className="grid grid-cols-2 gap-1 w-[45%] shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPaymentMethod("Cash")}
+                    className={`py-3 rounded-xl text-xs font-black flex items-center justify-center gap-1 border transition-all ${
+                      selectedPaymentMethod === "Cash"
+                        ? "bg-emerald-700 text-white border-emerald-500 shadow-md shadow-emerald-700/20"
+                        : "bg-[#0F1115] text-gray-300 border-[#262D3D] hover:bg-[#262D3D]"
+                    }`}
+                  >
+                    💵 Cash
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPaymentMethod("Whish")}
+                    className={`py-3 rounded-xl text-xs font-black flex items-center justify-center gap-1 border transition-all ${
+                      selectedPaymentMethod === "Whish"
+                        ? "bg-purple-700 text-white border-purple-500 shadow-md shadow-purple-700/20"
+                        : "bg-[#0F1115] text-gray-300 border-[#262D3D] hover:bg-[#262D3D]"
+                    }`}
+                  >
+                    🟣 Whish
+                  </button>
+                </div>
+              ) : (
+                <div className="w-[45%] shrink-0">
+                  <div className={`py-3 px-2 rounded-xl text-xs font-black text-center border ${
+                    selectedChannel === "Toters" ? "bg-[#00C49F]/20 text-[#00C49F] border-[#00C49F]/40" : "bg-[#FF5A5F]/20 text-[#FF5A5F] border-[#FF5A5F]/40"
+                  }`}>
+                    {selectedChannel} (Prepaid)
+                  </div>
+                </div>
+              )}
+
+              {/* RIGHT SIDE: PAY & PRINT BUTTON */}
+              <button
+                type="button"
+                onClick={handleFinalizePayment}
+                disabled={ticketItems.length === 0 || isSubmitting}
+                className={`flex-1 py-3 rounded-xl text-xs font-black tracking-wider flex items-center justify-center gap-1 transition-all shadow-lg ${
+                  ticketItems.length === 0 || isSubmitting
+                    ? "bg-gray-700 text-gray-500 cursor-not-allowed border border-gray-600"
+                    : "bg-[#eb660c] hover:bg-[#d55909] text-white active:scale-98 shadow-[#eb660c]/20 border border-[#eb660c]"
+                }`}
+              >
+                {isSubmitting ? "PROCESSING..." : `PAY & PRINT — $${total.toFixed(2)}`}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -2128,5 +2123,6 @@ export default function TabletPOSPage() {
         </div>
       )}
     </div>
+  </div>
   );
 }
