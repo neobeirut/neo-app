@@ -1421,31 +1421,44 @@ export default function TabletPOSPage() {
               </span>
             </div>
 
-            {/* Payment Method Toggle Buttons */}
-            <div className="grid grid-cols-2 gap-2 pt-1">
-              <button
-                type="button"
-                onClick={() => setSelectedPaymentMethod("Cash")}
-                className={`py-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 border transition-all ${
-                  selectedPaymentMethod === "Cash"
-                    ? "bg-emerald-700 text-white border-emerald-500 shadow-md shadow-emerald-700/20"
-                    : "bg-[#0F1115] text-gray-300 border-[#262D3D] hover:bg-[#262D3D]"
-                }`}
-              >
-                💵 Cash
-              </button>
-              <button
-                type="button"
-                onClick={() => setSelectedPaymentMethod("Whish")}
-                className={`py-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 border transition-all ${
-                  selectedPaymentMethod === "Whish"
-                    ? "bg-purple-700 text-white border-purple-500 shadow-md shadow-purple-700/20"
-                    : "bg-[#0F1115] text-gray-300 border-[#262D3D] hover:bg-[#262D3D]"
-                }`}
-              >
-                🟣 Whish
-              </button>
-            </div>
+            {/* Payment Method Toggle Buttons (Shown ONLY if not Toters/NokNok) */}
+            {!["Toters", "NokNok"].includes(selectedChannel) ? (
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setSelectedPaymentMethod("Cash")}
+                  className={`py-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 border transition-all ${
+                    selectedPaymentMethod === "Cash"
+                      ? "bg-emerald-700 text-white border-emerald-500 shadow-md shadow-emerald-700/20"
+                      : "bg-[#0F1115] text-gray-300 border-[#262D3D] hover:bg-[#262D3D]"
+                  }`}
+                >
+                  💵 Cash
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedPaymentMethod("Whish")}
+                  className={`py-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 border transition-all ${
+                    selectedPaymentMethod === "Whish"
+                      ? "bg-purple-700 text-white border-purple-500 shadow-md shadow-purple-700/20"
+                      : "bg-[#0F1115] text-gray-300 border-[#262D3D] hover:bg-[#262D3D]"
+                  }`}
+                >
+                  🟣 Whish
+                </button>
+              </div>
+            ) : (
+              <div className="pt-1">
+                <div className="py-2 px-3 bg-[#0F1115] border border-[#262D3D] rounded-xl text-xs font-extrabold flex items-center justify-between text-gray-300">
+                  <span>Payment Method:</span>
+                  <span className={`px-2.5 py-0.5 rounded-lg text-xs font-black ${
+                    selectedChannel === "Toters" ? "bg-[#00C49F] text-black" : "bg-[#FF5A5F] text-white"
+                  }`}>
+                    {selectedChannel} (Prepaid)
+                  </span>
+                </div>
+              </div>
+            )}
 
             {/* PRIMARY PAY & PRINT BUTTON */}
             <button
