@@ -956,80 +956,71 @@ export default function TabletPOSPage() {
   const realtimeStatus = getRealtimeBranchStatusInfo(branchStatus, posOperationalStatus, posClosureReason);
 
   return (
-    <div className="h-screen max-h-screen flex flex-col bg-[#0F1115] text-white font-sans overflow-hidden select-none">
-      {/* SIMPLIFIED HEADER */}
-      <header className="h-14 bg-[#181C24] border-b border-[#262D3D] px-5 flex items-center justify-between shadow-md print:hidden flex-shrink-0 z-10">
-        {/* Brand */}
-        <div className="flex items-center gap-3">
-          <span className="w-7 h-7 rounded-lg bg-[#eb660c] flex items-center justify-center font-black text-white text-sm">
-            O
-          </span>
-          <span className="font-extrabold text-lg tracking-wider text-white">
-            OVR<span className="text-[#eb660c]">LOAD</span> <span className="text-[#eb660c] font-black text-xs ml-1">POS</span>
-          </span>
-        </div>
-
-        {/* Header Action Buttons */}
-        <div className="flex items-center gap-2.5">
-          {/* Store Operational Status Badge Button */}
-          <button
-            onClick={() => {
-              fetchBranchStatusAndPrompt();
-              setShowBranchStatusModal(true);
-            }}
-            className={`px-3 py-1.5 rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition-all shadow-sm border ${realtimeStatus.badgeClass}`}
-            title="Click to view & edit Store Operational Status"
-          >
-            <span>{realtimeStatus.text}</span>
-          </button>
-
-          {/* WhatsApp Orders Button */}
-          <button
-            onClick={() => setActiveTabModal("incoming")}
-            className="px-3 py-1.5 bg-[#262D3D] hover:bg-[#323B4E] rounded-xl text-xs font-bold text-white transition-all flex items-center gap-1.5 border border-[#3A455C]"
-          >
-            <span>📱 WhatsApp</span>
-            {pendingOrders.length > 0 && (
-              <span className="px-1.5 py-0.5 rounded-full bg-[#eb660c] text-white text-[10px] font-black animate-pulse">
-                {pendingOrders.length}
+    <div className="h-screen max-h-screen flex bg-[#0F1115] text-white font-sans overflow-hidden select-none">
+      {/* LEFT AREA (65% Width): Header + Category Bar + Product Grid */}
+      <div className="w-[65%] flex flex-col h-full overflow-hidden border-r border-[#262D3D]">
+        {/* HEADER FOR LEFT AREA */}
+        <header className="h-14 bg-[#181C24] border-b border-[#262D3D] px-4 flex items-center justify-between shadow-md print:hidden flex-shrink-0 z-10">
+          {/* Brand + All Action Buttons on Left */}
+          <div className="flex items-center gap-3">
+            {/* Brand Logo */}
+            <div className="flex items-center gap-2">
+              <span className="w-7 h-7 rounded-lg bg-[#eb660c] flex items-center justify-center font-black text-white text-sm">
+                O
               </span>
-            )}
-          </button>
+              <span className="font-extrabold text-base tracking-wider text-white">
+                OVR<span className="text-[#eb660c]">LOAD</span> <span className="text-[#eb660c] font-black text-[10px] ml-0.5">POS</span>
+              </span>
+            </div>
 
-          {/* Held Orders Button */}
-          <button
-            onClick={() => setActiveTabModal("held")}
-            className="px-3 py-1.5 bg-[#262D3D] hover:bg-[#323B4E] rounded-xl text-xs font-bold text-white transition-all flex items-center gap-1.5 border border-[#3A455C]"
-          >
-            <span>⏸️ Held ({heldOrders.length})</span>
-          </button>
+            {/* Action Buttons (Moved Left next to Logo) */}
+            <div className="flex items-center gap-1.5 ml-2">
+              {/* WhatsApp Orders Button */}
+              <button
+                onClick={() => setActiveTabModal("incoming")}
+                className="px-2.5 py-1.5 bg-[#262D3D] hover:bg-[#323B4E] rounded-xl text-xs font-bold text-white transition-all flex items-center gap-1 border border-[#3A455C]"
+              >
+                <span>📱 WhatsApp</span>
+                {pendingOrders.length > 0 && (
+                  <span className="px-1.5 py-0.5 rounded-full bg-[#eb660c] text-white text-[10px] font-black animate-pulse">
+                    {pendingOrders.length}
+                  </span>
+                )}
+              </button>
 
-          {/* History Button */}
-          <button
-            onClick={() => {
-              fetchOrderHistory();
-              setActiveTabModal("history");
-            }}
-            className="px-3 py-1.5 bg-[#262D3D] hover:bg-[#323B4E] rounded-xl text-xs font-bold text-white transition-all flex items-center gap-1 border border-[#3A455C]"
-          >
-            <span>📜 History</span>
-          </button>
+              {/* Held Orders Button */}
+              <button
+                onClick={() => setActiveTabModal("held")}
+                className="px-2.5 py-1.5 bg-[#262D3D] hover:bg-[#323B4E] rounded-xl text-xs font-bold text-white transition-all flex items-center gap-1 border border-[#3A455C]"
+              >
+                <span>⏸️ Held ({heldOrders.length})</span>
+              </button>
 
-          {/* Settings Button */}
-          <button
-            onClick={() => setActiveTabModal("settings")}
-            className="px-3 py-1.5 bg-[#262D3D] hover:bg-[#323B4E] rounded-xl text-xs font-bold text-white transition-all flex items-center gap-1 border border-[#3A455C]"
-            title="POS Settings & Print Config"
-          >
-            <span>⚙️ Settings</span>
-          </button>
-        </div>
-      </header>
+              {/* History Button */}
+              <button
+                onClick={() => {
+                  fetchOrderHistory();
+                  setActiveTabModal("history");
+                }}
+                className="px-2.5 py-1.5 bg-[#262D3D] hover:bg-[#323B4E] rounded-xl text-xs font-bold text-white transition-all flex items-center gap-1 border border-[#3A455C]"
+              >
+                <span>📜 History</span>
+              </button>
 
-      {/* MAIN CONTAINER: 65% Left Product Area / 35% Right Ticket & Checkout */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* LEFT PANEL: PRODUCTS & CATEGORIES (65% Width) */}
-        <div className="w-[65%] flex flex-col h-full overflow-hidden border-r border-[#262D3D]">
+              {/* Settings Button with Green/Red Light Indicator */}
+              <button
+                onClick={() => setActiveTabModal("settings")}
+                className="px-2.5 py-1.5 bg-[#262D3D] hover:bg-[#323B4E] rounded-xl text-xs font-bold text-white transition-all flex items-center gap-1.5 border border-[#3A455C]"
+                title={`POS Settings • Branch Status: ${realtimeStatus.isOpen ? "OPEN" : "CLOSED"}`}
+              >
+                <span className={`w-2.5 h-2.5 rounded-full ${
+                  realtimeStatus.isOpen ? "bg-emerald-400 shadow-sm shadow-emerald-400/80 animate-pulse" : "bg-rose-500 shadow-sm shadow-rose-500/80"
+                }`}></span>
+                <span>⚙️ Settings</span>
+              </button>
+            </div>
+          </div>
+        </header>
           {/* CATEGORIES BAR */}
           <div className="px-4 py-2.5 bg-[#14171F] border-b border-[#262D3D] flex items-center gap-2 overflow-x-auto no-scrollbar flex-shrink-0">
             {availableCategoryList.map((cat) => {
@@ -2123,6 +2114,5 @@ export default function TabletPOSPage() {
         </div>
       )}
     </div>
-  </div>
   );
 }
