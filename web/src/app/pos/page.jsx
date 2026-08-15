@@ -434,6 +434,14 @@ export default function TabletPOSPage() {
     return () => clearInterval(interval);
   }, []);
 
+  // Category Name Helper: Strips "OVRLOAD" for display while preserving DB matching
+  const formatCategoryDisplay = (name) => {
+    if (!name) return "";
+    return name.replace(/ovrload\s*/gi, "").trim();
+  };
+
+  const normalizeCat = (str) => (str || "").toLowerCase().replace(/ovrload\s*/gi, "").trim();
+
   // Dynamic Category List Generation
   const dbCatNames = Array.from(new Set(categories.map((c) => c.name).filter(Boolean)));
   const availableCategoryList = [
@@ -455,9 +463,16 @@ export default function TabletPOSPage() {
     }
     if (selectedCategory === "All") return true;
 
-    const catLower = selectedCategory.toLowerCase();
-    const pCatLower = (p.category_name || "").toLowerCase();
-    return pCatLower === catLower || pCatLower.includes(catLower) || catLower.includes(pCatLower);
+    const targetNorm = normalizeCat(selectedCategory);
+    const prodNorm = normalizeCat(p.category_name);
+
+    if (!targetNorm) return true;
+
+    return (
+      prodNorm === targetNorm ||
+      prodNorm.includes(targetNorm) ||
+      targetNorm.includes(prodNorm)
+    );
   });
 
   const handleQuickAddProduct = (product) => {
@@ -1035,7 +1050,7 @@ export default function TabletPOSPage() {
                       : "bg-[#181C24] text-gray-300 border-[#262D3D] hover:bg-[#262D3D] hover:text-white"
                   }`}
                 >
-                  <span>{cat}</span>
+                  <span>{formatCategoryDisplay(cat)}</span>
                 </button>
               );
             })}
