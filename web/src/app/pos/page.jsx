@@ -1944,108 +1944,153 @@ export default function TabletPOSPage() {
                 className="w-full bg-[#181C24] border border-[#262D3D] rounded-xl px-3.5 py-2 text-xs text-white placeholder-gray-500 font-medium focus:outline-none focus:border-[#eb660c]"
               />
             </div>
-            <div className="p-4 flex-1 overflow-y-auto space-y-3">
-              {completedOrdersHistory.length === 0 ? (
-                <div className="py-12 text-center text-gray-400 text-xs">No completed orders history.</div>
-              ) : (
-                completedOrdersHistory
-                  .filter((o) => {
-                    if (!historySearchQuery.trim()) return true;
-                    const q = historySearchQuery.toLowerCase();
-                    return (
-                      String(o.id).includes(q) ||
-                      (o.customer_name || "").toLowerCase().includes(q) ||
-                      (o.customer_phone || "").includes(q) ||
-                      (o.order_source || "").toLowerCase().includes(q)
-                    );
-                  })
-                  .map((order) => (
-                    <div key={order.id} className="p-4 bg-[#0F1115] border border-[#262D3D] rounded-xl space-y-3 text-xs shadow-sm hover:border-[#3A455C] transition-all">
-                      {/* Header Row */}
-                      <div className="flex justify-between items-start border-b border-[#262D3D]/60 pb-2.5">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <span className="font-black text-white text-base">Order #{order.id}</span>
-                            <span className={`px-2.5 py-0.5 rounded-md text-[11px] font-extrabold ${
-                              order.order_source === "Toters" ? "bg-[#00C49F] text-black" :
-                              order.order_source === "WhatsApp" ? "bg-[#25D366] text-black" :
-                              order.order_source === "NokNok" ? "bg-[#FF5A5F] text-white" :
-                              order.order_source === "App" ? "bg-[#3B82F6] text-white" :
-                              "bg-[#eb660c] text-white"
-                            }`}>
-                              {order.order_source || "POS"}
-                            </span>
-                            <span className="text-[10px] bg-[#262D3D] text-gray-300 px-2 py-0.5 rounded font-bold uppercase">
-                              {order.order_type || "pickup"}
-                            </span>
-                            {order.status && (
-                              <span className="text-[10px] bg-emerald-950 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded font-extrabold uppercase">
-                                {order.status}
-                              </span>
-                            )}
-                          </div>
-                          <div className="text-[11px] text-gray-400 font-medium">
-                            🕒 {order.created_at ? new Date(order.created_at).toLocaleString() : "Date N/A"} • Payment: <strong className="text-white">{order.payment_method || "Cash"}</strong>
-                          </div>
-                        </div>
+            <div className="p-4 flex-1 overflow-y-auto space-y-4">
+              {(() => {
+                const filtered = completedOrdersHistory.filter((o) => {
+                  if (!historySearchQuery.trim()) return true;
+                  const q = historySearchQuery.toLowerCase();
+                  return (
+                    String(o.id).includes(q) ||
+                    (o.customer_name || "").toLowerCase().includes(q) ||
+                    (o.customer_phone || "").includes(q) ||
+                    (o.order_source || "").toLowerCase().includes(q)
+                  );
+                });
 
-                        <div className="text-right">
-                          <div className="text-xl font-black text-[#eb660c]">${parseFloat(order.total_amount || 0).toFixed(2)}</div>
-                          <button
-                            onClick={() => handleReprintOrder(order)}
-                            className="mt-1 px-3 py-1.5 bg-[#eb660c] hover:bg-[#d55909] text-white rounded-xl text-[11px] font-extrabold shadow-sm flex items-center gap-1.5 ml-auto"
-                          >
-                            🖨️ Reprint Receipt
-                          </button>
-                        </div>
-                      </div>
+                if (filtered.length === 0) {
+                  return <div className="py-12 text-center text-gray-400 text-xs">No completed orders found.</div>;
+                }
 
-                      {/* Customer Info Box */}
-                      {(order.customer_name || order.customer_phone || order.delivery_address) && (
-                        <div className="text-xs text-gray-300 bg-[#181C24] p-3 rounded-xl border border-[#262D3D] space-y-1">
-                          {order.customer_name && <div>👤 <strong>Customer:</strong> {order.customer_name}</div>}
-                          {order.customer_phone && <div>📞 <strong>Phone:</strong> {order.customer_phone}</div>}
-                          {order.delivery_address && <div>🏠 <strong>Delivery Address:</strong> {order.delivery_address}</div>}
-                        </div>
-                      )}
+                // Group orders by date
+                const grouped = {};
+                const sorted = [...filtered].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
 
-                      {/* Items Summary */}
-                      <div className="space-y-1.5">
-                        <div className="font-extrabold text-gray-300 text-[11px] uppercase tracking-wider">Ordered Items:</div>
-                        <div className="space-y-1">
-                          {(order.items || []).map((item, idx) => (
-                            <div key={idx} className="bg-[#181C24] border border-[#262D3D] p-2 rounded-lg flex items-start justify-between text-xs">
-                              <div>
-                                <div className="font-bold text-white">
-                                  <span className="text-[#eb660c] font-black">{item.quantity || item.qty}x</span> {item.product_name || item.name}
-                                </div>
-                                {item.customizations && (
-                                  <div className="text-[10px] text-gray-400 mt-0.5">
-                                    Options: {typeof item.customizations === 'string' ? item.customizations : (Array.isArray(item.customizations) ? item.customizations.map(c => typeof c === 'string' ? c : (c.ingredient || c.name || "")).join(", ") : "")}
-                                  </div>
-                                )}
-                                {item.comment && (
-                                  <div className="text-[10px] text-amber-300 italic">Note: {item.comment}</div>
+                sorted.forEach((order) => {
+                  const d = order.created_at ? new Date(order.created_at) : new Date();
+                  const today = new Date();
+                  const yesterday = new Date();
+                  yesterday.setDate(today.getDate() - 1);
+
+                  const isToday = d.toDateString() === today.toDateString();
+                  const isYesterday = d.toDateString() === yesterday.toDateString();
+
+                  const formattedDateStr = d.toLocaleDateString("en-US", {
+                    weekday: "long",
+                    year: "numeric",
+                    month: "short",
+                    day: "numeric",
+                  });
+
+                  let dateHeader = `📅 ${formattedDateStr}`;
+                  if (isToday) dateHeader = `📅 Today • ${formattedDateStr}`;
+                  else if (isYesterday) dateHeader = `📅 Yesterday • ${formattedDateStr}`;
+
+                  if (!grouped[dateHeader]) grouped[dateHeader] = [];
+                  grouped[dateHeader].push(order);
+                });
+
+                return Object.entries(grouped).map(([dateGroup, ordersGroup]) => (
+                  <div key={dateGroup} className="space-y-3">
+                    {/* DATE GROUP HEADER */}
+                    <div className="sticky top-0 z-10 bg-[#14171F] py-2 px-3 border border-[#262D3D] rounded-xl text-xs font-black text-[#eb660c] flex items-center justify-between shadow-md">
+                      <span className="truncate">{dateGroup}</span>
+                      <span className="text-[10px] font-extrabold text-gray-300 bg-[#181C24] px-2.5 py-0.5 rounded-lg border border-[#262D3D] shrink-0">
+                        {ordersGroup.length} Order{ordersGroup.length > 1 ? "s" : ""}
+                      </span>
+                    </div>
+
+                    {/* ORDERS IN THIS DATE GROUP */}
+                    <div className="space-y-3 pl-1">
+                      {ordersGroup.map((order) => (
+                        <div key={order.id} className="p-4 bg-[#0F1115] border border-[#262D3D] rounded-xl space-y-3 text-xs shadow-sm hover:border-[#3A455C] transition-all">
+                          {/* Header Row */}
+                          <div className="flex justify-between items-start border-b border-[#262D3D]/60 pb-2.5">
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2">
+                                <span className="font-black text-white text-base">Order #{order.id}</span>
+                                <span className={`px-2.5 py-0.5 rounded-md text-[11px] font-extrabold ${
+                                  order.order_source === "Toters" ? "bg-[#00C49F] text-black" :
+                                  order.order_source === "WhatsApp" ? "bg-[#25D366] text-black" :
+                                  order.order_source === "NokNok" ? "bg-[#FF5A5F] text-white" :
+                                  order.order_source === "App" ? "bg-[#3B82F6] text-white" :
+                                  "bg-[#eb660c] text-white"
+                                }`}>
+                                  {order.order_source || "POS"}
+                                </span>
+                                <span className="text-[10px] bg-[#262D3D] text-gray-300 px-2 py-0.5 rounded font-bold uppercase">
+                                  {order.order_type || "pickup"}
+                                </span>
+                                {order.status && (
+                                  <span className="text-[10px] bg-emerald-950 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded font-extrabold uppercase">
+                                    {order.status}
+                                  </span>
                                 )}
                               </div>
-                              <span className="font-bold text-gray-200">${((item.unit_price || 0) * (item.quantity || item.qty || 1)).toFixed(2)}</span>
+                              <div className="text-[11px] text-gray-400 font-medium">
+                                🕒 {order.created_at ? new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Time N/A"} • Payment: <strong className="text-white">{order.payment_method || "Cash"}</strong>
+                              </div>
                             </div>
-                          ))}
-                        </div>
-                      </div>
 
-                      {/* Financial Summary Bar */}
-                      <div className="bg-[#181C24] border border-[#262D3D] p-2.5 rounded-xl flex items-center justify-between text-xs text-gray-300 font-semibold">
-                        <div>Subtotal: <strong className="text-white">${parseFloat(order.subtotal_amount || 0).toFixed(2)}</strong></div>
-                        {parseFloat(order.discount_amount || 0) > 0 && (
-                          <div className="text-amber-400">Discount: <strong>-${parseFloat(order.discount_amount).toFixed(2)}</strong></div>
-                        )}
-                        <div>Delivery Fee: <strong className={parseFloat(order.delivery_fee || 0) > 0 ? "text-blue-400" : "text-gray-400"}>${parseFloat(order.delivery_fee || 0).toFixed(2)}</strong></div>
-                        <div>Total: <strong className="text-[#eb660c] font-black text-sm">${parseFloat(order.total_amount || 0).toFixed(2)}</strong></div>
-                      </div>
+                            <div className="text-right">
+                              <div className="text-xl font-black text-[#eb660c]">${parseFloat(order.total_amount || 0).toFixed(2)}</div>
+                              <button
+                                onClick={() => handleReprintOrder(order)}
+                                className="mt-1 px-3 py-1.5 bg-[#eb660c] hover:bg-[#d55909] text-white rounded-xl text-[11px] font-extrabold shadow-sm flex items-center gap-1.5 ml-auto"
+                              >
+                                🖨️ Reprint Receipt
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Customer Info Box */}
+                          {(order.customer_name || order.customer_phone || order.delivery_address) && (
+                            <div className="text-xs text-gray-300 bg-[#181C24] p-3 rounded-xl border border-[#262D3D] space-y-1">
+                              {order.customer_name && <div>👤 <strong>Customer:</strong> {order.customer_name}</div>}
+                              {order.customer_phone && <div>📞 <strong>Phone:</strong> {order.customer_phone}</div>}
+                              {order.delivery_address && <div>🏠 <strong>Delivery Address:</strong> {order.delivery_address}</div>}
+                            </div>
+                          )}
+
+                          {/* Items Summary */}
+                          <div className="space-y-1.5">
+                            <div className="font-extrabold text-gray-300 text-[11px] uppercase tracking-wider">Ordered Items:</div>
+                            <div className="space-y-1">
+                              {(order.items || []).map((item, idx) => (
+                                <div key={idx} className="bg-[#181C24] border border-[#262D3D] p-2 rounded-lg flex items-start justify-between text-xs">
+                                  <div>
+                                    <div className="font-bold text-white">
+                                      <span className="text-[#eb660c] font-black">{item.quantity || item.qty}x</span> {item.product_name || item.name}
+                                    </div>
+                                    {item.customizations && (
+                                      <div className="text-[10px] text-gray-400 mt-0.5">
+                                        Options: {typeof item.customizations === 'string' ? item.customizations : (Array.isArray(item.customizations) ? item.customizations.map(c => typeof c === 'string' ? c : (c.ingredient || c.name || "")).join(", ") : "")}
+                                      </div>
+                                    )}
+                                    {item.comment && (
+                                      <div className="text-[10px] text-amber-300 italic">Note: {item.comment}</div>
+                                    )}
+                                  </div>
+                                  <span className="font-bold text-gray-200">${((item.unit_price || 0) * (item.quantity || item.qty || 1)).toFixed(2)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Financial Summary Bar */}
+                          <div className="bg-[#181C24] border border-[#262D3D] p-2.5 rounded-xl flex items-center justify-between text-xs text-gray-300 font-semibold">
+                            <div>Subtotal: <strong className="text-white">${parseFloat(order.subtotal_amount || 0).toFixed(2)}</strong></div>
+                            {parseFloat(order.discount_amount || 0) > 0 && (
+                              <div className="text-amber-400">Discount: <strong>-${parseFloat(order.discount_amount).toFixed(2)}</strong></div>
+                            )}
+                            <div>Delivery Fee: <strong className={parseFloat(order.delivery_fee || 0) > 0 ? "text-blue-400" : "text-gray-400"}>${parseFloat(order.delivery_fee || 0).toFixed(2)}</strong></div>
+                            <div>Total: <strong className="text-[#eb660c] font-black text-sm">${parseFloat(order.total_amount || 0).toFixed(2)}</strong></div>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  ))
-              )}
+                  </div>
+                ));
+              })()}
             </div>
           </div>
         </div>
