@@ -422,7 +422,6 @@ export default function TabletPOSPage() {
   const dbCatNames = Array.from(new Set(categories.map((c) => c.name).filter(Boolean)));
   const availableCategoryList = [
     "⭐ Favorites",
-    "All",
     ...(dbCatNames.length > 0 ? dbCatNames : ["Meals", "Wraps", "Quesa", "Sweets", "Shakes", "Sides", "Drinks", "Dips"]),
   ];
 
@@ -1060,19 +1059,8 @@ export default function TabletPOSPage() {
         <div className="w-[35%] flex flex-col h-full bg-[#14171F] overflow-hidden flex-shrink-0">
           {/* TICKET HEADER & ORDER TYPE SELECTOR */}
           <div className="p-3.5 border-b border-[#262D3D] space-y-2.5 bg-[#181C24] flex-shrink-0">
-            {/* Order Type Buttons */}
+            {/* Order Type Buttons (Delivery first & default) */}
             <div className="grid grid-cols-3 gap-1.5 p-1 bg-[#0F1115] rounded-xl border border-[#262D3D]">
-              <button
-                type="button"
-                onClick={() => setOrderType("pickup")}
-                className={`py-2 rounded-lg text-xs font-black transition-all flex items-center justify-center gap-1 ${
-                  orderType === "pickup"
-                    ? "bg-[#eb660c] text-white shadow-md shadow-[#eb660c]/20"
-                    : "text-gray-400 hover:text-white hover:bg-[#181C24]"
-                }`}
-              >
-                🛍 Pickup
-              </button>
               <button
                 type="button"
                 onClick={() => setOrderType("delivery")}
@@ -1083,6 +1071,17 @@ export default function TabletPOSPage() {
                 }`}
               >
                 🛵 Delivery
+              </button>
+              <button
+                type="button"
+                onClick={() => setOrderType("pickup")}
+                className={`py-2 rounded-lg text-xs font-black transition-all flex items-center justify-center gap-1 ${
+                  orderType === "pickup"
+                    ? "bg-[#eb660c] text-white shadow-md shadow-[#eb660c]/20"
+                    : "text-gray-400 hover:text-white hover:bg-[#181C24]"
+                }`}
+              >
+                🛍 Pickup
               </button>
               <button
                 type="button"
@@ -1097,33 +1096,46 @@ export default function TabletPOSPage() {
               </button>
             </div>
 
-            {/* Order Source Chip & Hold Action */}
-            <div className="flex items-center justify-between text-xs">
-              <div className="flex items-center gap-1.5">
-                <span className="text-[11px] font-bold text-gray-400">Source:</span>
-                <select
-                  value={selectedChannel || "POS"}
-                  onChange={(e) => setSelectedChannel(e.target.value === "POS" ? null : e.target.value)}
-                  className="bg-[#0F1115] border border-[#262D3D] rounded-lg px-2 py-1 text-[11px] font-extrabold text-[#eb660c] focus:outline-none"
-                >
-                  <option value="POS">POS (In-Store)</option>
-                  <option value="WhatsApp">WhatsApp</option>
-                  <option value="Toters">Toters</option>
-                  <option value="NokNok">NokNok</option>
-                  <option value="App">App</option>
-                </select>
+            {/* Order Source Buttons (Large, touch-friendly) */}
+            <div className="space-y-1 pt-1">
+              <div className="flex items-center justify-between text-[11px] font-bold text-gray-400 px-0.5">
+                <span>Order Source / Origin:</span>
+                {ticketItems.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleHoldOrder}
+                    disabled={isSubmitting}
+                    className="px-2 py-0.5 bg-amber-950/50 hover:bg-amber-900/60 text-amber-300 border border-amber-500/40 rounded-lg text-[10px] font-bold transition-all"
+                  >
+                    ⏸️ Hold Ticket
+                  </button>
+                )}
               </div>
-
-              {ticketItems.length > 0 && (
-                <button
-                  type="button"
-                  onClick={handleHoldOrder}
-                  disabled={isSubmitting}
-                  className="px-2.5 py-1 bg-amber-950/50 hover:bg-amber-900/60 text-amber-300 border border-amber-500/40 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1"
-                >
-                  ⏸️ Hold Ticket
-                </button>
-              )}
+              <div className="grid grid-cols-5 gap-1 p-1 bg-[#0F1115] rounded-xl border border-[#262D3D]">
+                {[
+                  { id: "POS", label: "POS" },
+                  { id: "WhatsApp", label: "WA 📱" },
+                  { id: "Toters", label: "Toters 🟢" },
+                  { id: "NokNok", label: "NokNok 🔴" },
+                  { id: "App", label: "App 📲" },
+                ].map((src) => {
+                  const isCurrent = (selectedChannel || "POS") === src.id;
+                  return (
+                    <button
+                      key={src.id}
+                      type="button"
+                      onClick={() => setSelectedChannel(src.id === "POS" ? null : src.id)}
+                      className={`py-1.5 px-1 rounded-lg text-[11px] font-black transition-all text-center truncate ${
+                        isCurrent
+                          ? "bg-[#eb660c] text-white shadow-sm"
+                          : "text-gray-400 hover:text-white hover:bg-[#181C24]"
+                      }`}
+                    >
+                      {src.label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             {/* CONTEXTUAL CUSTOMER FIELDS */}
