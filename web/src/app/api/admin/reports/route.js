@@ -6,18 +6,18 @@ export async function GET(request) {
     const action = searchParams.get("action");
 
     if (action === "revert_csv") {
-      const deletedItems = await sql(
-        `DELETE FROM order_items 
-         WHERE order_id IN (
-           SELECT id FROM orders WHERE special_instructions LIKE 'Toters Import Ref %'
-         ) RETURNING id;`
-      );
+      const deletedItems = await sql`
+        DELETE FROM order_items 
+        WHERE order_id IN (
+          SELECT id FROM orders WHERE special_instructions LIKE 'Toters Import Ref %'
+        ) RETURNING id;
+      `;
 
-      const deletedOrders = await sql(
-        `DELETE FROM orders 
-         WHERE special_instructions LIKE 'Toters Import Ref %' 
-         RETURNING id;`
-      );
+      const deletedOrders = await sql`
+        DELETE FROM orders 
+        WHERE special_instructions LIKE 'Toters Import Ref %' 
+        RETURNING id;
+      `;
 
       return Response.json({
         success: true,
