@@ -3,7 +3,8 @@ import sql from "../../utils/sql";
 export async function GET(request) {
   try {
     const url = new URL(request.url, "http://localhost");
-    const action = url.searchParams.get("action");
+    const searchParams = url.searchParams;
+    const action = searchParams.get("action");
 
     if (action === "audit_discounts") {
       const orders = await sql`
