@@ -10,12 +10,19 @@ export async function GET(request) {
 }
 
 export async function POST(request) {
+  const { searchParams } = new URL(request.url);
+  if (searchParams.get("action") === "revert") {
+    return handleRevert();
+  }
   return handleBatchImport(request);
 }
 
 export async function DELETE(request) {
+  return handleRevert();
+}
+
+async function handleRevert() {
   try {
-    // Delete all order_items belonging to imported Toters orders
     const deletedItems = await sql(
       `DELETE FROM order_items 
        WHERE order_id IN (
@@ -23,14 +30,13 @@ export async function DELETE(request) {
        ) RETURNING id;`
     );
 
-    // Delete all imported Toters orders
     const deletedOrders = await sql(
       `DELETE FROM orders 
        WHERE special_instructions LIKE 'Toters Import Ref %' 
        RETURNING id;`
     );
 
-    return corsJson(request, {
+    return Response.json({
       success: true,
       message: "Successfully reverted and deleted all imported CSV orders and their items from database.",
       deletedOrdersCount: (deletedOrders || []).length,
@@ -38,7 +44,7 @@ export async function DELETE(request) {
     });
   } catch (error) {
     console.error("Error reverting imported orders:", error);
-    return corsJson(request, { success: false, error: error.message }, { status: 500 });
+    return Response.json({ success: false, error: error.message }, { status: 500 });
   }
 }
 
