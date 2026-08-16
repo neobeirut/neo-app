@@ -8,7 +8,7 @@ export async function OPTIONS(request) {
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
   if (searchParams.get("action") === "revert") {
-    return handleRevert();
+    return handleRevert(request);
   }
   return handleBatchImport(request);
 }
@@ -16,33 +16,46 @@ export async function GET(request) {
 export async function POST(request) {
   const { searchParams } = new URL(request.url);
   if (searchParams.get("action") === "revert") {
-    return handleRevert();
+    return handleRevert(request);
   }
   return handleBatchImport(request);
 }
 
 export async function DELETE(request) {
-  return handleRevert();
+  return handleRevert(request);
 }
 
-async function handleRevert() {
+async function handleRevert(request) {
   try {
+    let tagPattern = '%Import Ref %';
+    if (request && request.url) {
+      const { searchParams } = new URL(request.url);
+      const batch = searchParams.get("batch");
+      if (batch === "whatsapp") {
+        tagPattern = 'WhatsApp Import Ref %';
+      } else if (batch === "toters") {
+        tagPattern = 'Toters Import Ref %';
+      }
+    }
+
     const deletedItems = await sql(
       `DELETE FROM order_items 
        WHERE order_id IN (
-         SELECT id FROM orders WHERE special_instructions LIKE 'Toters Import Ref %'
-       ) RETURNING id;`
+         SELECT id FROM orders WHERE special_instructions LIKE $1
+       ) RETURNING id;`,
+      [tagPattern]
     );
 
     const deletedOrders = await sql(
       `DELETE FROM orders 
-       WHERE special_instructions LIKE 'Toters Import Ref %' 
-       RETURNING id;`
+       WHERE special_instructions LIKE $1 
+       RETURNING id;`,
+      [tagPattern]
     );
 
     return Response.json({
       success: true,
-      message: "Successfully reverted and deleted all imported CSV orders and their items from database.",
+      message: `Successfully reverted and deleted imported CSV orders matching '${tagPattern}' and their items from database.`,
       deletedOrdersCount: (deletedOrders || []).length,
       deletedItemsCount: (deletedItems || []).length
     });
