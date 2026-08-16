@@ -658,11 +658,6 @@ export default function AdminPage() {
         {/* Admin Users View */}
         {activeTab === "admin-users" && <AdminUsersView />}
 
-        {/* Reports View */}
-        {activeTab === "reports" && allowedTabs.includes("reports") && (
-          <ReportsView />
-        )}
-
         {/* Orders View */}
         {activeTab === "orders" && allowedTabs.includes("orders") && (
           <OrdersView
@@ -681,6 +676,7 @@ export default function AdminPage() {
           activeTab !== "settings" &&
           activeTab !== "clients" &&
           activeTab !== "admin-users" &&
+          activeTab !== "reports" &&
           activeTab !== "orders" &&
           activeTab !== "dashboard" &&
           activeTab !== "events" &&
@@ -688,6 +684,8 @@ export default function AdminPage() {
           activeTab !== "promo-codes" &&
           activeTab !== "whatsapp-inbox" &&
           activeTab !== "customer-messages" &&
+          activeTab !== "customization-items" &&
+          activeTab !== "delivery-pricing" &&
           (loading ? (
             <div className="text-center py-8">Loading...</div>
           ) : (
