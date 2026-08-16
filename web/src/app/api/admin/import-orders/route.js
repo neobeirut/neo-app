@@ -13,6 +13,35 @@ export async function POST(request) {
   return handleBatchImport(request);
 }
 
+export async function DELETE(request) {
+  try {
+    // Delete all order_items belonging to imported Toters orders
+    const deletedItems = await sql(
+      `DELETE FROM order_items 
+       WHERE order_id IN (
+         SELECT id FROM orders WHERE special_instructions LIKE 'Toters Import Ref %'
+       ) RETURNING id;`
+    );
+
+    // Delete all imported Toters orders
+    const deletedOrders = await sql(
+      `DELETE FROM orders 
+       WHERE special_instructions LIKE 'Toters Import Ref %' 
+       RETURNING id;`
+    );
+
+    return corsJson(request, {
+      success: true,
+      message: "Successfully reverted and deleted all imported CSV orders and their items from database.",
+      deletedOrdersCount: (deletedOrders || []).length,
+      deletedItemsCount: (deletedItems || []).length
+    });
+  } catch (error) {
+    console.error("Error reverting imported orders:", error);
+    return corsJson(request, { success: false, error: error.message }, { status: 500 });
+  }
+}
+
 async function handleBatchImport(request) {
   try {
     let ordersList = [];
@@ -35,7 +64,6 @@ async function handleBatchImport(request) {
       try {
         const createdAtVal = order.created_at || order.createdAt ? new Date(order.created_at || order.createdAt).toISOString() : new Date().toISOString();
 
-        // 1. Insert order using plain parameter array to prevent LazyQuery connection hangs
         const orderRows = await sql(
           `INSERT INTO orders (
             branch_id,
