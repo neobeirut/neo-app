@@ -1,7 +1,5 @@
 import { corsJson, corsOptions } from "@/app/api/utils/cors";
 import sql from "@/app/api/utils/sql";
-import fs from 'fs';
-import path from 'path';
 
 export async function OPTIONS(request) {
   return corsOptions(request);
@@ -19,7 +17,6 @@ async function handleBatchImport(request) {
   try {
     let ordersList = [];
     
-    // Check body or fallback to parsed_orders.json on disk
     try {
       const body = await request.json();
       if (body && Array.isArray(body.orders) && body.orders.length > 0) {
@@ -29,16 +26,8 @@ async function handleBatchImport(request) {
       // Body not provided or empty JSON
     }
 
-    if (ordersList.length === 0) {
-      const filePath = path.join(process.cwd(), 'parsed_orders.json');
-      if (fs.existsSync(filePath)) {
-        const fileData = fs.readFileSync(filePath, 'utf8');
-        ordersList = JSON.parse(fileData);
-      }
-    }
-
     if (!ordersList || ordersList.length === 0) {
-      return corsJson(request, { success: false, error: 'No orders found to import' }, { status: 400 });
+      return corsJson(request, { success: false, error: 'No orders payload provided in request body. Send JSON object: { orders: [...] }' }, { status: 400 });
     }
 
     // Check existing special_instructions to avoid duplicates
@@ -50,8 +39,8 @@ async function handleBatchImport(request) {
     if (remainingOrders.length === 0) {
       return corsJson(request, {
         success: true,
-        message: 'All orders from CSV have already been imported into the database.',
-        totalCsvOrders: ordersList.length,
+        message: 'All orders provided in payload have already been imported into the database.',
+        totalPayloadOrders: ordersList.length,
         insertedOrdersCount: 0,
         insertedItemsCount: 0
       });
@@ -128,7 +117,7 @@ async function handleBatchImport(request) {
     return corsJson(request, {
       success: true,
       message: `Successfully imported ${insertedOrdersCount} historical orders (${insertedItemsCount} items) into database.`,
-      totalCsvOrders: ordersList.length,
+      totalPayloadOrders: ordersList.length,
       insertedOrdersCount,
       insertedItemsCount
     });
