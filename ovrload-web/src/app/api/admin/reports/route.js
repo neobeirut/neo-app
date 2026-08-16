@@ -5,25 +5,70 @@ export async function GET(request) {
     const { searchParams } = new URL(request.url);
     const action = searchParams.get("action");
 
-    if (action === "revert_csv") {
-      const deletedItems = await sql`
-        DELETE FROM order_items 
-        WHERE order_id IN (
-          SELECT id FROM orders WHERE special_instructions LIKE 'Toters Import Ref %'
-        ) RETURNING id;
+    if (action === "audit_discounts") {
+      const orders = await sql`
+        SELECT 
+          id, 
+          order_source, 
+          payment_method, 
+          subtotal_amount::float as subtotal, 
+          discount_amount::float as discount, 
+          total_amount::float as total, 
+          delivery_fee::float as delivery_fee,
+          special_instructions,
+          created_at
+        FROM orders 
+        WHERE COALESCE(status, 'completed') NOT IN ('cancelled', 'voided');
       `;
 
-      const deletedOrders = await sql`
-        DELETE FROM orders 
-        WHERE special_instructions LIKE 'Toters Import Ref %' 
-        RETURNING id;
-      `;
+      let totersCount = 0;
+      let nonTotersCount = 0;
+      let exact15PctCount = 0;
+      let non15PctOrders = [];
+      let pctBreakdown = {};
+
+      (orders || []).forEach(o => {
+        const source = (o.order_source || '').trim();
+        const isToters = source.toLowerCase() === 'toters';
+
+        if (isToters) {
+          totersCount++;
+        } else {
+          nonTotersCount++;
+          const subtotal = parseFloat(o.subtotal) || 0;
+          const discount = parseFloat(o.discount) || 0;
+
+          const expected15 = Math.round(subtotal * 0.15 * 100) / 100;
+          const actualPct = subtotal > 0 ? (discount / subtotal) * 100 : 0;
+          const roundedPct = Math.round(actualPct);
+
+          pctBreakdown[`${roundedPct}%`] = (pctBreakdown[`${roundedPct}%`] || 0) + 1;
+
+          if (Math.abs(discount - expected15) <= 0.05) {
+            exact15PctCount++;
+          } else {
+            non15PctOrders.push({
+              id: o.id,
+              source: source || 'Pick-up',
+              subtotal,
+              discount,
+              total: o.total,
+              actualPct: Math.round(actualPct * 10) / 10,
+              specialInstructions: o.special_instructions,
+              createdAt: o.created_at
+            });
+          }
+        }
+      });
 
       return Response.json({
-        success: true,
-        message: "Successfully deleted all imported CSV orders and their order items.",
-        deletedOrdersCount: (deletedOrders || []).length,
-        deletedItemsCount: (deletedItems || []).length
+        totalOrders: (orders || []).length,
+        totersCount,
+        nonTotersCount,
+        exact15PctCount,
+        non15PctCount: non15PctOrders.length,
+        pctBreakdown,
+        non15PctOrders
       });
     }
 
