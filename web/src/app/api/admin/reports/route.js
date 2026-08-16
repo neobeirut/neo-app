@@ -63,6 +63,23 @@ export async function GET(request) {
     const salesStatusFilter = "COALESCE(status, 'completed') NOT IN ('cancelled', 'voided', 'pending')";
     const salesStatusFilterO = "COALESCE(o.status, 'completed') NOT IN ('cancelled', 'voided', 'pending')";
 
+    try {
+      await sql`
+        UPDATE orders 
+        SET payment_method = 'Toters' 
+        WHERE LOWER(COALESCE(order_source, '')) = 'toters' 
+          AND (payment_method IS NULL OR LOWER(payment_method) != 'toters');
+      `;
+      await sql`
+        UPDATE orders 
+        SET payment_method = 'Cash' 
+        WHERE LOWER(COALESCE(payment_method, '')) = 'cash' 
+          AND payment_method != 'Cash';
+      `;
+    } catch (e) {
+      console.error('Error auto-updating Toters payment methods:', e);
+    }
+
     const summaryRows = await sql(
       `SELECT 
         COUNT(*)::int as total_orders,
