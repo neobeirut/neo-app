@@ -35,8 +35,9 @@ async function handleBatchImport(request) {
       try {
         const createdAtVal = order.created_at || order.createdAt ? new Date(order.created_at || order.createdAt).toISOString() : new Date().toISOString();
 
-        const orderResult = await sql`
-          INSERT INTO orders (
+        // 1. Insert order using plain parameter array to prevent LazyQuery connection hangs
+        const orderRows = await sql(
+          `INSERT INTO orders (
             branch_id,
             order_type,
             order_source,
@@ -51,33 +52,34 @@ async function handleBatchImport(request) {
             discount_amount,
             total_amount,
             created_at
-          ) VALUES (
-            ${order.branchId || 1},
-            ${order.orderType || 'delivery'},
-            ${order.orderSource || 'Toters'},
-            ${order.paymentMethod || 'Cash'},
-            ${order.customerName || ''},
-            ${order.customerPhone || ''},
-            ${order.deliveryAddress || ''},
-            ${order.specialInstructions || ''},
-            ${order.status || 'completed'},
-            ${order.subtotal || 0},
-            ${order.deliveryFee || 0},
-            ${order.discountAmount || 0},
-            ${order.total || 0},
-            ${createdAtVal}
-          )
-          RETURNING id;
-        `;
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+          RETURNING id;`,
+          [
+            order.branchId || 1,
+            order.orderType || 'delivery',
+            order.orderSource || 'Toters',
+            order.paymentMethod || 'Cash',
+            order.customerName || '',
+            order.customerPhone || '',
+            order.deliveryAddress || '',
+            order.specialInstructions || '',
+            order.status || 'completed',
+            order.subtotal || 0,
+            order.deliveryFee || 0,
+            order.discountAmount || 0,
+            order.total || 0,
+            createdAtVal
+          ]
+        );
 
-        if (orderResult && orderResult[0] && orderResult[0].id) {
-          const orderId = orderResult[0].id;
+        if (orderRows && orderRows[0] && orderRows[0].id) {
+          const orderId = orderRows[0].id;
           insertedOrdersCount++;
 
           if (Array.isArray(order.items) && order.items.length > 0) {
             for (const item of order.items) {
-              await sql`
-                INSERT INTO order_items (
+              await sql(
+                `INSERT INTO order_items (
                   order_id,
                   product_id,
                   quantity,
@@ -85,16 +87,17 @@ async function handleBatchImport(request) {
                   total_price,
                   customizations,
                   comment
-                ) VALUES (
-                  ${orderId},
-                  ${item.product_id},
-                  ${item.quantity || 1},
-                  ${item.unit_price || 0},
-                  ${item.total_price || 0},
-                  ${item.customizations || null},
-                  ${item.comment || null}
-                );
-              `;
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7);`,
+                [
+                  orderId,
+                  item.product_id,
+                  item.quantity || 1,
+                  item.unit_price || 0,
+                  item.total_price || 0,
+                  item.customizations || null,
+                  item.comment || null
+                ]
+              );
               insertedItemsCount++;
             }
           }
