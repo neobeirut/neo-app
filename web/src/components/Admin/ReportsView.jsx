@@ -500,8 +500,8 @@ export default function ReportsView() {
                 const badgeColor =
                   ch.channel === "Toters" ? "bg-[#00C49F] text-black" :
                   ch.channel === "WhatsApp" ? "bg-[#25D366] text-black" :
-                  ch.channel === "NokNok" ? "bg-[#FF5A5F] text-white" :
                   ch.channel === "App" ? "bg-[#3B82F6] text-white" :
+                  ch.channel === "POS" || ch.channel === "In-Store" ? "bg-[#eb660c] text-white" :
                   "bg-[#E5C07B] text-black";
 
                 return (
@@ -539,19 +539,29 @@ export default function ReportsView() {
             {paymentMethods.length === 0 ? (
               <div className="col-span-2 text-center py-8 text-xs text-gray-500">No payment data available</div>
             ) : (
-              paymentMethods.map((pm) => (
-                <div key={pm.method} className="bg-[#0F1115] border border-[#262D3D] rounded-xl p-4 space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs font-extrabold text-gray-300 flex items-center gap-1.5">
-                      {pm.method === "Cash" ? "💵 Cash" : pm.method === "Whish" ? "🟣 Whish" : pm.method === "Toters" ? "🟢 Toters" : "🔴 NokNok"}
-                    </span>
-                    <span className="text-[11px] text-gray-500 font-bold">{pm.order_count} orders</span>
+              paymentMethods.map((pm) => {
+                const methodLower = (pm.method || "").toLowerCase();
+                const label =
+                  methodLower.includes("cash") ? "💵 Cash" :
+                  methodLower.includes("whish") ? "🟣 Whish" :
+                  methodLower.includes("toters") ? "🟢 Toters" :
+                  methodLower.includes("card") || methodLower.includes("credit") ? "💳 Card / Online" :
+                  `💳 ${pm.method}`;
+
+                return (
+                  <div key={pm.method} className="bg-[#0F1115] border border-[#262D3D] rounded-xl p-4 space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-extrabold text-gray-300 flex items-center gap-1.5">
+                        {label}
+                      </span>
+                      <span className="text-[11px] text-gray-500 font-bold">{pm.order_count} orders</span>
+                    </div>
+                    <div className="text-xl font-black text-white">
+                      ${(pm.total_revenue || 0).toFixed(2)}
+                    </div>
                   </div>
-                  <div className="text-xl font-black text-white">
-                    ${(pm.total_revenue || 0).toFixed(2)}
-                  </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>
