@@ -1,5 +1,5 @@
 import { corsJson, corsOptions } from "@/app/api/utils/cors";
-import { sql } from '@/lib/db';
+import sql from "@/app/api/utils/sql";
 import fs from 'fs';
 import path from 'path';
 
@@ -8,14 +8,14 @@ export async function OPTIONS(request) {
 }
 
 export async function GET(request) {
-  return handleImport(request);
+  return handleBatchImport(request);
 }
 
 export async function POST(request) {
-  return handleImport(request);
+  return handleBatchImport(request);
 }
 
-async function handleImport(request) {
+async function handleBatchImport(request) {
   try {
     let ordersList = [];
     
@@ -41,11 +41,26 @@ async function handleImport(request) {
       return corsJson(request, { success: false, error: 'No orders found to import' }, { status: 400 });
     }
 
+    // Check existing special_instructions to avoid duplicates
+    const existingRows = await sql`SELECT special_instructions FROM orders WHERE special_instructions LIKE 'Toters Import Ref %'`;
+    const existingSet = new Set((existingRows || []).map(r => r.special_instructions));
+
+    const remainingOrders = ordersList.filter(o => !existingSet.has(o.specialInstructions));
+
+    if (remainingOrders.length === 0) {
+      return corsJson(request, {
+        success: true,
+        message: 'All orders from CSV have already been imported into the database.',
+        totalCsvOrders: ordersList.length,
+        insertedOrdersCount: 0,
+        insertedItemsCount: 0
+      });
+    }
+
     let insertedOrdersCount = 0;
     let insertedItemsCount = 0;
 
-    for (const order of ordersList) {
-      // Insert order row
+    for (const order of remainingOrders) {
       const orderResult = await sql`
         INSERT INTO orders (
           branch_id,
@@ -84,7 +99,6 @@ async function handleImport(request) {
       const orderId = orderResult[0].id;
       insertedOrdersCount++;
 
-      // Insert order items
       if (Array.isArray(order.items) && order.items.length > 0) {
         for (const item of order.items) {
           await sql`
@@ -113,12 +127,13 @@ async function handleImport(request) {
 
     return corsJson(request, {
       success: true,
-      message: `Successfully imported ${insertedOrdersCount} orders and ${insertedItemsCount} order items into database.`,
+      message: `Successfully imported ${insertedOrdersCount} historical orders (${insertedItemsCount} items) into database.`,
+      totalCsvOrders: ordersList.length,
       insertedOrdersCount,
       insertedItemsCount
     });
   } catch (error) {
-    console.error('Error importing old orders:', error);
+    console.error('Error in batch import-orders:', error);
     return corsJson(request, { success: false, error: error.message }, { status: 500 });
   }
 }
