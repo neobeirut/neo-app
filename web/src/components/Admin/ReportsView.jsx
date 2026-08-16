@@ -356,7 +356,7 @@ export default function ReportsView() {
         </div>
 
         {/* Total Discounts */}
-        <div className="bg-[#181C24] border border-[#262D3D] rounded-2xl p-4 space-y-2 shadow-lg">
+        <div className="bg-[#181C24] border border-[#262D3D] rounded-2xl p-4 space-y-1.5 shadow-lg">
           <div className="flex justify-between items-center text-gray-400">
             <span className="text-xs font-bold">Total Discounts</span>
             <div className="p-2 rounded-xl bg-purple-500/20 text-purple-400">
@@ -366,7 +366,17 @@ export default function ReportsView() {
           <div className="text-2xl font-black text-[#eb660c]">
             -${(summary.total_discounts || 0).toFixed(2)}
           </div>
-          <div className="text-[11px] text-gray-500">Campaigns & promos</div>
+          {(() => {
+            const gross = parseFloat(summary.gross_subtotal) || (parseFloat(summary.total_revenue) + parseFloat(summary.total_discounts)) || 0;
+            const disc = parseFloat(summary.total_discounts) || 0;
+            const avgPct = gross > 0 ? ((disc / gross) * 100).toFixed(1) : "0.0";
+            return (
+              <div className="text-xs font-extrabold text-purple-400 flex items-center gap-1">
+                <span>Avg {avgPct}% discount</span>
+              </div>
+            );
+          })()}
+          <div className="text-[10px] text-gray-500">Campaigns & promos</div>
         </div>
 
         {/* Delivery Fees */}
