@@ -633,34 +633,37 @@ export default function ReportsView() {
                   <td colSpan={4} className="text-center py-8 text-gray-500">No category sales found for this period</td>
                 </tr>
               ) : (
-                categories.map((cat, idx) => {
-                  const totalRev = summary.total_revenue || 1;
-                  const sharePct = totalRev > 0 ? Math.round(((cat.total_revenue || 0) / totalRev) * 100) : 0;
+                (() => {
+                  const totalCategoryRevenueSum = categories.reduce((sum, c) => sum + (parseFloat(c.total_revenue) || 0), 0) || 1;
+                  return categories.map((cat, idx) => {
+                    const catRev = parseFloat(cat.total_revenue) || 0;
+                    const sharePct = Math.round((catRev / totalCategoryRevenueSum) * 100);
 
-                  return (
-                    <tr key={cat.category_name || idx} className="hover:bg-[#0F1115]/50 transition-colors">
-                      <td className="py-3 pl-2 font-bold text-white">
-                        <span className="px-2.5 py-1 rounded-lg bg-[#0F1115] border border-[#262D3D] text-xs font-bold text-gray-200">
-                          {cat.category_name}
-                        </span>
-                      </td>
-                      <td className="py-3 text-center font-black text-[#eb660c]">
-                        {cat.total_qty || 0}
-                      </td>
-                      <td className="py-3 text-right pr-4 font-black text-emerald-400">
-                        ${(cat.total_revenue || 0).toFixed(2)}
-                      </td>
-                      <td className="py-3 text-center">
-                        <div className="flex items-center gap-2 justify-center">
-                          <div className="w-20 bg-[#0F1115] h-2 rounded-full overflow-hidden border border-[#262D3D]">
-                            <div className="bg-[#eb660c] h-full rounded-full" style={{ width: `${Math.min(100, sharePct)}%` }}></div>
+                    return (
+                      <tr key={cat.category_name || idx} className="hover:bg-[#0F1115]/50 transition-colors">
+                        <td className="py-3 pl-2 font-bold text-white">
+                          <span className="px-2.5 py-1 rounded-lg bg-[#0F1115] border border-[#262D3D] text-xs font-bold text-gray-200">
+                            {cat.category_name}
+                          </span>
+                        </td>
+                        <td className="py-3 text-center font-black text-[#eb660c]">
+                          {cat.total_qty || 0}
+                        </td>
+                        <td className="py-3 text-right pr-4 font-black text-emerald-400">
+                          ${catRev.toFixed(2)}
+                        </td>
+                        <td className="py-3 text-center">
+                          <div className="flex items-center gap-2 justify-center">
+                            <div className="w-20 bg-[#0F1115] h-2 rounded-full overflow-hidden border border-[#262D3D]">
+                              <div className="bg-[#eb660c] h-full rounded-full" style={{ width: `${Math.min(100, sharePct)}%` }}></div>
+                            </div>
+                            <span className="text-[11px] font-bold text-gray-400 w-8">{sharePct}%</span>
                           </div>
-                          <span className="text-[11px] font-bold text-gray-400 w-8">{sharePct}%</span>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
+                        </td>
+                      </tr>
+                    );
+                  });
+                })()
               )}
             </tbody>
           </table>

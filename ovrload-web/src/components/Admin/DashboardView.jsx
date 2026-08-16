@@ -557,27 +557,27 @@ export function DashboardView({
                   <td colSpan="6" className="py-6 text-center text-slate-400 text-sm">No category report data available</td>
                 </tr>
               ) : (
-                categoryReportData.map((row) => {
-                  const sharePct = kpis.totalSales > 0
-                    ? Math.round((row.total_sales_amount / kpis.totalSales) * 100)
-                    : 0;
+                (() => {
+                  const totalCategorySalesSum = categoryReportData.reduce((sum, row) => sum + (parseFloat(row.total_sales_amount) || 0), 0) || 1;
+                  return categoryReportData.map((row) => {
+                    const sharePct = Math.round(((parseFloat(row.total_sales_amount) || 0) / totalCategorySalesSum) * 100);
 
-                  return (
-                    <tr key={row.category} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="py-4 pr-4 font-bold text-slate-800">
-                        <span className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 text-xs font-bold">
-                          {row.category}
-                        </span>
-                      </td>
-                      <td className="py-4 pr-4 text-center font-semibold text-slate-700">
-                        {row.total_products}
-                      </td>
-                      <td className="py-4 pr-4 text-right font-semibold text-cyan-600">
-                        {formatCurrency(row.total_inventory_amount)}
-                      </td>
-                      <td className="py-4 pr-4 text-center font-bold text-indigo-600">
-                        {row.total_items_sold}
-                      </td>
+                    return (
+                      <tr key={row.category} className="hover:bg-slate-50/50 transition-colors">
+                        <td className="py-4 pr-4 font-bold text-slate-800">
+                          <span className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 text-xs font-bold">
+                            {row.category}
+                          </span>
+                        </td>
+                        <td className="py-4 pr-4 text-center font-semibold text-slate-700">
+                          {row.total_products}
+                        </td>
+                        <td className="py-4 pr-4 text-right font-semibold text-cyan-600">
+                          {formatCurrency(row.total_inventory_amount)}
+                        </td>
+                        <td className="py-4 pr-4 text-center font-bold text-indigo-600">
+                          {row.total_items_sold}
+                        </td>
                       <td className="py-4 pr-4 text-right font-bold text-emerald-600">
                         {formatCurrency(row.total_sales_amount)}
                       </td>
@@ -594,8 +594,9 @@ export function DashboardView({
                       </td>
                     </tr>
                   );
-                })
-              )}
+                });
+              })()
+            )}
             </tbody>
           </table>
         </div>
