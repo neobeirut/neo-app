@@ -6,6 +6,10 @@ export async function OPTIONS(request) {
 }
 
 export async function GET(request) {
+  const { searchParams } = new URL(request.url);
+  if (searchParams.get("action") === "revert") {
+    return handleRevert();
+  }
   return handleBatchImport(request);
 }
 
