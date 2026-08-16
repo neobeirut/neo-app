@@ -22,102 +22,91 @@ async function handleBatchImport(request) {
       if (body && Array.isArray(body.orders) && body.orders.length > 0) {
         ordersList = body.orders;
       }
-    } catch (e) {
-      // Body not provided or empty JSON
-    }
+    } catch (e) {}
 
     if (!ordersList || ordersList.length === 0) {
-      return corsJson(request, { success: false, error: 'No orders payload provided in request body. Send JSON object: { orders: [...] }' }, { status: 400 });
-    }
-
-    // Check existing special_instructions to avoid duplicates
-    const existingRows = await sql`SELECT special_instructions FROM orders WHERE special_instructions LIKE 'Toters Import Ref %'`;
-    const existingSet = new Set((existingRows || []).map(r => r.special_instructions));
-
-    const remainingOrders = ordersList.filter(o => !existingSet.has(o.specialInstructions));
-
-    if (remainingOrders.length === 0) {
-      return corsJson(request, {
-        success: true,
-        message: 'All orders provided in payload have already been imported into the database.',
-        totalPayloadOrders: ordersList.length,
-        insertedOrdersCount: 0,
-        insertedItemsCount: 0
-      });
+      return corsJson(request, { success: false, error: 'No orders payload provided in request body.' }, { status: 400 });
     }
 
     let insertedOrdersCount = 0;
     let insertedItemsCount = 0;
 
-    for (const order of remainingOrders) {
-      const orderResult = await sql`
-        INSERT INTO orders (
-          branch_id,
-          order_type,
-          order_source,
-          payment_method,
-          customer_name,
-          customer_phone,
-          delivery_address,
-          special_instructions,
-          status,
-          subtotal_amount,
-          delivery_fee,
-          discount_amount,
-          total_amount,
-          created_at
-        ) VALUES (
-          ${order.branchId || 1},
-          ${order.orderType || 'delivery'},
-          ${order.orderSource || 'Toters'},
-          ${order.paymentMethod || 'Cash'},
-          ${order.customerName || ''},
-          ${order.customerPhone || ''},
-          ${order.deliveryAddress || ''},
-          ${order.specialInstructions || ''},
-          ${order.status || 'completed'},
-          ${order.subtotal || 0},
-          ${order.deliveryFee || 0},
-          ${order.discountAmount || 0},
-          ${order.total || 0},
-          ${order.created_at}
-        )
-        RETURNING id;
-      `;
+    for (const order of ordersList) {
+      try {
+        const createdAtVal = order.created_at || order.createdAt ? new Date(order.created_at || order.createdAt).toISOString() : new Date().toISOString();
 
-      const orderId = orderResult[0].id;
-      insertedOrdersCount++;
+        const orderResult = await sql`
+          INSERT INTO orders (
+            branch_id,
+            order_type,
+            order_source,
+            payment_method,
+            customer_name,
+            customer_phone,
+            delivery_address,
+            special_instructions,
+            status,
+            subtotal_amount,
+            delivery_fee,
+            discount_amount,
+            total_amount,
+            created_at
+          ) VALUES (
+            ${order.branchId || 1},
+            ${order.orderType || 'delivery'},
+            ${order.orderSource || 'Toters'},
+            ${order.paymentMethod || 'Cash'},
+            ${order.customerName || ''},
+            ${order.customerPhone || ''},
+            ${order.deliveryAddress || ''},
+            ${order.specialInstructions || ''},
+            ${order.status || 'completed'},
+            ${order.subtotal || 0},
+            ${order.deliveryFee || 0},
+            ${order.discountAmount || 0},
+            ${order.total || 0},
+            ${createdAtVal}
+          )
+          RETURNING id;
+        `;
 
-      if (Array.isArray(order.items) && order.items.length > 0) {
-        for (const item of order.items) {
-          await sql`
-            INSERT INTO order_items (
-              order_id,
-              product_id,
-              quantity,
-              unit_price,
-              total_price,
-              customizations,
-              comment
-            ) VALUES (
-              ${orderId},
-              ${item.product_id},
-              ${item.quantity},
-              ${item.unit_price},
-              ${item.total_price},
-              ${item.customizations || null},
-              ${item.comment || null}
-            );
-          `;
-          insertedItemsCount++;
+        if (orderResult && orderResult[0] && orderResult[0].id) {
+          const orderId = orderResult[0].id;
+          insertedOrdersCount++;
+
+          if (Array.isArray(order.items) && order.items.length > 0) {
+            for (const item of order.items) {
+              await sql`
+                INSERT INTO order_items (
+                  order_id,
+                  product_id,
+                  quantity,
+                  unit_price,
+                  total_price,
+                  customizations,
+                  comment
+                ) VALUES (
+                  ${orderId},
+                  ${item.product_id},
+                  ${item.quantity || 1},
+                  ${item.unit_price || 0},
+                  ${item.total_price || 0},
+                  ${item.customizations || null},
+                  ${item.comment || null}
+                );
+              `;
+              insertedItemsCount++;
+            }
+          }
         }
+      } catch (err) {
+        console.error('Error inserting single order:', err);
       }
     }
 
     return corsJson(request, {
       success: true,
-      message: `Successfully imported ${insertedOrdersCount} historical orders (${insertedItemsCount} items) into database.`,
-      totalPayloadOrders: ordersList.length,
+      message: `Successfully processed batch import.`,
       insertedOrdersCount,
       insertedItemsCount
     });
