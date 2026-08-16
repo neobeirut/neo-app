@@ -1,5 +1,32 @@
 import sql from "../../utils/sql";
 
+export async function DELETE(request) {
+  try {
+    const deletedItems = await sql(
+      `DELETE FROM order_items 
+       WHERE order_id IN (
+         SELECT id FROM orders WHERE special_instructions LIKE 'Toters Import Ref %'
+       ) RETURNING id;`
+    );
+
+    const deletedOrders = await sql(
+      `DELETE FROM orders 
+       WHERE special_instructions LIKE 'Toters Import Ref %' 
+       RETURNING id;`
+    );
+
+    return Response.json({
+      success: true,
+      message: "Reverted all CSV imported orders.",
+      deletedOrdersCount: (deletedOrders || []).length,
+      deletedItemsCount: (deletedItems || []).length
+    });
+  } catch (error) {
+    console.error("Error in DELETE /api/pos/orders:", error);
+    return Response.json({ error: error.message }, { status: 500 });
+  }
+}
+
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
