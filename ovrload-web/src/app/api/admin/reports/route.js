@@ -90,12 +90,23 @@ export async function GET(request) {
 
     const paymentMethods = await sql(
       `SELECT 
-        COALESCE(payment_method, 'Cash') as method,
+        CASE 
+          WHEN LOWER(COALESCE(order_source, '')) = 'toters' THEN 'Toters'
+          WHEN LOWER(COALESCE(payment_method, '')) LIKE '%whish%' THEN 'Whish'
+          WHEN LOWER(COALESCE(payment_method, '')) LIKE '%toters%' THEN 'Toters'
+          ELSE 'Cash'
+        END as method,
         COUNT(*)::int as order_count,
         COALESCE(SUM(total_amount::float), 0) as total_revenue
       FROM orders
       WHERE ${salesStatusFilter} ${dateWhereClause}
-      GROUP BY COALESCE(payment_method, 'Cash')
+      GROUP BY 
+        CASE 
+          WHEN LOWER(COALESCE(order_source, '')) = 'toters' THEN 'Toters'
+          WHEN LOWER(COALESCE(payment_method, '')) LIKE '%whish%' THEN 'Whish'
+          WHEN LOWER(COALESCE(payment_method, '')) LIKE '%toters%' THEN 'Toters'
+          ELSE 'Cash'
+        END
       ORDER BY total_revenue DESC`
     ) || [];
 
