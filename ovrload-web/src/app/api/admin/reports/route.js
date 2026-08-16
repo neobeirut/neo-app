@@ -2,8 +2,8 @@ import sql from "../../utils/sql";
 
 export async function GET(request) {
   try {
-    const { searchParams } = new URL(request.url);
-    const action = searchParams.get("action");
+    const url = new URL(request.url, "http://localhost");
+    const action = url.searchParams.get("action");
 
     if (action === "audit_discounts") {
       const orders = await sql`
