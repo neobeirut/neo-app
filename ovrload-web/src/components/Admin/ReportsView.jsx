@@ -96,9 +96,10 @@ export default function ReportsView() {
     // Time of Day Breakdown
     csvContent += "ORDER TIME BREAKDOWN (SHIFT WINDOWS)\n";
     csvContent += "Period,Time Range,Orders,Total Revenue\n";
-    csvContent += `Morning,6 AM - 12 PM,${timeOfDay.morning?.order_count || 0},$${(timeOfDay.morning?.total_revenue || 0).toFixed(2)}\n`;
-    csvContent += `Afternoon,12 PM - 6 PM,${timeOfDay.afternoon?.order_count || 0},$${(timeOfDay.afternoon?.total_revenue || 0).toFixed(2)}\n`;
-    csvContent += `Night,6 PM - 6 AM,${timeOfDay.night?.order_count || 0},$${(timeOfDay.night?.total_revenue || 0).toFixed(2)}\n\n`;
+    csvContent += `Lunch,12 PM - 3 PM,${timeOfDay.lunch?.order_count || 0},$${(timeOfDay.lunch?.total_revenue || 0).toFixed(2)}\n`;
+    csvContent += `Afternoon,3 PM - 7 PM,${timeOfDay.afternoon?.order_count || 0},$${(timeOfDay.afternoon?.total_revenue || 0).toFixed(2)}\n`;
+    csvContent += `Dinner,7 PM - 11 PM,${timeOfDay.dinner?.order_count || 0},$${(timeOfDay.dinner?.total_revenue || 0).toFixed(2)}\n`;
+    csvContent += `Off-Peak / Night,11 PM - 12 PM,${timeOfDay.offpeak?.order_count || 0},$${(timeOfDay.offpeak?.total_revenue || 0).toFixed(2)}\n\n`;
 
     // Category Breakdown
     csvContent += "CATEGORY PERFORMANCE REPORT\n";
@@ -127,27 +128,48 @@ export default function ReportsView() {
 
   const timeOfDay = reportData?.timeOfDay || (() => {
     const map = {
-      morning: { period: "Morning", order_count: 0, total_revenue: 0 },
-      afternoon: { period: "Afternoon", order_count: 0, total_revenue: 0 },
-      night: { period: "Night", order_count: 0, total_revenue: 0 }
+      lunch: { period: "Lunch (12 PM – 3 PM)", order_count: 0, total_revenue: 0 },
+      afternoon: { period: "Afternoon (3 PM – 7 PM)", order_count: 0, total_revenue: 0 },
+      dinner: { period: "Dinner (7 PM – 11 PM)", order_count: 0, total_revenue: 0 },
+      offpeak: { period: "Off-Peak / Night (11 PM – 12 PM)", order_count: 0, total_revenue: 0 }
     };
     (hourlySales || []).forEach((h) => {
-      const hour = h.hour;
+      const hour = parseInt(h.hour, 10);
       const count = parseInt(h.order_count, 10) || 0;
       const rev = parseFloat(h.total_revenue) || 0;
-      if (hour >= 6 && hour < 12) {
-        map.morning.order_count += count;
-        map.morning.total_revenue += rev;
-      } else if (hour >= 12 && hour < 18) {
+      if (hour >= 12 && hour < 15) {
+        map.lunch.order_count += count;
+        map.lunch.total_revenue += rev;
+      } else if (hour >= 15 && hour < 19) {
         map.afternoon.order_count += count;
         map.afternoon.total_revenue += rev;
+      } else if (hour >= 19 && hour < 23) {
+        map.dinner.order_count += count;
+        map.dinner.total_revenue += rev;
       } else {
-        map.night.order_count += count;
-        map.night.total_revenue += rev;
+        map.offpeak.order_count += count;
+        map.offpeak.total_revenue += rev;
       }
     });
     return map;
   })();
+
+  const handleCustomRangePreset = (start, end) => {
+    setStartDate(start);
+    setEndDate(end);
+    setRange("custom");
+  };
+
+  useEffect(() => {
+    if (range === "custom" && !startDate && !endDate) {
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const d = new Date();
+      d.setDate(d.getDate() - 14);
+      const pastStr = d.toISOString().slice(0, 10);
+      setStartDate(pastStr);
+      setEndDate(todayStr);
+    }
+  }, [range]);
 
   const maxChannelRevenue = Math.max(...channels.map((c) => c.total_revenue || 0), 1);
 
@@ -207,33 +229,74 @@ export default function ReportsView() {
         </div>
       </div>
 
-      {/* Custom Date Inputs */}
+      {/* Custom Date Inputs & Interactive Selector */}
       {range === "custom" && (
-        <div className="bg-[#181C24] border border-[#262D3D] rounded-2xl p-4 flex flex-wrap items-center gap-4">
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-400 font-bold">Start Date:</span>
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="bg-[#0F1115] border border-[#262D3D] text-white rounded-xl px-3 py-1.5 text-xs font-bold focus:outline-none focus:border-[#eb660c]"
-            />
+        <div className="bg-[#181C24] border border-[#eb660c]/40 rounded-2xl p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-xl">
+          <div className="flex flex-wrap items-center gap-4 w-full md:w-auto">
+            <div className="flex items-center gap-2 bg-[#0F1115] border border-[#262D3D] px-3 py-2 rounded-xl cursor-pointer hover:border-[#eb660c] transition-colors"
+                 onClick={(e) => {
+                   const input = e.currentTarget.querySelector('input');
+                   if (input && input.showPicker) input.showPicker();
+                 }}
+            >
+              <Calendar className="w-4 h-4 text-[#eb660c]" />
+              <span className="text-xs text-gray-400 font-extrabold">From:</span>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                onClick={(e) => e.stopPropagation()}
+                className="bg-transparent text-white text-xs font-black focus:outline-none cursor-pointer"
+              />
+            </div>
+
+            <div className="flex items-center gap-2 bg-[#0F1115] border border-[#262D3D] px-3 py-2 rounded-xl cursor-pointer hover:border-[#eb660c] transition-colors"
+                 onClick={(e) => {
+                   const input = e.currentTarget.querySelector('input');
+                   if (input && input.showPicker) input.showPicker();
+                 }}
+            >
+              <Calendar className="w-4 h-4 text-[#eb660c]" />
+              <span className="text-xs text-gray-400 font-extrabold">To:</span>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                onClick={(e) => e.stopPropagation()}
+                className="bg-transparent text-white text-xs font-black focus:outline-none cursor-pointer"
+              />
+            </div>
+
+            <button
+              onClick={fetchReport}
+              className="px-4 py-2 bg-[#eb660c] hover:bg-[#d55909] text-white rounded-xl text-xs font-black shadow-md transition-all flex items-center gap-2"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              Apply Date Range
+            </button>
           </div>
+
+          {/* Preset Buttons for Quick Date Selection */}
           <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-400 font-bold">End Date:</span>
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              className="bg-[#0F1115] border border-[#262D3D] text-white rounded-xl px-3 py-1.5 text-xs font-bold focus:outline-none focus:border-[#eb660c]"
-            />
+            <span className="text-[11px] text-gray-400 font-bold hidden lg:inline">Presets:</span>
+            <button
+              onClick={() => handleCustomRangePreset("2026-08-01", new Date().toISOString().slice(0, 10))}
+              className="px-2.5 py-1 bg-[#0F1115] hover:bg-[#262D3D] text-xs font-bold text-gray-300 rounded-lg border border-[#262D3D]"
+            >
+              August 2026
+            </button>
+            <button
+              onClick={() => {
+                const today = new Date().toISOString().slice(0, 10);
+                const d = new Date();
+                d.setDate(d.getDate() - 30);
+                handleCustomRangePreset(d.toISOString().slice(0, 10), today);
+              }}
+              className="px-2.5 py-1 bg-[#0F1115] hover:bg-[#262D3D] text-xs font-bold text-gray-300 rounded-lg border border-[#262D3D]"
+            >
+              Last 30 Days
+            </button>
           </div>
-          <button
-            onClick={fetchReport}
-            className="px-4 py-1.5 bg-[#eb660c] text-white rounded-xl text-xs font-extrabold hover:bg-[#d55909]"
-          >
-            Apply Range
-          </button>
         </div>
       )}
 
@@ -316,42 +379,42 @@ export default function ReportsView() {
         </div>
       </div>
 
-      {/* ORDER TIME DISTRIBUTION (MORNING, AFTERNOON, NIGHT) */}
+      {/* ORDER TIME BREAKDOWN (EXACT SHIFT WINDOWS: 12-3PM, 3-7PM, 7-11PM, 11-12PM) */}
       <div className="bg-[#181C24] border border-[#262D3D] rounded-2xl p-5 space-y-4 shadow-lg">
         <div className="flex justify-between items-center border-b border-[#262D3D] pb-3">
           <h2 className="text-base font-extrabold text-white flex items-center gap-2">
             <Clock className="w-5 h-5 text-[#eb660c]" /> Order Time Breakdown (Shift Windows)
           </h2>
-          <span className="text-xs text-gray-400 font-bold">Morning, Afternoon & Night</span>
+          <span className="text-xs text-gray-400 font-bold">12 PM – 3 PM | 3 PM – 7 PM | 7 PM – 11 PM</span>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Morning Card */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Lunch Shift (12 PM – 3 PM) */}
           <div className="bg-[#0F1115] border border-[#262D3D] rounded-xl p-4 space-y-2 relative overflow-hidden">
             <div className="flex justify-between items-center">
               <span className="text-xs font-black text-amber-400 flex items-center gap-1.5 uppercase">
-                🌅 Morning (6 AM – 12 PM)
+                🍔 Lunch (12 PM – 3 PM)
               </span>
               <span className="text-xs text-gray-400 font-extrabold">
-                {timeOfDay.morning?.order_count || 0} orders
+                {timeOfDay.lunch?.order_count || 0} orders
               </span>
             </div>
             <div className="text-2xl font-black text-white">
-              ${(timeOfDay.morning?.total_revenue || 0).toFixed(2)}
+              ${(timeOfDay.lunch?.total_revenue || 0).toFixed(2)}
             </div>
             <div className="text-[11px] text-gray-500 font-semibold">
-              {(summary.total_revenue || 0) > 0 ? Math.round(((timeOfDay.morning?.total_revenue || 0) / summary.total_revenue) * 100) : 0}% of net sales
+              {(summary.total_revenue || 0) > 0 ? Math.round(((timeOfDay.lunch?.total_revenue || 0) / summary.total_revenue) * 100) : 0}% of net sales
             </div>
             <div className="w-full bg-[#181C24] h-1.5 rounded-full overflow-hidden mt-2 border border-[#262D3D]">
-              <div className="bg-amber-400 h-full rounded-full" style={{ width: `${(summary.total_revenue || 0) > 0 ? Math.min(100, Math.round(((timeOfDay.morning?.total_revenue || 0) / summary.total_revenue) * 100)) : 0}%` }}></div>
+              <div className="bg-amber-400 h-full rounded-full" style={{ width: `${(summary.total_revenue || 0) > 0 ? Math.min(100, Math.round(((timeOfDay.lunch?.total_revenue || 0) / summary.total_revenue) * 100)) : 0}%` }}></div>
             </div>
           </div>
 
-          {/* Afternoon Card */}
+          {/* Afternoon Shift (3 PM – 7 PM) */}
           <div className="bg-[#0F1115] border border-[#262D3D] rounded-xl p-4 space-y-2 relative overflow-hidden">
             <div className="flex justify-between items-center">
               <span className="text-xs font-black text-sky-400 flex items-center gap-1.5 uppercase">
-                ☀️ Afternoon (12 PM – 6 PM)
+                ☀️ Afternoon (3 PM – 7 PM)
               </span>
               <span className="text-xs text-gray-400 font-extrabold">
                 {timeOfDay.afternoon?.order_count || 0} orders
@@ -368,24 +431,45 @@ export default function ReportsView() {
             </div>
           </div>
 
-          {/* Night Card */}
+          {/* Dinner Shift (7 PM – 11 PM) */}
           <div className="bg-[#0F1115] border border-[#262D3D] rounded-xl p-4 space-y-2 relative overflow-hidden">
             <div className="flex justify-between items-center">
               <span className="text-xs font-black text-indigo-400 flex items-center gap-1.5 uppercase">
-                🌙 Night (6 PM – 6 AM)
+                🌙 Dinner (7 PM – 11 PM)
               </span>
               <span className="text-xs text-gray-400 font-extrabold">
-                {timeOfDay.night?.order_count || 0} orders
+                {timeOfDay.dinner?.order_count || 0} orders
               </span>
             </div>
             <div className="text-2xl font-black text-white">
-              ${(timeOfDay.night?.total_revenue || 0).toFixed(2)}
+              ${(timeOfDay.dinner?.total_revenue || 0).toFixed(2)}
             </div>
             <div className="text-[11px] text-gray-500 font-semibold">
-              {(summary.total_revenue || 0) > 0 ? Math.round(((timeOfDay.night?.total_revenue || 0) / summary.total_revenue) * 100) : 0}% of net sales
+              {(summary.total_revenue || 0) > 0 ? Math.round(((timeOfDay.dinner?.total_revenue || 0) / summary.total_revenue) * 100) : 0}% of net sales
             </div>
             <div className="w-full bg-[#181C24] h-1.5 rounded-full overflow-hidden mt-2 border border-[#262D3D]">
-              <div className="bg-indigo-400 h-full rounded-full" style={{ width: `${(summary.total_revenue || 0) > 0 ? Math.min(100, Math.round(((timeOfDay.night?.total_revenue || 0) / summary.total_revenue) * 100)) : 0}%` }}></div>
+              <div className="bg-indigo-400 h-full rounded-full" style={{ width: `${(summary.total_revenue || 0) > 0 ? Math.min(100, Math.round(((timeOfDay.dinner?.total_revenue || 0) / summary.total_revenue) * 100)) : 0}%` }}></div>
+            </div>
+          </div>
+
+          {/* Off-Peak / Night (11 PM – 12 PM) */}
+          <div className="bg-[#0F1115] border border-[#262D3D] rounded-xl p-4 space-y-2 relative overflow-hidden">
+            <div className="flex justify-between items-center">
+              <span className="text-xs font-black text-purple-400 flex items-center gap-1.5 uppercase">
+                🌌 Off-Peak / Night (11 PM – 12 PM)
+              </span>
+              <span className="text-xs text-gray-400 font-extrabold">
+                {timeOfDay.offpeak?.order_count || 0} orders
+              </span>
+            </div>
+            <div className="text-2xl font-black text-white">
+              ${(timeOfDay.offpeak?.total_revenue || 0).toFixed(2)}
+            </div>
+            <div className="text-[11px] text-gray-500 font-semibold">
+              {(summary.total_revenue || 0) > 0 ? Math.round(((timeOfDay.offpeak?.total_revenue || 0) / summary.total_revenue) * 100) : 0}% of net sales
+            </div>
+            <div className="w-full bg-[#181C24] h-1.5 rounded-full overflow-hidden mt-2 border border-[#262D3D]">
+              <div className="bg-purple-400 h-full rounded-full" style={{ width: `${(summary.total_revenue || 0) > 0 ? Math.min(100, Math.round(((timeOfDay.offpeak?.total_revenue || 0) / summary.total_revenue) * 100)) : 0}%` }}></div>
             </div>
           </div>
         </div>
