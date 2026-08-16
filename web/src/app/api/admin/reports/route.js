@@ -165,9 +165,10 @@ export async function GET(request) {
     const timeOfDayRows = await sql(
       `SELECT 
         CASE 
-          WHEN EXTRACT(HOUR FROM ${beirutTimeExpr}) >= 6 AND EXTRACT(HOUR FROM ${beirutTimeExpr}) < 12 THEN 'Morning'
-          WHEN EXTRACT(HOUR FROM ${beirutTimeExpr}) >= 12 AND EXTRACT(HOUR FROM ${beirutTimeExpr}) < 18 THEN 'Afternoon'
-          ELSE 'Night'
+          WHEN EXTRACT(HOUR FROM ${beirutTimeExpr}) >= 12 AND EXTRACT(HOUR FROM ${beirutTimeExpr}) < 15 THEN 'lunch'
+          WHEN EXTRACT(HOUR FROM ${beirutTimeExpr}) >= 15 AND EXTRACT(HOUR FROM ${beirutTimeExpr}) < 19 THEN 'afternoon'
+          WHEN EXTRACT(HOUR FROM ${beirutTimeExpr}) >= 19 AND EXTRACT(HOUR FROM ${beirutTimeExpr}) < 23 THEN 'dinner'
+          ELSE 'offpeak'
         END as period,
         COUNT(*)::int as order_count,
         COALESCE(SUM(total_amount::float), 0) as total_revenue
@@ -175,16 +176,18 @@ export async function GET(request) {
       WHERE ${salesStatusFilter} ${dateWhereClause}
       GROUP BY 
         CASE 
-          WHEN EXTRACT(HOUR FROM ${beirutTimeExpr}) >= 6 AND EXTRACT(HOUR FROM ${beirutTimeExpr}) < 12 THEN 'Morning'
-          WHEN EXTRACT(HOUR FROM ${beirutTimeExpr}) >= 12 AND EXTRACT(HOUR FROM ${beirutTimeExpr}) < 18 THEN 'Afternoon'
-          ELSE 'Night'
+          WHEN EXTRACT(HOUR FROM ${beirutTimeExpr}) >= 12 AND EXTRACT(HOUR FROM ${beirutTimeExpr}) < 15 THEN 'lunch'
+          WHEN EXTRACT(HOUR FROM ${beirutTimeExpr}) >= 15 AND EXTRACT(HOUR FROM ${beirutTimeExpr}) < 19 THEN 'afternoon'
+          WHEN EXTRACT(HOUR FROM ${beirutTimeExpr}) >= 19 AND EXTRACT(HOUR FROM ${beirutTimeExpr}) < 23 THEN 'dinner'
+          ELSE 'offpeak'
         END`
     ) || [];
 
     const timeOfDayMap = {
-      morning: { period: 'Morning', order_count: 0, total_revenue: 0 },
-      afternoon: { period: 'Afternoon', order_count: 0, total_revenue: 0 },
-      night: { period: 'Night', order_count: 0, total_revenue: 0 }
+      lunch: { period: 'Lunch (12 PM – 3 PM)', order_count: 0, total_revenue: 0 },
+      afternoon: { period: 'Afternoon (3 PM – 7 PM)', order_count: 0, total_revenue: 0 },
+      dinner: { period: 'Dinner (7 PM – 11 PM)', order_count: 0, total_revenue: 0 },
+      offpeak: { period: 'Off-Peak / Night (11 PM – 12 PM)', order_count: 0, total_revenue: 0 }
     };
 
     (timeOfDayRows || []).forEach((r) => {
