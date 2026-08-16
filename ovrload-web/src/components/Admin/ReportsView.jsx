@@ -126,13 +126,18 @@ export default function ReportsView() {
   const voidedOrders = reportData?.voidedOrders || [];
   const hourlySales = reportData?.hourlySales || [];
 
-  const timeOfDay = reportData?.timeOfDay || (() => {
+  const timeOfDay = (() => {
+    if (reportData?.timeOfDay?.lunch) {
+      return reportData.timeOfDay;
+    }
+
     const map = {
       lunch: { period: "Lunch (12 PM – 3 PM)", order_count: 0, total_revenue: 0 },
       afternoon: { period: "Afternoon (3 PM – 7 PM)", order_count: 0, total_revenue: 0 },
       dinner: { period: "Dinner (7 PM – 11 PM)", order_count: 0, total_revenue: 0 },
       offpeak: { period: "Off-Peak / Night (11 PM – 12 PM)", order_count: 0, total_revenue: 0 }
     };
+
     (hourlySales || []).forEach((h) => {
       const hour = parseInt(h.hour, 10);
       const count = parseInt(h.order_count, 10) || 0;
