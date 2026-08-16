@@ -3,6 +3,30 @@ import sql from "../../utils/sql";
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
+    const action = searchParams.get("action");
+
+    if (action === "revert_csv") {
+      const deletedItems = await sql(
+        `DELETE FROM order_items 
+         WHERE order_id IN (
+           SELECT id FROM orders WHERE special_instructions LIKE 'Toters Import Ref %'
+         ) RETURNING id;`
+      );
+
+      const deletedOrders = await sql(
+        `DELETE FROM orders 
+         WHERE special_instructions LIKE 'Toters Import Ref %' 
+         RETURNING id;`
+      );
+
+      return Response.json({
+        success: true,
+        message: "Successfully deleted all imported CSV orders and their order items.",
+        deletedOrdersCount: (deletedOrders || []).length,
+        deletedItemsCount: (deletedItems || []).length
+      });
+    }
+
     const range = searchParams.get("range") || "today";
     const startDateParam = searchParams.get("startDate");
     const endDateParam = searchParams.get("endDate");
@@ -36,11 +60,9 @@ export async function GET(request) {
       dateWhereClauseO = `AND ${beirutTimeExprO}::date >= '${cleanStart}'::date AND ${beirutTimeExprO}::date <= '${cleanEnd}'::date`;
     }
 
-    // Valid completed sales status
     const salesStatusFilter = "COALESCE(status, 'completed') NOT IN ('cancelled', 'voided', 'pending')";
     const salesStatusFilterO = "COALESCE(o.status, 'completed') NOT IN ('cancelled', 'voided', 'pending')";
 
-    // 1. KPI Summary
     const summaryRows = await sql(
       `SELECT 
         COUNT(*)::int as total_orders,
@@ -54,7 +76,6 @@ export async function GET(request) {
     );
     const summary = (summaryRows && summaryRows[0]) ? summaryRows[0] : {};
 
-    // 2. Sales Channel Breakdown
     const channels = await sql(
       `SELECT 
         COALESCE(order_source, 'Pick-up') as channel,
@@ -67,7 +88,6 @@ export async function GET(request) {
       ORDER BY total_revenue DESC`
     ) || [];
 
-    // 3. Payment Method Breakdown
     const paymentMethods = await sql(
       `SELECT 
         COALESCE(payment_method, 'Cash') as method,
@@ -79,7 +99,6 @@ export async function GET(request) {
       ORDER BY total_revenue DESC`
     ) || [];
 
-    // 4. Top Selling Products
     const topProducts = await sql(
       `SELECT 
         oi.product_id,
@@ -97,7 +116,6 @@ export async function GET(request) {
       LIMIT 15`
     ) || [];
 
-    // 5. Category Breakdown
     const categories = await sql(
       `SELECT 
         COALESCE(c.name, 'Uncategorized') as category_name,
@@ -112,7 +130,6 @@ export async function GET(request) {
       ORDER BY total_revenue DESC`
     ) || [];
 
-    // 6. Voided & Cancelled Orders Log
     const voidedSummaryRows = await sql(
       `SELECT 
         COUNT(*)::int as void_count,
@@ -134,7 +151,6 @@ export async function GET(request) {
       LIMIT 20`
     ) || [];
 
-    // 7. Hourly Peak Sales Distribution
     const hourlySales = await sql(
       `SELECT 
         EXTRACT(HOUR FROM ${beirutTimeExpr})::int as hour,
@@ -146,7 +162,6 @@ export async function GET(request) {
       ORDER BY hour ASC`
     ) || [];
 
-    // 8. Time of Day Breakdown
     const timeOfDayRows = await sql(
       `SELECT 
         CASE 
