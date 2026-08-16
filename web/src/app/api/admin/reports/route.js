@@ -1,3 +1,4 @@
+// Cache buster: 2026-08-16T13:57:00
 import sql from "../../utils/sql";
 
 export async function GET(request) {
