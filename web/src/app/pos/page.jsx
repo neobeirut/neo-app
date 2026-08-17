@@ -119,6 +119,7 @@ export default function TabletPOSPage() {
   const [heldOrders, setHeldOrders] = useState([]);
   const [pendingOrders, setPendingOrders] = useState([]);
   const [rejectingOrderId, setRejectingOrderId] = useState(null);
+  const [confirmingRejectId, setConfirmingRejectId] = useState(null);
   const [activeTabModal, setActiveTabModal] = useState(null); // 'held', 'incoming', 'payment', 'customization', 'void_item', 'receipt', 'settings'
 
   // Notification tracking refs
@@ -478,9 +479,14 @@ export default function TabletPOSPage() {
   };
 
   const handleRejectPendingOrder = async (orderId) => {
-    if (typeof window !== "undefined" && !window.confirm(`Are you sure you want to reject WhatsApp Order #${orderId}?`)) {
+    if (confirmingRejectId !== orderId) {
+      setConfirmingRejectId(orderId);
+      setTimeout(() => {
+        setConfirmingRejectId((current) => (current === orderId ? null : current));
+      }, 4000);
       return;
     }
+    setConfirmingRejectId(null);
     setRejectingOrderId(orderId);
     try {
       const res = await fetch(`/api/pos/orders/${orderId}/status`, {
@@ -1979,9 +1985,17 @@ export default function TabletPOSPage() {
                       <button
                         onClick={() => handleRejectPendingOrder(o.id)}
                         disabled={rejectingOrderId === o.id}
-                        className="px-3 py-2 bg-rose-950/60 text-rose-300 border border-rose-500/40 rounded-xl font-bold hover:bg-rose-900/80 disabled:opacity-50 transition-all"
+                        className={`px-3 py-2 border rounded-xl font-bold transition-all disabled:opacity-50 ${
+                          confirmingRejectId === o.id
+                            ? "bg-red-600 text-white border-red-400 animate-pulse font-black"
+                            : "bg-rose-950/60 text-rose-300 border-rose-500/40 hover:bg-rose-900/80"
+                        }`}
                       >
-                        {rejectingOrderId === o.id ? "Rejecting..." : "Reject"}
+                        {rejectingOrderId === o.id
+                          ? "Rejecting..."
+                          : confirmingRejectId === o.id
+                          ? "Tap again to Reject"
+                          : "Reject"}
                       </button>
                       <button
                         onClick={() => {
