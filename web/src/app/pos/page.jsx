@@ -118,6 +118,7 @@ export default function TabletPOSPage() {
   // Queue & Modal States
   const [heldOrders, setHeldOrders] = useState([]);
   const [pendingOrders, setPendingOrders] = useState([]);
+  const [rejectingOrderId, setRejectingOrderId] = useState(null);
   const [activeTabModal, setActiveTabModal] = useState(null); // 'held', 'incoming', 'payment', 'customization', 'void_item', 'receipt', 'settings'
 
   // Notification tracking refs
@@ -473,6 +474,35 @@ export default function TabletPOSPage() {
       if (heldData.orders) setHeldOrders(heldData.orders);
     } catch (err) {
       console.error("Error fetching orders queue:", err);
+    }
+  };
+
+  const handleRejectPendingOrder = async (orderId) => {
+    if (typeof window !== "undefined" && !window.confirm(`Are you sure you want to reject WhatsApp Order #${orderId}?`)) {
+      return;
+    }
+    setRejectingOrderId(orderId);
+    try {
+      const res = await fetch(`/api/pos/orders/${orderId}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "cancelled",
+          voidReason: "Rejected from POS WhatsApp Queue",
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setPendingOrders((prev) => prev.filter((o) => o.id !== orderId));
+        fetchOrdersQueue();
+      } else {
+        alert("Failed to reject order: " + (data.error || "Unknown error"));
+      }
+    } catch (err) {
+      console.error("Error rejecting pending order:", err);
+      alert("Error rejecting order: " + err.message);
+    } finally {
+      setRejectingOrderId(null);
     }
   };
 
@@ -1948,9 +1978,10 @@ export default function TabletPOSPage() {
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => handleRejectPendingOrder(o.id)}
-                        className="px-3 py-2 bg-rose-950/60 text-rose-300 border border-rose-500/40 rounded-xl font-bold hover:bg-rose-900/80"
+                        disabled={rejectingOrderId === o.id}
+                        className="px-3 py-2 bg-rose-950/60 text-rose-300 border border-rose-500/40 rounded-xl font-bold hover:bg-rose-900/80 disabled:opacity-50 transition-all"
                       >
-                        Reject
+                        {rejectingOrderId === o.id ? "Rejecting..." : "Reject"}
                       </button>
                       <button
                         onClick={() => {
