@@ -373,6 +373,7 @@ export default function TabletPOSPage() {
 
   useEffect(() => {
     if (orderType !== "delivery" || !deliveryAddress.trim()) return;
+    if (editingOrderId && deliveryFee > 0) return;
     const timer = setTimeout(async () => {
       try {
         const res = await fetch("/api/delivery/calculate-cost", {
@@ -389,7 +390,7 @@ export default function TabletPOSPage() {
       }
     }, 600);
     return () => clearTimeout(timer);
-  }, [deliveryAddress, orderType]);
+  }, [deliveryAddress, orderType, editingOrderId]);
 
   const fetchProducts = async () => {
     try {
@@ -670,6 +671,30 @@ export default function TabletPOSPage() {
     setVoidingItemIndex(null);
     setVoidReason("");
     setActiveTabModal(null);
+  };
+
+  const handleRejectPendingOrder = async (orderId) => {
+    if (typeof window !== "undefined" && !window.confirm(`Are you sure you want to reject Order #${orderId}?`)) return;
+    try {
+      const res = await fetch(`/api/pos/orders/${orderId}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "cancelled",
+          voidReason: "Rejected from POS incoming queue"
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setPendingOrders((prev) => prev.filter((o) => o.id !== orderId));
+        fetchOrdersQueue();
+      } else {
+        alert("Failed to reject order: " + (data.error || "Unknown error"));
+      }
+    } catch (err) {
+      console.error("Error rejecting pending order:", err);
+      alert("Error rejecting order: " + err.message);
+    }
   };
 
   const subtotal = ticketItems.reduce((sum, item) => sum + item.unit_price * item.qty, 0);
@@ -1959,6 +1984,10 @@ export default function TabletPOSPage() {
                           setCustomerPhone(o.customer_phone || "");
                           setDeliveryAddress(o.delivery_address || "");
                           setSelectedChannel("WhatsApp");
+                          setOrderType(o.order_type || "delivery");
+                          setDiscountType("wa15");
+                          const incomingFee = parseFloat(o.delivery_fee) || 0;
+                          setDeliveryFee(incomingFee);
                           setTicketItems((o.items || []).map((i) => ({
                             product_id: i.product_id || i.id,
                             name: i.product_name || i.name,
