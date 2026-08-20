@@ -740,7 +740,7 @@ export default function TabletPOSPage() {
         signal: AbortSignal.timeout(2000),
       });
       const result = await res.json();
-      if (result && result.success) return;
+      if (result && (result.success || result.ok)) return;
     } catch (err) {}
 
     try {
