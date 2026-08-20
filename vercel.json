@@ -2,8 +2,9 @@
   "cleanUrls": true,
   "rewrites": [
     { "source": "/admin", "destination": "/admin/index.html" },
-    { "source": "/admin/:path*", "destination": "/admin/index.html" },
-    { "source": "/api/:path*", "destination": "https://gregarious-curiosity-production-653f.up.railway.app/api/:path*" },
-    { "source": "/((?!assets/|admin/).*)", "destination": "/index.html" }
+    { "source": "/admin/(.*)", "destination": "/admin/index.html" },
+    { "source": "/login", "destination": "/admin/index.html" },
+    { "source": "/api/(.*)", "destination": "https://gregarious-curiosity-production-653f.up.railway.app/api/$1" },
+    { "source": "/((?!assets/).*)", "destination": "/index.html" }
   ]
 }
