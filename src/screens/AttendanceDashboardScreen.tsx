@@ -176,7 +176,10 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
         api.getEmployees(),
         api.getBranchesList()
       ]);
-      if (empRes.success) setEmployees(empRes.data || []);
+      if (empRes.success) {
+        const activeEmps = (empRes.data || []).filter((e: any) => e.status !== 'Inactive' && e.is_active !== false);
+        setEmployees(activeEmps);
+      }
       if (branchRes.success && branchRes.data) setBranches(branchRes.data);
 
       await loadAttendanceLogs();
@@ -229,9 +232,9 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
     });
   };
 
-  // Derived state: active shifts (logs where punch_out is null)
+  // Derived state: active shifts (logs where punch_out is null and employee is active)
   const activeShifts = useMemo(() => {
-    return attendanceLogs.filter(log => !log.punch_out);
+    return attendanceLogs.filter(log => !log.punch_out && (!log.employees || (log.employees.status !== 'Inactive' && log.employees.is_active !== false)));
   }, [attendanceLogs]);
 
   // Derived state: grouped timesheets for expandable accordion view
@@ -246,7 +249,7 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
 
     attendanceLogs.forEach(log => {
       const emp = log.employees;
-      if (!emp) return; // Skip if no employee info
+      if (!emp || emp.status === 'Inactive' || emp.is_active === false) return; // Skip if no employee info or inactive
       const empId = emp.employee_id;
       
       if (!groups[empId]) {
@@ -473,7 +476,10 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
   };
 
   const exportToExcel = () => {
-    const dataToExport = attendanceLogs.map(log => {
+    const activeLogs = attendanceLogs.filter(
+      (log) => !log.employees || (log.employees.status !== 'Inactive' && log.employees.is_active !== false)
+    );
+    const dataToExport = activeLogs.map(log => {
       const emp = log.employees || {};
       const empName = `${emp.first_name || ''} ${emp.last_name || ''}`;
 

@@ -177,9 +177,10 @@ export default function ShiftManagementView({
     await loadData();
   };
 
-  // Filter employees list by search & branch & employee selection
+  // Filter employees list by search & branch & employee selection (excluding inactive)
   const filteredEmployeesList = useMemo(() => {
     return employees.filter((emp) => {
+      if (emp.status === 'Inactive' || emp.is_active === false) return false;
       const name = getEmployeeFullName(emp).toLowerCase();
       const pos = (emp.position || '').toLowerCase();
       const empId = (emp.employee_id || emp.id || '').toLowerCase();
@@ -505,7 +506,7 @@ export default function ShiftManagementView({
                 style={{ ...inputStyle, border: 'none', padding: '7px 0', cursor: 'pointer', fontWeight: 600 }}
               >
                 <option value="All">All Employees</option>
-                {employees.map((e: any) => {
+                {employees.filter((e: any) => e.status !== 'Inactive' && e.is_active !== false).map((e: any) => {
                   const empId = e.employee_id || e.id;
                   const fullName = getEmployeeFullName(e);
                   return (

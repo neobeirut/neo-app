@@ -318,7 +318,7 @@ export default function ScheduleAssignmentModal({
                 required
               >
                 <option value="">Select Employee</option>
-                {employees.map((e: any) => {
+                {employees.filter((e: any) => e.status !== 'Inactive' && e.is_active !== false).map((e: any) => {
                   const empId = e.employee_id || e.id;
                   const fullName = getEmployeeFullName(e);
                   return (

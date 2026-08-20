@@ -398,7 +398,7 @@ export default function AttendanceAnalysisView({
                 style={{ ...inputStyle, border: 'none', padding: '7px 0', cursor: 'pointer', fontWeight: 600 }}
               >
                 <option value="All">All Employees</option>
-                {employees.map((e: any) => {
+                {employees.filter((e: any) => e.status !== 'Inactive' && e.is_active !== false).map((e: any) => {
                   const empId = e.employee_id || e.id;
                   const fullName = `${e.first_name || ''} ${e.last_name || ''}`.trim() || e.name || empId;
                   return <option key={empId} value={empId}>{fullName}</option>;

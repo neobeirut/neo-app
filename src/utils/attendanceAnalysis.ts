@@ -65,8 +65,9 @@ export function reconcileSchedulesAndPunches({
 }): ReconciliationRecord[] {
   const records: ReconciliationRecord[] = [];
 
+  const activeEmployees = (employees || []).filter((e) => e.status !== 'Inactive' && e.is_active !== false);
   const empMap = new Map<string, any>();
-  employees.forEach((emp) => {
+  activeEmployees.forEach((emp) => {
     const id = emp.employee_id || emp.id;
     if (id) empMap.set(id, emp);
   });
@@ -74,6 +75,7 @@ export function reconcileSchedulesAndPunches({
   // Group schedules by employee_id + date
   const scheduleKeyMap = new Map<string, any[]>();
   schedules.forEach((s) => {
+    if (s.employees && (s.employees.status === 'Inactive' || s.employees.is_active === false)) return;
     const key = `${s.employee_id}_${s.date}`;
     if (!scheduleKeyMap.has(key)) scheduleKeyMap.set(key, []);
     scheduleKeyMap.get(key)!.push(s);
@@ -82,6 +84,7 @@ export function reconcileSchedulesAndPunches({
   // Group attendance logs by employee_id + date
   const logKeyMap = new Map<string, any[]>();
   attendanceLogs.forEach((log) => {
+    if (log.employees && (log.employees.status === 'Inactive' || log.employees.is_active === false)) return;
     let dateStr = log.date;
     if (!dateStr && log.punch_in) {
       dateStr = new Date(log.punch_in).toISOString().split('T')[0];
@@ -99,9 +102,10 @@ export function reconcileSchedulesAndPunches({
   allKeys.forEach((key) => {
     const [empId, dateStr] = key.split('_');
     const empObj = empMap.get(empId);
-    const empName = empObj
-      ? `${empObj.first_name || ''} ${empObj.last_name || ''}`.trim() || empObj.name || empId
-      : empId;
+    if (!empObj || empObj.status === 'Inactive' || empObj.is_active === false) {
+      return; // Skip inactive employees
+    }
+    const empName = `${empObj.first_name || ''} ${empObj.last_name || ''}`.trim() || empObj.name || empId;
     const pos = empObj?.position || 'Staff';
     const branch = empObj?.branch || 'Main';
 

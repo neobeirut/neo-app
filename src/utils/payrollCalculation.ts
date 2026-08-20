@@ -53,8 +53,9 @@ export function computePayrollFromAnalysis({
   employees: any[];
   overtimeMultiplier?: number;
 }): CalculatedPayrollItem[] {
+  const activeEmployees = (employees || []).filter((e) => e.status !== 'Inactive' && e.is_active !== false);
   const empMap = new Map<string, any>();
-  employees.forEach((emp) => {
+  activeEmployees.forEach((emp) => {
     const id = emp.employee_id || emp.id;
     if (id) empMap.set(id, emp);
   });
@@ -72,6 +73,9 @@ export function computePayrollFromAnalysis({
 
   empRecordsMap.forEach((records, empId) => {
     const empObj = empMap.get(empId);
+    if (!empObj || empObj.status === 'Inactive' || empObj.is_active === false) {
+      return; // Skip inactive employees
+    }
     const empName = records[0]?.employee_name || empId;
     const pos = records[0]?.position || empObj?.position || 'Staff';
     const branch = records[0]?.branch || empObj?.branch || 'Main';

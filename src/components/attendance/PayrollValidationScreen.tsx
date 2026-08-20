@@ -611,7 +611,7 @@ export default function PayrollValidationScreen({
               <User size={14} style={{ color: 'var(--primary)' }} />
               <select value={filterEmployee} onChange={(e) => setFilterEmployee(e.target.value)} style={{ ...inputStyle, border: 'none', padding: '6px 0', cursor: 'pointer', fontWeight: 600 }}>
                 <option value="All">All Employees</option>
-                {employees.map((e: any) => {
+                {employees.filter((e: any) => e.status !== 'Inactive' && e.is_active !== false).map((e: any) => {
                   const empId = e.employee_id || e.id;
                   const fullName = `${e.first_name || ''} ${e.last_name || ''}`.trim() || e.name || empId;
                   return <option key={empId} value={empId}>{fullName}</option>;

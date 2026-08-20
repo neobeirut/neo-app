@@ -3138,7 +3138,11 @@ export const api = {
     
     const { data, error } = await query.order('punch_in', { ascending: false });
     if (error) return { success: false, error: error.message };
-    return { success: true, data };
+    const filteredData = (data || []).filter((item: any) => {
+      const emp = item.employees;
+      return !emp || (emp.status !== 'Inactive' && emp.is_active !== false);
+    });
+    return { success: true, data: filteredData };
   },
 
   saveAttendanceLog: async (log: any) => {
@@ -3543,7 +3547,10 @@ export const api = {
     const merged = (schedData || []).map((s) => ({
       ...s,
       employees: empMap.get(s.employee_id) || s.employees || null
-    }));
+    })).filter((s) => {
+      const emp = s.employees;
+      return !emp || (emp.status !== 'Inactive' && emp.is_active !== false);
+    });
 
     return { success: true, data: merged };
   },
@@ -3780,11 +3787,25 @@ export const api = {
       return { success: false, error: 'No schedules found in the source week to copy.' };
     }
 
+    let empQuery = supabase.from('employees').select('employee_id, status, is_active');
+    if (rid) empQuery = empQuery.eq('restaurant_id', rid);
+    const { data: empData } = await empQuery;
+    const activeEmpIds = new Set(
+      (empData || [])
+        .filter((e: any) => e.status !== 'Inactive' && e.is_active !== false)
+        .map((e: any) => e.employee_id)
+    );
+
+    const activeExistingSource = existingSource.filter((s: any) => activeEmpIds.has(s.employee_id));
+    if (activeExistingSource.length === 0) {
+      return { success: false, error: 'No schedules for active employees found to copy.' };
+    }
+
     const targetStart = new Date(targetStartDate);
     const daysOffset = Math.round((targetStart.getTime() - srcStart.getTime()) / (1000 * 60 * 60 * 24));
 
     const copied = await Promise.all(
-      existingSource.map(async (item: any) => {
+      activeExistingSource.map(async (item: any) => {
         const origDate = new Date(item.date);
         origDate.setDate(origDate.getDate() + daysOffset);
         const newDateStr = origDate.toISOString().split('T')[0];
@@ -3847,10 +3868,24 @@ export const api = {
       return { success: false, error: 'No schedules found in the source month to copy.' };
     }
 
+    let empQuery = supabase.from('employees').select('employee_id, status, is_active');
+    if (rid) empQuery = empQuery.eq('restaurant_id', rid);
+    const { data: empData } = await empQuery;
+    const activeEmpIds = new Set(
+      (empData || [])
+        .filter((e: any) => e.status !== 'Inactive' && e.is_active !== false)
+        .map((e: any) => e.employee_id)
+    );
+
+    const activeExistingSource = existingSource.filter((s: any) => activeEmpIds.has(s.employee_id));
+    if (activeExistingSource.length === 0) {
+      return { success: false, error: 'No schedules for active employees found to copy.' };
+    }
+
     const tLastDay = new Date(tYear, tMonth, 0).getDate();
 
     const copied: any[] = [];
-    for (const item of existingSource) {
+    for (const item of activeExistingSource) {
       const dayNum = parseInt(item.date.split('-')[2], 10);
       if (dayNum <= tLastDay) {
         const newDateStr = `${targetMonthStr}-${String(dayNum).padStart(2, '0')}`;

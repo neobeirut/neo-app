@@ -129,7 +129,8 @@ export default function LeaveRequestsView({ user, employees }: LeaveRequestsView
   const filteredRequests = useMemo(() => {
     return requests.filter(req => {
       const emp = employees.find(e => e.employee_id === req.employee_id);
-      const empName = emp ? `${emp.first_name || ''} ${emp.last_name || ''}`.toLowerCase() : req.employee_id.toLowerCase();
+      if (!emp || emp.status === 'Inactive' || emp.is_active === false) return false;
+      const empName = `${emp.first_name || ''} ${emp.last_name || ''}`.toLowerCase();
       const matchesSearch = !searchQuery || empName.includes(searchQuery.toLowerCase()) || req.leave_type.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesStatus = filterStatus === 'All' || req.status === filterStatus;
       const matchesEmp = filterEmployee === 'All' || req.employee_id === filterEmployee;
@@ -142,13 +143,17 @@ export default function LeaveRequestsView({ user, employees }: LeaveRequestsView
     let pending = 0;
     let approved = 0;
     let rejected = 0;
+    let total = 0;
     requests.forEach(r => {
+      const emp = employees.find(e => e.employee_id === r.employee_id);
+      if (!emp || emp.status === 'Inactive' || emp.is_active === false) return;
+      total++;
       if (r.status === 'pending' || r.status === 'pending_peer' || r.status === 'pending_manager') pending++;
       else if (r.status === 'approved') approved++;
       else if (r.status === 'rejected') rejected++;
     });
-    return { pending, approved, rejected, total: requests.length };
-  }, [requests]);
+    return { pending, approved, rejected, total };
+  }, [requests, employees]);
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -230,7 +235,7 @@ export default function LeaveRequestsView({ user, employees }: LeaveRequestsView
 
           <select value={filterEmployee} onChange={e => setFilterEmployee(e.target.value)} style={inputStyle}>
             <option value="All">All Staff Members</option>
-            {employees.map(e => <option key={e.employee_id} value={e.employee_id}>{e.first_name} {e.last_name}</option>)}
+            {employees.filter(e => e.status !== 'Inactive' && e.is_active !== false).map(e => <option key={e.employee_id} value={e.employee_id}>{e.first_name} {e.last_name}</option>)}
           </select>
         </div>
 
@@ -357,7 +362,7 @@ export default function LeaveRequestsView({ user, employees }: LeaveRequestsView
                 <label style={labelStyle}>Employee *</label>
                 <select value={formEmployeeId} onChange={e => setFormEmployeeId(e.target.value)} style={inputStyle} required>
                   <option value="">Select Employee...</option>
-                  {employees.map(e => <option key={e.employee_id} value={e.employee_id}>{e.first_name} {e.last_name} ({e.position})</option>)}
+                  {employees.filter(e => e.status !== 'Inactive' && e.is_active !== false).map(e => <option key={e.employee_id} value={e.employee_id}>{e.first_name} {e.last_name} ({e.position})</option>)}
                 </select>
               </div>
 
