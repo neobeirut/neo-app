@@ -25,6 +25,15 @@ export const getEmployeeFullName = (emp: any): string => {
   return emp.full_name || emp.name || emp.employee_id || emp.id || 'Staff';
 };
 
+export const isEmployeeActive = (emp: any): boolean => {
+  if (!emp) return false;
+  const status = (emp.status || '').toString().trim().toLowerCase();
+  if (status === 'inactive' || status === 'disabled' || status === 'archived' || status === 'terminated') return false;
+  if (emp.is_active === false || emp.is_active === 0 || emp.is_active === 'false') return false;
+  if (emp.active === false || emp.active === 0 || emp.active === 'false') return false;
+  return true;
+};
+
 export default function ShiftManagementView({
   user: _user,
   permissions: _permissions,
@@ -180,7 +189,7 @@ export default function ShiftManagementView({
   // Filter employees list by search & branch & employee selection (excluding inactive)
   const filteredEmployeesList = useMemo(() => {
     return employees.filter((emp) => {
-      if (emp.status === 'Inactive' || emp.is_active === false) return false;
+      if (!isEmployeeActive(emp)) return false;
       const name = getEmployeeFullName(emp).toLowerCase();
       const pos = (emp.position || '').toLowerCase();
       const empId = (emp.employee_id || emp.id || '').toLowerCase();
@@ -506,7 +515,7 @@ export default function ShiftManagementView({
                 style={{ ...inputStyle, border: 'none', padding: '7px 0', cursor: 'pointer', fontWeight: 600 }}
               >
                 <option value="All">All Employees</option>
-                {employees.filter((e: any) => e.status !== 'Inactive' && e.is_active !== false).map((e: any) => {
+                {employees.filter(isEmployeeActive).map((e: any) => {
                   const empId = e.employee_id || e.id;
                   const fullName = getEmployeeFullName(e);
                   return (

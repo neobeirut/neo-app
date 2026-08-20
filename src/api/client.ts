@@ -3140,7 +3140,12 @@ export const api = {
     if (error) return { success: false, error: error.message };
     const filteredData = (data || []).filter((item: any) => {
       const emp = item.employees;
-      return !emp || (emp.status !== 'Inactive' && emp.is_active !== false);
+      if (!emp) return true;
+      const status = (emp.status || '').toString().trim().toLowerCase();
+      if (status === 'inactive' || status === 'disabled' || status === 'archived' || status === 'terminated') return false;
+      if (emp.is_active === false || emp.is_active === 0 || emp.is_active === 'false') return false;
+      if (emp.active === false || emp.active === 0 || emp.active === 'false') return false;
+      return true;
     });
     return { success: true, data: filteredData };
   },
@@ -3549,7 +3554,12 @@ export const api = {
       employees: empMap.get(s.employee_id) || s.employees || null
     })).filter((s) => {
       const emp = s.employees;
-      return !emp || (emp.status !== 'Inactive' && emp.is_active !== false);
+      if (!emp) return true;
+      const status = (emp.status || '').toString().trim().toLowerCase();
+      if (status === 'inactive' || status === 'disabled' || status === 'archived' || status === 'terminated') return false;
+      if (emp.is_active === false || emp.is_active === 0 || emp.is_active === 'false') return false;
+      if (emp.active === false || emp.active === 0 || emp.active === 'false') return false;
+      return true;
     });
 
     return { success: true, data: merged };

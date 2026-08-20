@@ -44,6 +44,15 @@ export interface CalculatedPayrollItem {
   manager_notes: string;
 }
 
+export const isEmployeeActive = (emp: any): boolean => {
+  if (!emp) return false;
+  const status = (emp.status || '').toString().trim().toLowerCase();
+  if (status === 'inactive' || status === 'disabled' || status === 'archived' || status === 'terminated') return false;
+  if (emp.is_active === false || emp.is_active === 0 || emp.is_active === 'false') return false;
+  if (emp.active === false || emp.active === 0 || emp.active === 'false') return false;
+  return true;
+};
+
 export function computePayrollFromAnalysis({
   reconciledRecords,
   employees,
@@ -53,7 +62,7 @@ export function computePayrollFromAnalysis({
   employees: any[];
   overtimeMultiplier?: number;
 }): CalculatedPayrollItem[] {
-  const activeEmployees = (employees || []).filter((e) => e.status !== 'Inactive' && e.is_active !== false);
+  const activeEmployees = (employees || []).filter(isEmployeeActive);
   const empMap = new Map<string, any>();
   activeEmployees.forEach((emp) => {
     const id = emp.employee_id || emp.id;
@@ -73,7 +82,7 @@ export function computePayrollFromAnalysis({
 
   empRecordsMap.forEach((records, empId) => {
     const empObj = empMap.get(empId);
-    if (!empObj || empObj.status === 'Inactive' || empObj.is_active === false) {
+    if (!empObj || !isEmployeeActive(empObj)) {
       return; // Skip inactive employees
     }
     const empName = records[0]?.employee_name || empId;

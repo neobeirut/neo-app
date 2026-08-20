@@ -14,6 +14,15 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
+const isEmployeeActive = (emp: any): boolean => {
+  if (!emp) return false;
+  const status = (emp.status || '').toString().trim().toLowerCase();
+  if (status === 'inactive' || status === 'disabled' || status === 'archived' || status === 'terminated') return false;
+  if (emp.is_active === false || emp.is_active === 0 || emp.is_active === 'false') return false;
+  if (emp.active === false || emp.active === 0 || emp.active === 'false') return false;
+  return true;
+};
+
 export default function AttendanceDashboardScreen({ user, permissions }: { user: any; permissions: any }) {
   const canManage = useMemo(() => {
     return (
@@ -177,7 +186,7 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
         api.getBranchesList()
       ]);
       if (empRes.success) {
-        const activeEmps = (empRes.data || []).filter((e: any) => e.status !== 'Inactive' && e.is_active !== false);
+        const activeEmps = (empRes.data || []).filter(isEmployeeActive);
         setEmployees(activeEmps);
       }
       if (branchRes.success && branchRes.data) setBranches(branchRes.data);
@@ -234,7 +243,7 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
 
   // Derived state: active shifts (logs where punch_out is null and employee is active)
   const activeShifts = useMemo(() => {
-    return attendanceLogs.filter(log => !log.punch_out && (!log.employees || (log.employees.status !== 'Inactive' && log.employees.is_active !== false)));
+    return attendanceLogs.filter(log => !log.punch_out && (!log.employees || isEmployeeActive(log.employees)));
   }, [attendanceLogs]);
 
   // Derived state: grouped timesheets for expandable accordion view
@@ -249,7 +258,7 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
 
     attendanceLogs.forEach(log => {
       const emp = log.employees;
-      if (!emp || emp.status === 'Inactive' || emp.is_active === false) return; // Skip if no employee info or inactive
+      if (!emp || !isEmployeeActive(emp)) return; // Skip if no employee info or inactive
       const empId = emp.employee_id;
       
       if (!groups[empId]) {
@@ -477,7 +486,7 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
 
   const exportToExcel = () => {
     const activeLogs = attendanceLogs.filter(
-      (log) => !log.employees || (log.employees.status !== 'Inactive' && log.employees.is_active !== false)
+      (log) => !log.employees || isEmployeeActive(log.employees)
     );
     const dataToExport = activeLogs.map(log => {
       const emp = log.employees || {};
