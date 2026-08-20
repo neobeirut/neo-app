@@ -8,7 +8,9 @@
   },
   "scripts": {
     "dev": "cd web && npm run dev",
-    "build": "cd web && npm run build",
+    "build": "vite build && cd web && npm run build",
+    "build:vite": "vite build",
+    "build:web": "cd web && npm run build",
     "start": "cd web && npm run start",
     "lint": "eslint .",
     "postinstall": "cd web && npm install"
