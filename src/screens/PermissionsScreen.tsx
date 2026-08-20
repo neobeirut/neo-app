@@ -333,6 +333,13 @@ const GLOBAL_MODULES = [
     desc: 'Notifies concern Branch Managers and Admins when new reservations are placed.',
     bg: '#f5f3ff',
     icon: <Calendar size={20} style={{ color: '#7c3aed' }} />
+  },
+  {
+    key: 'attendance_punch',
+    title: 'Staff Punch In / Out',
+    desc: 'Notifies Branch Managers and Admins immediately when employees clock in or clock out.',
+    bg: '#ecfdf5',
+    icon: <Clock size={20} style={{ color: '#10b981' }} />
   }
 ];
 

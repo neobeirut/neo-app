@@ -3174,6 +3174,85 @@ export const api = {
       res = await supabase.from('employee_attendance').insert([payload]);
     }
     if (res.error) return { success: false, error: res.error.message };
+
+    // Dispatch Punch In / Punch Out Notifications to Managers
+    try {
+      const globalRes = await api.getGlobalNotificationSettings();
+      let shouldSend = true;
+      if (globalRes.success && globalRes.data) {
+        try {
+          const val = typeof globalRes.data.setting_value === 'string'
+            ? JSON.parse(globalRes.data.setting_value)
+            : globalRes.data.setting_value;
+          if (val && val.attendance_punch === false) {
+            shouldSend = false;
+          }
+        } catch {}
+      }
+
+      if (shouldSend) {
+        let empName = 'Employee';
+        let branchName = payload.branch || 'Branch';
+        if (payload.employee_id) {
+          const { data: empData } = await supabase
+            .from('employees')
+            .select('first_name, last_name, branch')
+            .eq('employee_id', payload.employee_id)
+            .maybeSingle();
+          if (empData) {
+            empName = `${empData.first_name || ''} ${empData.last_name || ''}`.trim() || empName;
+            if (!payload.branch && empData.branch) branchName = empData.branch;
+          }
+        }
+
+        const isPunchOut = !!payload.punch_out;
+        const punchTimeStr = (isPunchOut ? payload.punch_out : payload.punch_in)
+          ? new Date(isPunchOut ? payload.punch_out : payload.punch_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+        const title = isPunchOut
+          ? `🔴 Clock-Out: ${empName}`
+          : `🟢 Clock-In: ${empName}`;
+        const message = isPunchOut
+          ? `${empName} clocked OUT at ${branchName} (${punchTimeStr}).`
+          : `${empName} clocked IN at ${branchName} (${punchTimeStr}).`;
+        const notifType = isPunchOut ? 'punch_out' : 'punch_in';
+
+        let managerQuery = supabase
+          .from('employees')
+          .select('employee_id, first_name, last_name, role, branch')
+          .in('role', ['Manager', 'Admin', 'SuperAdmin', 'General Manager', 'Branch Manager', 'Owner']);
+        if (payload.restaurant_id || rid) {
+          managerQuery = managerQuery.eq('restaurant_id', payload.restaurant_id || rid);
+        }
+        const { data: managers } = await managerQuery;
+
+        if (managers && managers.length > 0) {
+          const targetManagers = managers.filter(m => 
+            !m.branch || m.branch === 'All' || m.branch === branchName || ['Admin', 'SuperAdmin', 'Owner'].includes(m.role)
+          );
+
+          if (targetManagers.length > 0) {
+            const notifications = await Promise.all(
+              targetManagers.map((m) =>
+                injectRestaurantId({
+                  title,
+                  message,
+                  type: notifType,
+                  target_user_id: m.employee_id,
+                  is_read: false,
+                  created_at: new Date().toISOString()
+                })
+              )
+            );
+            await supabase.from('notifications').insert(notifications);
+          }
+        }
+      }
+    } catch (notifErr) {
+      console.error('Error dispatching punch notification to managers:', notifErr);
+    }
+
     return { success: true };
   },
 
