@@ -1715,8 +1715,8 @@ export default function TabletPOSPage() {
                   }, {});
 
                   return Object.entries(grouped).map(([groupName, opts]) => {
-                    const isMultiSelect = opts.length > 1 && !opts[0]?.option_group_name?.toLowerCase().includes("drink");
-                    const isRequired = opts[0]?.is_required || groupName.toLowerCase().includes("drink");
+                    const isMultiSelect = opts[0]?.is_multi_select !== undefined ? opts[0].is_multi_select : (opts.length > 1 && !opts[0]?.option_group_name?.toLowerCase().includes("drink"));
+                    const isRequired = opts[0]?.is_required !== undefined ? opts[0].is_required : (groupName.toLowerCase().includes("drink"));
 
                     return (
                       <div key={groupName} className="space-y-2 bg-[#0F1115] p-3.5 rounded-xl border border-[#262D3D]">

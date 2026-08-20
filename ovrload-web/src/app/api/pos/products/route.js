@@ -10,7 +10,7 @@ export async function GET() {
       ORDER BY display_order ASC, name ASC
     `;
 
-    // Fetch products with customizations
+    // Fetch products with customizations matching Admin definitions
     const productsResult = await sql`
       SELECT 
         p.id, 
@@ -25,16 +25,36 @@ export async function GET() {
         COALESCE(
           (SELECT json_agg(json_build_object(
             'id', pc.id,
-            'ingredient', pc.ingredient,
-            'customization_type', pc.customization_type,
-            'price', pc.price::float,
-            'option_group_name', ci.option_group_name,
-            'is_required', ci.is_required,
-            'is_multi_select', ci.is_multi_select
-          ))
+            'customization_item_id', pc.customization_item_id,
+            'name', COALESCE(ci.name, pc.ingredient),
+            'ingredient', COALESCE(ci.name, pc.ingredient),
+            'customization_type', COALESCE(ci.customization_type, pc.customization_type, 'addon'),
+            'price', COALESCE(pc.price, ci.default_price, 0)::float,
+            'option_group_name', COALESCE(
+              ci.option_group_name,
+              CASE 
+                WHEN pc.customization_type = 'remove' THEN 'Remove Ingredients' 
+                WHEN pc.customization_type = 'addon' THEN 'Add-ons' 
+                ELSE 'Custom Options' 
+              END
+            ),
+            'is_required', COALESCE(ci.is_required, false),
+            'is_multi_select', COALESCE(ci.is_multi_select, true),
+            'display_order', COALESCE(ci.display_order, 999)
+          ) ORDER BY 
+              CASE COALESCE(ci.customization_type, pc.customization_type)
+                WHEN 'option' THEN 1
+                WHEN 'remove' THEN 2
+                ELSE 3
+              END,
+              COALESCE(ci.display_order, 999), 
+              COALESCE(ci.name, pc.ingredient) ASC
+          )
            FROM product_customizations pc
            LEFT JOIN customization_items ci ON pc.customization_item_id = ci.id
-           WHERE pc.product_id = p.id AND pc.is_active = true
+           WHERE pc.product_id = p.id 
+             AND pc.is_active IS DISTINCT FROM FALSE
+             AND (ci.id IS NULL OR ci.is_active IS DISTINCT FROM FALSE)
           ), '[]'::json
         ) as customizations
       FROM products p
