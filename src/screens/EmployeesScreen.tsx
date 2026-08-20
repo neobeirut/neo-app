@@ -148,7 +148,6 @@ export default function EmployeesScreen({ user }: { user?: any }) {
                   <th style={thStyle}>Branch</th>
                   <th style={thStyle}>Department</th>
                   <th style={thStyle}>Position</th>
-                  <th style={thStyle}>Basic Salary</th>
                   <th style={thStyle}>Status</th>
                 </tr>
               </thead>
@@ -175,15 +174,6 @@ export default function EmployeesScreen({ user }: { user?: any }) {
                     <td style={tdStyle}>{emp.branch || 'N/A'}</td>
                     <td style={tdStyle}><span style={{ backgroundColor: '#e9ecef', padding: '4px 8px', borderRadius: '12px', fontSize: '12px', fontWeight: 600 }}>{emp.department || 'N/A'}</span></td>
                     <td style={tdStyle}>{emp.position || 'Staff'}</td>
-                    <td style={tdStyle}>
-                      {emp.isDecrypted ? (
-                        `$${emp.salary || '0'}`
-                      ) : (
-                        <span style={{ color: 'var(--danger)', fontSize: '12px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                          🔒 Encrypted
-                        </span>
-                      )}
-                    </td>
                     <td style={tdStyle}>
                       {emp.status !== 'Inactive' ? (
                         <span style={{ color: 'var(--success)', fontWeight: 600 }}>Active</span>
