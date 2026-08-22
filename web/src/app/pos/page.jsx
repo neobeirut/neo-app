@@ -382,6 +382,10 @@ export default function TabletPOSPage() {
       if (data.customers && data.customers.length > 0) {
         setCustomerSearchResults(data.customers);
         setShowCustomerDropdown(true);
+        const matchWithLocation = data.customers.find((c) => c.whatsapp_location);
+        if (matchWithLocation) {
+          setDetectedWaLocation(matchWithLocation.whatsapp_location);
+        }
       } else {
         setCustomerSearchResults([]);
         setShowCustomerDropdown(false);
@@ -400,11 +404,16 @@ export default function TabletPOSPage() {
 
   const handleSelectCustomer = (c) => {
     if (c.customer_name) setCustomerName(c.customer_name);
-    if (c.customer_phone) {
-      setCustomerPhone(c.customer_phone);
+    if (c.customer_phone) setCustomerPhone(c.customer_phone);
+    if (c.delivery_address) setDeliveryAddress(c.delivery_address);
+    if (c.whatsapp_location) {
+      setDetectedWaLocation(c.whatsapp_location);
+      if (c.whatsapp_location.deliveryFee !== undefined) {
+        setDeliveryFee(c.whatsapp_location.deliveryFee);
+      }
+    } else {
       checkWhatsAppLocation(c.customer_phone);
     }
-    if (c.delivery_address) setDeliveryAddress(c.delivery_address);
     setShowCustomerDropdown(false);
   };
 
