@@ -1,4 +1,4 @@
-import sql from "../../utils/sql";
+import sql from "@/app/api/utils/sql";
 
 // Helper: Real road distance via OSRM with Haversine fallback
 async function getRoadDistanceKm(lat1, lon1, lat2, lon2) {
