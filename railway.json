@@ -3,12 +3,12 @@
   "build": {
     "builder": "NIXPACKS",
     "watchPatterns": [
-      "/web/**",
-      "/railway.json",
-      "/nixpacks.toml",
-      "/.railwayignore",
-      "/package.json",
-      "/package-lock.json"
+      "web/**",
+      "railway.json",
+      "nixpacks.toml",
+      ".railwayignore",
+      "package.json",
+      "package-lock.json"
     ]
   },
   "deploy": {
