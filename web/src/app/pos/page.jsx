@@ -57,6 +57,7 @@ const partitionCustomizations = (customizations) => {
   return { addons, removals };
 };
 
+// OVR LOAD Tablet POS System v2.6.0 - Auto WhatsApp Location Sync
 export default function TabletPOSPage() {
   // Data States
   const [categories, setCategories] = useState([]);
