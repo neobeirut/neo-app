@@ -41,9 +41,10 @@ export async function GET(request) {
 
     let clean = rawPhone.replace(/\D/g, "");
     if (clean.startsWith("00")) clean = clean.slice(2);
-    if (clean.startsWith("0") && clean.length === 8) clean = `961${clean.slice(1)}`;
+    if (clean.startsWith("0")) clean = `961${clean.slice(1)}`;
     if (!clean.startsWith("961") && clean.length >= 7 && clean.length <= 8) clean = `961${clean}`;
-    const short7or8 = clean.slice(-8);
+    const short7 = clean.slice(-7);
+    const short8 = clean.slice(-8);
 
     // Look for latest location in whatsapp_conversations
     const rows = await sql`
@@ -59,7 +60,9 @@ export async function GET(request) {
       WHERE (
         REPLACE(phone, ' ', '') = ${clean}
         OR REPLACE(phone, ' ', '') = ${'+' + clean}
-        OR phone LIKE ${'%' + short7or8}
+        OR phone LIKE ${'%' + short7}
+        OR phone LIKE ${'%' + short8}
+        OR phone LIKE ${'%' + rawPhone.replace(/\D/g, '')}
       )
       AND (latest_location_lat IS NOT NULL OR latest_location_url IS NOT NULL)
       AND latest_location_at >= NOW() - INTERVAL '24 hours'
