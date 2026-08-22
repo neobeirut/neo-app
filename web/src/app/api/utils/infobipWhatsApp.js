@@ -52,7 +52,7 @@ export function toInfobipRecipient(phone) {
 export function getInfobipConfig() {
   let apiKey = process.env.INFOBIP_API_KEY || "d42824b2b707759420c14250c320ec7b-449822b8-55e1-4d67-906f-8a19af1d302e";
   let baseUrl = process.env.INFOBIP_BASE_URL || "https://y4r1q1.api.infobip.com";
-  let sender = process.env.INFOBIP_WHATSAPP_SENDER || "15558376100";
+  let sender = process.env.INFOBIP_WHATSAPP_SENDER || "96181202607";
 
   let normalizedSender = String(sender).trim();
   // Strip '+' prefix if present because Infobip requires sender without '+'
