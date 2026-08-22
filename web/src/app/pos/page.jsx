@@ -156,6 +156,10 @@ export default function TabletPOSPage() {
   const [isSearchingCustomers, setIsSearchingCustomers] = useState(false);
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
 
+  // WhatsApp Location Auto-Detection State
+  const [detectedWaLocation, setDetectedWaLocation] = useState(null);
+  const [isCheckingWaLocation, setIsCheckingWaLocation] = useState(false);
+
   // Branch Operational Status Modal States
   const [branchStatus, setBranchStatus] = useState(null);
   const [showBranchStatusModal, setShowBranchStatusModal] = useState(false);
@@ -342,6 +346,28 @@ export default function TabletPOSPage() {
     }
   };
 
+  const checkWhatsAppLocation = async (phone) => {
+    if (!phone || phone.replace(/\D/g, "").length < 6) {
+      setDetectedWaLocation(null);
+      return;
+    }
+    setIsCheckingWaLocation(true);
+    try {
+      const res = await fetch(`/api/pos/whatsapp-latest-location?phone=${encodeURIComponent(phone.trim())}`);
+      const data = await res.json();
+      if (data && data.hasLocation) {
+        setDetectedWaLocation(data);
+      } else {
+        setDetectedWaLocation(null);
+      }
+    } catch (err) {
+      console.error("Error checking WhatsApp location:", err);
+      setDetectedWaLocation(null);
+    } finally {
+      setIsCheckingWaLocation(false);
+    }
+  };
+
   const handleCustomerSearch = async (query) => {
     if (!query || query.trim().length < 2) {
       setCustomerSearchResults([]);
@@ -364,11 +390,19 @@ export default function TabletPOSPage() {
     } finally {
       setIsSearchingCustomers(false);
     }
+
+    // Also check for WhatsApp location if the query contains digits (phone number)
+    if (query.replace(/\D/g, "").length >= 6) {
+      checkWhatsAppLocation(query);
+    }
   };
 
   const handleSelectCustomer = (c) => {
     if (c.customer_name) setCustomerName(c.customer_name);
-    if (c.customer_phone) setCustomerPhone(c.customer_phone);
+    if (c.customer_phone) {
+      setCustomerPhone(c.customer_phone);
+      checkWhatsAppLocation(c.customer_phone);
+    }
     if (c.delivery_address) setDeliveryAddress(c.delivery_address);
     setShowCustomerDropdown(false);
   };
@@ -1324,7 +1358,7 @@ export default function TabletPOSPage() {
             )}
 
             {/* CUSTOMER FIELDS */}
-            <div className="pt-1 border-t border-[#262D3D]/60 relative">
+            <div className="pt-1 border-t border-[#262D3D]/60 space-y-1.5 relative">
               <div className="grid grid-cols-2 gap-2">
                 <input
                   type="text"
@@ -1339,8 +1373,9 @@ export default function TabletPOSPage() {
                     placeholder="Phone Number"
                     value={customerPhone}
                     onChange={(e) => {
-                      setCustomerPhone(e.target.value);
-                      handleCustomerSearch(e.target.value);
+                      const val = e.target.value;
+                      setCustomerPhone(val);
+                      handleCustomerSearch(val);
                     }}
                     className="w-full bg-[#0F1115] border border-[#262D3D] rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-gray-500 font-medium focus:outline-none focus:border-[#eb660c]"
                   />
@@ -1360,6 +1395,70 @@ export default function TabletPOSPage() {
                   )}
                 </div>
               </div>
+
+              {/* WHATSAPP LOCATION DETECTED BADGE / AUTO-FILL PROMPT */}
+              {detectedWaLocation && (
+                <div className="bg-emerald-950/90 border border-emerald-500/70 rounded-xl p-2 flex items-center justify-between text-xs shadow-lg animate-fade-in">
+                  <div className="flex-1 min-w-0 pr-2">
+                    <div className="font-black text-emerald-300 flex items-center gap-1.5 text-[11px]">
+                      <span>📍</span>
+                      <span>WhatsApp Location Received</span>
+                      <span className="text-[9px] bg-emerald-800 text-emerald-100 px-1.5 py-0.5 rounded-full font-bold">
+                        {detectedWaLocation.receivedMinutesAgo <= 1 ? "Just now" : `${detectedWaLocation.receivedMinutesAgo}m ago`}
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-gray-300 truncate mt-0.5">
+                      {detectedWaLocation.address} {detectedWaLocation.distanceKm ? `• ${detectedWaLocation.distanceKm} km` : ""}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOrderType("delivery");
+                      const fullAddr = detectedWaLocation.address && detectedWaLocation.mapUrl
+                        ? `${detectedWaLocation.address} [Maps Pin: ${detectedWaLocation.mapUrl}]`
+                        : (detectedWaLocation.mapUrl || detectedWaLocation.address || "");
+                      setDeliveryAddress(fullAddr);
+                      if (detectedWaLocation.deliveryFee !== undefined && detectedWaLocation.deliveryFee !== null) {
+                        setDeliveryFee(detectedWaLocation.deliveryFee);
+                      }
+                    }}
+                    className="bg-[#eb660c] hover:bg-[#ff771f] text-white text-[11px] font-black px-2.5 py-1.5 rounded-lg shadow-md shrink-0 flex items-center gap-1 transition-all active:scale-95"
+                  >
+                    <span>⚡ Auto-Fill</span>
+                    {detectedWaLocation.deliveryFee !== undefined && (
+                      <span>(${detectedWaLocation.deliveryFee?.toFixed(2)})</span>
+                    )}
+                  </button>
+                </div>
+              )}
+
+              {/* DELIVERY ADDRESS / LOCATION TEXTAREA (Visible for Delivery Orders) */}
+              {orderType === "delivery" && (
+                <div className="space-y-1 pt-0.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-bold text-gray-400">
+                      📍 Delivery Address & WhatsApp Map Link:
+                    </label>
+                    {deliveryAddress && (
+                      <button
+                        type="button"
+                        onClick={() => setDeliveryAddress("")}
+                        className="text-[10px] text-gray-400 hover:text-red-400 font-bold"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                  <textarea
+                    rows={2}
+                    placeholder="Street, Bldg, Floor, or paste WhatsApp / Google Maps link..."
+                    value={deliveryAddress}
+                    onChange={(e) => setDeliveryAddress(e.target.value)}
+                    className="w-full bg-[#0F1115] border border-[#262D3D] rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-gray-500 font-medium focus:outline-none focus:border-[#eb660c] resize-none"
+                  />
+                </div>
+              )}
             </div>
           </div>
 
