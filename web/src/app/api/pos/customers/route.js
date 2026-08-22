@@ -37,40 +37,34 @@ export async function GET(request) {
       return Response.json({ customers: [] });
     }
 
+    let cleanDigits = query.replace(/\D/g, "");
+    if (cleanDigits.startsWith("00")) cleanDigits = cleanDigits.slice(2);
+    if (cleanDigits.startsWith("0")) cleanDigits = cleanDigits.slice(1);
+    if (cleanDigits.startsWith("961")) cleanDigits = cleanDigits.slice(3);
     const pattern = `%${query}%`;
-    let rawDigits = query.replace(/\D/g, "");
-    if (rawDigits.startsWith("00")) rawDigits = rawDigits.slice(2);
-    if (rawDigits.startsWith("0")) rawDigits = rawDigits.slice(1);
-    if (rawDigits.startsWith("961")) rawDigits = rawDigits.slice(3);
-    const shortPattern = rawDigits.length >= 4 ? `%${rawDigits}%` : pattern;
+    const lastDigits = cleanDigits.length >= 4 ? cleanDigits.slice(-7) : "";
 
     const rows = await sql`
-      WITH combined AS (
+      WITH raw_customers AS (
         SELECT 
           name as customer_name,
           phone as customer_phone,
-          NULL as delivery_address,
-          NULL::float as latest_location_lat,
-          NULL::float as latest_location_lng,
-          NULL as latest_location_address,
-          NULL as latest_location_url,
-          NULL::timestamp as latest_location_at
+          NULL as delivery_address
         FROM auth_users
-        WHERE (name ILIKE ${pattern} OR phone ILIKE ${pattern} OR phone ILIKE ${shortPattern})
+        WHERE name ILIKE ${pattern} 
+           OR phone ILIKE ${pattern} 
+           OR (${lastDigits !== ""} AND RIGHT(REGEXP_REPLACE(phone, '\\D', '', 'g'), 7) LIKE ${'%' + lastDigits})
 
         UNION ALL
 
         SELECT 
           customer_name,
           customer_phone,
-          delivery_address,
-          NULL::float as latest_location_lat,
-          NULL::float as latest_location_lng,
-          NULL as latest_location_address,
-          NULL as latest_location_url,
-          NULL::timestamp as latest_location_at
+          delivery_address
         FROM orders
-        WHERE (customer_name ILIKE ${pattern} OR customer_phone ILIKE ${pattern} OR customer_phone ILIKE ${shortPattern})
+        WHERE (customer_name ILIKE ${pattern} 
+           OR customer_phone ILIKE ${pattern}
+           OR (${lastDigits !== ""} AND RIGHT(REGEXP_REPLACE(customer_phone, '\\D', '', 'g'), 7) LIKE ${'%' + lastDigits}))
           AND (customer_name IS NOT NULL AND customer_name != '')
 
         UNION ALL
@@ -78,28 +72,37 @@ export async function GET(request) {
         SELECT 
           'WhatsApp Customer' as customer_name,
           phone as customer_phone,
-          COALESCE(latest_location_address, latest_location_url) as delivery_address,
-          latest_location_lat::float,
-          latest_location_lng::float,
-          latest_location_address,
-          latest_location_url,
-          latest_location_at
+          COALESCE(latest_location_address, latest_location_url) as delivery_address
         FROM whatsapp_conversations
-        WHERE (phone ILIKE ${pattern} OR phone ILIKE ${shortPattern})
+        WHERE (phone ILIKE ${pattern} 
+           OR (${lastDigits !== ""} AND RIGHT(REGEXP_REPLACE(phone, '\\D', '', 'g'), 7) LIKE ${'%' + lastDigits}))
           AND (latest_location_lat IS NOT NULL OR latest_location_url IS NOT NULL)
+      ),
+      deduped AS (
+        SELECT DISTINCT ON (RIGHT(REGEXP_REPLACE(COALESCE(NULLIF(customer_phone, ''), customer_name), '\\D', '', 'g'), 7))
+          customer_name,
+          customer_phone,
+          delivery_address
+        FROM raw_customers
+        ORDER BY RIGHT(REGEXP_REPLACE(COALESCE(NULLIF(customer_phone, ''), customer_name), '\\D', '', 'g'), 7), 
+                 CASE WHEN customer_name != 'WhatsApp Customer' THEN 0 ELSE 1 END,
+                 delivery_address DESC NULLS LAST
       )
-      SELECT DISTINCT ON (LOWER(COALESCE(NULLIF(customer_phone, ''), customer_name)))
-        customer_name,
-        customer_phone,
-        delivery_address,
-        latest_location_lat,
-        latest_location_lng,
-        latest_location_address,
-        latest_location_url,
-        latest_location_at,
-        EXTRACT(EPOCH FROM (NOW() - latest_location_at)) / 60 as minutes_ago
-      FROM combined
-      ORDER BY LOWER(COALESCE(NULLIF(customer_phone, ''), customer_name)), latest_location_at DESC NULLS LAST, delivery_address DESC NULLS LAST
+      SELECT 
+        d.customer_name,
+        d.customer_phone,
+        d.delivery_address,
+        wc.latest_location_lat::float as lat,
+        wc.latest_location_lng::float as lng,
+        wc.latest_location_address as address,
+        wc.latest_location_url as url,
+        wc.latest_location_at,
+        EXTRACT(EPOCH FROM (NOW() - wc.latest_location_at)) / 60 as minutes_ago
+      FROM deduped d
+      LEFT JOIN whatsapp_conversations wc 
+        ON (RIGHT(REGEXP_REPLACE(wc.phone, '\\D', '', 'g'), 7) = RIGHT(REGEXP_REPLACE(d.customer_phone, '\\D', '', 'g'), 7))
+        AND (wc.latest_location_lat IS NOT NULL OR wc.latest_location_url IS NOT NULL)
+      ORDER BY wc.latest_location_at DESC NULLS LAST
       LIMIT 10;
     `;
 
@@ -110,9 +113,9 @@ export async function GET(request) {
     const customers = await Promise.all(
       (rows || []).map(async (c) => {
         let waLocation = null;
-        if (c.latest_location_lat && c.latest_location_lng) {
-          const lat = parseFloat(c.latest_location_lat);
-          const lng = parseFloat(c.latest_location_lng);
+        if (c.lat && c.lng) {
+          const lat = parseFloat(c.lat);
+          const lng = parseFloat(c.lng);
           let distKm = await getRoadDistanceKm(branchLat, branchLng, lat, lng);
           distKm = parseFloat(distKm.toFixed(2));
 
@@ -141,8 +144,8 @@ export async function GET(request) {
             hasLocation: true,
             lat,
             lng,
-            mapUrl: c.latest_location_url || `https://maps.google.com/?q=${lat},${lng}`,
-            address: c.latest_location_address || `GPS (${lat.toFixed(4)}, ${lng.toFixed(4)})`,
+            mapUrl: c.url || `https://maps.google.com/?q=${lat},${lng}`,
+            address: c.address || `GPS (${lat.toFixed(4)}, ${lng.toFixed(4)})`,
             distanceKm: distKm,
             deliveryFee: fee,
             receivedMinutesAgo: Math.round(c.minutes_ago || 0),
