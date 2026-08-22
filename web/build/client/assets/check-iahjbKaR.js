@@ -1,0 +1,1 @@
+import{c}from"./createLucideIcon-BrJVIngv.js";if(typeof window<"u"){const n={};globalThis.process??={};const o=globalThis.process.env??{};globalThis.process.env=new Proxy(Object.assign({},n,o),{get(e,s){return s in e?e[s]:void 0},has(){return!0}})}const i=c("Check",[["path",{d:"M20 6 9 17l-5-5",key:"1gmf2c"}]]);export{i as C};
