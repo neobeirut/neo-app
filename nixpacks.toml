@@ -14,4 +14,4 @@ cmds = ["npm install --prefix web"]
 cmds = ["npm run build --prefix web"]
 
 [start]
-cmd = "npm run start --prefix web"
+cmd = "cd web && npm run start"
