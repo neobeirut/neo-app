@@ -121,6 +121,8 @@ export default function TabletPOSPage() {
   const [pendingOrders, setPendingOrders] = useState([]);
   const [rejectingOrderId, setRejectingOrderId] = useState(null);
   const [confirmingRejectId, setConfirmingRejectId] = useState(null);
+  const [confirmingDeleteHeldId, setConfirmingDeleteHeldId] = useState(null);
+  const [deletingHeldOrderId, setDeletingHeldOrderId] = useState(null);
   const [activeTabModal, setActiveTabModal] = useState(null); // 'held', 'incoming', 'payment', 'customization', 'void_item', 'receipt', 'settings'
 
   // Notification tracking refs
@@ -558,6 +560,40 @@ export default function TabletPOSPage() {
       alert("Error rejecting order: " + err.message);
     } finally {
       setRejectingOrderId(null);
+    }
+  };
+
+  const handleDeleteHeldOrder = async (orderId) => {
+    if (confirmingDeleteHeldId !== orderId) {
+      setConfirmingDeleteHeldId(orderId);
+      setTimeout(() => {
+        setConfirmingDeleteHeldId((current) => (current === orderId ? null : current));
+      }, 4000);
+      return;
+    }
+    setConfirmingDeleteHeldId(null);
+    setDeletingHeldOrderId(orderId);
+    try {
+      const res = await fetch(`/api/pos/orders/${orderId}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "cancelled",
+          voidReason: "Deleted from Held Orders",
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setHeldOrders((prev) => prev.filter((o) => o.id !== orderId));
+        fetchOrdersQueue();
+      } else {
+        alert("Failed to delete held order: " + (data.error || "Unknown error"));
+      }
+    } catch (err) {
+      console.error("Error deleting held order:", err);
+      alert("Error deleting held order: " + err.message);
+    } finally {
+      setDeletingHeldOrderId(null);
     }
   };
 
@@ -2146,12 +2182,15 @@ export default function TabletPOSPage() {
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:hidden">
           <div className="bg-[#181C24] border border-[#262D3D] rounded-2xl w-full max-w-xl max-h-[80vh] flex flex-col text-white shadow-2xl">
             <div className="p-4 border-b border-[#262D3D] flex justify-between items-center">
-              <h3 className="font-extrabold text-base">⏸️ Held Orders</h3>
+              <div className="flex items-center gap-2">
+                <span className="text-xl">⏸️</span>
+                <h3 className="font-extrabold text-base">Held Orders ({heldOrders.length})</h3>
+              </div>
               <button onClick={() => setActiveTabModal(null)} className="text-gray-400 hover:text-white font-bold p-1">✕</button>
             </div>
             <div className="p-4 flex-1 overflow-y-auto space-y-3">
               {heldOrders.length === 0 ? (
-                <div className="py-12 text-center text-gray-400 text-xs">No held orders.</div>
+                <div className="py-12 text-center text-gray-400 text-xs">No held orders right now.</div>
               ) : (
                 heldOrders.map((o) => (
                   <div key={o.id} className="p-3.5 bg-[#0F1115] border border-[#262D3D] rounded-xl flex items-center justify-between text-xs">
@@ -2159,27 +2198,50 @@ export default function TabletPOSPage() {
                       <div className="font-black text-white text-sm">Held Order #{o.id}</div>
                       <div className="text-gray-400 mt-0.5">{o.customer_name || "Walk-in"} • ${parseFloat(o.total_amount || 0).toFixed(2)}</div>
                     </div>
-                    <button
-                      onClick={() => {
-                        setEditingOrderId(o.id);
-                        setCustomerName(o.customer_name || "");
-                        setCustomerPhone(o.customer_phone || "");
-                        setDeliveryAddress(o.delivery_address || "");
-                        setSelectedChannel(o.order_source || "POS");
-                        setTicketItems((o.items || []).map((i) => ({
-                          product_id: i.product_id || i.id,
-                          name: i.product_name || i.name,
-                          unit_price: i.unit_price || 0,
-                          qty: i.quantity || i.qty || 1,
-                          selectedCustomizations: i.customizations ? (Array.isArray(i.customizations) ? i.customizations.map(c => typeof c === 'string' ? {name: c} : c) : [{name: i.customizations}]) : [],
-                          note: i.comment || ""
-                        })));
-                        setActiveTabModal(null);
-                      }}
-                      className="px-4 py-2 bg-[#eb660c] hover:bg-[#d55909] text-white font-black rounded-xl shadow-md"
-                    >
-                      Restore Ticket ➔
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteHeldOrder(o.id)}
+                        disabled={deletingHeldOrderId === o.id}
+                        className={`px-3 py-2 border rounded-xl font-bold transition-all disabled:opacity-50 flex items-center gap-1 ${
+                          confirmingDeleteHeldId === o.id
+                            ? "bg-red-600 text-white border-red-400 animate-pulse font-black"
+                            : "bg-rose-950/60 text-rose-300 border-rose-500/40 hover:bg-rose-900/80"
+                        }`}
+                      >
+                        <span>🗑️</span>
+                        <span>
+                          {deletingHeldOrderId === o.id
+                            ? "Deleting..."
+                            : confirmingDeleteHeldId === o.id
+                            ? "Tap again to Delete"
+                            : "Delete Order"}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingOrderId(o.id);
+                          setCustomerName(o.customer_name || "");
+                          setCustomerPhone(o.customer_phone || "");
+                          setDeliveryAddress(o.delivery_address || "");
+                          setSelectedChannel(o.order_source || "POS");
+                          setTicketItems((o.items || []).map((i) => ({
+                            product_id: i.product_id || i.id,
+                            name: i.product_name || i.name,
+                            unit_price: i.unit_price || 0,
+                            qty: i.quantity || i.qty || 1,
+                            selectedCustomizations: i.customizations ? (Array.isArray(i.customizations) ? i.customizations.map(c => typeof c === 'string' ? {name: c} : c) : [{name: i.customizations}]) : [],
+                            note: i.comment || ""
+                          })));
+                          setActiveTabModal(null);
+                        }}
+                        className="px-4 py-2 bg-[#eb660c] hover:bg-[#d55909] text-white font-black rounded-xl shadow-md flex items-center gap-1"
+                      >
+                        <span>Restore Ticket</span>
+                        <span>➔</span>
+                      </button>
+                    </div>
                   </div>
                 ))
               )}
