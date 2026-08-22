@@ -354,13 +354,18 @@ export default function TabletPOSPage() {
     }
     setIsCheckingWaLocation(true);
     try {
-      const res = await fetch(`/api/pos/whatsapp-latest-location?phone=${encodeURIComponent(phone.trim())}`);
-      const data = await res.json();
-      if (data && data.hasLocation) {
-        setDetectedWaLocation(data);
-      } else {
-        setDetectedWaLocation(null);
+      // Query /api/pos/customers with the phone number
+      const cleanDigits = phone.replace(/\D/g, "");
+      const res = await fetch(`/api/pos/customers?q=${encodeURIComponent(cleanDigits)}`);
+      if (res.ok) {
+        const data = await res.json();
+        const match = (data.customers || []).find((c) => c.whatsapp_location && c.whatsapp_location.hasLocation);
+        if (match && match.whatsapp_location) {
+          setDetectedWaLocation(match.whatsapp_location);
+          return;
+        }
       }
+      setDetectedWaLocation(null);
     } catch (err) {
       console.error("Error checking WhatsApp location:", err);
       setDetectedWaLocation(null);
