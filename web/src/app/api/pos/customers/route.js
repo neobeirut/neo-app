@@ -42,7 +42,9 @@ export async function GET(request) {
     if (cleanDigits.startsWith("0")) cleanDigits = cleanDigits.slice(1);
     if (cleanDigits.startsWith("961")) cleanDigits = cleanDigits.slice(3);
     const pattern = `%${query}%`;
-    const lastDigits = cleanDigits.length >= 4 ? cleanDigits.slice(-7) : "";
+    const digitPattern = cleanDigits ? `%${cleanDigits}%` : pattern;
+    const last7 = cleanDigits.length >= 4 ? cleanDigits.slice(-7) : "";
+    const last7Pattern = last7 ? `%${last7}%` : pattern;
 
     const rows = await sql`
       WITH raw_customers AS (
@@ -53,7 +55,8 @@ export async function GET(request) {
         FROM auth_users
         WHERE name ILIKE ${pattern} 
            OR phone ILIKE ${pattern} 
-           OR (${lastDigits !== ""} AND RIGHT(REGEXP_REPLACE(phone, '\\D', '', 'g'), 7) LIKE ${'%' + lastDigits})
+           OR phone ILIKE ${digitPattern}
+           OR phone ILIKE ${last7Pattern}
 
         UNION ALL
 
@@ -64,7 +67,8 @@ export async function GET(request) {
         FROM orders
         WHERE (customer_name ILIKE ${pattern} 
            OR customer_phone ILIKE ${pattern}
-           OR (${lastDigits !== ""} AND RIGHT(REGEXP_REPLACE(customer_phone, '\\D', '', 'g'), 7) LIKE ${'%' + lastDigits}))
+           OR customer_phone ILIKE ${digitPattern}
+           OR customer_phone ILIKE ${last7Pattern})
           AND (customer_name IS NOT NULL AND customer_name != '')
 
         UNION ALL
@@ -75,16 +79,17 @@ export async function GET(request) {
           COALESCE(latest_location_address, latest_location_url) as delivery_address
         FROM whatsapp_conversations
         WHERE (phone ILIKE ${pattern} 
-           OR (${lastDigits !== ""} AND RIGHT(REGEXP_REPLACE(phone, '\\D', '', 'g'), 7) LIKE ${'%' + lastDigits}))
+           OR phone ILIKE ${digitPattern}
+           OR phone ILIKE ${last7Pattern})
           AND (latest_location_lat IS NOT NULL OR latest_location_url IS NOT NULL)
       ),
       deduped AS (
-        SELECT DISTINCT ON (RIGHT(REGEXP_REPLACE(COALESCE(NULLIF(customer_phone, ''), customer_name), '\\D', '', 'g'), 7))
+        SELECT DISTINCT ON (RIGHT(REGEXP_REPLACE(COALESCE(NULLIF(customer_phone, ''), customer_name), '[^0-9]', '', 'g'), 7))
           customer_name,
           customer_phone,
           delivery_address
         FROM raw_customers
-        ORDER BY RIGHT(REGEXP_REPLACE(COALESCE(NULLIF(customer_phone, ''), customer_name), '\\D', '', 'g'), 7), 
+        ORDER BY RIGHT(REGEXP_REPLACE(COALESCE(NULLIF(customer_phone, ''), customer_name), '[^0-9]', '', 'g'), 7), 
                  CASE WHEN customer_name != 'WhatsApp Customer' THEN 0 ELSE 1 END,
                  delivery_address DESC NULLS LAST
       )
@@ -100,7 +105,7 @@ export async function GET(request) {
         EXTRACT(EPOCH FROM (NOW() - wc.latest_location_at)) / 60 as minutes_ago
       FROM deduped d
       LEFT JOIN whatsapp_conversations wc 
-        ON (RIGHT(REGEXP_REPLACE(wc.phone, '\\D', '', 'g'), 7) = RIGHT(REGEXP_REPLACE(d.customer_phone, '\\D', '', 'g'), 7))
+        ON (RIGHT(REGEXP_REPLACE(wc.phone, '[^0-9]', '', 'g'), 7) = RIGHT(REGEXP_REPLACE(d.customer_phone, '[^0-9]', '', 'g'), 7))
         AND (wc.latest_location_lat IS NOT NULL OR wc.latest_location_url IS NOT NULL)
       ORDER BY wc.latest_location_at DESC NULLS LAST
       LIMIT 10;
