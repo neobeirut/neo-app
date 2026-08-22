@@ -208,6 +208,53 @@ async function processInboundMessage(result) {
     `[whatsapp-webhook] ✅ Parsed — From: ${fromPhone}, Message: "${messageText}"`,
   );
 
+  // ── Location Detection (Native Infobip location object or Google Maps URL in text) ──
+  let detectedLat = null;
+  let detectedLng = null;
+  let detectedAddress = null;
+  let detectedUrl = null;
+
+  if (result.message?.type === "LOCATION" || result.message?.location) {
+    const locObj = result.message?.location || result.message || {};
+    detectedLat = locObj.latitude !== undefined ? parseFloat(locObj.latitude) : null;
+    detectedLng = locObj.longitude !== undefined ? parseFloat(locObj.longitude) : null;
+    detectedAddress = locObj.address || locObj.name || null;
+    detectedUrl = locObj.url || (detectedLat && detectedLng ? `https://maps.google.com/?q=${detectedLat},${detectedLng}` : null);
+    if (!messageText || messageText === "[LOCATION message]") {
+      messageText = `📍 Shared Location: ${detectedAddress || (detectedLat && detectedLng ? `${detectedLat}, ${detectedLng}` : "Pinned Location")}`;
+    }
+  } else if (messageText && typeof messageText === "string") {
+    // Check for Google Maps URLs or coordinates in text
+    const coordsMatch = messageText.match(/(-?\d{1,2}\.\d+)[,\s]+(-?\d{1,3}\.\d+)/) ||
+                        messageText.match(/[?&]q=(-?\d{1,2}\.\d+)[,\s]+(-?\d{1,3}\.\d+)/) ||
+                        messageText.match(/@(-?\d{1,2}\.\d+),(-?\d{1,3}\.\d+)/);
+    if (coordsMatch) {
+      detectedLat = parseFloat(coordsMatch[1]);
+      detectedLng = parseFloat(coordsMatch[2]);
+      detectedUrl = `https://maps.google.com/?q=${detectedLat},${detectedLng}`;
+    } else if (messageText.includes("maps.app.goo.gl") || messageText.includes("goo.gl/maps")) {
+      const urlMatch = messageText.match(/https?:\/\/(maps\.app\.goo\.gl|goo\.gl\/maps)\/[^\s]+/);
+      if (urlMatch) {
+        detectedUrl = urlMatch[0];
+        try {
+          const headRes = await fetch(detectedUrl, { method: "HEAD", redirect: "follow" });
+          const finalUrl = headRes.url;
+          const finalMatch = finalUrl.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/) || finalUrl.match(/[?&]q=(-?\d+\.\d+),(-?\d+\.\d+)/);
+          if (finalMatch) {
+            detectedLat = parseFloat(finalMatch[1]);
+            detectedLng = parseFloat(finalMatch[2]);
+          }
+        } catch (e) {
+          console.warn("[whatsapp-webhook] Failed to resolve shortened map link:", e.message);
+        }
+      }
+    }
+  }
+
+  if (detectedLat || detectedUrl) {
+    console.log(`[whatsapp-webhook] 📍 Location detected from ${fromPhone}: Lat=${detectedLat}, Lng=${detectedLng}, URL=${detectedUrl}`);
+  }
+
   // Normalize the phone number for consistent matching
   const normalizedPhone = normalizePhone(fromPhone);
 
@@ -241,11 +288,15 @@ async function processInboundMessage(result) {
     await sql`
       INSERT INTO whatsapp_conversations (
         phone, customer_id, last_message, last_message_at,
-        order_id, branch_id, branch_ids, unread_count, session_active
+        order_id, branch_id, branch_ids, unread_count, session_active,
+        latest_location_lat, latest_location_lng, latest_location_address,
+        latest_location_url, latest_location_at
       )
       VALUES (
         ${fromPhone}, NULL, ${messageText}, ${timestamp},
-        NULL, NULL, '{}', 1, true
+        NULL, NULL, '{}', 1, true,
+        ${detectedLat}, ${detectedLng}, ${detectedAddress},
+        ${detectedUrl}, ${detectedLat || detectedUrl ? timestamp : null}
       )
       ON CONFLICT (phone)
       DO UPDATE SET
@@ -253,6 +304,11 @@ async function processInboundMessage(result) {
         last_message_at = ${timestamp},
         unread_count = whatsapp_conversations.unread_count + 1,
         session_active = true,
+        latest_location_lat = COALESCE(${detectedLat}, whatsapp_conversations.latest_location_lat),
+        latest_location_lng = COALESCE(${detectedLng}, whatsapp_conversations.latest_location_lng),
+        latest_location_address = COALESCE(${detectedAddress}, whatsapp_conversations.latest_location_address),
+        latest_location_url = COALESCE(${detectedUrl}, whatsapp_conversations.latest_location_url),
+        latest_location_at = CASE WHEN ${detectedLat}::numeric IS NOT NULL OR ${detectedUrl}::text IS NOT NULL THEN ${timestamp} ELSE whatsapp_conversations.latest_location_at END,
         updated_at = now()
     `;
 
@@ -320,11 +376,15 @@ async function processInboundMessage(result) {
   await sql`
     INSERT INTO whatsapp_conversations (
       phone, customer_id, last_message, last_message_at,
-      order_id, branch_id, branch_ids, unread_count, session_active
+      order_id, branch_id, branch_ids, unread_count, session_active,
+      latest_location_lat, latest_location_lng, latest_location_address,
+      latest_location_url, latest_location_at
     )
     VALUES (
       ${fromPhone}, ${customer.id}, ${messageText}, ${timestamp},
-      ${orderId}, ${branchId}, ${branchIds}, 1, true
+      ${orderId}, ${branchId}, ${branchIds}, 1, true,
+      ${detectedLat}, ${detectedLng}, ${detectedAddress},
+      ${detectedUrl}, ${detectedLat || detectedUrl ? timestamp : null}
     )
     ON CONFLICT (phone)
     DO UPDATE SET
@@ -335,6 +395,11 @@ async function processInboundMessage(result) {
       branch_ids = ${branchIds},
       unread_count = whatsapp_conversations.unread_count + 1,
       session_active = true,
+      latest_location_lat = COALESCE(${detectedLat}, whatsapp_conversations.latest_location_lat),
+      latest_location_lng = COALESCE(${detectedLng}, whatsapp_conversations.latest_location_lng),
+      latest_location_address = COALESCE(${detectedAddress}, whatsapp_conversations.latest_location_address),
+      latest_location_url = COALESCE(${detectedUrl}, whatsapp_conversations.latest_location_url),
+      latest_location_at = CASE WHEN ${detectedLat}::numeric IS NOT NULL OR ${detectedUrl}::text IS NOT NULL THEN ${timestamp} ELSE whatsapp_conversations.latest_location_at END,
       updated_at = now()
   `;
 

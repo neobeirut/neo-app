@@ -57,6 +57,7 @@ const partitionCustomizations = (customizations) => {
   return { addons, removals };
 };
 
+// OVR LOAD Tablet POS System v2.6.0 - Auto WhatsApp Location Sync
 export default function TabletPOSPage() {
   // Data States
   const [categories, setCategories] = useState([]);
@@ -118,6 +119,8 @@ export default function TabletPOSPage() {
   // Queue & Modal States
   const [heldOrders, setHeldOrders] = useState([]);
   const [pendingOrders, setPendingOrders] = useState([]);
+  const [rejectingOrderId, setRejectingOrderId] = useState(null);
+  const [confirmingRejectId, setConfirmingRejectId] = useState(null);
   const [activeTabModal, setActiveTabModal] = useState(null); // 'held', 'incoming', 'payment', 'customization', 'void_item', 'receipt', 'settings'
 
   // Notification tracking refs
@@ -153,6 +156,10 @@ export default function TabletPOSPage() {
   const [customerSearchResults, setCustomerSearchResults] = useState([]);
   const [isSearchingCustomers, setIsSearchingCustomers] = useState(false);
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+
+  // WhatsApp Location Auto-Detection State
+  const [detectedWaLocation, setDetectedWaLocation] = useState(null);
+  const [isCheckingWaLocation, setIsCheckingWaLocation] = useState(false);
 
   // Branch Operational Status Modal States
   const [branchStatus, setBranchStatus] = useState(null);
@@ -340,6 +347,33 @@ export default function TabletPOSPage() {
     }
   };
 
+  const checkWhatsAppLocation = async (phone) => {
+    if (!phone || phone.replace(/\D/g, "").length < 6) {
+      setDetectedWaLocation(null);
+      return;
+    }
+    setIsCheckingWaLocation(true);
+    try {
+      // Query /api/pos/customers with the phone number
+      const cleanDigits = phone.replace(/\D/g, "");
+      const res = await fetch(`/api/pos/customers?q=${encodeURIComponent(cleanDigits)}`);
+      if (res.ok) {
+        const data = await res.json();
+        const match = (data.customers || []).find((c) => c.whatsapp_location && c.whatsapp_location.hasLocation);
+        if (match && match.whatsapp_location) {
+          setDetectedWaLocation(match.whatsapp_location);
+          return;
+        }
+      }
+      setDetectedWaLocation(null);
+    } catch (err) {
+      console.error("Error checking WhatsApp location:", err);
+      setDetectedWaLocation(null);
+    } finally {
+      setIsCheckingWaLocation(false);
+    }
+  };
+
   const handleCustomerSearch = async (query) => {
     if (!query || query.trim().length < 2) {
       setCustomerSearchResults([]);
@@ -353,6 +387,10 @@ export default function TabletPOSPage() {
       if (data.customers && data.customers.length > 0) {
         setCustomerSearchResults(data.customers);
         setShowCustomerDropdown(true);
+        const matchWithLocation = data.customers.find((c) => c.whatsapp_location);
+        if (matchWithLocation) {
+          setDetectedWaLocation(matchWithLocation.whatsapp_location);
+        }
       } else {
         setCustomerSearchResults([]);
         setShowCustomerDropdown(false);
@@ -362,18 +400,30 @@ export default function TabletPOSPage() {
     } finally {
       setIsSearchingCustomers(false);
     }
+
+    // Also check for WhatsApp location if the query contains digits (phone number)
+    if (query.replace(/\D/g, "").length >= 6) {
+      checkWhatsAppLocation(query);
+    }
   };
 
   const handleSelectCustomer = (c) => {
     if (c.customer_name) setCustomerName(c.customer_name);
     if (c.customer_phone) setCustomerPhone(c.customer_phone);
     if (c.delivery_address) setDeliveryAddress(c.delivery_address);
+    if (c.whatsapp_location) {
+      setDetectedWaLocation(c.whatsapp_location);
+      if (c.whatsapp_location.deliveryFee !== undefined) {
+        setDeliveryFee(c.whatsapp_location.deliveryFee);
+      }
+    } else {
+      checkWhatsAppLocation(c.customer_phone);
+    }
     setShowCustomerDropdown(false);
   };
 
   useEffect(() => {
     if (orderType !== "delivery" || !deliveryAddress.trim()) return;
-    if (editingOrderId && deliveryFee > 0) return;
     const timer = setTimeout(async () => {
       try {
         const res = await fetch("/api/delivery/calculate-cost", {
@@ -390,7 +440,7 @@ export default function TabletPOSPage() {
       }
     }, 600);
     return () => clearTimeout(timer);
-  }, [deliveryAddress, orderType, editingOrderId]);
+  }, [deliveryAddress, orderType]);
 
   const fetchProducts = async () => {
     try {
@@ -474,6 +524,40 @@ export default function TabletPOSPage() {
       if (heldData.orders) setHeldOrders(heldData.orders);
     } catch (err) {
       console.error("Error fetching orders queue:", err);
+    }
+  };
+
+  const handleRejectPendingOrder = async (orderId) => {
+    if (confirmingRejectId !== orderId) {
+      setConfirmingRejectId(orderId);
+      setTimeout(() => {
+        setConfirmingRejectId((current) => (current === orderId ? null : current));
+      }, 4000);
+      return;
+    }
+    setConfirmingRejectId(null);
+    setRejectingOrderId(orderId);
+    try {
+      const res = await fetch(`/api/pos/orders/${orderId}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "cancelled",
+          voidReason: "Rejected from POS WhatsApp Queue",
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setPendingOrders((prev) => prev.filter((o) => o.id !== orderId));
+        fetchOrdersQueue();
+      } else {
+        alert("Failed to reject order: " + (data.error || "Unknown error"));
+      }
+    } catch (err) {
+      console.error("Error rejecting pending order:", err);
+      alert("Error rejecting order: " + err.message);
+    } finally {
+      setRejectingOrderId(null);
     }
   };
 
@@ -673,30 +757,6 @@ export default function TabletPOSPage() {
     setActiveTabModal(null);
   };
 
-  const handleRejectPendingOrder = async (orderId) => {
-    if (typeof window !== "undefined" && !window.confirm(`Are you sure you want to reject Order #${orderId}?`)) return;
-    try {
-      const res = await fetch(`/api/pos/orders/${orderId}/status`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          status: "cancelled",
-          voidReason: "Rejected from POS incoming queue"
-        }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setPendingOrders((prev) => prev.filter((o) => o.id !== orderId));
-        fetchOrdersQueue();
-      } else {
-        alert("Failed to reject order: " + (data.error || "Unknown error"));
-      }
-    } catch (err) {
-      console.error("Error rejecting pending order:", err);
-      alert("Error rejecting order: " + err.message);
-    }
-  };
-
   const subtotal = ticketItems.reduce((sum, item) => sum + item.unit_price * item.qty, 0);
 
   const calculatedDiscount = (() => {
@@ -740,7 +800,7 @@ export default function TabletPOSPage() {
         signal: AbortSignal.timeout(2000),
       });
       const result = await res.json();
-      if (result && (result.success || result.ok)) return;
+      if (result && result.success) return;
     } catch (err) {}
 
     try {
@@ -1313,7 +1373,7 @@ export default function TabletPOSPage() {
             )}
 
             {/* CUSTOMER FIELDS */}
-            <div className="pt-1 border-t border-[#262D3D]/60 relative">
+            <div className="pt-1 border-t border-[#262D3D]/60 space-y-1.5 relative">
               <div className="grid grid-cols-2 gap-2">
                 <input
                   type="text"
@@ -1328,8 +1388,9 @@ export default function TabletPOSPage() {
                     placeholder="Phone Number"
                     value={customerPhone}
                     onChange={(e) => {
-                      setCustomerPhone(e.target.value);
-                      handleCustomerSearch(e.target.value);
+                      const val = e.target.value;
+                      setCustomerPhone(val);
+                      handleCustomerSearch(val);
                     }}
                     className="w-full bg-[#0F1115] border border-[#262D3D] rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-gray-500 font-medium focus:outline-none focus:border-[#eb660c]"
                   />
@@ -1349,6 +1410,70 @@ export default function TabletPOSPage() {
                   )}
                 </div>
               </div>
+
+              {/* WHATSAPP LOCATION DETECTED BADGE / AUTO-FILL PROMPT */}
+              {detectedWaLocation && (
+                <div className="bg-emerald-950/90 border border-emerald-500/70 rounded-xl p-2 flex items-center justify-between text-xs shadow-lg animate-fade-in">
+                  <div className="flex-1 min-w-0 pr-2">
+                    <div className="font-black text-emerald-300 flex items-center gap-1.5 text-[11px]">
+                      <span>📍</span>
+                      <span>WhatsApp Location Received</span>
+                      <span className="text-[9px] bg-emerald-800 text-emerald-100 px-1.5 py-0.5 rounded-full font-bold">
+                        {detectedWaLocation.receivedMinutesAgo <= 1 ? "Just now" : `${detectedWaLocation.receivedMinutesAgo}m ago`}
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-gray-300 truncate mt-0.5">
+                      {detectedWaLocation.address} {detectedWaLocation.distanceKm ? `• ${detectedWaLocation.distanceKm} km` : ""}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOrderType("delivery");
+                      const fullAddr = detectedWaLocation.address && detectedWaLocation.mapUrl
+                        ? `${detectedWaLocation.address} [Maps Pin: ${detectedWaLocation.mapUrl}]`
+                        : (detectedWaLocation.mapUrl || detectedWaLocation.address || "");
+                      setDeliveryAddress(fullAddr);
+                      if (detectedWaLocation.deliveryFee !== undefined && detectedWaLocation.deliveryFee !== null) {
+                        setDeliveryFee(detectedWaLocation.deliveryFee);
+                      }
+                    }}
+                    className="bg-[#eb660c] hover:bg-[#ff771f] text-white text-[11px] font-black px-2.5 py-1.5 rounded-lg shadow-md shrink-0 flex items-center gap-1 transition-all active:scale-95"
+                  >
+                    <span>⚡ Auto-Fill</span>
+                    {detectedWaLocation.deliveryFee !== undefined && (
+                      <span>(${detectedWaLocation.deliveryFee?.toFixed(2)})</span>
+                    )}
+                  </button>
+                </div>
+              )}
+
+              {/* DELIVERY ADDRESS / LOCATION TEXTAREA (Visible for Delivery Orders) */}
+              {orderType === "delivery" && (
+                <div className="space-y-1 pt-0.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-bold text-gray-400">
+                      📍 Delivery Address & WhatsApp Map Link:
+                    </label>
+                    {deliveryAddress && (
+                      <button
+                        type="button"
+                        onClick={() => setDeliveryAddress("")}
+                        className="text-[10px] text-gray-400 hover:text-red-400 font-bold"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                  <textarea
+                    rows={2}
+                    placeholder="Street, Bldg, Floor, or paste WhatsApp / Google Maps link..."
+                    value={deliveryAddress}
+                    onChange={(e) => setDeliveryAddress(e.target.value)}
+                    className="w-full bg-[#0F1115] border border-[#262D3D] rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-gray-500 font-medium focus:outline-none focus:border-[#eb660c] resize-none"
+                  />
+                </div>
+              )}
             </div>
           </div>
 
@@ -1715,8 +1840,8 @@ export default function TabletPOSPage() {
                   }, {});
 
                   return Object.entries(grouped).map(([groupName, opts]) => {
-                    const isMultiSelect = opts[0]?.is_multi_select !== undefined ? opts[0].is_multi_select : (opts.length > 1 && !opts[0]?.option_group_name?.toLowerCase().includes("drink"));
-                    const isRequired = opts[0]?.is_required !== undefined ? opts[0].is_required : (groupName.toLowerCase().includes("drink"));
+                    const isMultiSelect = opts.length > 1 && !opts[0]?.option_group_name?.toLowerCase().includes("drink");
+                    const isRequired = opts[0]?.is_required || groupName.toLowerCase().includes("drink");
 
                     return (
                       <div key={groupName} className="space-y-2 bg-[#0F1115] p-3.5 rounded-xl border border-[#262D3D]">
@@ -1973,9 +2098,18 @@ export default function TabletPOSPage() {
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => handleRejectPendingOrder(o.id)}
-                        className="px-3 py-2 bg-rose-950/60 text-rose-300 border border-rose-500/40 rounded-xl font-bold hover:bg-rose-900/80"
+                        disabled={rejectingOrderId === o.id}
+                        className={`px-3 py-2 border rounded-xl font-bold transition-all disabled:opacity-50 ${
+                          confirmingRejectId === o.id
+                            ? "bg-red-600 text-white border-red-400 animate-pulse font-black"
+                            : "bg-rose-950/60 text-rose-300 border-rose-500/40 hover:bg-rose-900/80"
+                        }`}
                       >
-                        Reject
+                        {rejectingOrderId === o.id
+                          ? "Rejecting..."
+                          : confirmingRejectId === o.id
+                          ? "Tap again to Reject"
+                          : "Reject"}
                       </button>
                       <button
                         onClick={() => {
@@ -1984,10 +2118,6 @@ export default function TabletPOSPage() {
                           setCustomerPhone(o.customer_phone || "");
                           setDeliveryAddress(o.delivery_address || "");
                           setSelectedChannel("WhatsApp");
-                          setOrderType(o.order_type || "delivery");
-                          setDiscountType("wa15");
-                          const incomingFee = parseFloat(o.delivery_fee) || 0;
-                          setDeliveryFee(incomingFee);
                           setTicketItems((o.items || []).map((i) => ({
                             product_id: i.product_id || i.id,
                             name: i.product_name || i.name,
