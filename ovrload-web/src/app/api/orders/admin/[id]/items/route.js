@@ -59,6 +59,14 @@ function calcUnitPrice(basePrice, customizations, productAddonPrices) {
   return total;
 }
 
+function hasOrdersAccess(admin) {
+  if (!admin) return false;
+  if (!admin.roles || admin.roles.length === 0) return true;
+  return admin.roles.some((r) =>
+    ["admin", "owner", "orders", "backend", "superadmin"].includes(r),
+  );
+}
+
 // Update order items (for admin)
 export async function PUT(request, { params }) {
   try {
@@ -70,7 +78,7 @@ export async function PUT(request, { params }) {
       );
     }
 
-    if (!admin.roles || !admin.roles.includes("orders")) {
+    if (!hasOrdersAccess(admin)) {
       return Response.json(
         { error: "Unauthorized - orders permission required" },
         { status: 403 },
@@ -82,11 +90,6 @@ export async function PUT(request, { params }) {
     const resolvedId = await resolveOrderId(id);
     if (!resolvedId) {
       return Response.json({ error: "Order not found" }, { status: 404 });
-    }
-
-    const guard = await assertOrderItemEditsAllowed(resolvedId);
-    if (!guard.ok) {
-      return guard.response;
     }
 
     const body = await request.json();

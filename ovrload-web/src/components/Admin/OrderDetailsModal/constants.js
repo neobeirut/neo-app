@@ -7,11 +7,6 @@ export const statusOptions = [
   { value: "cancelled", label: "Cancelled" },
 ];
 
-export const CONTENT_LOCKED_STATUSES = [
-  "ready",
-  "out_for_delivery",
-  "completed",
-  "cancelled",
-];
+export const CONTENT_LOCKED_STATUSES = [];
 
-export const STATUS_LOCKED_STATUSES = ["completed", "cancelled"];
+export const STATUS_LOCKED_STATUSES = [];

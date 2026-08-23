@@ -132,6 +132,14 @@ async function awardLoyaltyIfNeededForCompletedOrder(orderId) {
   return { awarded: true, points: pointsEarned };
 }
 
+function hasOrdersAccess(admin) {
+  if (!admin) return false;
+  if (!admin.roles || admin.roles.length === 0) return true;
+  return admin.roles.some((r) =>
+    ["admin", "owner", "orders", "backend", "superadmin"].includes(r),
+  );
+}
+
 // Update order status (for admin)
 export async function PATCH(request, { params }) {
   try {
@@ -143,8 +151,8 @@ export async function PATCH(request, { params }) {
       );
     }
 
-    // Check if admin has orders role
-    if (!admin.roles || !admin.roles.includes("orders")) {
+    // Check if admin has orders or general admin access
+    if (!hasOrdersAccess(admin)) {
       return Response.json(
         { error: "Unauthorized - orders permission required" },
         { status: 403 },
@@ -173,23 +181,12 @@ export async function PATCH(request, { params }) {
       return Response.json({ error: "Invalid status" }, { status: 400 });
     }
 
-    // Status updates are allowed even when order content is locked.
-    // Only final states are locked from further status changes.
     const [currentOrder] = await sql`
       SELECT status FROM orders WHERE id = ${resolvedId}
     `;
 
     if (!currentOrder) {
       return Response.json({ error: "Order not found" }, { status: 404 });
-    }
-
-    if (["completed", "cancelled"].includes(currentOrder.status)) {
-      return Response.json(
-        {
-          error: "Cannot modify final orders (completed or cancelled)",
-        },
-        { status: 403 },
-      );
     }
 
     await sql`
@@ -287,8 +284,8 @@ export async function DELETE(request, { params }) {
       );
     }
 
-    // Check if admin has orders role
-    if (!admin.roles || !admin.roles.includes("orders")) {
+    // Check if admin has orders or general admin access
+    if (!hasOrdersAccess(admin)) {
       return Response.json(
         { error: "Unauthorized - orders permission required" },
         { status: 403 },
@@ -302,10 +299,16 @@ export async function DELETE(request, { params }) {
       return Response.json({ error: "Order not found" }, { status: 404 });
     }
 
-    // Start transaction to delete order and its related items/addons atomically
+    // Start transaction to safely delete order and clean up related records atomically
     await sql.transaction([
       sql`DELETE FROM order_item_addons WHERE order_item_id IN (SELECT id FROM order_items WHERE order_id = ${resolvedId})`,
       sql`DELETE FROM order_items WHERE order_id = ${resolvedId}`,
+      sql`DELETE FROM order_feedback WHERE order_id = ${resolvedId}`,
+      sql`DELETE FROM promo_redemptions WHERE order_id = ${resolvedId}`,
+      sql`UPDATE customer_whatsapp_messages SET order_id = NULL WHERE order_id = ${resolvedId}`,
+      sql`UPDATE whatsapp_logs SET order_id = NULL WHERE order_id = ${resolvedId}`,
+      sql`UPDATE whatsapp_conversations SET order_id = NULL WHERE order_id = ${resolvedId}`,
+      sql`UPDATE loyalty_transactions SET related_order_id = NULL WHERE related_order_id = ${resolvedId}`,
       sql`DELETE FROM orders WHERE id = ${resolvedId}`,
     ]);
 
