@@ -303,8 +303,6 @@ export async function DELETE(request, { params }) {
     await sql.transaction([
       sql`DELETE FROM order_item_addons WHERE order_item_id IN (SELECT id FROM order_items WHERE order_id = ${resolvedId})`,
       sql`DELETE FROM order_items WHERE order_id = ${resolvedId}`,
-      sql`DELETE FROM order_feedback WHERE order_id = ${resolvedId}`,
-      sql`DELETE FROM promo_redemptions WHERE order_id = ${resolvedId}`,
       sql`UPDATE customer_whatsapp_messages SET order_id = NULL WHERE order_id = ${resolvedId}`,
       sql`UPDATE whatsapp_logs SET order_id = NULL WHERE order_id = ${resolvedId}`,
       sql`UPDATE whatsapp_conversations SET order_id = NULL WHERE order_id = ${resolvedId}`,
