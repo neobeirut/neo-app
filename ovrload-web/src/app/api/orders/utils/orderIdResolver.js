@@ -54,22 +54,16 @@ export async function resolveOrderId(idOrNumber) {
     return null;
   }
   
-  // If it's a pure integer, look up by numeric id (and fallback to order_number just in case)
+  // If it's a pure integer
   if (/^\d+$/.test(str)) {
     const num = Number(str);
     const [row] = await sql`
       SELECT id FROM orders 
-      WHERE id = ${num} OR order_number = ${str} 
+      WHERE id = ${num}
       LIMIT 1
     `;
     return row?.id || null;
   }
   
-  // Otherwise, look up by order_number
-  const [row] = await sql`
-    SELECT id FROM orders 
-    WHERE order_number = ${str} 
-    LIMIT 1
-  `;
-  return row?.id || null;
+  return null;
 }
