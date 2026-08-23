@@ -30,6 +30,9 @@ export async function PATCH(request, { params }) {
         WHERE id = ${id}
       `;
     } else {
+      if (customerName !== undefined && (!customerName || !String(customerName).trim())) {
+        return Response.json({ error: "Customer name is required to save the order" }, { status: 400 });
+      }
       await sql`
         UPDATE orders 
         SET 

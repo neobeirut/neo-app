@@ -872,13 +872,17 @@ export default function TabletPOSPage() {
     if (!selectedChannel && !editingOrderId) {
       setSelectedChannel("POS");
     }
+    if (!customerName || !customerName.trim()) {
+      setValidationError("⚠️ Customer name is required to save the order");
+      return false;
+    }
     setValidationError("");
     return true;
   };
 
   const handleHoldOrder = async () => {
     if (ticketItems.length === 0) return;
-    validateOrder();
+    if (!validateOrder()) return;
 
     setIsSubmitting(true);
     try {
@@ -889,7 +893,7 @@ export default function TabletPOSPage() {
           orderType,
           orderSource: selectedChannel || "POS",
           paymentMethod: selectedPaymentMethod,
-          customerName,
+          customerName: customerName.trim(),
           customerPhone,
           deliveryAddress,
           status: "held",
@@ -927,6 +931,7 @@ export default function TabletPOSPage() {
 
   const handleFinalizePayment = async () => {
     if (ticketItems.length === 0) return;
+    if (!validateOrder()) return;
     const effectiveChannel = selectedChannel || "POS";
     if (!selectedChannel && !editingOrderId) setSelectedChannel("POS");
 
@@ -1413,10 +1418,17 @@ export default function TabletPOSPage() {
               <div className="grid grid-cols-2 gap-2">
                 <input
                   type="text"
-                  placeholder="Customer Name"
+                  placeholder="Customer Name *"
                   value={customerName}
-                  onChange={(e) => setCustomerName(e.target.value)}
-                  className="w-full bg-[#0F1115] border border-[#262D3D] rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-gray-500 font-medium focus:outline-none focus:border-[#eb660c]"
+                  onChange={(e) => {
+                    setCustomerName(e.target.value);
+                    if (validationError) setValidationError("");
+                  }}
+                  className={`w-full bg-[#0F1115] border ${
+                    validationError && !customerName.trim()
+                      ? "border-rose-500 ring-2 ring-rose-500/50 bg-rose-950/20"
+                      : "border-[#262D3D]"
+                  } rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-gray-500 font-medium focus:outline-none focus:border-[#eb660c]`}
                 />
                 <div className="relative">
                   <input

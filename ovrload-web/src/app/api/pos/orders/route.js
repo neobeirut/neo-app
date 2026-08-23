@@ -113,6 +113,10 @@ export async function POST(request) {
       return Response.json({ error: "Cannot create an empty order" }, { status: 400 });
     }
 
+    if (!customerName || !String(customerName).trim()) {
+      return Response.json({ error: "Customer name is required to save the order" }, { status: 400 });
+    }
+
     // Insert order
     const orderResult = await sql`
       INSERT INTO orders (
