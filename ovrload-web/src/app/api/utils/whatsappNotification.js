@@ -102,7 +102,6 @@ export async function sendWhatsAppNotification(orderId, newStatus) {
     const [order] = await sql`
       SELECT 
         o.id,
-        o.order_number,
         o.user_id,
         o.branch_id,
         o.status,
