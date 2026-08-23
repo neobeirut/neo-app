@@ -777,10 +777,14 @@ export default function TabletPOSPage() {
     setTicketItems(updated);
   };
 
+  const handleRemoveTicketItem = (index) => {
+    const updated = [...ticketItems];
+    updated.splice(index, 1);
+    setTicketItems(updated);
+  };
+
   const handlePromptVoid = (index) => {
-    setVoidingItemIndex(index);
-    setVoidReason("");
-    setActiveTabModal("void_item");
+    handleRemoveTicketItem(index);
   };
 
   const handleConfirmVoidItem = () => {
@@ -1544,11 +1548,12 @@ export default function TabletPOSPage() {
                       </div>
                     </div>
                     <button
-                      onClick={() => handlePromptVoid(index)}
-                      className="text-gray-400 hover:text-red-400 p-1 text-xs transition-colors"
-                      title="Remove Item"
+                      type="button"
+                      onClick={() => handleRemoveTicketItem(index)}
+                      className="text-gray-400 hover:text-rose-400 hover:bg-rose-950/40 p-1.5 rounded-lg text-sm transition-all active:scale-90 flex items-center justify-center cursor-pointer"
+                      title="Remove Item from Ticket"
                     >
-                      🗑
+                      🗑️
                     </button>
                   </div>
 
