@@ -1,11 +1,11 @@
-﻿import sql from "../utils/sql.js";
+﻿import sql from "@/app/api/utils/sql";
 import {
   isOverloadClosed,
   hasAutoReplyBeenSent,
   recordAutoReplySent,
   sendClosedAutoReply,
   normalizePhoneForInfobip,
-} from "../utils/whatsappAfterHours.js";
+} from "@/app/api/utils/whatsappAfterHours";
 
 /**
  * Infobip WhatsApp Inbound Webhook & After-Hours Auto-Reply Handler

@@ -1,4 +1,4 @@
-﻿import sql from "./sql.js";
+﻿import sql from "@/app/api/utils/sql";
 
 /**
  * Exact closed auto-response message for OVRLOAD
