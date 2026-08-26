@@ -300,7 +300,7 @@ app.route(API_BASENAME, api);
 export default createHonoServer({
   app,
   hostname: '0.0.0.0',
-  port: Number(process.env.PORT) || 8080,
+  port: Number(process.env.PORT || 8080),
   defaultLogger: false,
   beforeAll: (app) => {
     app.get('/health', (c) => c.text('OK', 200));
