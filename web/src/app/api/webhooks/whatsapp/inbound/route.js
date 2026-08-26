@@ -106,20 +106,20 @@ async function processInboundMessage(result) {
     if (isClosed && rawSender) {
       const alreadySent = await hasAutoReplyBeenSent(rawSender, beirutInfo.periodId);
       if (!alreadySent) {
-        console.log([whatsapp-webhook] OVRLOAD is closed (). Sending after-hours auto-reply to ...);
+        console.log("[whatsapp-webhook] OVRLOAD is closed (" + beirutInfo.formatted + "). Sending after-hours auto-reply to " + rawSender + "...");
         const sendResult = await sendClosedAutoReply(rawSender);
         if (sendResult?.ok) {
           await recordAutoReplySent(rawSender, beirutInfo.periodId);
-          console.log([whatsapp-webhook] Successfully sent closed auto-reply to );
+          console.log("[whatsapp-webhook] Successfully sent closed auto-reply to " + rawSender);
         }
       } else {
-        console.log([whatsapp-webhook] Closed auto-reply already sent to  for period . Duplicate skipped.);
+        console.log("[whatsapp-webhook] Closed auto-reply already sent to " + rawSender + " for period " + beirutInfo.periodId + ". Duplicate skipped.");
       }
     }
   } catch (afterHoursErr) {
     console.error("[whatsapp-webhook] Error in after-hours auto-reply check:", afterHoursErr?.message || afterHoursErr);
   }
-  // â”€â”€ Extract fields using Infobip format â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
   let fromPhone = null;
   let messageText = null;
   let timestamp = null;
