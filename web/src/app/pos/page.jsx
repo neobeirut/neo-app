@@ -922,6 +922,9 @@ export default function TabletPOSPage() {
         setDeliveryAddress("");
         setSelectedChannel(null);
         setEditingOrderId(null);
+        setDiscountType("none");
+        setDiscountValInput(10);
+        setDiscountIsPercent(true);
         setDeliveryFee(0);
         setOrderType("delivery");
         fetchOrdersQueue();
@@ -1366,8 +1369,8 @@ export default function TabletPOSPage() {
               ].map((src) => {
                 const isCurrent =
                   src.id === "POS" || src.id === "Pick-up"
-                    ? !selectedChannel
-                    : selectedChannel === src.id;
+                    ? !selectedChannel || selectedChannel === "POS" || selectedChannel === "Pick-up"
+                    : (selectedChannel || "").toLowerCase() === src.id.toLowerCase();
 
                 return (
                   <button
@@ -1387,7 +1390,7 @@ export default function TabletPOSPage() {
             </div>
 
             {/* Sub-toggle for WhatsApp and App (Delivery vs Pickup) */}
-            {["WhatsApp", "App"].includes(selectedChannel) && (
+            {["WhatsApp", "App"].some(ch => (selectedChannel || "").toLowerCase() === ch.toLowerCase()) && (
               <div className="flex items-center justify-between px-2 py-1 bg-[#0F1115] rounded-lg border border-[#262D3D]">
                 <span className="text-[11px] font-bold text-gray-400">{selectedChannel} Type:</span>
                 <div className="flex items-center gap-1">
@@ -1730,7 +1733,7 @@ export default function TabletPOSPage() {
             {/* SAME HORIZONTAL LINE: Payment Buttons on Left & PAY & PRINT on Right */}
             <div className="flex items-center gap-2 pt-2 border-t border-[#262D3D]">
               {/* LEFT SIDE: Cash / Whish or Prepaid Channel Badge */}
-              {!["Toters", "NokNok"].includes(selectedChannel) ? (
+              {!["toters", "noknok"].includes((selectedChannel || "").toLowerCase()) ? (
                 <div className="grid grid-cols-2 gap-1 w-[45%] shrink-0">
                   <button
                     type="button"
@@ -1758,7 +1761,7 @@ export default function TabletPOSPage() {
               ) : (
                 <div className="w-[45%] shrink-0">
                   <div className={`py-3 px-2 rounded-xl text-xs font-black text-center border ${
-                    selectedChannel === "Toters" ? "bg-[#00C49F]/20 text-[#00C49F] border-[#00C49F]/40" : "bg-[#FF5A5F]/20 text-[#FF5A5F] border-[#FF5A5F]/40"
+                    (selectedChannel || "").toLowerCase() === "toters" ? "bg-[#00C49F]/20 text-[#00C49F] border-[#00C49F]/40" : "bg-[#FF5A5F]/20 text-[#FF5A5F] border-[#FF5A5F]/40"
                   }`}>
                     {selectedChannel} (Prepaid)
                   </div>
@@ -2165,22 +2168,7 @@ export default function TabletPOSPage() {
                           : "Reject"}
                       </button>
                       <button
-                        onClick={() => {
-                          setEditingOrderId(o.id);
-                          setCustomerName(o.customer_name || "");
-                          setCustomerPhone(o.customer_phone || "");
-                          setDeliveryAddress(o.delivery_address || "");
-                          setSelectedChannel("WhatsApp");
-                          setTicketItems((o.items || []).map((i) => ({
-                            product_id: i.product_id || i.id,
-                            name: i.product_name || i.name,
-                            unit_price: i.unit_price || 0,
-                            qty: i.quantity || i.qty || 1,
-                            selectedCustomizations: i.customizations ? (Array.isArray(i.customizations) ? i.customizations.map(c => typeof c === 'string' ? {name: c} : c) : [{name: i.customizations}]) : [],
-                            note: i.comment || ""
-                          })));
-                          setActiveTabModal(null);
-                        }}
+                        onClick={() => loadOrderToTicket(o, "WhatsApp")}
                         className="px-4 py-2 bg-[#eb660c] hover:bg-[#d55909] text-white font-black rounded-xl shadow-md"
                       >
                         Load to Ticket ➔
@@ -2237,22 +2225,7 @@ export default function TabletPOSPage() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => {
-                          setEditingOrderId(o.id);
-                          setCustomerName(o.customer_name || "");
-                          setCustomerPhone(o.customer_phone || "");
-                          setDeliveryAddress(o.delivery_address || "");
-                          setSelectedChannel(o.order_source || "POS");
-                          setTicketItems((o.items || []).map((i) => ({
-                            product_id: i.product_id || i.id,
-                            name: i.product_name || i.name,
-                            unit_price: i.unit_price || 0,
-                            qty: i.quantity || i.qty || 1,
-                            selectedCustomizations: i.customizations ? (Array.isArray(i.customizations) ? i.customizations.map(c => typeof c === 'string' ? {name: c} : c) : [{name: i.customizations}]) : [],
-                            note: i.comment || ""
-                          })));
-                          setActiveTabModal(null);
-                        }}
+                        onClick={() => loadOrderToTicket(o, "POS")}
                         className="px-4 py-2 bg-[#eb660c] hover:bg-[#d55909] text-white font-black rounded-xl shadow-md flex items-center gap-1"
                       >
                         <span>Restore Ticket</span>
