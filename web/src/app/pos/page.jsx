@@ -597,6 +597,86 @@ export default function TabletPOSPage() {
     }
   };
 
+  const loadOrderToTicket = (o, defaultChannel = "WhatsApp") => {
+    if (!o) return;
+    setEditingOrderId(o.id);
+    setCustomerName(o.customer_name || "");
+    setCustomerPhone(o.customer_phone || "");
+    setDeliveryAddress(o.delivery_address || "");
+
+    // 1. Automatically turn origin / channel to WhatsApp (or the order's specific channel)
+    const channelRaw = o.order_source || defaultChannel;
+    let channel = "WhatsApp";
+    if (channelRaw) {
+      const lower = String(channelRaw).toLowerCase();
+      if (lower.includes("toter")) channel = "Toters";
+      else if (lower.includes("nok")) channel = "NokNok";
+      else if (lower.includes("what") || lower.includes("wa")) channel = "WhatsApp";
+      else if (lower.includes("app")) channel = "App";
+      else if (lower === "pos" || lower === "pick-up" || lower === "pickup") channel = null;
+      else channel = channelRaw;
+    }
+    setSelectedChannel(channel);
+
+    // 2. Load order type (delivery vs pickup)
+    const isPickup = (o.order_type || "").toLowerCase() === "pickup" || (!o.delivery_address && (o.order_type || "").toLowerCase() !== "delivery");
+    setOrderType(isPickup ? "pickup" : "delivery");
+
+    // 3. Load delivery fee
+    const fee = o.delivery_fee !== undefined && o.delivery_fee !== null ? Number(o.delivery_fee) : 0;
+    setDeliveryFee(fee);
+
+    // 4. Map ticket items
+    const items = (o.items || []).map((i) => ({
+      product_id: i.product_id || i.id,
+      name: i.product_name || i.name,
+      unit_price: Number(i.unit_price) || 0,
+      qty: Number(i.quantity || i.qty) || 1,
+      selectedCustomizations: i.customizations
+        ? (Array.isArray(i.customizations)
+            ? i.customizations.map((c) => (typeof c === "string" ? { name: c } : c))
+            : [{ name: i.customizations }])
+        : [],
+      note: i.comment || i.note || ""
+    }));
+    setTicketItems(items);
+
+    // 5. Load discount
+    const itemsSubtotal = items.reduce((sum, item) => sum + item.unit_price * item.qty, 0);
+    const discAmt = Number(o.discount_amount) || 0;
+
+    if (discAmt > 0) {
+      if (itemsSubtotal > 0 && Math.abs(discAmt - (itemsSubtotal * 0.15)) < 0.05) {
+        setDiscountType("wa15");
+      } else if (itemsSubtotal > 0 && Math.abs(discAmt - (itemsSubtotal * 0.10)) < 0.05) {
+        setDiscountType("10%");
+      } else if (itemsSubtotal > 0 && Math.abs(discAmt - (itemsSubtotal * 0.05)) < 0.05) {
+        setDiscountType("5%");
+      } else if (itemsSubtotal > 0 && Math.abs(discAmt - (itemsSubtotal * (totersDiscountPercent / 100))) < 0.05 && channel === "Toters") {
+        setDiscountType("toters");
+      } else if (itemsSubtotal > 0 && Math.abs(discAmt - (itemsSubtotal * (noknokDiscountPercent / 100))) < 0.05 && channel === "NokNok") {
+        setDiscountType("noknok");
+      } else {
+        setDiscountType("custom");
+        setDiscountIsPercent(false);
+        setDiscountValInput(discAmt);
+      }
+    } else {
+      // Default discount preset according to channel
+      if (channel === "WhatsApp") {
+        setDiscountType("wa15");
+      } else if (channel === "Toters") {
+        setDiscountType("toters");
+      } else if (channel === "NokNok") {
+        setDiscountType("noknok");
+      } else {
+        setDiscountType("none");
+      }
+    }
+
+    setActiveTabModal(null);
+  };
+
   useEffect(() => {
     if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "default") {
       Notification.requestPermission();
