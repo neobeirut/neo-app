@@ -1,4 +1,5 @@
-import sql from "@/app/api/utils/sql";
+﻿import sql from "@/app/api/utils/sql";
+import { isOverloadClosed, hasAutoReplyBeenSent, recordAutoReplySent, sendClosedAutoReply } from "@/app/api/utils/whatsappAfterHours";
 import {
   markWhatsAppSessionActive,
   logWhatsAppMessage,
@@ -21,18 +22,18 @@ import {
  *
  * POST /api/webhooks/whatsapp/inbound
  *
- * ─── Infobip inbound webhook payload shape ─────────────────────────────────
+ * â”€â”€â”€ Infobip inbound webhook payload shape â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
  * {
  *   "results": [
  *     {
- *       "from": "+9611234567",          ← sender phone (E.164)
- *       "to": "96176489078",            ← your WA number
+ *       "from": "+9611234567",          â† sender phone (E.164)
+ *       "to": "96176489078",            â† your WA number
  *       "integrationType": "WHATSAPP",
  *       "receivedAt": "2024-01-01T00:00:00.000+0000",
  *       "messageId": "ABEGe4iX5oWGAgo-sJwNhpcc95Q",
  *       "message": {
  *         "type": "TEXT",
- *         "text": "Hello"               ← message body
+ *         "text": "Hello"               â† message body
  *       },
  *       "contact": { "name": "Customer Name" }
  *     }
@@ -40,15 +41,15 @@ import {
  *   "messageCount": 1,
  *   "pendingMessageCount": 0
  * }
- * ───────────────────────────────────────────────────────────────────────────
+ * â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
  */
 export async function POST(request) {
   try {
-    // ── 1. Parse raw body ────────────────────────────────────────────────────
+    // â”€â”€ 1. Parse raw body â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const rawPayload = await request.json().catch(() => ({}));
 
     console.log("============================================");
-    console.log("[whatsapp-webhook] 📥 RAW INFOBIP PAYLOAD:");
+    console.log("[whatsapp-webhook] ðŸ“¥ RAW INFOBIP PAYLOAD:");
     console.log(JSON.stringify(rawPayload, null, 2));
     console.log("============================================");
 
@@ -64,7 +65,7 @@ export async function POST(request) {
       )
     `.catch((e) => console.error("Failed to log debug payload:", e));
 
-    // ── 2. Extract the first result from Infobip's results[] array ───────────
+    // â”€â”€ 2. Extract the first result from Infobip's results[] array â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // Infobip always wraps messages in a "results" array.
     // Fall back to treating the root object as a single message for compatibility.
     const results = Array.isArray(rawPayload.results)
@@ -72,7 +73,7 @@ export async function POST(request) {
       : [rawPayload];
 
     if (results.length === 0) {
-      console.log("[whatsapp-webhook] ⚠ Empty results array — nothing to do");
+      console.log("[whatsapp-webhook] âš  Empty results array â€” nothing to do");
       return Response.json({ ok: true, message: "No results in payload" });
     }
 
@@ -98,16 +99,36 @@ export async function POST(request) {
  * @param {object} result - One item from results[]
  */
 async function processInboundMessage(result) {
-  // ── Extract fields using Infobip format ───────────────────────────────────
+  // Check if OVRLOAD is closed and trigger after-hours auto-reply with deduplication
+  try {
+    const { isClosed, beirutInfo } = isOverloadClosed();
+    const rawSender = result.from || result.sender?.contact?.identifierValue || result.sender?.identifierValue || result.sender;
+    if (isClosed && rawSender) {
+      const alreadySent = await hasAutoReplyBeenSent(rawSender, beirutInfo.periodId);
+      if (!alreadySent) {
+        console.log([whatsapp-webhook] OVRLOAD is closed (). Sending after-hours auto-reply to ...);
+        const sendResult = await sendClosedAutoReply(rawSender);
+        if (sendResult?.ok) {
+          await recordAutoReplySent(rawSender, beirutInfo.periodId);
+          console.log([whatsapp-webhook] Successfully sent closed auto-reply to );
+        }
+      } else {
+        console.log([whatsapp-webhook] Closed auto-reply already sent to  for period . Duplicate skipped.);
+      }
+    }
+  } catch (afterHoursErr) {
+    console.error("[whatsapp-webhook] Error in after-hours auto-reply check:", afterHoursErr?.message || afterHoursErr);
+  }
+  // â”€â”€ Extract fields using Infobip format â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   let fromPhone = null;
   let messageText = null;
   let timestamp = null;
   let infobipMessageId = null;
 
-  // ── Phone: Infobip puts it directly at result.from ────────────────────────
+  // â”€â”€ Phone: Infobip puts it directly at result.from â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (result.from) {
     fromPhone = String(result.from).trim();
-    console.log("[whatsapp-webhook] ✓ Phone from result.from:", fromPhone);
+    console.log("[whatsapp-webhook] âœ“ Phone from result.from:", fromPhone);
   } else {
     // Fallback: old Bird paths (kept for migration safety)
     fromPhone =
@@ -115,34 +136,34 @@ async function processInboundMessage(result) {
       result.sender?.identifierValue ||
       null;
     if (fromPhone) {
-      console.log("[whatsapp-webhook] ✓ Phone from Bird fallback:", fromPhone);
+      console.log("[whatsapp-webhook] âœ“ Phone from Bird fallback:", fromPhone);
     } else {
       console.log(
-        "[whatsapp-webhook] ✗ Could not find phone. Keys:",
+        "[whatsapp-webhook] âœ— Could not find phone. Keys:",
         Object.keys(result),
       );
     }
   }
 
-  // ── Message text: Infobip puts it at result.message.text ─────────────────
+  // â”€â”€ Message text: Infobip puts it at result.message.text â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (result.message?.text) {
     messageText = result.message.text;
     console.log(
-      "[whatsapp-webhook] ✓ Message from result.message.text:",
+      "[whatsapp-webhook] âœ“ Message from result.message.text:",
       messageText,
     );
   } else if (result.message?.caption) {
     // Image/video captions
     messageText = result.message.caption;
     console.log(
-      "[whatsapp-webhook] ✓ Message from result.message.caption:",
+      "[whatsapp-webhook] âœ“ Message from result.message.caption:",
       messageText,
     );
   } else if (result.message?.type && result.message.type !== "TEXT") {
     // Non-text message types: audio, image, video, etc.
     messageText = `[${result.message.type} message]`;
     console.log(
-      "[whatsapp-webhook] ✓ Non-text message type:",
+      "[whatsapp-webhook] âœ“ Non-text message type:",
       result.message.type,
     );
   } else {
@@ -155,22 +176,22 @@ async function processInboundMessage(result) {
       null;
     if (messageText) {
       console.log(
-        "[whatsapp-webhook] ✓ Message from Bird fallback:",
+        "[whatsapp-webhook] âœ“ Message from Bird fallback:",
         messageText,
       );
     } else {
       console.log(
-        "[whatsapp-webhook] ✗ Could not find message text. message obj:",
+        "[whatsapp-webhook] âœ— Could not find message text. message obj:",
         JSON.stringify(result.message || {}, null, 2),
       );
     }
   }
 
-  // ── Timestamp: Infobip uses result.receivedAt ─────────────────────────────
+  // â”€â”€ Timestamp: Infobip uses result.receivedAt â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (result.receivedAt) {
     timestamp = new Date(result.receivedAt);
     console.log(
-      "[whatsapp-webhook] ✓ Timestamp from result.receivedAt:",
+      "[whatsapp-webhook] âœ“ Timestamp from result.receivedAt:",
       timestamp,
     );
   } else if (result.createdAt) {
@@ -179,20 +200,20 @@ async function processInboundMessage(result) {
     timestamp = new Date(result.timestamp);
   } else {
     timestamp = new Date();
-    console.log("[whatsapp-webhook] ⚠ Using current time as timestamp");
+    console.log("[whatsapp-webhook] âš  Using current time as timestamp");
   }
 
-  // ── Message ID: Infobip uses result.messageId ─────────────────────────────
+  // â”€â”€ Message ID: Infobip uses result.messageId â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   infobipMessageId = result.messageId || result.id || null;
 
-  console.log("[whatsapp-webhook] 📋 PARSED VALUES:");
+  console.log("[whatsapp-webhook] ðŸ“‹ PARSED VALUES:");
   console.log("  Phone:", fromPhone);
   console.log("  Message:", messageText);
   console.log("  Timestamp:", timestamp);
   console.log("  Infobip Message ID:", infobipMessageId);
 
   if (!fromPhone || !messageText) {
-    console.error("[whatsapp-webhook] ❌ Missing required fields:", {
+    console.error("[whatsapp-webhook] âŒ Missing required fields:", {
       fromPhone,
       messageText,
     });
@@ -205,10 +226,10 @@ async function processInboundMessage(result) {
   }
 
   console.log(
-    `[whatsapp-webhook] ✅ Parsed — From: ${fromPhone}, Message: "${messageText}"`,
+    `[whatsapp-webhook] âœ… Parsed â€” From: ${fromPhone}, Message: "${messageText}"`,
   );
 
-  // ── Location Detection (Native Infobip location object or Google Maps URL in text) ──
+  // â”€â”€ Location Detection (Native Infobip location object or Google Maps URL in text) â”€â”€
   let detectedLat = null;
   let detectedLng = null;
   let detectedAddress = null;
@@ -221,7 +242,7 @@ async function processInboundMessage(result) {
     detectedAddress = locObj.address || locObj.name || null;
     detectedUrl = locObj.url || (detectedLat && detectedLng ? `https://maps.google.com/?q=${detectedLat},${detectedLng}` : null);
     if (!messageText || messageText === "[LOCATION message]") {
-      messageText = `📍 Shared Location: ${detectedAddress || (detectedLat && detectedLng ? `${detectedLat}, ${detectedLng}` : "Pinned Location")}`;
+      messageText = `ðŸ“ Shared Location: ${detectedAddress || (detectedLat && detectedLng ? `${detectedLat}, ${detectedLng}` : "Pinned Location")}`;
     }
   } else if (messageText && typeof messageText === "string") {
     // Check for Google Maps URLs or coordinates in text
@@ -252,13 +273,13 @@ async function processInboundMessage(result) {
   }
 
   if (detectedLat || detectedUrl) {
-    console.log(`[whatsapp-webhook] 📍 Location detected from ${fromPhone}: Lat=${detectedLat}, Lng=${detectedLng}, URL=${detectedUrl}`);
+    console.log(`[whatsapp-webhook] ðŸ“ Location detected from ${fromPhone}: Lat=${detectedLat}, Lng=${detectedLng}, URL=${detectedUrl}`);
   }
 
   // Normalize the phone number for consistent matching
   const normalizedPhone = normalizePhone(fromPhone);
 
-  // ── Find customer by phone ────────────────────────────────────────────────
+  // â”€â”€ Find customer by phone â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const [customer] = await sql`
     SELECT id, name, phone
     FROM auth_users
@@ -433,7 +454,7 @@ async function processInboundMessage(result) {
         )
         VALUES (
           ${customer.id}, ${orderId}, ${fromPhone}, 'inbound', 'customer_reply',
-          ${`⚠️ LOW RATING (${rating}/5): ${messageText}`}, ${infobipMessageId}, 'received', now()
+          ${`âš ï¸ LOW RATING (${rating}/5): ${messageText}`}, ${infobipMessageId}, 'received', now()
         )
       `;
 
@@ -449,7 +470,7 @@ async function processInboundMessage(result) {
       try {
         await sendWhatsAppFreeForm(
           fromPhone,
-          `Thank you so much for the ${rating}-star rating! 🙏 We're glad you enjoyed your order.`,
+          `Thank you so much for the ${rating}-star rating! ðŸ™ We're glad you enjoyed your order.`,
         );
       } catch (e) {
         console.error("[whatsapp-webhook] Failed to send acknowledgment:", e);
@@ -512,7 +533,7 @@ async function processInboundMessage(result) {
 }
 
 /**
- * GET — Webhook verification endpoint
+ * GET â€” Webhook verification endpoint
  * Infobip verifies by sending a GET with a challenge in the query string
  * or simply checking that the URL returns HTTP 200.
  */

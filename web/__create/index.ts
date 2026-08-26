@@ -1,4 +1,4 @@
-import { AsyncLocalStorage } from 'node:async_hooks';
+﻿import { AsyncLocalStorage } from 'node:async_hooks';
 import nodeConsole from 'node:console';
 import { skipCSRFCheck } from '@auth/core';
 import Credentials from '@auth/core/providers/credentials';
@@ -18,6 +18,7 @@ import NeonAdapter from './adapter';
 import { getHTMLForErrorPage } from './get-html-for-error-page';
 import { isAuthAction } from './is-auth-action';
 import { API_BASENAME, api } from './route-builder';
+import { POST as whatsappWebhookPost, GET as whatsappWebhookGet } from '../src/app/api/whatsapp-webhook/route.js';
 neonConfig.webSocketConstructor = ws;
 
 const als = new AsyncLocalStorage<{ requestId: string }>();
@@ -295,6 +296,10 @@ app.use('/api/auth/*', async (c, next) => {
   }
   return next();
 });
+app.post('/api/whatsapp-webhook', async (c) => whatsappWebhookPost(c.req.raw));
+app.get('/api/whatsapp-webhook', async (c) => whatsappWebhookGet(c.req.raw));
+app.post('/whatsapp-webhook', async (c) => whatsappWebhookPost(c.req.raw));
+app.get('/whatsapp-webhook', async (c) => whatsappWebhookGet(c.req.raw));
 app.route(API_BASENAME, api);
 
 export default createHonoServer({
