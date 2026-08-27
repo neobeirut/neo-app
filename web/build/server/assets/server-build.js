@@ -7,7 +7,7 @@ import { renderToPipeableStream } from 'react-dom/server';
 import { useButton } from '@react-aria/button';
 import * as React from 'react';
 import React__default, { useMemo, useEffect, useState, Component, useRef, useCallback } from 'react';
-import { A as AuthError, f as fetchWithHeaders } from './index-DcmcMjzy.js';
+import { A as AuthError, f as fetchWithHeaders } from './index-BK_wN9_-.js';
 import { toPng } from 'html-to-image';
 import { serializeError } from 'serialize-error';
 import { Toaster, toast } from 'sonner';
@@ -8996,7 +8996,36 @@ function OrderItem({
   onRemoveItem,
   onEditItem
 }) {
-  const itemCustomizations = Array.isArray(item.customizations) ? item.customizations : [];
+  let itemCustomizations = [];
+  if (Array.isArray(item.customizations)) {
+    itemCustomizations = item.customizations;
+  } else if (typeof item.customizations === "string") {
+    try {
+      let parsed = item.customizations;
+      while (typeof parsed === "string" && (parsed.startsWith("[") || parsed.startsWith("{") || parsed.startsWith('"'))) {
+        parsed = JSON.parse(parsed);
+      }
+      if (Array.isArray(parsed)) itemCustomizations = parsed;
+      else if (typeof parsed === "string") itemCustomizations = parsed.split(",").map((s) => ({
+        ingredient: s.trim()
+      }));
+    } catch {
+      itemCustomizations = (item.customizations || "").split(",").map((s) => ({
+        ingredient: s.trim()
+      }));
+    }
+  }
+  itemCustomizations = itemCustomizations.map((c) => {
+    if (typeof c === "string") return {
+      ingredient: c,
+      customization_type: "addon"
+    };
+    return {
+      ...c,
+      ingredient: c.ingredient || c.name || "",
+      customization_type: c.customization_type || (c.option_group_name ? "option" : "addon")
+    };
+  });
   const options = itemCustomizations.filter((c) => c.customization_type === "option");
   const addons = itemCustomizations.filter((c) => c.customization_type === "addon");
   const removals = itemCustomizations.filter((c) => c.customization_type === "remove");
@@ -9383,15 +9412,34 @@ function buildCustomizationsPayload$1(allCustomizations, selectedOptions, select
 function extractInitialSelections(item, allCustomizations) {
   const initialOptions = {};
   const initialCustomizations = [];
-  for (const c of item.customizations || []) {
+  let rawList = item.customizations || [];
+  if (typeof rawList === "string") {
+    try {
+      let parsed = rawList;
+      while (typeof parsed === "string" && (parsed.startsWith("[") || parsed.startsWith("{") || parsed.startsWith('"'))) {
+        parsed = JSON.parse(parsed);
+      }
+      if (Array.isArray(parsed)) rawList = parsed;
+      else if (typeof parsed === "string") rawList = parsed.split(",").map((s) => ({
+        ingredient: s.trim()
+      }));
+    } catch {
+      rawList = (rawList || "").split(",").map((s) => ({
+        ingredient: s.trim()
+      }));
+    }
+  }
+  for (const c of Array.isArray(rawList) ? rawList : []) {
+    if (!c) continue;
     const cType = c.customization_type || c.type;
+    const ing = (c.ingredient || c.name || (typeof c === "string" ? c : "")).trim();
     if (cType === "option") {
       const group = c.option_group_name || "Options";
       if (!initialOptions[group]) initialOptions[group] = [];
-      const matched = allCustomizations.find((ac) => c.id && ac.id === c.id || ac.ingredient === c.ingredient);
+      const matched = allCustomizations.find((ac) => c.id && ac.id === c.id || ing && ac.ingredient && ac.ingredient.toLowerCase() === ing.toLowerCase());
       if (matched) initialOptions[group].push(matched.id);
-    } else if (cType === "addon" || cType === "remove") {
-      const matched = allCustomizations.find((ac) => c.id && ac.id === c.id || ac.ingredient === c.ingredient);
+    } else {
+      const matched = allCustomizations.find((ac) => c.id && ac.id === c.id || ing && ac.ingredient && ac.ingredient.toLowerCase() === ing.toLowerCase());
       if (matched) initialCustomizations.push(matched.id);
     }
   }
@@ -25117,11 +25165,46 @@ const partitionCustomizations = (customizations) => {
     addons,
     removals
   };
-  const itemsList = Array.isArray(customizations) ? customizations : typeof customizations === "string" ? customizations.split(",").map((s) => s.trim()) : [customizations];
+  let parsed = customizations;
+  while (typeof parsed === "string") {
+    const trimmed = parsed.trim();
+    if (trimmed.startsWith("[") && trimmed.endsWith("]") || trimmed.startsWith("{") && trimmed.endsWith("}") || trimmed.startsWith('"') && trimmed.endsWith('"')) {
+      try {
+        parsed = JSON.parse(trimmed);
+      } catch (e) {
+        break;
+      }
+    } else {
+      break;
+    }
+  }
+  let itemsList = [];
+  if (Array.isArray(parsed)) {
+    itemsList = parsed;
+  } else if (typeof parsed === "string") {
+    itemsList = parsed.split(",").map((s) => s.trim());
+  } else if (parsed && typeof parsed === "object") {
+    itemsList = [parsed];
+  }
   itemsList.forEach((c) => {
-    const obj = typeof c === "string" ? {
-      name: c
-    } : c;
+    if (!c) return;
+    let obj = c;
+    if (typeof c === "string") {
+      let str = c.trim();
+      if (str.startsWith("{") && str.endsWith("}")) {
+        try {
+          obj = JSON.parse(str);
+        } catch (e) {
+          obj = {
+            name: str
+          };
+        }
+      } else {
+        obj = {
+          name: str
+        };
+      }
+    }
     const nameStr = (obj.name || obj.ingredient || obj.customization_name || "").trim();
     if (!nameStr) return;
     const nameLower = nameStr.toLowerCase();
@@ -25198,6 +25281,7 @@ function TabletPOSPage() {
   const [activeTabModal, setActiveTabModal] = useState(null);
   const knownOrderIdsRef = useRef(null);
   const isFirstPollRef = useRef(true);
+  const isPollingRef = useRef(false);
   const [currentProduct, setCurrentProduct] = useState(null);
   const [editingItemIndex, setEditingItemIndex] = useState(null);
   const [selectedCustomizations, setSelectedCustomizations] = useState([]);
@@ -25209,9 +25293,23 @@ function TabletPOSPage() {
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState("Cash");
   const [lastCompletedOrder, setLastCompletedOrder] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [initialLoadError, setInitialLoadError] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [validationError, setValidationError] = useState("");
   const [dispatchStatusMsg, setDispatchStatusMsg] = useState("");
+  const fetchWithTimeout = async (url, options = {}, timeoutMs = 1e4) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal
+      });
+      return response;
+    } finally {
+      clearTimeout(timer);
+    }
+  };
   const [completedOrdersHistory, setCompletedOrdersHistory] = useState([]);
   const [historySearchQuery, setHistorySearchQuery] = useState("");
   const [reprintSuccessMsg, setReprintSuccessMsg] = useState("");
@@ -25228,7 +25326,7 @@ function TabletPOSPage() {
   const [isSavingBranchStatus, setIsSavingBranchStatus] = useState(false);
   const fetchBranchStatusAndPrompt = async () => {
     try {
-      const res = await fetch("/api/branches");
+      const res = await fetchWithTimeout("/api/branches", {}, 8e3);
       const data = await res.json();
       if (data.branches && data.branches.length > 0) {
         const mainBranch = data.branches[0];
@@ -25411,7 +25509,7 @@ function TabletPOSPage() {
     setIsCheckingWaLocation(true);
     try {
       const cleanDigits = phone.replace(/\D/g, "");
-      const res = await fetch(`/api/pos/customers?q=${encodeURIComponent(cleanDigits)}`);
+      const res = await fetchWithTimeout(`/api/pos/customers?q=${encodeURIComponent(cleanDigits)}`, {}, 6e3);
       if (res.ok) {
         const data = await res.json();
         const match = (data.customers || []).find((c) => c.whatsapp_location && c.whatsapp_location.hasLocation);
@@ -25436,7 +25534,7 @@ function TabletPOSPage() {
     }
     setIsSearchingCustomers(true);
     try {
-      const res = await fetch(`/api/pos/customers?q=${encodeURIComponent(query.trim())}`);
+      const res = await fetchWithTimeout(`/api/pos/customers?q=${encodeURIComponent(query.trim())}`, {}, 6e3);
       const data = await res.json();
       if (data.customers && data.customers.length > 0) {
         setCustomerSearchResults(data.customers);
@@ -25476,7 +25574,7 @@ function TabletPOSPage() {
     if (orderType !== "delivery" || !deliveryAddress.trim()) return;
     const timer = setTimeout(async () => {
       try {
-        const res = await fetch("/api/delivery/calculate-cost", {
+        const res = await fetchWithTimeout("/api/delivery/calculate-cost", {
           method: "POST",
           headers: {
             "Content-Type": "application/json"
@@ -25485,7 +25583,7 @@ function TabletPOSPage() {
             branchId: 1,
             address: deliveryAddress.trim()
           })
-        });
+        }, 8e3);
         const data = await res.json();
         if (data.deliveryCost !== void 0 && data.deliveryCost > 0) {
           setDeliveryFee(data.deliveryCost);
@@ -25497,8 +25595,12 @@ function TabletPOSPage() {
     return () => clearTimeout(timer);
   }, [deliveryAddress, orderType]);
   const fetchProducts = async () => {
+    setInitialLoadError(null);
     try {
-      const res = await fetch("/api/pos/products");
+      const res = await fetchWithTimeout("/api/pos/products", {}, 1e4);
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: Failed to load menu products`);
+      }
       const data = await res.json();
       if (data.categories) setCategories(data.categories);
       if (data.products) setProducts(data.products);
@@ -25510,6 +25612,7 @@ function TabletPOSPage() {
       }
     } catch (err) {
       console.error("Error fetching POS products:", err);
+      setInitialLoadError(err.message || "Failed to connect to POS server");
     } finally {
       setLoading(false);
     }
@@ -25554,8 +25657,10 @@ function TabletPOSPage() {
     }
   };
   const fetchOrdersQueue = async () => {
+    if (isPollingRef.current) return;
+    isPollingRef.current = true;
     try {
-      const [pendingRes, heldRes] = await Promise.all([fetch("/api/pos/orders?type=pending"), fetch("/api/pos/orders?type=held")]);
+      const [pendingRes, heldRes] = await Promise.all([fetchWithTimeout("/api/pos/orders?type=pending", {}, 8e3), fetchWithTimeout("/api/pos/orders?type=held", {}, 8e3)]);
       const pendingData = await pendingRes.json();
       const heldData = await heldRes.json();
       if (pendingData.orders) {
@@ -25570,6 +25675,8 @@ function TabletPOSPage() {
       if (heldData.orders) setHeldOrders(heldData.orders);
     } catch (err) {
       console.error("Error fetching orders queue:", err);
+    } finally {
+      isPollingRef.current = false;
     }
   };
   const handleRejectPendingOrder = async (orderId) => {
@@ -25641,6 +25748,117 @@ function TabletPOSPage() {
     } finally {
       setDeletingHeldOrderId(null);
     }
+  };
+  const loadOrderToTicket = (o, defaultChannel = "WhatsApp") => {
+    if (!o) return;
+    setEditingOrderId(o.id);
+    setCustomerName(o.customer_name || "");
+    setCustomerPhone(o.customer_phone || "");
+    setDeliveryAddress(o.delivery_address || "");
+    const channelRaw = o.order_source || defaultChannel;
+    let channel = "WhatsApp";
+    if (channelRaw) {
+      const lower = String(channelRaw).toLowerCase();
+      if (lower.includes("toter")) channel = "Toters";
+      else if (lower.includes("nok")) channel = "NokNok";
+      else if (lower.includes("what") || lower.includes("wa")) channel = "WhatsApp";
+      else if (lower.includes("app")) channel = "App";
+      else if (lower === "pos" || lower === "pick-up" || lower === "pickup") channel = null;
+      else channel = channelRaw;
+    }
+    setSelectedChannel(channel);
+    const isPickup = (o.order_type || "").toLowerCase() === "pickup" || !o.delivery_address && (o.order_type || "").toLowerCase() !== "delivery";
+    setOrderType(isPickup ? "pickup" : "delivery");
+    const fee = o.delivery_fee !== void 0 && o.delivery_fee !== null ? Number(o.delivery_fee) : 0;
+    setDeliveryFee(fee);
+    const items = (o.items || []).map((i) => {
+      let custs = [];
+      if (i.customizations) {
+        let parsed = i.customizations;
+        while (typeof parsed === "string") {
+          const trimmed = parsed.trim();
+          if (trimmed.startsWith("[") && trimmed.endsWith("]") || trimmed.startsWith("{") && trimmed.endsWith("}") || trimmed.startsWith('"') && trimmed.endsWith('"')) {
+            try {
+              parsed = JSON.parse(trimmed);
+            } catch {
+              break;
+            }
+          } else {
+            break;
+          }
+        }
+        if (Array.isArray(parsed)) {
+          custs = parsed.map((c) => {
+            if (typeof c === "string") {
+              if (c.trim().startsWith("{") && c.trim().endsWith("}")) {
+                try {
+                  return JSON.parse(c);
+                } catch {
+                  return {
+                    name: c
+                  };
+                }
+              }
+              return {
+                name: c
+              };
+            }
+            return {
+              ...c,
+              name: c.name || c.ingredient || ""
+            };
+          });
+        } else if (typeof parsed === "string" && parsed.trim()) {
+          custs = parsed.split(",").map((s) => ({
+            name: s.trim()
+          })).filter((x) => x.name);
+        } else if (parsed && typeof parsed === "object") {
+          custs = [{
+            ...parsed,
+            name: parsed.name || parsed.ingredient || ""
+          }];
+        }
+      }
+      return {
+        product_id: i.product_id || i.id,
+        name: i.product_name || i.name,
+        unit_price: Number(i.unit_price) || 0,
+        qty: Number(i.quantity || i.qty) || 1,
+        selectedCustomizations: custs,
+        note: i.comment || i.note || ""
+      };
+    });
+    setTicketItems(items);
+    const itemsSubtotal = items.reduce((sum, item) => sum + item.unit_price * item.qty, 0);
+    const discAmt = Number(o.discount_amount) || 0;
+    if (discAmt > 0) {
+      if (itemsSubtotal > 0 && Math.abs(discAmt - itemsSubtotal * 0.15) < 0.05) {
+        setDiscountType("wa15");
+      } else if (itemsSubtotal > 0 && Math.abs(discAmt - itemsSubtotal * 0.1) < 0.05) {
+        setDiscountType("10%");
+      } else if (itemsSubtotal > 0 && Math.abs(discAmt - itemsSubtotal * 0.05) < 0.05) {
+        setDiscountType("5%");
+      } else if (itemsSubtotal > 0 && Math.abs(discAmt - itemsSubtotal * (totersDiscountPercent / 100)) < 0.05 && channel === "Toters") {
+        setDiscountType("toters");
+      } else if (itemsSubtotal > 0 && Math.abs(discAmt - itemsSubtotal * (noknokDiscountPercent / 100)) < 0.05 && channel === "NokNok") {
+        setDiscountType("noknok");
+      } else {
+        setDiscountType("custom");
+        setDiscountIsPercent(false);
+        setDiscountValInput(discAmt);
+      }
+    } else {
+      if (channel === "WhatsApp") {
+        setDiscountType("wa15");
+      } else if (channel === "Toters") {
+        setDiscountType("toters");
+      } else if (channel === "NokNok") {
+        setDiscountType("noknok");
+      } else {
+        setDiscountType("none");
+      }
+    }
+    setActiveTabModal(null);
   };
   useEffect(() => {
     if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "default") {
@@ -25913,6 +26131,9 @@ function TabletPOSPage() {
         setDeliveryAddress("");
         setSelectedChannel(null);
         setEditingOrderId(null);
+        setDiscountType("none");
+        setDiscountValInput(10);
+        setDiscountIsPercent(true);
         setDeliveryFee(0);
         setOrderType("delivery");
         fetchOrdersQueue();
@@ -26166,6 +26387,33 @@ function TabletPOSPage() {
       })
     });
   }
+  if (initialLoadError && products.length === 0) {
+    return /* @__PURE__ */ jsx("div", {
+      className: "h-screen bg-[#0F1115] text-white flex items-center justify-center font-bold text-lg",
+      children: /* @__PURE__ */ jsxs("div", {
+        className: "flex flex-col items-center gap-4 max-w-md text-center p-6 bg-[#161922] border border-[#262D3D] rounded-2xl shadow-2xl",
+        children: [/* @__PURE__ */ jsx("span", {
+          className: "text-4xl",
+          children: "⚠️"
+        }), /* @__PURE__ */ jsx("h2", {
+          className: "text-xl font-black text-rose-400",
+          children: "Connection Error"
+        }), /* @__PURE__ */ jsx("p", {
+          className: "text-sm font-normal text-slate-300",
+          children: initialLoadError
+        }), /* @__PURE__ */ jsx("button", {
+          onClick: () => {
+            setLoading(true);
+            fetchProducts();
+            fetchOrdersQueue();
+            fetchBranchStatusAndPrompt();
+          },
+          className: "mt-2 px-6 py-3 bg-[#eb660c] hover:bg-[#d55807] text-white font-bold rounded-xl shadow-lg transition active:scale-95",
+          children: "🔄 Retry Connection"
+        })]
+      })
+    });
+  }
   const realtimeStatus = getRealtimeBranchStatusInfo(branchStatus, posOperationalStatus, posClosureReason);
   return /* @__PURE__ */ jsxs("div", {
     className: "h-screen max-h-screen flex bg-[#0F1115] text-white font-sans overflow-hidden select-none",
@@ -26290,7 +26538,33 @@ function TabletPOSPage() {
       className: "w-[35%] flex flex-col h-full bg-[#14171F] overflow-hidden flex-shrink-0",
       children: [/* @__PURE__ */ jsxs("div", {
         className: "p-3 border-b border-[#262D3D] space-y-2 bg-[#181C24] flex-shrink-0",
-        children: [ticketItems.length > 0 && /* @__PURE__ */ jsx("div", {
+        children: [editingOrderId && /* @__PURE__ */ jsxs("div", {
+          className: "bg-blue-950/60 border border-blue-500/40 px-3 py-1.5 rounded-xl flex items-center justify-between text-xs",
+          children: [/* @__PURE__ */ jsxs("div", {
+            className: "flex items-center gap-1.5",
+            children: [/* @__PURE__ */ jsx("span", {
+              className: "animate-pulse",
+              children: "✏️"
+            }), /* @__PURE__ */ jsxs("span", {
+              className: "font-extrabold text-blue-300",
+              children: ["Editing Order #", editingOrderId]
+            })]
+          }), /* @__PURE__ */ jsx("button", {
+            type: "button",
+            onClick: () => {
+              setEditingOrderId(null);
+              setTicketItems([]);
+              setCustomerName("");
+              setCustomerPhone("");
+              setDeliveryAddress("");
+              setSelectedChannel(null);
+              setDiscountType("none");
+              setDeliveryFee(0);
+            },
+            className: "text-[10px] font-bold text-gray-400 hover:text-white bg-[#181C24] px-2 py-0.5 rounded border border-[#262D3D]",
+            children: "Cancel Edit"
+          })]
+        }), ticketItems.length > 0 && !editingOrderId && /* @__PURE__ */ jsx("div", {
           className: "flex justify-end",
           children: /* @__PURE__ */ jsx("button", {
             type: "button",
@@ -26317,7 +26591,7 @@ function TabletPOSPage() {
             id: "App",
             label: "App 📲"
           }].map((src) => {
-            const isCurrent = src.id === "POS" || src.id === "Pick-up" ? !selectedChannel : selectedChannel === src.id;
+            const isCurrent = src.id === "POS" || src.id === "Pick-up" ? !selectedChannel || selectedChannel === "POS" || selectedChannel === "Pick-up" : (selectedChannel || "").toLowerCase() === src.id.toLowerCase();
             return /* @__PURE__ */ jsx("button", {
               type: "button",
               onClick: () => handleSelectChannelSource(src.id === "POS" ? "Pick-up" : src.id),
@@ -26325,7 +26599,7 @@ function TabletPOSPage() {
               children: src.id === "POS" ? "Pick-up 🛍️" : src.label
             }, src.id);
           })
-        }), ["WhatsApp", "App"].includes(selectedChannel) && /* @__PURE__ */ jsxs("div", {
+        }), ["WhatsApp", "App"].some((ch) => (selectedChannel || "").toLowerCase() === ch.toLowerCase()) && /* @__PURE__ */ jsxs("div", {
           className: "flex items-center justify-between px-2 py-1 bg-[#0F1115] rounded-lg border border-[#262D3D]",
           children: [/* @__PURE__ */ jsxs("span", {
             className: "text-[11px] font-bold text-gray-400",
@@ -26636,7 +26910,7 @@ function TabletPOSPage() {
             })]
           }), /* @__PURE__ */ jsxs("div", {
             className: "flex items-center gap-2 pt-2 border-t border-[#262D3D]",
-            children: [!["Toters", "NokNok"].includes(selectedChannel) ? /* @__PURE__ */ jsxs("div", {
+            children: [!["toters", "noknok"].includes((selectedChannel || "").toLowerCase()) ? /* @__PURE__ */ jsxs("div", {
               className: "grid grid-cols-2 gap-1 w-[45%] shrink-0",
               children: [/* @__PURE__ */ jsx("button", {
                 type: "button",
@@ -26652,7 +26926,7 @@ function TabletPOSPage() {
             }) : /* @__PURE__ */ jsx("div", {
               className: "w-[45%] shrink-0",
               children: /* @__PURE__ */ jsxs("div", {
-                className: `py-3 px-2 rounded-xl text-xs font-black text-center border ${selectedChannel === "Toters" ? "bg-[#00C49F]/20 text-[#00C49F] border-[#00C49F]/40" : "bg-[#FF5A5F]/20 text-[#FF5A5F] border-[#FF5A5F]/40"}`,
+                className: `py-3 px-2 rounded-xl text-xs font-black text-center border ${(selectedChannel || "").toLowerCase() === "toters" ? "bg-[#00C49F]/20 text-[#00C49F] border-[#00C49F]/40" : "bg-[#FF5A5F]/20 text-[#FF5A5F] border-[#FF5A5F]/40"}`,
                 children: [selectedChannel, " (Prepaid)"]
               })
             }), /* @__PURE__ */ jsx("button", {
@@ -27083,26 +27357,7 @@ function TabletPOSPage() {
                 className: `px-3 py-2 border rounded-xl font-bold transition-all disabled:opacity-50 ${confirmingRejectId === o.id ? "bg-red-600 text-white border-red-400 animate-pulse font-black" : "bg-rose-950/60 text-rose-300 border-rose-500/40 hover:bg-rose-900/80"}`,
                 children: rejectingOrderId === o.id ? "Rejecting..." : confirmingRejectId === o.id ? "Tap again to Reject" : "Reject"
               }), /* @__PURE__ */ jsx("button", {
-                onClick: () => {
-                  setEditingOrderId(o.id);
-                  setCustomerName(o.customer_name || "");
-                  setCustomerPhone(o.customer_phone || "");
-                  setDeliveryAddress(o.delivery_address || "");
-                  setSelectedChannel("WhatsApp");
-                  setTicketItems((o.items || []).map((i) => ({
-                    product_id: i.product_id || i.id,
-                    name: i.product_name || i.name,
-                    unit_price: i.unit_price || 0,
-                    qty: i.quantity || i.qty || 1,
-                    selectedCustomizations: i.customizations ? Array.isArray(i.customizations) ? i.customizations.map((c) => typeof c === "string" ? {
-                      name: c
-                    } : c) : [{
-                      name: i.customizations
-                    }] : [],
-                    note: i.comment || ""
-                  })));
-                  setActiveTabModal(null);
-                },
+                onClick: () => loadOrderToTicket(o, "WhatsApp"),
                 className: "px-4 py-2 bg-[#eb660c] hover:bg-[#d55909] text-white font-black rounded-xl shadow-md",
                 children: "Load to Ticket ➔"
               })]
@@ -27159,26 +27414,7 @@ function TabletPOSPage() {
                 })]
               }), /* @__PURE__ */ jsxs("button", {
                 type: "button",
-                onClick: () => {
-                  setEditingOrderId(o.id);
-                  setCustomerName(o.customer_name || "");
-                  setCustomerPhone(o.customer_phone || "");
-                  setDeliveryAddress(o.delivery_address || "");
-                  setSelectedChannel(o.order_source || "POS");
-                  setTicketItems((o.items || []).map((i) => ({
-                    product_id: i.product_id || i.id,
-                    name: i.product_name || i.name,
-                    unit_price: i.unit_price || 0,
-                    qty: i.quantity || i.qty || 1,
-                    selectedCustomizations: i.customizations ? Array.isArray(i.customizations) ? i.customizations.map((c) => typeof c === "string" ? {
-                      name: c
-                    } : c) : [{
-                      name: i.customizations
-                    }] : [],
-                    note: i.comment || ""
-                  })));
-                  setActiveTabModal(null);
-                },
+                onClick: () => loadOrderToTicket(o, "POS"),
                 className: "px-4 py-2 bg-[#eb660c] hover:bg-[#d55909] text-white font-black rounded-xl shadow-md flex items-center gap-1",
                 children: [/* @__PURE__ */ jsx("span", {
                   children: "Restore Ticket"
@@ -27261,134 +27497,164 @@ function TabletPOSPage() {
                 })]
               }), /* @__PURE__ */ jsx("div", {
                 className: "space-y-3 pl-1",
-                children: ordersGroup.map((order) => /* @__PURE__ */ jsxs("div", {
-                  className: "p-4 bg-[#0F1115] border border-[#262D3D] rounded-xl space-y-3 text-xs shadow-sm hover:border-[#3A455C] transition-all",
-                  children: [/* @__PURE__ */ jsxs("div", {
-                    className: "flex justify-between items-start border-b border-[#262D3D]/60 pb-2.5",
+                children: ordersGroup.map((order) => {
+                  const isCompleted = (order.status || "").toLowerCase() === "completed" || (order.status || "").toLowerCase() === "delivered";
+                  const isCancelled = (order.status || "").toLowerCase() === "cancelled" || (order.status || "").toLowerCase() === "rejected";
+                  const canEdit = !isCompleted && !isCancelled;
+                  return /* @__PURE__ */ jsxs("div", {
+                    onClick: () => {
+                      if (canEdit) {
+                        loadOrderToTicket(order, order.order_source || "POS");
+                        setActiveTabModal(null);
+                      }
+                    },
+                    className: `p-4 bg-[#0F1115] border border-[#262D3D] rounded-xl space-y-3 text-xs shadow-sm transition-all ${canEdit ? "hover:border-[#eb660c] cursor-pointer" : "hover:border-[#3A455C]"}`,
                     children: [/* @__PURE__ */ jsxs("div", {
-                      className: "space-y-1",
+                      className: "flex justify-between items-start border-b border-[#262D3D]/60 pb-2.5",
                       children: [/* @__PURE__ */ jsxs("div", {
-                        className: "flex items-center gap-2",
-                        children: [/* @__PURE__ */ jsxs("span", {
-                          className: "font-black text-white text-base",
-                          children: ["Order #", order.id]
-                        }), /* @__PURE__ */ jsx("span", {
-                          className: `px-2.5 py-0.5 rounded-md text-[11px] font-extrabold ${order.order_source === "Toters" ? "bg-[#00C49F] text-black" : order.order_source === "WhatsApp" ? "bg-[#25D366] text-black" : order.order_source === "NokNok" ? "bg-[#FF5A5F] text-white" : order.order_source === "App" ? "bg-[#3B82F6] text-white" : "bg-[#eb660c] text-white"}`,
-                          children: order.order_source || "POS"
-                        }), /* @__PURE__ */ jsx("span", {
-                          className: "text-[10px] bg-[#262D3D] text-gray-300 px-2 py-0.5 rounded font-bold uppercase",
-                          children: order.order_type || "pickup"
-                        }), order.status && /* @__PURE__ */ jsx("span", {
-                          className: "text-[10px] bg-emerald-950 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded font-extrabold uppercase",
-                          children: order.status
+                        className: "space-y-1",
+                        children: [/* @__PURE__ */ jsxs("div", {
+                          className: "flex items-center gap-2",
+                          children: [/* @__PURE__ */ jsxs("span", {
+                            className: "font-black text-white text-base",
+                            children: ["Order #", order.id]
+                          }), /* @__PURE__ */ jsx("span", {
+                            className: `px-2.5 py-0.5 rounded-md text-[11px] font-extrabold ${order.order_source === "Toters" ? "bg-[#00C49F] text-black" : order.order_source === "WhatsApp" ? "bg-[#25D366] text-black" : order.order_source === "NokNok" ? "bg-[#FF5A5F] text-white" : order.order_source === "App" ? "bg-[#3B82F6] text-white" : "bg-[#eb660c] text-white"}`,
+                            children: order.order_source || "POS"
+                          }), /* @__PURE__ */ jsx("span", {
+                            className: "text-[10px] bg-[#262D3D] text-gray-300 px-2 py-0.5 rounded font-bold uppercase",
+                            children: order.order_type || "pickup"
+                          }), order.status && /* @__PURE__ */ jsx("span", {
+                            className: `text-[10px] px-2 py-0.5 rounded font-extrabold uppercase border ${isCompleted ? "bg-slate-800 text-slate-300 border-slate-700" : isCancelled ? "bg-rose-950 text-rose-300 border-rose-800" : "bg-emerald-950 text-emerald-300 border-emerald-500/30"}`,
+                            children: order.status
+                          })]
+                        }), /* @__PURE__ */ jsxs("div", {
+                          className: "text-[11px] text-gray-400 font-medium",
+                          children: ["🕒 ", order.created_at ? new Date(order.created_at).toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit"
+                          }) : "Time N/A", " • Payment: ", /* @__PURE__ */ jsx("strong", {
+                            className: "text-white",
+                            children: order.payment_method || "Cash"
+                          })]
                         })]
                       }), /* @__PURE__ */ jsxs("div", {
-                        className: "text-[11px] text-gray-400 font-medium",
-                        children: ["🕒 ", order.created_at ? new Date(order.created_at).toLocaleTimeString([], {
-                          hour: "2-digit",
-                          minute: "2-digit"
-                        }) : "Time N/A", " • Payment: ", /* @__PURE__ */ jsx("strong", {
-                          className: "text-white",
-                          children: order.payment_method || "Cash"
-                        })]
-                      })]
-                    }), /* @__PURE__ */ jsxs("div", {
-                      className: "text-right",
-                      children: [/* @__PURE__ */ jsxs("div", {
-                        className: "text-xl font-black text-[#eb660c]",
-                        children: ["$", parseFloat(order.total_amount || 0).toFixed(2)]
-                      }), /* @__PURE__ */ jsx("button", {
-                        onClick: () => handleReprintOrder(order),
-                        className: "mt-1 px-3 py-1.5 bg-[#eb660c] hover:bg-[#d55909] text-white rounded-xl text-[11px] font-extrabold shadow-sm flex items-center gap-1.5 ml-auto",
-                        children: "🖨️ Reprint Receipt"
-                      })]
-                    })]
-                  }), (order.customer_name || order.customer_phone || order.delivery_address) && /* @__PURE__ */ jsxs("div", {
-                    className: "text-xs text-gray-300 bg-[#181C24] p-3 rounded-xl border border-[#262D3D] space-y-1",
-                    children: [order.customer_name && /* @__PURE__ */ jsxs("div", {
-                      children: ["👤 ", /* @__PURE__ */ jsx("strong", {
-                        children: "Customer:"
-                      }), " ", order.customer_name]
-                    }), order.customer_phone && /* @__PURE__ */ jsxs("div", {
-                      children: ["📞 ", /* @__PURE__ */ jsx("strong", {
-                        children: "Phone:"
-                      }), " ", order.customer_phone]
-                    }), order.delivery_address && /* @__PURE__ */ jsxs("div", {
-                      children: ["🏠 ", /* @__PURE__ */ jsx("strong", {
-                        children: "Delivery Address:"
-                      }), " ", order.delivery_address]
-                    })]
-                  }), /* @__PURE__ */ jsxs("div", {
-                    className: "space-y-1.5",
-                    children: [/* @__PURE__ */ jsx("div", {
-                      className: "font-extrabold text-gray-300 text-[11px] uppercase tracking-wider",
-                      children: "Ordered Items:"
-                    }), /* @__PURE__ */ jsx("div", {
-                      className: "space-y-1",
-                      children: (order.items || []).map((item, idx) => /* @__PURE__ */ jsxs("div", {
-                        className: "bg-[#181C24] border border-[#262D3D] p-2 rounded-lg flex items-start justify-between text-xs",
+                        className: "text-right flex flex-col items-end gap-1.5",
                         children: [/* @__PURE__ */ jsxs("div", {
-                          children: [/* @__PURE__ */ jsxs("div", {
-                            className: "font-bold text-white",
-                            children: [/* @__PURE__ */ jsxs("span", {
-                              className: "text-[#eb660c] font-black",
-                              children: [item.quantity || item.qty, "x"]
-                            }), " ", item.product_name || item.name]
-                          }), item.customizations && (() => {
-                            const {
-                              addons,
-                              removals
-                            } = partitionCustomizations(item.customizations);
-                            return /* @__PURE__ */ jsxs("div", {
-                              className: "text-[10px] space-y-0.5 mt-0.5",
-                              children: [addons.length > 0 && /* @__PURE__ */ jsxs("div", {
-                                className: "text-gray-300",
-                                children: [/* @__PURE__ */ jsx("strong", {
-                                  className: "text-gray-400",
-                                  children: "+ Addons:"
-                                }), " ", addons.join(", ")]
-                              }), removals.length > 0 && /* @__PURE__ */ jsxs("div", {
-                                className: "text-rose-400 font-extrabold",
-                                children: [/* @__PURE__ */ jsx("strong", {
-                                  children: "REMOVE:"
-                                }), " ", removals.join(", ")]
-                              })]
-                            });
-                          })(), item.comment && /* @__PURE__ */ jsxs("div", {
-                            className: "text-[10px] text-amber-300 italic",
-                            children: ["Note: ", item.comment]
+                          className: "text-xl font-black text-[#eb660c]",
+                          children: ["$", parseFloat(order.total_amount || 0).toFixed(2)]
+                        }), /* @__PURE__ */ jsxs("div", {
+                          className: "flex items-center gap-1.5 mt-0.5",
+                          children: [canEdit ? /* @__PURE__ */ jsx("button", {
+                            type: "button",
+                            onClick: (e) => {
+                              e.stopPropagation();
+                              loadOrderToTicket(order, order.order_source || "POS");
+                              setActiveTabModal(null);
+                            },
+                            className: "px-3 py-1.5 bg-[#3B82F6] hover:bg-blue-600 text-white rounded-xl text-[11px] font-extrabold shadow-sm flex items-center gap-1 transition active:scale-95",
+                            children: "✏️ Edit in POS"
+                          }) : /* @__PURE__ */ jsxs("span", {
+                            className: "text-[10px] font-bold text-gray-400 bg-[#181C24] px-2 py-1 rounded-lg border border-[#262D3D]",
+                            children: ["🔒 ", isCompleted ? "Completed" : "Locked"]
+                          }), /* @__PURE__ */ jsx("button", {
+                            type: "button",
+                            onClick: (e) => {
+                              e.stopPropagation();
+                              handleReprintOrder(order);
+                            },
+                            className: "px-3 py-1.5 bg-[#eb660c] hover:bg-[#d55909] text-white rounded-xl text-[11px] font-extrabold shadow-sm flex items-center gap-1 transition active:scale-95",
+                            children: "🖨️ Reprint"
                           })]
-                        }), /* @__PURE__ */ jsxs("span", {
-                          className: "font-bold text-gray-200",
-                          children: ["$", ((item.unit_price || 0) * (item.quantity || item.qty || 1)).toFixed(2)]
                         })]
-                      }, idx))
-                    })]
-                  }), /* @__PURE__ */ jsxs("div", {
-                    className: "bg-[#181C24] border border-[#262D3D] p-2.5 rounded-xl flex items-center justify-between text-xs text-gray-300 font-semibold",
-                    children: [/* @__PURE__ */ jsxs("div", {
-                      children: ["Subtotal: ", /* @__PURE__ */ jsxs("strong", {
-                        className: "text-white",
-                        children: ["$", parseFloat(order.subtotal_amount || 0).toFixed(2)]
                       })]
-                    }), parseFloat(order.discount_amount || 0) > 0 && /* @__PURE__ */ jsxs("div", {
-                      className: "text-amber-400",
-                      children: ["Discount: ", /* @__PURE__ */ jsxs("strong", {
-                        children: ["-$", parseFloat(order.discount_amount).toFixed(2)]
-                      })]
-                    }), /* @__PURE__ */ jsxs("div", {
-                      children: ["Delivery Fee: ", /* @__PURE__ */ jsxs("strong", {
-                        className: parseFloat(order.delivery_fee || 0) > 0 ? "text-blue-400" : "text-gray-400",
-                        children: ["$", parseFloat(order.delivery_fee || 0).toFixed(2)]
+                    }), (order.customer_name || order.customer_phone || order.delivery_address) && /* @__PURE__ */ jsxs("div", {
+                      className: "text-xs text-gray-300 bg-[#181C24] p-3 rounded-xl border border-[#262D3D] space-y-1",
+                      children: [order.customer_name && /* @__PURE__ */ jsxs("div", {
+                        children: ["👤 ", /* @__PURE__ */ jsx("strong", {
+                          children: "Customer:"
+                        }), " ", order.customer_name]
+                      }), order.customer_phone && /* @__PURE__ */ jsxs("div", {
+                        children: ["📞 ", /* @__PURE__ */ jsx("strong", {
+                          children: "Phone:"
+                        }), " ", order.customer_phone]
+                      }), order.delivery_address && /* @__PURE__ */ jsxs("div", {
+                        children: ["🏠 ", /* @__PURE__ */ jsx("strong", {
+                          children: "Delivery Address:"
+                        }), " ", order.delivery_address]
                       })]
                     }), /* @__PURE__ */ jsxs("div", {
-                      children: ["Total: ", /* @__PURE__ */ jsxs("strong", {
-                        className: "text-[#eb660c] font-black text-sm",
-                        children: ["$", parseFloat(order.total_amount || 0).toFixed(2)]
+                      className: "space-y-1.5",
+                      children: [/* @__PURE__ */ jsx("div", {
+                        className: "font-extrabold text-gray-300 text-[11px] uppercase tracking-wider",
+                        children: "Ordered Items:"
+                      }), /* @__PURE__ */ jsx("div", {
+                        className: "space-y-1",
+                        children: (order.items || []).map((item, idx) => /* @__PURE__ */ jsxs("div", {
+                          className: "bg-[#181C24] border border-[#262D3D] p-2 rounded-lg flex items-start justify-between text-xs",
+                          children: [/* @__PURE__ */ jsxs("div", {
+                            children: [/* @__PURE__ */ jsxs("div", {
+                              className: "font-bold text-white",
+                              children: [/* @__PURE__ */ jsxs("span", {
+                                className: "text-[#eb660c] font-black",
+                                children: [item.quantity || item.qty, "x"]
+                              }), " ", item.product_name || item.name]
+                            }), item.customizations && (() => {
+                              const {
+                                addons,
+                                removals
+                              } = partitionCustomizations(item.customizations);
+                              return /* @__PURE__ */ jsxs("div", {
+                                className: "text-[10px] space-y-0.5 mt-0.5",
+                                children: [addons.length > 0 && /* @__PURE__ */ jsxs("div", {
+                                  className: "text-gray-300",
+                                  children: [/* @__PURE__ */ jsx("strong", {
+                                    className: "text-gray-400",
+                                    children: "+ Addons:"
+                                  }), " ", addons.join(", ")]
+                                }), removals.length > 0 && /* @__PURE__ */ jsxs("div", {
+                                  className: "text-rose-400 font-extrabold",
+                                  children: [/* @__PURE__ */ jsx("strong", {
+                                    children: "REMOVE:"
+                                  }), " ", removals.join(", ")]
+                                })]
+                              });
+                            })(), item.comment && /* @__PURE__ */ jsxs("div", {
+                              className: "text-[10px] text-amber-300 italic",
+                              children: ["Note: ", item.comment]
+                            })]
+                          }), /* @__PURE__ */ jsxs("span", {
+                            className: "font-bold text-gray-200",
+                            children: ["$", ((item.unit_price || 0) * (item.quantity || item.qty || 1)).toFixed(2)]
+                          })]
+                        }, idx))
+                      })]
+                    }), /* @__PURE__ */ jsxs("div", {
+                      className: "bg-[#181C24] border border-[#262D3D] p-2.5 rounded-xl flex items-center justify-between text-xs text-gray-300 font-semibold",
+                      children: [/* @__PURE__ */ jsxs("div", {
+                        children: ["Subtotal: ", /* @__PURE__ */ jsxs("strong", {
+                          className: "text-white",
+                          children: ["$", parseFloat(order.subtotal_amount || 0).toFixed(2)]
+                        })]
+                      }), parseFloat(order.discount_amount || 0) > 0 && /* @__PURE__ */ jsxs("div", {
+                        className: "text-amber-400",
+                        children: ["Discount: ", /* @__PURE__ */ jsxs("strong", {
+                          children: ["-$", parseFloat(order.discount_amount).toFixed(2)]
+                        })]
+                      }), /* @__PURE__ */ jsxs("div", {
+                        children: ["Delivery Fee: ", /* @__PURE__ */ jsxs("strong", {
+                          className: parseFloat(order.delivery_fee || 0) > 0 ? "text-blue-400" : "text-gray-400",
+                          children: ["$", parseFloat(order.delivery_fee || 0).toFixed(2)]
+                        })]
+                      }), /* @__PURE__ */ jsxs("div", {
+                        children: ["Total: ", /* @__PURE__ */ jsxs("strong", {
+                          className: "text-[#eb660c] font-black text-sm",
+                          children: ["$", parseFloat(order.total_amount || 0).toFixed(2)]
+                        })]
                       })]
                     })]
-                  })]
-                }, order.id))
+                  }, order.id);
+                })
               })]
             }, dateGroup));
           })()
@@ -29297,7 +29563,7 @@ const route45 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   loader
 }, Symbol.toStringTag, { value: 'Module' }));
 
-const serverManifest = {'entry':{'module':'/assets/entry.client-liMABW4G.js','imports':['/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/index-BxFb8htY.js'],'css':[]},'routes':{'root':{'id':'root','parentId':undefined,'path':'','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':true,'module':'/assets/root-tk3LpbQU.js','imports':['/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/index-BxFb8htY.js','/assets/index-BBR7LY95.js','/assets/react-DavxrMT9.js','/assets/index-CxBh_wWd.js','/assets/clsx-DPoTaEZk.js'],'css':['/assets/root-D9HxQDZZ.css'],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'page':{'id':'page','parentId':'root','path':undefined,'index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-C2R2Vjjz.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/deviceDetection-CkE4UybK.js','/assets/star-DTzK1ayn.js','/assets/style-ZhL7ZwD6.js','/assets/map-pin-TY6H8hNN.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js','/assets/createLucideIcon-BrJVIngv.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'account/logout/page':{'id':'account/logout/page','parentId':'root','path':'account/logout','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-Crw6wYUU.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'account/signin/page':{'id':'account/signin/page','parentId':'root','path':'account/signin','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-DxgWhfhl.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'account/signup/page':{'id':'account/signup/page','parentId':'root','path':'account/signup','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-BQ421ORZ.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'admin/page':{'id':'admin/page','parentId':'root','path':'admin','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-BonenByB.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/createLucideIcon-BrJVIngv.js','/assets/user-Bzpxecd1.js','/assets/map-pin-TY6H8hNN.js','/assets/send-eEqkkoAl.js','/assets/circle-check-big-Cl9b2kPc.js','/assets/star-DTzK1ayn.js','/assets/clsx-DPoTaEZk.js','/assets/trash-2-Cf2fbJsq.js','/assets/useUpload-Feax1KnY.js','/assets/index-CxBh_wWd.js','/assets/style-ZhL7ZwD6.js','/assets/search-Dv47v1IZ.js','/assets/useMutation-BRFBv2lw.js','/assets/useQuery-VK6o8YRK.js','/assets/check-iahjbKaR.js','/assets/triangle-alert-dBOqLNDd.js','/assets/refresh-cw-Bl_g2IAI.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'admin/account-recovery/page':{'id':'admin/account-recovery/page','parentId':'root','path':'admin/account-recovery','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-CpBOcQXU.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/useMutation-BRFBv2lw.js','/assets/arrow-left-CoWpwVe2.js','/assets/key-round-BE6ki8ID.js','/assets/createLucideIcon-BrJVIngv.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'admin/client/[id]/page':{'id':'admin/client/[id]/page','parentId':'root','path':'admin/client/:id','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-BKfLpYfR.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/arrow-left-CoWpwVe2.js','/assets/user-Bzpxecd1.js','/assets/map-pin-TY6H8hNN.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js','/assets/createLucideIcon-BrJVIngv.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'admin/forgot-password/page':{'id':'admin/forgot-password/page','parentId':'root','path':'admin/forgot-password','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-D4gp7f4C.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/useMutation-BRFBv2lw.js','/assets/arrow-left-CoWpwVe2.js','/assets/createLucideIcon-BrJVIngv.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'admin/inspect-ready-pickup/page':{'id':'admin/inspect-ready-pickup/page','parentId':'root','path':'admin/inspect-ready-pickup','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-CRl2a1hs.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'admin/login/page':{'id':'admin/login/page','parentId':'root','path':'admin/login','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-PKdpe8Xt.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/createLucideIcon-BrJVIngv.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'admin/logo/page':{'id':'admin/logo/page','parentId':'root','path':'admin/logo','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-DOCKtAII.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/useUpload-Feax1KnY.js','/assets/useQuery-VK6o8YRK.js','/assets/useMutation-BRFBv2lw.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'admin/push-diagnostics/page':{'id':'admin/push-diagnostics/page','parentId':'root','path':'admin/push-diagnostics','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-DafB5jPa.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/search-Dv47v1IZ.js','/assets/circle-check-big-Cl9b2kPc.js','/assets/circle-x-mKMDan5Z.js','/assets/send-eEqkkoAl.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js','/assets/createLucideIcon-BrJVIngv.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'admin/reset-password/page':{'id':'admin/reset-password/page','parentId':'root','path':'admin/reset-password','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-BZW1B-Tb.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/useMutation-BRFBv2lw.js','/assets/arrow-left-CoWpwVe2.js','/assets/key-round-BE6ki8ID.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js','/assets/createLucideIcon-BrJVIngv.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'admin/review-reports/page':{'id':'admin/review-reports/page','parentId':'root','path':'admin/review-reports','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-Bj-UTPuS.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/useQuery-VK6o8YRK.js','/assets/useMutation-BRFBv2lw.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'admin/token-cleanup/page':{'id':'admin/token-cleanup/page','parentId':'root','path':'admin/token-cleanup','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-OMSv6Kre.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/trash-2-Cf2fbJsq.js','/assets/triangle-alert-dBOqLNDd.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js','/assets/createLucideIcon-BrJVIngv.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'admin/whatsapp-diagnostics/page':{'id':'admin/whatsapp-diagnostics/page','parentId':'root','path':'admin/whatsapp-diagnostics','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-CH60XXPT.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/refresh-cw-Bl_g2IAI.js','/assets/circle-check-big-Cl9b2kPc.js','/assets/circle-x-mKMDan5Z.js','/assets/triangle-alert-dBOqLNDd.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js','/assets/createLucideIcon-BrJVIngv.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'admin/whatsapp-forensic-comparison/page':{'id':'admin/whatsapp-forensic-comparison/page','parentId':'root','path':'admin/whatsapp-forensic-comparison','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-KWeSfEUS.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'admin/whatsapp-setup/page':{'id':'admin/whatsapp-setup/page','parentId':'root','path':'admin/whatsapp-setup','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-DlVnv5P0.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/circle-check-big-Cl9b2kPc.js','/assets/circle-x-mKMDan5Z.js','/assets/createLucideIcon-BrJVIngv.js','/assets/check-iahjbKaR.js','/assets/triangle-alert-dBOqLNDd.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'admin/whatsapp-status-test/page':{'id':'admin/whatsapp-status-test/page','parentId':'root','path':'admin/whatsapp-status-test','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-Bufw1cl7.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'admin/whatsapp-test/page':{'id':'admin/whatsapp-test/page','parentId':'root','path':'admin/whatsapp-test','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-A_WwKxFh.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/createLucideIcon-BrJVIngv.js','/assets/circle-check-big-Cl9b2kPc.js','/assets/send-eEqkkoAl.js','/assets/refresh-cw-Bl_g2IAI.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'apple-review-instructions/page':{'id':'apple-review-instructions/page','parentId':'root','path':'apple-review-instructions','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-DdcbHacq.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'contact/page':{'id':'contact/page','parentId':'root','path':'contact','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-C4qww7fP.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/style-ZhL7ZwD6.js','/assets/deviceDetection-CkE4UybK.js','/assets/map-pin-TY6H8hNN.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js','/assets/createLucideIcon-BrJVIngv.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'delete-account/page':{'id':'delete-account/page','parentId':'root','path':'delete-account','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-Zej92Qdk.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'download-app/page':{'id':'download-app/page','parentId':'root','path':'download-app','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-3mJmMa_x.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/createLucideIcon-BrJVIngv.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'errors/async-effect-error/page':{'id':'errors/async-effect-error/page','parentId':'root','path':'errors/async-effect-error','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-C3DSvJks.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'errors/event-handler-error/page':{'id':'errors/event-handler-error/page','parentId':'root','path':'errors/event-handler-error','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-Dlmg34pI.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'errors/hook-rule/page':{'id':'errors/hook-rule/page','parentId':'root','path':'errors/hook-rule','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-C_1skYRZ.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'errors/infinite-render-loop/page':{'id':'errors/infinite-render-loop/page','parentId':'root','path':'errors/infinite-render-loop','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-UbSH8n07.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'errors/json-parse-error/page':{'id':'errors/json-parse-error/page','parentId':'root','path':'errors/json-parse-error','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-B8CkQfuS.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'errors/missing-component/page':{'id':'errors/missing-component/page','parentId':'root','path':'errors/missing-component','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-ByA1l5ig.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'errors/null-access/page':{'id':'errors/null-access/page','parentId':'root','path':'errors/null-access','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-DsK65deZ.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'errors/render-object/page':{'id':'errors/render-object/page','parentId':'root','path':'errors/render-object','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-BNSp7H7Z.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'errors/type-error-not-function/page':{'id':'errors/type-error-not-function/page','parentId':'root','path':'errors/type-error-not-function','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-Cj9YUyTo.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'errors/undefined-access/page':{'id':'errors/undefined-access/page','parentId':'root','path':'errors/undefined-access','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-xx11vfJq.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'errors/unhandled-promise/page':{'id':'errors/unhandled-promise/page','parentId':'root','path':'errors/unhandled-promise','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-DoLwQjtT.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'health/page':{'id':'health/page','parentId':'root','path':'health','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-CEz6DfFv.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'init-admin/page':{'id':'init-admin/page','parentId':'root','path':'init-admin','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page--JxmU3l1.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'init-customer/page':{'id':'init-customer/page','parentId':'root','path':'init-customer','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-DDq8C9Ro.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'init-test-account/page':{'id':'init-test-account/page','parentId':'root','path':'init-test-account','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-DXh_nT9k.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'pos/page':{'id':'pos/page','parentId':'root','path':'pos','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-BDVhFmvC.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'shop/page':{'id':'shop/page','parentId':'root','path':'shop','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-9hx0RhfF.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/useUser-d4TzF8D3.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'shop/cart/page':{'id':'shop/cart/page','parentId':'root','path':'shop/cart','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-c2IheuW-.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/useUser-d4TzF8D3.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'shop/checkout/page':{'id':'shop/checkout/page','parentId':'root','path':'shop/checkout','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-DrdY2-_P.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'__create/social-dev-shim/page':{'id':'__create/social-dev-shim/page','parentId':'root','path':'__create/social-dev-shim','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-BoycFtf7.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/react-DavxrMT9.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'__create/not-found':{'id':'__create/not-found','parentId':'root','path':'*?','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/not-found-BYi3il-m.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined}},'url':'/assets/manifest-03cea9bd.js','version':'03cea9bd','sri':undefined};
+const serverManifest = {'entry':{'module':'/assets/entry.client-liMABW4G.js','imports':['/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/index-BxFb8htY.js'],'css':[]},'routes':{'root':{'id':'root','parentId':undefined,'path':'','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':true,'module':'/assets/root-D3VpLSIS.js','imports':['/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/index-BxFb8htY.js','/assets/index-BBR7LY95.js','/assets/react-DavxrMT9.js','/assets/index-CxBh_wWd.js','/assets/clsx-DPoTaEZk.js'],'css':['/assets/root-d2EfDNtg.css'],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'page':{'id':'page','parentId':'root','path':undefined,'index':true,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-C2R2Vjjz.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/deviceDetection-CkE4UybK.js','/assets/star-DTzK1ayn.js','/assets/style-ZhL7ZwD6.js','/assets/map-pin-TY6H8hNN.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js','/assets/createLucideIcon-BrJVIngv.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'account/logout/page':{'id':'account/logout/page','parentId':'root','path':'account/logout','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-Crw6wYUU.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'account/signin/page':{'id':'account/signin/page','parentId':'root','path':'account/signin','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-DxgWhfhl.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'account/signup/page':{'id':'account/signup/page','parentId':'root','path':'account/signup','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-BQ421ORZ.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'admin/page':{'id':'admin/page','parentId':'root','path':'admin','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-DMGXFlos.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/createLucideIcon-BrJVIngv.js','/assets/user-Bzpxecd1.js','/assets/map-pin-TY6H8hNN.js','/assets/send-eEqkkoAl.js','/assets/circle-check-big-Cl9b2kPc.js','/assets/star-DTzK1ayn.js','/assets/clsx-DPoTaEZk.js','/assets/trash-2-Cf2fbJsq.js','/assets/useUpload-Feax1KnY.js','/assets/index-CxBh_wWd.js','/assets/style-ZhL7ZwD6.js','/assets/search-Dv47v1IZ.js','/assets/useMutation-BRFBv2lw.js','/assets/useQuery-VK6o8YRK.js','/assets/check-iahjbKaR.js','/assets/triangle-alert-dBOqLNDd.js','/assets/refresh-cw-Bl_g2IAI.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'admin/account-recovery/page':{'id':'admin/account-recovery/page','parentId':'root','path':'admin/account-recovery','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-CpBOcQXU.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/useMutation-BRFBv2lw.js','/assets/arrow-left-CoWpwVe2.js','/assets/key-round-BE6ki8ID.js','/assets/createLucideIcon-BrJVIngv.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'admin/client/[id]/page':{'id':'admin/client/[id]/page','parentId':'root','path':'admin/client/:id','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-BKfLpYfR.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/arrow-left-CoWpwVe2.js','/assets/user-Bzpxecd1.js','/assets/map-pin-TY6H8hNN.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js','/assets/createLucideIcon-BrJVIngv.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'admin/forgot-password/page':{'id':'admin/forgot-password/page','parentId':'root','path':'admin/forgot-password','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-D4gp7f4C.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/useMutation-BRFBv2lw.js','/assets/arrow-left-CoWpwVe2.js','/assets/createLucideIcon-BrJVIngv.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'admin/inspect-ready-pickup/page':{'id':'admin/inspect-ready-pickup/page','parentId':'root','path':'admin/inspect-ready-pickup','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-CRl2a1hs.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'admin/login/page':{'id':'admin/login/page','parentId':'root','path':'admin/login','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-PKdpe8Xt.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/createLucideIcon-BrJVIngv.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'admin/logo/page':{'id':'admin/logo/page','parentId':'root','path':'admin/logo','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-DOCKtAII.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/useUpload-Feax1KnY.js','/assets/useQuery-VK6o8YRK.js','/assets/useMutation-BRFBv2lw.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'admin/push-diagnostics/page':{'id':'admin/push-diagnostics/page','parentId':'root','path':'admin/push-diagnostics','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-DafB5jPa.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/search-Dv47v1IZ.js','/assets/circle-check-big-Cl9b2kPc.js','/assets/circle-x-mKMDan5Z.js','/assets/send-eEqkkoAl.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js','/assets/createLucideIcon-BrJVIngv.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'admin/reset-password/page':{'id':'admin/reset-password/page','parentId':'root','path':'admin/reset-password','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-BZW1B-Tb.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/useMutation-BRFBv2lw.js','/assets/arrow-left-CoWpwVe2.js','/assets/key-round-BE6ki8ID.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js','/assets/createLucideIcon-BrJVIngv.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'admin/review-reports/page':{'id':'admin/review-reports/page','parentId':'root','path':'admin/review-reports','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-Bj-UTPuS.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/useQuery-VK6o8YRK.js','/assets/useMutation-BRFBv2lw.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'admin/token-cleanup/page':{'id':'admin/token-cleanup/page','parentId':'root','path':'admin/token-cleanup','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-OMSv6Kre.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/trash-2-Cf2fbJsq.js','/assets/triangle-alert-dBOqLNDd.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js','/assets/createLucideIcon-BrJVIngv.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'admin/whatsapp-diagnostics/page':{'id':'admin/whatsapp-diagnostics/page','parentId':'root','path':'admin/whatsapp-diagnostics','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-CH60XXPT.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/refresh-cw-Bl_g2IAI.js','/assets/circle-check-big-Cl9b2kPc.js','/assets/circle-x-mKMDan5Z.js','/assets/triangle-alert-dBOqLNDd.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js','/assets/createLucideIcon-BrJVIngv.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'admin/whatsapp-forensic-comparison/page':{'id':'admin/whatsapp-forensic-comparison/page','parentId':'root','path':'admin/whatsapp-forensic-comparison','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-KWeSfEUS.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'admin/whatsapp-setup/page':{'id':'admin/whatsapp-setup/page','parentId':'root','path':'admin/whatsapp-setup','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-DlVnv5P0.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/circle-check-big-Cl9b2kPc.js','/assets/circle-x-mKMDan5Z.js','/assets/createLucideIcon-BrJVIngv.js','/assets/check-iahjbKaR.js','/assets/triangle-alert-dBOqLNDd.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'admin/whatsapp-status-test/page':{'id':'admin/whatsapp-status-test/page','parentId':'root','path':'admin/whatsapp-status-test','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-Bufw1cl7.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'admin/whatsapp-test/page':{'id':'admin/whatsapp-test/page','parentId':'root','path':'admin/whatsapp-test','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-A_WwKxFh.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/createLucideIcon-BrJVIngv.js','/assets/circle-check-big-Cl9b2kPc.js','/assets/send-eEqkkoAl.js','/assets/refresh-cw-Bl_g2IAI.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'apple-review-instructions/page':{'id':'apple-review-instructions/page','parentId':'root','path':'apple-review-instructions','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-DdcbHacq.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'contact/page':{'id':'contact/page','parentId':'root','path':'contact','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-C4qww7fP.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/style-ZhL7ZwD6.js','/assets/deviceDetection-CkE4UybK.js','/assets/map-pin-TY6H8hNN.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js','/assets/createLucideIcon-BrJVIngv.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'delete-account/page':{'id':'delete-account/page','parentId':'root','path':'delete-account','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-Zej92Qdk.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'download-app/page':{'id':'download-app/page','parentId':'root','path':'download-app','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-3mJmMa_x.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/createLucideIcon-BrJVIngv.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'errors/async-effect-error/page':{'id':'errors/async-effect-error/page','parentId':'root','path':'errors/async-effect-error','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-C3DSvJks.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'errors/event-handler-error/page':{'id':'errors/event-handler-error/page','parentId':'root','path':'errors/event-handler-error','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-Dlmg34pI.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'errors/hook-rule/page':{'id':'errors/hook-rule/page','parentId':'root','path':'errors/hook-rule','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-C_1skYRZ.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'errors/infinite-render-loop/page':{'id':'errors/infinite-render-loop/page','parentId':'root','path':'errors/infinite-render-loop','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-UbSH8n07.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'errors/json-parse-error/page':{'id':'errors/json-parse-error/page','parentId':'root','path':'errors/json-parse-error','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-B8CkQfuS.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'errors/missing-component/page':{'id':'errors/missing-component/page','parentId':'root','path':'errors/missing-component','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-ByA1l5ig.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'errors/null-access/page':{'id':'errors/null-access/page','parentId':'root','path':'errors/null-access','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-DsK65deZ.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'errors/render-object/page':{'id':'errors/render-object/page','parentId':'root','path':'errors/render-object','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-BNSp7H7Z.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'errors/type-error-not-function/page':{'id':'errors/type-error-not-function/page','parentId':'root','path':'errors/type-error-not-function','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-Cj9YUyTo.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'errors/undefined-access/page':{'id':'errors/undefined-access/page','parentId':'root','path':'errors/undefined-access','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-xx11vfJq.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'errors/unhandled-promise/page':{'id':'errors/unhandled-promise/page','parentId':'root','path':'errors/unhandled-promise','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-DoLwQjtT.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'health/page':{'id':'health/page','parentId':'root','path':'health','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-CEz6DfFv.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'init-admin/page':{'id':'init-admin/page','parentId':'root','path':'init-admin','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page--JxmU3l1.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'init-customer/page':{'id':'init-customer/page','parentId':'root','path':'init-customer','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-DDq8C9Ro.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'init-test-account/page':{'id':'init-test-account/page','parentId':'root','path':'init-test-account','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-DXh_nT9k.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'pos/page':{'id':'pos/page','parentId':'root','path':'pos','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-FEHYanhO.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'shop/page':{'id':'shop/page','parentId':'root','path':'shop','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-9hx0RhfF.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/useUser-d4TzF8D3.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'shop/cart/page':{'id':'shop/cart/page','parentId':'root','path':'shop/cart','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-c2IheuW-.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/useUser-d4TzF8D3.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'shop/checkout/page':{'id':'shop/checkout/page','parentId':'root','path':'shop/checkout','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-DrdY2-_P.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'__create/social-dev-shim/page':{'id':'__create/social-dev-shim/page','parentId':'root','path':'__create/social-dev-shim','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':false,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/page-BoycFtf7.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js','/assets/layout-18VUnCmz.js','/assets/react-DavxrMT9.js','/assets/index-CxBh_wWd.js','/assets/index-BxFb8htY.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined},'__create/not-found':{'id':'__create/not-found','parentId':'root','path':'*?','index':undefined,'caseSensitive':undefined,'hasAction':false,'hasLoader':true,'hasClientAction':false,'hasClientLoader':false,'hasClientMiddleware':false,'hasDefaultExport':true,'hasErrorBoundary':false,'module':'/assets/not-found-BYi3il-m.js','imports':['/assets/index-BBR7LY95.js','/assets/chunk-6CSD65Y2-C0PwgUK2.js'],'css':[],'clientActionModule':undefined,'clientLoaderModule':undefined,'clientMiddlewareModule':undefined,'hydrateFallbackModule':undefined}},'url':'/assets/manifest-ef3ed07f.js','version':'ef3ed07f','sri':undefined};
 
 const assetsBuildDirectory = "build\\client";
       const basename = "/";

@@ -1,6 +1,6 @@
 import 'node:async_hooks';
 import 'node:console';
-export { i as default } from './assets/index-DcmcMjzy.js';
+export { i as default } from './assets/index-BK_wN9_-.js';
 import 'preact-render-to-string';
 import 'preact/jsx-runtime';
 import '@neondatabase/serverless';
