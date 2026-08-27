@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "react-router dev",
     "typecheck": "react-router typegen && tsc --noEmit",
-    "build": "react-router build",
+    "build": "node -e \"const fs=require('fs');for(const p of ['node_modules/.cache','node_modules/.vite','.react-router'])try{fs.rmSync(p,{recursive:true,force:true})}catch(e){}\" && react-router build",
     "start": "node ./build/server/index.js"
   },
   "dependencies": {
