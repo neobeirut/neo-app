@@ -977,6 +977,27 @@ export default function TabletPOSPage() {
     setActiveTabModal(null);
   };
 
+  const handleResetCart = () => {
+    setTicketItems([]);
+    setEditingOrderId(null);
+    setCustomerName("");
+    setCustomerPhone("");
+    setDeliveryAddress("");
+    setSelectedChannel(null);
+    setOrderType("delivery");
+    setDiscountType("none");
+    setDiscountValInput(10);
+    setDiscountIsPercent(true);
+    setDeliveryFee(0);
+    setValidationError("");
+    setDetectedWaLocation(null);
+    setCustomerSearchResults([]);
+    setShowCustomerDropdown(false);
+    setEditingItemIndex(null);
+    setSelectedCustomizations([]);
+    setItemNote("");
+  };
+
   const subtotal = ticketItems.reduce((sum, item) => sum + item.unit_price * item.qty, 0);
 
   const calculatedDiscount = (() => {
@@ -1558,16 +1579,7 @@ export default function TabletPOSPage() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => {
-                    setEditingOrderId(null);
-                    setTicketItems([]);
-                    setCustomerName("");
-                    setCustomerPhone("");
-                    setDeliveryAddress("");
-                    setSelectedChannel(null);
-                    setDiscountType("none");
-                    setDeliveryFee(0);
-                  }}
+                  onClick={handleResetCart}
                   className="text-[10px] font-bold text-gray-400 hover:text-white bg-[#181C24] px-2 py-0.5 rounded border border-[#262D3D]"
                 >
                   Cancel Edit
@@ -1575,19 +1587,44 @@ export default function TabletPOSPage() {
               </div>
             )}
 
-            {/* Hold Button if active items */}
-            {ticketItems.length > 0 && !editingOrderId && (
-              <div className="flex justify-end">
-                <button
-                  type="button"
-                  onClick={handleHoldOrder}
-                  disabled={isSubmitting}
-                  className="px-2.5 py-0.5 bg-amber-950/50 hover:bg-amber-900/60 text-amber-300 border border-amber-500/40 rounded-lg text-[10px] font-bold transition-all"
-                >
-                  ⏸️ Hold Ticket
-                </button>
+            {/* TICKET ACTIONS & STATUS HEADER BAR */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-black uppercase text-white tracking-wider">
+                  Current Order
+                </span>
+                {ticketItems.length > 0 && (
+                  <span className="px-2 py-0.5 bg-[#eb660c]/20 text-[#eb660c] text-[10px] font-black rounded-full border border-[#eb660c]/30">
+                    {ticketItems.reduce((sum, item) => sum + (Number(item.qty) || 1), 0)} items
+                  </span>
+                )}
               </div>
-            )}
+
+              <div className="flex items-center gap-1.5">
+                {ticketItems.length > 0 && !editingOrderId && (
+                  <button
+                    type="button"
+                    onClick={handleHoldOrder}
+                    disabled={isSubmitting}
+                    className="px-2.5 py-1 bg-amber-950/50 hover:bg-amber-900/60 text-amber-300 border border-amber-500/40 rounded-lg text-[10px] font-bold transition-all active:scale-95 flex items-center gap-1"
+                  >
+                    ⏸️ Hold
+                  </button>
+                )}
+
+                {(ticketItems.length > 0 || customerName || customerPhone || deliveryAddress || editingOrderId) && (
+                  <button
+                    type="button"
+                    onClick={handleResetCart}
+                    disabled={isSubmitting}
+                    className="px-2.5 py-1 bg-rose-950/60 hover:bg-rose-900/70 text-rose-300 border border-rose-500/50 rounded-lg text-[10px] font-extrabold transition-all active:scale-95 flex items-center gap-1 shadow-sm"
+                    title="Reset cart & clear ticket"
+                  >
+                    🗑️ Reset Cart
+                  </button>
+                )}
+              </div>
+            </div>
 
             {/* UNIFIED 5-BUTTON SMART CHANNEL BAR */}
             <div className="grid grid-cols-5 gap-1 p-1 bg-[#0F1115] rounded-xl border border-[#262D3D]">
