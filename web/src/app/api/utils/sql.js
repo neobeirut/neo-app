@@ -83,9 +83,12 @@ if (!process.env.DATABASE_URL) {
 let sql;
 
 if (process.env.DATABASE_URL) {
-  // Create connection pool to Supabase
   const db = postgres(process.env.DATABASE_URL, {
-    ssl: { rejectUnauthorized: false }, 
+    ssl: { rejectUnauthorized: false },
+    max: 10,
+    idle_timeout: 20,
+    connect_timeout: 10,
+    max_lifetime: 60 * 30,
   });
 
   sql = (stringsOrQuery, ...values) => {

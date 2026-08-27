@@ -110,141 +110,188 @@ export async function PUT(request, { params }) {
       );
     }
 
-    // ── Step 1: Delete order_items rows NOT in the submitted list ──────────
-    // This handles the "remove item" flow where the UI just filters the array.
-    const submittedItemIds = items
-      .map((i) => i.id)
-      .filter((id) => typeof id === "number");
-
-    if (submittedItemIds.length > 0) {
-      // Delete items that exist in DB but aren't in the submitted list
-      await sql(
-        `DELETE FROM order_items WHERE order_id = $1 AND id NOT IN (${submittedItemIds.map((_, i) => `$${i + 2}`).join(",")})`,
-        [resolvedId, ...submittedItemIds],
-      );
-    } else {
-      // All items are new — delete everything first (shouldn't normally happen)
-      await sql`DELETE FROM order_items WHERE order_id = ${resolvedId}`;
-    }
-
-    // ── Step 2: Upsert each submitted item ──────────────────────────────────
-    let totalAmount = 0;
+    // ── Pre-fetch all referenced products and product addons in bulk for performance ──
+    const productIds = Array.from(new Set(items.map((i) => i.product_id).filter(Boolean)));
+    const products = productIds.length > 0
+      ? await sql`SELECT id, price FROM products WHERE id = ANY(${productIds})`
+      : [];
+    const productMap = new Map(products.map((p) => [p.id, parseFloat(p.price || 0)]));
 
     for (const item of items) {
-      // Fetch product to validate + get base price
-      const [product] = await sql`
-        SELECT id, price FROM products WHERE id = ${item.product_id}
-      `;
-
-      if (!product) {
+      if (!productMap.has(item.product_id)) {
         return Response.json(
           { error: `Product with ID ${item.product_id} not found` },
           { status: 400 },
         );
       }
+    }
 
-      const basePrice = parseFloat(product.price);
+    const allAddonIds = Array.from(
+      new Set(items.flatMap((i) => (Array.isArray(i.selected_addons) ? i.selected_addons : []))),
+    );
+    const allAddons = allAddonIds.length > 0
+      ? await sql`SELECT id, price FROM product_addons WHERE id = ANY(${allAddonIds})`
+      : [];
+    const addonMap = new Map(allAddons.map((a) => [a.id, parseFloat(a.price || 0)]));
 
-      // Fetch product addon prices for selected_addons
-      let addonPrices = [];
-      if (item.selected_addons && item.selected_addons.length > 0) {
-        addonPrices = await sql`
-          SELECT id, price FROM product_addons
-          WHERE id = ANY(${item.selected_addons})
-        `;
+    // ── Helper to clean and sanitize customizations so no double-escaped strings are saved ──
+    const sanitizeCustomizations = (raw) => {
+      if (!raw) return [];
+      let parsed = raw;
+      while (typeof parsed === "string") {
+        const trimmed = parsed.trim();
+        if (
+          (trimmed.startsWith("[") && trimmed.endsWith("]")) ||
+          (trimmed.startsWith("{") && trimmed.endsWith("}")) ||
+          (trimmed.startsWith('"') && trimmed.endsWith('"'))
+        ) {
+          try {
+            parsed = JSON.parse(trimmed);
+          } catch {
+            break;
+          }
+        } else {
+          break;
+        }
       }
 
-      const unitPrice = calcUnitPrice(
-        basePrice,
-        item.customizations || [],
-        addonPrices,
-      );
-      const itemTotal = unitPrice * (item.quantity || 1);
-      totalAmount += itemTotal;
+      if (Array.isArray(parsed)) {
+        return parsed.map((item) => {
+          if (typeof item === "string") {
+            if (item.trim().startsWith("{") && item.trim().endsWith("}")) {
+              try {
+                return JSON.parse(item);
+              } catch {
+                return { ingredient: item.trim() };
+              }
+            }
+            return { ingredient: item.trim() };
+          }
+          return item;
+        });
+      }
 
-      const customizationsJson = JSON.stringify(item.customizations || []);
-      const comment = item.comment || null;
-      const quantity = item.quantity || 1;
+      if (typeof parsed === "string" && parsed.trim()) {
+        return parsed.split(",").map((s) => ({ ingredient: s.trim() })).filter((x) => x.ingredient);
+      }
 
-      let orderItemId;
+      if (typeof parsed === "object" && parsed !== null) {
+        return [parsed];
+      }
 
-      if (item.id) {
-        // ── Update existing item ──
-        await sql`
-          UPDATE order_items
-          SET
-            quantity = ${quantity},
-            unit_price = ${unitPrice},
-            total_price = ${itemTotal},
-            customizations = ${customizationsJson}::jsonb,
-            comment = ${comment}
-          WHERE id = ${item.id} AND order_id = ${resolvedId}
-        `;
-        orderItemId = item.id;
+      return [];
+    };
+
+    // ── Execute all DB modifications inside a single fast atomic transaction ──
+    await sql.transaction(async (txn) => {
+      // ── Step 1: Delete removed order_items rows ──
+      const submittedItemIds = items
+        .map((i) => i.id)
+        .filter((id) => typeof id === "number");
+
+      if (submittedItemIds.length > 0) {
+        await txn(
+          `DELETE FROM order_items WHERE order_id = $1 AND id NOT IN (${submittedItemIds.map((_, i) => `$${i + 2}`).join(",")})`,
+          [resolvedId, ...submittedItemIds],
+        );
       } else {
-        // ── Insert new item ──
-        const [newRow] = await sql`
-          INSERT INTO order_items (order_id, product_id, quantity, unit_price, total_price, customizations, comment)
-          VALUES (
-            ${resolvedId},
-            ${item.product_id},
-            ${quantity},
-            ${unitPrice},
-            ${itemTotal},
-            ${customizationsJson}::jsonb,
-            ${comment}
-          )
-          RETURNING id
-        `;
-        orderItemId = newRow.id;
+        await txn`DELETE FROM order_items WHERE order_id = ${resolvedId}`;
       }
 
-      // ── Sync product addons (order_item_addons table) ──
-      await sql`DELETE FROM order_item_addons WHERE order_item_id = ${orderItemId}`;
+      // ── Step 2: Upsert each submitted item ──
+      for (const item of items) {
+        const basePrice = productMap.get(item.product_id) || 0;
+        const itemAddonPrices = (item.selected_addons || [])
+          .map((id) => ({ price: addonMap.get(id) || 0 }))
+          .filter((a) => a.price !== undefined);
 
-      if (item.selected_addons && item.selected_addons.length > 0) {
-        for (const addonId of item.selected_addons) {
-          const addonRow = addonPrices.find((a) => a.id === addonId);
-          if (addonRow) {
-            await sql`
-              INSERT INTO order_item_addons (order_item_id, product_addon_id, quantity, price)
-              VALUES (${orderItemId}, ${addonId}, 1, ${addonRow.price})
-            `;
+        const cleanCustomizations = sanitizeCustomizations(item.customizations);
+        const unitPrice = calcUnitPrice(
+          basePrice,
+          cleanCustomizations,
+          itemAddonPrices,
+        );
+        const quantity = parseInt(item.quantity, 10) || 1;
+        const itemTotal = unitPrice * quantity;
+        const customizationsJson = JSON.stringify(cleanCustomizations);
+        const comment = item.comment || null;
+
+        let orderItemId;
+
+        if (item.id) {
+          await txn`
+            UPDATE order_items
+            SET
+              quantity = ${quantity},
+              unit_price = ${unitPrice},
+              total_price = ${itemTotal},
+              customizations = ${customizationsJson}::jsonb,
+              comment = ${comment}
+            WHERE id = ${item.id} AND order_id = ${resolvedId}
+          `;
+          orderItemId = item.id;
+        } else {
+          const [newRow] = await txn`
+            INSERT INTO order_items (order_id, product_id, quantity, unit_price, total_price, customizations, comment)
+            VALUES (
+              ${resolvedId},
+              ${item.product_id},
+              ${quantity},
+              ${unitPrice},
+              ${itemTotal},
+              ${customizationsJson}::jsonb,
+              ${comment}
+            )
+            RETURNING id
+          `;
+          orderItemId = newRow.id;
+        }
+
+        // Sync product addons (order_item_addons table)
+        await txn`DELETE FROM order_item_addons WHERE order_item_id = ${orderItemId}`;
+
+        if (item.selected_addons && item.selected_addons.length > 0) {
+          for (const addonId of item.selected_addons) {
+            const price = addonMap.get(addonId);
+            if (price !== undefined) {
+              await txn`
+                INSERT INTO order_item_addons (order_item_id, product_addon_id, quantity, price)
+                VALUES (${orderItemId}, ${addonId}, 1, ${price})
+              `;
+            }
           }
         }
       }
-    }
 
-    // ── Step 3: Recalculate order totals ─────────────────────────────────────
-    // Re-sum from DB to be accurate (handles any rounding)
-    const [sumRow] = await sql`
-      SELECT COALESCE(SUM(total_price), 0) as items_total FROM order_items WHERE order_id = ${resolvedId}
-    `;
-    const itemsTotal = parseFloat(sumRow.items_total);
+      // ── Step 3: Recalculate order totals ──
+      const [sumRow] = await txn`
+        SELECT COALESCE(SUM(total_price), 0) as items_total FROM order_items WHERE order_id = ${resolvedId}
+      `;
+      const itemsTotal = parseFloat(sumRow.items_total);
 
-    // Fetch current order for delivery fee / promo info
-    const [currentOrder] = await sql`
-      SELECT delivery_fee, discount_amount, promo_discount FROM orders WHERE id = ${resolvedId}
-    `;
+      const [currentOrder] = await txn`
+        SELECT delivery_fee, discount_amount, promo_discount FROM orders WHERE id = ${resolvedId}
+      `;
 
-    const deliveryFee = parseFloat(currentOrder?.delivery_fee || 0);
-    const rewardDiscount = parseFloat(currentOrder?.discount_amount || 0);
-    const promoDiscount = parseFloat(currentOrder?.promo_discount || 0);
+      const deliveryFee = parseFloat(currentOrder?.delivery_fee || 0);
+      const rewardDiscount = parseFloat(currentOrder?.discount_amount || 0);
+      const promoDiscount = parseFloat(currentOrder?.promo_discount || 0);
 
-    const subtotal = itemsTotal;
-    const totalBeforeDiscount = subtotal + deliveryFee;
-    const totalAfterDiscount =
-      totalBeforeDiscount - rewardDiscount - promoDiscount;
+      const subtotal = itemsTotal;
+      const totalBeforeDiscount = subtotal + deliveryFee;
+      const totalAfterDiscount =
+        totalBeforeDiscount - rewardDiscount - promoDiscount;
 
-    await sql`
-      UPDATE orders
-      SET
-        subtotal_amount = ${subtotal},
-        total_before_discount = ${totalBeforeDiscount},
-        total_after_discount = ${totalAfterDiscount},
-        total_amount = ${totalAfterDiscount}
-      WHERE id = ${resolvedId}
-    `;
+      await txn`
+        UPDATE orders
+        SET
+          subtotal_amount = ${subtotal},
+          total_before_discount = ${totalBeforeDiscount},
+          total_after_discount = ${totalAfterDiscount},
+          total_amount = ${totalAfterDiscount}
+        WHERE id = ${resolvedId}
+      `;
+    });
 
     return Response.json({
       message: "Order items updated successfully",

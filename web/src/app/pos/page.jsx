@@ -19,14 +19,50 @@ const partitionCustomizations = (customizations) => {
 
   if (!customizations) return { addons, removals };
 
-  const itemsList = Array.isArray(customizations)
-    ? customizations
-    : typeof customizations === "string"
-    ? customizations.split(",").map((s) => s.trim())
-    : [customizations];
+  let parsed = customizations;
+  // Unwrap nested JSON strings if any (e.g. from DB or nested serialization)
+  while (typeof parsed === "string") {
+    const trimmed = parsed.trim();
+    if (
+      (trimmed.startsWith("[") && trimmed.endsWith("]")) ||
+      (trimmed.startsWith("{") && trimmed.endsWith("}")) ||
+      (trimmed.startsWith('"') && trimmed.endsWith('"'))
+    ) {
+      try {
+        parsed = JSON.parse(trimmed);
+      } catch (e) {
+        break;
+      }
+    } else {
+      break;
+    }
+  }
+
+  let itemsList = [];
+  if (Array.isArray(parsed)) {
+    itemsList = parsed;
+  } else if (typeof parsed === "string") {
+    itemsList = parsed.split(",").map((s) => s.trim());
+  } else if (parsed && typeof parsed === "object") {
+    itemsList = [parsed];
+  }
 
   itemsList.forEach((c) => {
-    const obj = typeof c === "string" ? { name: c } : c;
+    if (!c) return;
+    let obj = c;
+    if (typeof c === "string") {
+      let str = c.trim();
+      if (str.startsWith("{") && str.endsWith("}")) {
+        try {
+          obj = JSON.parse(str);
+        } catch (e) {
+          obj = { name: str };
+        }
+      } else {
+        obj = { name: str };
+      }
+    }
+
     const nameStr = (obj.name || obj.ingredient || obj.customization_name || "").trim();
     if (!nameStr) return;
 
@@ -128,6 +164,7 @@ export default function TabletPOSPage() {
   // Notification tracking refs
   const knownOrderIdsRef = useRef(null);
   const isFirstPollRef = useRef(true);
+  const isPollingRef = useRef(false);
 
   // Customization Modal State
   const [currentProduct, setCurrentProduct] = useState(null);
@@ -145,9 +182,22 @@ export default function TabletPOSPage() {
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState("Cash");
   const [lastCompletedOrder, setLastCompletedOrder] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [initialLoadError, setInitialLoadError] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [validationError, setValidationError] = useState("");
   const [dispatchStatusMsg, setDispatchStatusMsg] = useState("");
+
+  // Helper for safe fetch with timeout
+  const fetchWithTimeout = async (url, options = {}, timeoutMs = 10000) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(url, { ...options, signal: controller.signal });
+      return response;
+    } finally {
+      clearTimeout(timer);
+    }
+  };
 
   // Order History & Reprint State
   const [completedOrdersHistory, setCompletedOrdersHistory] = useState([]);
@@ -173,7 +223,7 @@ export default function TabletPOSPage() {
 
   const fetchBranchStatusAndPrompt = async () => {
     try {
-      const res = await fetch("/api/branches");
+      const res = await fetchWithTimeout("/api/branches", {}, 8000);
       const data = await res.json();
       if (data.branches && data.branches.length > 0) {
         const mainBranch = data.branches[0];
@@ -358,7 +408,7 @@ export default function TabletPOSPage() {
     try {
       // Query /api/pos/customers with the phone number
       const cleanDigits = phone.replace(/\D/g, "");
-      const res = await fetch(`/api/pos/customers?q=${encodeURIComponent(cleanDigits)}`);
+      const res = await fetchWithTimeout(`/api/pos/customers?q=${encodeURIComponent(cleanDigits)}`, {}, 6000);
       if (res.ok) {
         const data = await res.json();
         const match = (data.customers || []).find((c) => c.whatsapp_location && c.whatsapp_location.hasLocation);
@@ -384,7 +434,7 @@ export default function TabletPOSPage() {
     }
     setIsSearchingCustomers(true);
     try {
-      const res = await fetch(`/api/pos/customers?q=${encodeURIComponent(query.trim())}`);
+      const res = await fetchWithTimeout(`/api/pos/customers?q=${encodeURIComponent(query.trim())}`, {}, 6000);
       const data = await res.json();
       if (data.customers && data.customers.length > 0) {
         setCustomerSearchResults(data.customers);
@@ -428,11 +478,11 @@ export default function TabletPOSPage() {
     if (orderType !== "delivery" || !deliveryAddress.trim()) return;
     const timer = setTimeout(async () => {
       try {
-        const res = await fetch("/api/delivery/calculate-cost", {
+        const res = await fetchWithTimeout("/api/delivery/calculate-cost", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ branchId: 1, address: deliveryAddress.trim() }),
-        });
+        }, 8000);
         const data = await res.json();
         if (data.deliveryCost !== undefined && data.deliveryCost > 0) {
           setDeliveryFee(data.deliveryCost);
@@ -445,8 +495,12 @@ export default function TabletPOSPage() {
   }, [deliveryAddress, orderType]);
 
   const fetchProducts = async () => {
+    setInitialLoadError(null);
     try {
-      const res = await fetch("/api/pos/products");
+      const res = await fetchWithTimeout("/api/pos/products", {}, 10000);
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: Failed to load menu products`);
+      }
       const data = await res.json();
       if (data.categories) setCategories(data.categories);
       if (data.products) setProducts(data.products);
@@ -458,6 +512,7 @@ export default function TabletPOSPage() {
       }
     } catch (err) {
       console.error("Error fetching POS products:", err);
+      setInitialLoadError(err.message || "Failed to connect to POS server");
     } finally {
       setLoading(false);
     }
@@ -504,10 +559,12 @@ export default function TabletPOSPage() {
   };
 
   const fetchOrdersQueue = async () => {
+    if (isPollingRef.current) return;
+    isPollingRef.current = true;
     try {
       const [pendingRes, heldRes] = await Promise.all([
-        fetch("/api/pos/orders?type=pending"),
-        fetch("/api/pos/orders?type=held")
+        fetchWithTimeout("/api/pos/orders?type=pending", {}, 8000),
+        fetchWithTimeout("/api/pos/orders?type=held", {}, 8000)
       ]);
       const pendingData = await pendingRes.json();
       const heldData = await heldRes.json();
@@ -526,6 +583,8 @@ export default function TabletPOSPage() {
       if (heldData.orders) setHeldOrders(heldData.orders);
     } catch (err) {
       console.error("Error fetching orders queue:", err);
+    } finally {
+      isPollingRef.current = false;
     }
   };
 
@@ -627,18 +686,59 @@ export default function TabletPOSPage() {
     setDeliveryFee(fee);
 
     // 4. Map ticket items
-    const items = (o.items || []).map((i) => ({
-      product_id: i.product_id || i.id,
-      name: i.product_name || i.name,
-      unit_price: Number(i.unit_price) || 0,
-      qty: Number(i.quantity || i.qty) || 1,
-      selectedCustomizations: i.customizations
-        ? (Array.isArray(i.customizations)
-            ? i.customizations.map((c) => (typeof c === "string" ? { name: c } : c))
-            : [{ name: i.customizations }])
-        : [],
-      note: i.comment || i.note || ""
-    }));
+    const items = (o.items || []).map((i) => {
+      let custs = [];
+      if (i.customizations) {
+        let parsed = i.customizations;
+        while (typeof parsed === "string") {
+          const trimmed = parsed.trim();
+          if (
+            (trimmed.startsWith("[") && trimmed.endsWith("]")) ||
+            (trimmed.startsWith("{") && trimmed.endsWith("}")) ||
+            (trimmed.startsWith('"') && trimmed.endsWith('"'))
+          ) {
+            try {
+              parsed = JSON.parse(trimmed);
+            } catch {
+              break;
+            }
+          } else {
+            break;
+          }
+        }
+        if (Array.isArray(parsed)) {
+          custs = parsed.map((c) => {
+            if (typeof c === "string") {
+              if (c.trim().startsWith("{") && c.trim().endsWith("}")) {
+                try {
+                  return JSON.parse(c);
+                } catch {
+                  return { name: c };
+                }
+              }
+              return { name: c };
+            }
+            return { ...c, name: c.name || c.ingredient || "" };
+          });
+        } else if (typeof parsed === "string" && parsed.trim()) {
+          custs = parsed
+            .split(",")
+            .map((s) => ({ name: s.trim() }))
+            .filter((x) => x.name);
+        } else if (parsed && typeof parsed === "object") {
+          custs = [{ ...parsed, name: parsed.name || parsed.ingredient || "" }];
+        }
+      }
+
+      return {
+        product_id: i.product_id || i.id,
+        name: i.product_name || i.name,
+        unit_price: Number(i.unit_price) || 0,
+        qty: Number(i.quantity || i.qty) || 1,
+        selectedCustomizations: custs,
+        note: i.comment || i.note || "",
+      };
+    });
     setTicketItems(items);
 
     // 5. Load discount
@@ -1268,6 +1368,31 @@ export default function TabletPOSPage() {
     );
   }
 
+  if (initialLoadError && products.length === 0) {
+    return (
+      <div className="h-screen bg-[#0F1115] text-white flex items-center justify-center font-bold text-lg">
+        <div className="flex flex-col items-center gap-4 max-w-md text-center p-6 bg-[#161922] border border-[#262D3D] rounded-2xl shadow-2xl">
+          <span className="text-4xl">⚠️</span>
+          <h2 className="text-xl font-black text-rose-400">Connection Error</h2>
+          <p className="text-sm font-normal text-slate-300">
+            {initialLoadError}
+          </p>
+          <button
+            onClick={() => {
+              setLoading(true);
+              fetchProducts();
+              fetchOrdersQueue();
+              fetchBranchStatusAndPrompt();
+            }}
+            className="mt-2 px-6 py-3 bg-[#eb660c] hover:bg-[#d55807] text-white font-bold rounded-xl shadow-lg transition active:scale-95"
+          >
+            🔄 Retry Connection
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   const realtimeStatus = getRealtimeBranchStatusInfo(branchStatus, posOperationalStatus, posClosureReason);
 
   return (
@@ -1424,8 +1549,34 @@ export default function TabletPOSPage() {
         <div className="w-[35%] flex flex-col h-full bg-[#14171F] overflow-hidden flex-shrink-0">
           {/* TICKET HEADER & UNIFIED SMART CHANNEL BAR */}
           <div className="p-3 border-b border-[#262D3D] space-y-2 bg-[#181C24] flex-shrink-0">
+            {/* Active Editing Order Banner */}
+            {editingOrderId && (
+              <div className="bg-blue-950/60 border border-blue-500/40 px-3 py-1.5 rounded-xl flex items-center justify-between text-xs">
+                <div className="flex items-center gap-1.5">
+                  <span className="animate-pulse">✏️</span>
+                  <span className="font-extrabold text-blue-300">Editing Order #{editingOrderId}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingOrderId(null);
+                    setTicketItems([]);
+                    setCustomerName("");
+                    setCustomerPhone("");
+                    setDeliveryAddress("");
+                    setSelectedChannel(null);
+                    setDiscountType("none");
+                    setDeliveryFee(0);
+                  }}
+                  className="text-[10px] font-bold text-gray-400 hover:text-white bg-[#181C24] px-2 py-0.5 rounded border border-[#262D3D]"
+                >
+                  Cancel Edit
+                </button>
+              </div>
+            )}
+
             {/* Hold Button if active items */}
-            {ticketItems.length > 0 && (
+            {ticketItems.length > 0 && !editingOrderId && (
               <div className="flex justify-end">
                 <button
                   type="button"
@@ -2394,46 +2545,97 @@ export default function TabletPOSPage() {
 
                     {/* ORDERS IN THIS DATE GROUP */}
                     <div className="space-y-3 pl-1">
-                      {ordersGroup.map((order) => (
-                        <div key={order.id} className="p-4 bg-[#0F1115] border border-[#262D3D] rounded-xl space-y-3 text-xs shadow-sm hover:border-[#3A455C] transition-all">
-                          {/* Header Row */}
-                          <div className="flex justify-between items-start border-b border-[#262D3D]/60 pb-2.5">
-                            <div className="space-y-1">
-                              <div className="flex items-center gap-2">
-                                <span className="font-black text-white text-base">Order #{order.id}</span>
-                                <span className={`px-2.5 py-0.5 rounded-md text-[11px] font-extrabold ${
-                                  order.order_source === "Toters" ? "bg-[#00C49F] text-black" :
-                                  order.order_source === "WhatsApp" ? "bg-[#25D366] text-black" :
-                                  order.order_source === "NokNok" ? "bg-[#FF5A5F] text-white" :
-                                  order.order_source === "App" ? "bg-[#3B82F6] text-white" :
-                                  "bg-[#eb660c] text-white"
-                                }`}>
-                                  {order.order_source || "POS"}
-                                </span>
-                                <span className="text-[10px] bg-[#262D3D] text-gray-300 px-2 py-0.5 rounded font-bold uppercase">
-                                  {order.order_type || "pickup"}
-                                </span>
-                                {order.status && (
-                                  <span className="text-[10px] bg-emerald-950 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded font-extrabold uppercase">
-                                    {order.status}
-                                  </span>
-                                )}
-                              </div>
-                              <div className="text-[11px] text-gray-400 font-medium">
-                                🕒 {order.created_at ? new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Time N/A"} • Payment: <strong className="text-white">{order.payment_method || "Cash"}</strong>
-                              </div>
-                            </div>
+                      {ordersGroup.map((order) => {
+                        const isCompleted =
+                          (order.status || "").toLowerCase() === "completed" ||
+                          (order.status || "").toLowerCase() === "delivered";
+                        const isCancelled =
+                          (order.status || "").toLowerCase() === "cancelled" ||
+                          (order.status || "").toLowerCase() === "rejected";
+                        const canEdit = !isCompleted && !isCancelled;
 
-                            <div className="text-right">
-                              <div className="text-xl font-black text-[#eb660c]">${parseFloat(order.total_amount || 0).toFixed(2)}</div>
-                              <button
-                                onClick={() => handleReprintOrder(order)}
-                                className="mt-1 px-3 py-1.5 bg-[#eb660c] hover:bg-[#d55909] text-white rounded-xl text-[11px] font-extrabold shadow-sm flex items-center gap-1.5 ml-auto"
-                              >
-                                🖨️ Reprint Receipt
-                              </button>
+                        return (
+                          <div
+                            key={order.id}
+                            onClick={() => {
+                              if (canEdit) {
+                                loadOrderToTicket(order, order.order_source || "POS");
+                                setActiveTabModal(null);
+                              }
+                            }}
+                            className={`p-4 bg-[#0F1115] border border-[#262D3D] rounded-xl space-y-3 text-xs shadow-sm transition-all ${
+                              canEdit
+                                ? "hover:border-[#eb660c] cursor-pointer"
+                                : "hover:border-[#3A455C]"
+                            }`}
+                          >
+                            {/* Header Row */}
+                            <div className="flex justify-between items-start border-b border-[#262D3D]/60 pb-2.5">
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-black text-white text-base">Order #{order.id}</span>
+                                  <span className={`px-2.5 py-0.5 rounded-md text-[11px] font-extrabold ${
+                                    order.order_source === "Toters" ? "bg-[#00C49F] text-black" :
+                                    order.order_source === "WhatsApp" ? "bg-[#25D366] text-black" :
+                                    order.order_source === "NokNok" ? "bg-[#FF5A5F] text-white" :
+                                    order.order_source === "App" ? "bg-[#3B82F6] text-white" :
+                                    "bg-[#eb660c] text-white"
+                                  }`}>
+                                    {order.order_source || "POS"}
+                                  </span>
+                                  <span className="text-[10px] bg-[#262D3D] text-gray-300 px-2 py-0.5 rounded font-bold uppercase">
+                                    {order.order_type || "pickup"}
+                                  </span>
+                                  {order.status && (
+                                    <span className={`text-[10px] px-2 py-0.5 rounded font-extrabold uppercase border ${
+                                      isCompleted
+                                        ? "bg-slate-800 text-slate-300 border-slate-700"
+                                        : isCancelled
+                                        ? "bg-rose-950 text-rose-300 border-rose-800"
+                                        : "bg-emerald-950 text-emerald-300 border-emerald-500/30"
+                                    }`}>
+                                      {order.status}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-[11px] text-gray-400 font-medium">
+                                  🕒 {order.created_at ? new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Time N/A"} • Payment: <strong className="text-white">{order.payment_method || "Cash"}</strong>
+                                </div>
+                              </div>
+
+                              <div className="text-right flex flex-col items-end gap-1.5">
+                                <div className="text-xl font-black text-[#eb660c]">${parseFloat(order.total_amount || 0).toFixed(2)}</div>
+                                <div className="flex items-center gap-1.5 mt-0.5">
+                                  {canEdit ? (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        loadOrderToTicket(order, order.order_source || "POS");
+                                        setActiveTabModal(null);
+                                      }}
+                                      className="px-3 py-1.5 bg-[#3B82F6] hover:bg-blue-600 text-white rounded-xl text-[11px] font-extrabold shadow-sm flex items-center gap-1 transition active:scale-95"
+                                    >
+                                      ✏️ Edit in POS
+                                    </button>
+                                  ) : (
+                                    <span className="text-[10px] font-bold text-gray-400 bg-[#181C24] px-2 py-1 rounded-lg border border-[#262D3D]">
+                                      🔒 {isCompleted ? "Completed" : "Locked"}
+                                    </span>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleReprintOrder(order);
+                                    }}
+                                    className="px-3 py-1.5 bg-[#eb660c] hover:bg-[#d55909] text-white rounded-xl text-[11px] font-extrabold shadow-sm flex items-center gap-1 transition active:scale-95"
+                                  >
+                                    🖨️ Reprint
+                                  </button>
+                                </div>
+                              </div>
                             </div>
-                          </div>
 
                           {/* Customer Info Box */}
                           {(order.customer_name || order.customer_phone || order.delivery_address) && (
@@ -2491,8 +2693,9 @@ export default function TabletPOSPage() {
                             <div>Total: <strong className="text-[#eb660c] font-black text-sm">${parseFloat(order.total_amount || 0).toFixed(2)}</strong></div>
                           </div>
                         </div>
-                      ))}
-                    </div>
+                      );
+                    })}
+                  </div>
                   </div>
                 ));
               })()}
