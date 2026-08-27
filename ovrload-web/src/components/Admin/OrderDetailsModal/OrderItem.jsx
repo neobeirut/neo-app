@@ -8,9 +8,35 @@ export function OrderItem({
   onRemoveItem,
   onEditItem,
 }) {
-  const itemCustomizations = Array.isArray(item.customizations)
-    ? item.customizations
-    : [];
+  let itemCustomizations = [];
+  if (Array.isArray(item.customizations)) {
+    itemCustomizations = item.customizations;
+  } else if (typeof item.customizations === "string") {
+    try {
+      let parsed = item.customizations;
+      while (
+        typeof parsed === "string" &&
+        (parsed.startsWith("[") || parsed.startsWith("{") || parsed.startsWith('"'))
+      ) {
+        parsed = JSON.parse(parsed);
+      }
+      if (Array.isArray(parsed)) itemCustomizations = parsed;
+      else if (typeof parsed === "string")
+        itemCustomizations = parsed.split(",").map((s) => ({ ingredient: s.trim() }));
+    } catch {
+      itemCustomizations = (item.customizations || "").split(",").map((s) => ({ ingredient: s.trim() }));
+    }
+  }
+
+  // Normalize items to ensure each has customization_type and ingredient
+  itemCustomizations = itemCustomizations.map((c) => {
+    if (typeof c === "string") return { ingredient: c, customization_type: "addon" };
+    return {
+      ...c,
+      ingredient: c.ingredient || c.name || "",
+      customization_type: c.customization_type || (c.option_group_name ? "option" : "addon"),
+    };
+  });
 
   const options = itemCustomizations.filter(
     (c) => c.customization_type === "option",

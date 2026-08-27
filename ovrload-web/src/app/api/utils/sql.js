@@ -1,6 +1,4 @@
 import postgres from 'postgres';
-import fs from 'node:fs';
-import path from 'node:path';
 
 const NullishQueryFunction = () => {
   throw new Error(
@@ -57,7 +55,7 @@ if (!process.env.DATABASE_URL) {
   try {
     const envPaths = [
       path.resolve(process.cwd(), '.env'),
-      path.resolve(process.cwd(), 'ovrload-web/.env'),
+      path.resolve(process.cwd(), 'web/.env'),
       path.resolve(process.cwd(), '../.env'),
     ];
     for (const envPath of envPaths) {
@@ -85,9 +83,12 @@ if (!process.env.DATABASE_URL) {
 let sql;
 
 if (process.env.DATABASE_URL) {
-  // Create connection pool to Supabase
   const db = postgres(process.env.DATABASE_URL, {
-    ssl: { rejectUnauthorized: false }, 
+    ssl: { rejectUnauthorized: false },
+    max: 10,
+    idle_timeout: 20,
+    connect_timeout: 10,
+    max_lifetime: 60 * 30,
   });
 
   sql = (stringsOrQuery, ...values) => {

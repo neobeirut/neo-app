@@ -45,19 +45,42 @@ function extractInitialSelections(item, allCustomizations) {
   const initialOptions = {};
   const initialCustomizations = [];
 
-  for (const c of item.customizations || []) {
+  let rawList = item.customizations || [];
+  if (typeof rawList === "string") {
+    try {
+      let parsed = rawList;
+      while (
+        typeof parsed === "string" &&
+        (parsed.startsWith("[") || parsed.startsWith("{") || parsed.startsWith('"'))
+      ) {
+        parsed = JSON.parse(parsed);
+      }
+      if (Array.isArray(parsed)) rawList = parsed;
+      else if (typeof parsed === "string")
+        rawList = parsed.split(",").map((s) => ({ ingredient: s.trim() }));
+    } catch {
+      rawList = (rawList || "").split(",").map((s) => ({ ingredient: s.trim() }));
+    }
+  }
+
+  for (const c of Array.isArray(rawList) ? rawList : []) {
+    if (!c) continue;
     const cType = c.customization_type || c.type;
+    const ing = (c.ingredient || c.name || (typeof c === "string" ? c : "")).trim();
     if (cType === "option") {
       const group = c.option_group_name || "Options";
       if (!initialOptions[group]) initialOptions[group] = [];
-      // Match by id or by ingredient name as fallback
       const matched = allCustomizations.find(
-        (ac) => (c.id && ac.id === c.id) || ac.ingredient === c.ingredient,
+        (ac) =>
+          (c.id && ac.id === c.id) ||
+          (ing && ac.ingredient && ac.ingredient.toLowerCase() === ing.toLowerCase()),
       );
       if (matched) initialOptions[group].push(matched.id);
-    } else if (cType === "addon" || cType === "remove") {
+    } else {
       const matched = allCustomizations.find(
-        (ac) => (c.id && ac.id === c.id) || ac.ingredient === c.ingredient,
+        (ac) =>
+          (c.id && ac.id === c.id) ||
+          (ing && ac.ingredient && ac.ingredient.toLowerCase() === ing.toLowerCase()),
       );
       if (matched) initialCustomizations.push(matched.id);
     }
