@@ -4386,8 +4386,925 @@ export const api = {
     }
 
     return { success: true };
-  }
+  },
+
+  // ----------------------------------------------------
+  // EMPLOYEE ASSESSMENT API SUITE (FLOW Assessment Module)
+  // ----------------------------------------------------
+
+  getAssessmentTemplates: async (params?: { includeArchived?: boolean; position?: string }) => {
+    try {
+      const restId = getRestaurantId();
+      let query = supabase
+        .from('assessment_templates')
+        .select(`
+          *,
+          assessment_template_sections (
+            *,
+            assessment_template_criteria (*),
+            assessment_template_questions (*)
+          )
+        `)
+        .order('name', { ascending: true });
+
+      if (restId) query = query.eq('restaurant_id', restId);
+      if (!params?.includeArchived) query = query.eq('is_archived', false);
+      if (params?.position) query = query.eq('position', params.position);
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return { success: true, data: data || [] };
+    } catch (e: any) {
+      console.error('Error in getAssessmentTemplates:', e);
+      return { success: false, error: e.message };
+    }
+  },
+
+  getAssessmentTemplateById: async (templateId: string) => {
+    try {
+      const { data: template, error: tErr } = await supabase
+        .from('assessment_templates')
+        .select('*')
+        .eq('id', templateId)
+        .single();
+      if (tErr) throw tErr;
+
+      const { data: sections, error: sErr } = await supabase
+        .from('assessment_template_sections')
+        .select(`
+          *,
+          criteria:assessment_template_criteria (*),
+          questions:assessment_template_questions (*)
+        `)
+        .eq('template_id', templateId)
+        .order('display_order', { ascending: true });
+      if (sErr) throw sErr;
+
+      const sortedSections = (sections || []).map((sec: any) => ({
+        ...sec,
+        criteria: (sec.criteria || []).sort((a: any, b: any) => (a.display_order || 0) - (b.display_order || 0)),
+        questions: (sec.questions || []).sort((a: any, b: any) => (a.display_order || 0) - (b.display_order || 0)),
+      }));
+
+      return { success: true, data: { ...template, sections: sortedSections } };
+    } catch (e: any) {
+      console.error('Error in getAssessmentTemplateById:', e);
+      return { success: false, error: e.message };
+    }
+  },
+
+  saveAssessmentTemplate: async (templateData: any) => {
+    try {
+      const payload = await injectRestaurantId({
+        name: templateData.name,
+        position: templateData.position,
+        description: templateData.description,
+        recommended_days_timing: templateData.recommended_days_timing ?? 10,
+        default_evaluator_role: templateData.default_evaluator_role ?? 'Manager',
+        practical_weight: templateData.practical_weight ?? 70,
+        questions_weight: templateData.questions_weight ?? 30,
+        passing_score: templateData.passing_score ?? 80,
+        confirmation_threshold: templateData.confirmation_threshold ?? 80,
+        probation_extension_min: templateData.probation_extension_min ?? 65,
+        probation_extension_max: templateData.probation_extension_max ?? 79.99,
+        dismissal_threshold: templateData.dismissal_threshold ?? 65,
+        additional_rules: templateData.additional_rules || {},
+        is_active: templateData.is_active ?? true,
+        is_archived: templateData.is_archived ?? false,
+        created_by: templateData.created_by,
+        updated_at: new Date().toISOString(),
+      });
+
+      if (templateData.id) {
+        const { data, error } = await supabase
+          .from('assessment_templates')
+          .update(payload)
+          .eq('id', templateData.id)
+          .select()
+          .single();
+        if (error) throw error;
+        return { success: true, data, id: data.id };
+      } else {
+        const { data, error } = await supabase
+          .from('assessment_templates')
+          .insert([payload])
+          .select()
+          .single();
+        if (error) throw error;
+        return { success: true, data, id: data.id };
+      }
+    } catch (e: any) {
+      console.error('Error in saveAssessmentTemplate:', e);
+      return { success: false, error: e.message };
+    }
+  },
+
+  duplicateAssessmentTemplate: async (templateId: string, authorName?: string) => {
+    try {
+      const fullRes = await api.getAssessmentTemplateById(templateId);
+      if (!fullRes.success || !fullRes.data) throw new Error('Template not found');
+      const original = fullRes.data;
+
+      const newTemplatePayload = await injectRestaurantId({
+        name: `${original.name} (Copy)`,
+        position: original.position,
+        description: original.description,
+        version: 1,
+        recommended_days_timing: original.recommended_days_timing,
+        default_evaluator_role: original.default_evaluator_role,
+        practical_weight: original.practical_weight,
+        questions_weight: original.questions_weight,
+        passing_score: original.passing_score,
+        confirmation_threshold: original.confirmation_threshold,
+        probation_extension_min: original.probation_extension_min,
+        probation_extension_max: original.probation_extension_max,
+        dismissal_threshold: original.dismissal_threshold,
+        additional_rules: original.additional_rules,
+        is_active: true,
+        is_archived: false,
+        created_by: authorName || 'Admin',
+      });
+
+      const { data: newTmpl, error: tmplErr } = await supabase
+        .from('assessment_templates')
+        .insert([newTemplatePayload])
+        .select()
+        .single();
+      if (tmplErr) throw tmplErr;
+
+      for (const sec of original.sections || []) {
+        const secPayload = await injectRestaurantId({
+          template_id: newTmpl.id,
+          title: sec.title,
+          description: sec.description,
+          section_type: sec.section_type,
+          category_group: sec.category_group,
+          weight: sec.weight,
+          display_order: sec.display_order,
+          is_required: sec.is_required,
+          is_active: sec.is_active,
+        });
+
+        const { data: newSec, error: secErr } = await supabase
+          .from('assessment_template_sections')
+          .insert([secPayload])
+          .select()
+          .single();
+        if (secErr) throw secErr;
+
+        for (const crit of sec.criteria || []) {
+          const critPayload = await injectRestaurantId({
+            section_id: newSec.id,
+            template_id: newTmpl.id,
+            name: crit.name,
+            instructions: crit.instructions,
+            expected_standard: crit.expected_standard,
+            max_score: crit.max_score,
+            weight_in_section: crit.weight_in_section,
+            display_order: crit.display_order,
+            is_required: crit.is_required,
+            is_critical: crit.is_critical,
+            allow_not_observed: crit.allow_not_observed,
+            comment_required_below_score: crit.comment_required_below_score,
+          });
+          await supabase.from('assessment_template_criteria').insert([critPayload]);
+        }
+
+        for (const q of sec.questions || []) {
+          const qPayload = await injectRestaurantId({
+            section_id: newSec.id,
+            template_id: newTmpl.id,
+            question_text: q.question_text,
+            question_type: q.question_type,
+            options: q.options,
+            expected_answer: q.expected_answer,
+            max_score: q.max_score,
+            weight_in_section: q.weight_in_section,
+            display_order: q.display_order,
+            is_required: q.is_required,
+            is_critical: q.is_critical,
+            mandatory_comment: q.mandatory_comment,
+            allow_attachments: q.allow_attachments,
+            category_tag: q.category_tag,
+          });
+          await supabase.from('assessment_template_questions').insert([qPayload]);
+        }
+      }
+
+      return { success: true, data: newTmpl };
+    } catch (e: any) {
+      console.error('Error in duplicateAssessmentTemplate:', e);
+      return { success: false, error: e.message };
+    }
+  },
+
+  archiveAssessmentTemplate: async (templateId: string, isArchived: boolean) => {
+    try {
+      const { error } = await supabase
+        .from('assessment_templates')
+        .update({ is_archived: isArchived, updated_at: new Date().toISOString() })
+        .eq('id', templateId);
+      if (error) throw error;
+      return { success: true };
+    } catch (e: any) {
+      console.error('Error in archiveAssessmentTemplate:', e);
+      return { success: false, error: e.message };
+    }
+  },
+
+  deleteAssessmentTemplate: async (templateId: string) => {
+    try {
+      const { error } = await supabase
+        .from('assessment_templates')
+        .delete()
+        .eq('id', templateId);
+      if (error) throw error;
+      return { success: true };
+    } catch (e: any) {
+      console.error('Error in deleteAssessmentTemplate:', e);
+      return { success: false, error: e.message };
+    }
+  },
+
+  saveAssessmentSection: async (sectionData: any) => {
+    try {
+      const payload = await injectRestaurantId({
+        template_id: sectionData.template_id,
+        title: sectionData.title,
+        description: sectionData.description,
+        section_type: sectionData.section_type || 'practical_observation',
+        category_group: sectionData.category_group || 'practical',
+        weight: sectionData.weight ?? 0,
+        display_order: sectionData.display_order ?? 1,
+        is_required: sectionData.is_required ?? true,
+        is_active: sectionData.is_active ?? true,
+        updated_at: new Date().toISOString(),
+      });
+
+      if (sectionData.id) {
+        const { data, error } = await supabase
+          .from('assessment_template_sections')
+          .update(payload)
+          .eq('id', sectionData.id)
+          .select()
+          .single();
+        if (error) throw error;
+        return { success: true, data };
+      } else {
+        const { data, error } = await supabase
+          .from('assessment_template_sections')
+          .insert([payload])
+          .select()
+          .single();
+        if (error) throw error;
+        return { success: true, data };
+      }
+    } catch (e: any) {
+      console.error('Error in saveAssessmentSection:', e);
+      return { success: false, error: e.message };
+    }
+  },
+
+  deleteAssessmentSection: async (sectionId: string) => {
+    try {
+      const { error } = await supabase
+        .from('assessment_template_sections')
+        .delete()
+        .eq('id', sectionId);
+      if (error) throw error;
+      return { success: true };
+    } catch (e: any) {
+      console.error('Error in deleteAssessmentSection:', e);
+      return { success: false, error: e.message };
+    }
+  },
+
+  saveAssessmentCriterion: async (criterionData: any) => {
+    try {
+      const payload = await injectRestaurantId({
+        section_id: criterionData.section_id,
+        template_id: criterionData.template_id,
+        name: criterionData.name,
+        instructions: criterionData.instructions,
+        expected_standard: criterionData.expected_standard,
+        max_score: criterionData.max_score ?? 5,
+        weight_in_section: criterionData.weight_in_section ?? 1,
+        display_order: criterionData.display_order ?? 1,
+        is_required: criterionData.is_required ?? true,
+        is_critical: criterionData.is_critical ?? false,
+        allow_not_observed: criterionData.allow_not_observed ?? true,
+        comment_required_below_score: criterionData.comment_required_below_score ?? 3,
+        updated_at: new Date().toISOString(),
+      });
+
+      if (criterionData.id) {
+        const { data, error } = await supabase
+          .from('assessment_template_criteria')
+          .update(payload)
+          .eq('id', criterionData.id)
+          .select()
+          .single();
+        if (error) throw error;
+        return { success: true, data };
+      } else {
+        const { data, error } = await supabase
+          .from('assessment_template_criteria')
+          .insert([payload])
+          .select()
+          .single();
+        if (error) throw error;
+        return { success: true, data };
+      }
+    } catch (e: any) {
+      console.error('Error in saveAssessmentCriterion:', e);
+      return { success: false, error: e.message };
+    }
+  },
+
+  deleteAssessmentCriterion: async (criterionId: string) => {
+    try {
+      const { error } = await supabase
+        .from('assessment_template_criteria')
+        .delete()
+        .eq('id', criterionId);
+      if (error) throw error;
+      return { success: true };
+    } catch (e: any) {
+      console.error('Error in deleteAssessmentCriterion:', e);
+      return { success: false, error: e.message };
+    }
+  },
+
+  saveAssessmentQuestion: async (questionData: any) => {
+    try {
+      const payload = await injectRestaurantId({
+        section_id: questionData.section_id,
+        template_id: questionData.template_id,
+        question_text: questionData.question_text,
+        question_type: questionData.question_type || 'scenario_roleplay',
+        options: questionData.options,
+        expected_answer: questionData.expected_answer,
+        max_score: questionData.max_score ?? 5,
+        weight_in_section: questionData.weight_in_section ?? 1,
+        display_order: questionData.display_order ?? 1,
+        is_required: questionData.is_required ?? true,
+        is_critical: questionData.is_critical ?? false,
+        mandatory_comment: questionData.mandatory_comment ?? false,
+        allow_attachments: questionData.allow_attachments ?? true,
+        category_tag: questionData.category_tag,
+        updated_at: new Date().toISOString(),
+      });
+
+      if (questionData.id) {
+        const { data, error } = await supabase
+          .from('assessment_template_questions')
+          .update(payload)
+          .eq('id', questionData.id)
+          .select()
+          .single();
+        if (error) throw error;
+        return { success: true, data };
+      } else {
+        const { data, error } = await supabase
+          .from('assessment_template_questions')
+          .insert([payload])
+          .select()
+          .single();
+        if (error) throw error;
+        return { success: true, data };
+      }
+    } catch (e: any) {
+      console.error('Error in saveAssessmentQuestion:', e);
+      return { success: false, error: e.message };
+    }
+  },
+
+  deleteAssessmentQuestion: async (questionId: string) => {
+    try {
+      const { error } = await supabase
+        .from('assessment_template_questions')
+        .delete()
+        .eq('id', questionId);
+      if (error) throw error;
+      return { success: true };
+    } catch (e: any) {
+      console.error('Error in deleteAssessmentQuestion:', e);
+      return { success: false, error: e.message };
+    }
+  },
+
+  getEmployeeAssessments: async (filters?: {
+    employeeId?: string;
+    branch?: string;
+    position?: string;
+    status?: string;
+    dateFrom?: string;
+    dateTo?: string;
+  }) => {
+    try {
+      const restId = getRestaurantId();
+      let query = supabase
+        .from('employee_assessments')
+        .select(`
+          *,
+          employees (employee_id, first_name, last_name, position, branch, department, date_started),
+          assessment_templates (id, name, version, position)
+        `)
+        .order('created_at', { ascending: false });
+
+      if (restId) query = query.eq('restaurant_id', restId);
+      if (filters?.employeeId) query = query.eq('employee_id', filters.employeeId);
+      if (filters?.branch) query = query.eq('branch', filters.branch);
+      if (filters?.position) query = query.eq('position', filters.position);
+      if (filters?.status) query = query.eq('status', filters.status);
+      if (filters?.dateFrom) query = query.gte('assessment_date', filters.dateFrom);
+      if (filters?.dateTo) query = query.lte('assessment_date', filters.dateTo);
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return { success: true, data: data || [] };
+    } catch (e: any) {
+      console.error('Error in getEmployeeAssessments:', e);
+      return { success: false, error: e.message };
+    }
+  },
+
+  getEmployeeAssessmentById: async (assessmentId: string) => {
+    try {
+      const { data: assessment, error: aErr } = await supabase
+        .from('employee_assessments')
+        .select(`
+          *,
+          employees (employee_id, first_name, last_name, position, branch, department, date_started, phone),
+          assessment_templates (id, name, version, position, practical_weight, questions_weight, passing_score, confirmation_threshold, probation_extension_min, probation_extension_max, dismissal_threshold)
+        `)
+        .eq('id', assessmentId)
+        .single();
+      if (aErr) throw aErr;
+
+      const [scoresRes, answersRes, objectivesRes] = await Promise.all([
+        supabase.from('assessment_criterion_scores').select('*').eq('assessment_id', assessmentId),
+        supabase.from('assessment_question_answers').select('*').eq('assessment_id', assessmentId),
+        supabase.from('assessment_reassessment_objectives').select('*').eq('assessment_id', assessmentId).order('objective_number', { ascending: true }),
+      ]);
+
+      return {
+        success: true,
+        data: {
+          ...assessment,
+          scores: scoresRes.data || [],
+          answers: answersRes.data || [],
+          objectives: objectivesRes.data || [],
+        },
+      };
+    } catch (e: any) {
+      console.error('Error in getEmployeeAssessmentById:', e);
+      return { success: false, error: e.message };
+    }
+  },
+
+  createEmployeeAssessment: async (params: {
+    templateId: string;
+    employeeId: string;
+    position?: string;
+    branch?: string;
+    employmentStartDate?: string;
+    assessmentDate?: string;
+    assessmentPeriod?: string;
+    daysWorked?: number;
+    reason?: string;
+    evaluatorName?: string;
+    evaluatorUserId?: string;
+    secondEvaluatorName?: string;
+    parentAssessmentId?: string;
+    isReassessment?: boolean;
+    createdBy?: string;
+  }) => {
+    try {
+      const tmplRes = await api.getAssessmentTemplateById(params.templateId);
+      if (!tmplRes.success || !tmplRes.data) throw new Error('Template not found');
+      const tmpl = tmplRes.data;
+
+      const payload = await injectRestaurantId({
+        employee_id: params.employeeId,
+        template_id: params.templateId,
+        template_snapshot: tmpl,
+        position: params.position || tmpl.position,
+        branch: params.branch || 'Main',
+        employment_start_date: params.employmentStartDate,
+        assessment_date: params.assessmentDate || new Date().toISOString().split('T')[0],
+        assessment_period: params.assessmentPeriod || `${tmpl.recommended_days_timing || 10}-Day Probation`,
+        days_worked: params.daysWorked ?? (tmpl.recommended_days_timing || 10),
+        reason: params.reason || 'Initial probation',
+        evaluator_name: params.evaluatorName || 'Manager',
+        evaluator_user_id: params.evaluatorUserId,
+        second_evaluator_name: params.secondEvaluatorName,
+        parent_assessment_id: params.parentAssessmentId,
+        is_reassessment: params.isReassessment || false,
+        status: 'In Progress',
+        provisional_score: 0,
+        practical_score: 0,
+        questions_score: 0,
+        system_recommendation: 'Dismiss',
+        created_by: params.createdBy || 'Manager',
+        updated_at: new Date().toISOString(),
+      });
+
+      const { data, error } = await supabase
+        .from('employee_assessments')
+        .insert([payload])
+        .select()
+        .single();
+      if (error) throw error;
+
+      await supabase.from('assessment_audit_logs').insert([
+        await injectRestaurantId({
+          assessment_id: data.id,
+          action: 'created',
+          details: { template_name: tmpl.name, employee_id: params.employeeId, is_reassessment: params.isReassessment },
+          performed_by_name: params.createdBy || params.evaluatorName || 'Manager',
+          performed_by_id: params.evaluatorUserId,
+        }),
+      ]);
+
+      return { success: true, data };
+    } catch (e: any) {
+      console.error('Error in createEmployeeAssessment:', e);
+      return { success: false, error: e.message };
+    }
+  },
+
+  saveAssessmentScoresAndAnswers: async (params: {
+    assessmentId: string;
+    scoresMap: Record<string, any>;
+    answersMap: Record<string, any>;
+    provisionalScore: number;
+    practicalScore: number;
+    questionsScore: number;
+    hasCriticalFailure: boolean;
+    criticalFailureDetails?: string[];
+    systemRecommendation: string;
+    status?: string;
+    userName?: string;
+    userId?: string;
+  }) => {
+    try {
+      const { assessmentId, scoresMap, answersMap, provisionalScore, practicalScore, questionsScore, hasCriticalFailure, criticalFailureDetails, systemRecommendation, status } = params;
+
+      const scoreInserts: any[] = [];
+      for (const [criterionId, s] of Object.entries(scoresMap)) {
+        scoreInserts.push(
+          await injectRestaurantId({
+            assessment_id: assessmentId,
+            criterion_id: criterionId,
+            score: s.is_not_observed ? null : s.score,
+            is_not_observed: !!s.is_not_observed,
+            comment: s.comment || null,
+            evidence_url: s.evidence_url || null,
+            needs_follow_up: !!s.needs_follow_up,
+            updated_at: new Date().toISOString(),
+          })
+        );
+      }
+
+      const answerInserts: any[] = [];
+      for (const [questionId, a] of Object.entries(answersMap)) {
+        answerInserts.push(
+          await injectRestaurantId({
+            assessment_id: assessmentId,
+            question_id: questionId,
+            score: a.score,
+            recorded_answer: a.recorded_answer || null,
+            selected_option: a.selected_option || null,
+            comment: a.comment || null,
+            attachment_url: a.attachment_url || null,
+            is_critical_failed: !!a.is_critical_failed,
+            updated_at: new Date().toISOString(),
+          })
+        );
+      }
+
+      if (scoreInserts.length > 0) {
+        const { error: sErr } = await supabase
+          .from('assessment_criterion_scores')
+          .upsert(scoreInserts, { onConflict: 'assessment_id,criterion_id' });
+        if (sErr) throw sErr;
+      }
+
+      if (answerInserts.length > 0) {
+        const { error: aErr } = await supabase
+          .from('assessment_question_answers')
+          .upsert(answerInserts, { onConflict: 'assessment_id,question_id' });
+        if (aErr) throw aErr;
+      }
+
+      const updatePayload: any = {
+        provisional_score: provisionalScore,
+        practical_score: practicalScore,
+        questions_score: questionsScore,
+        has_critical_failure: hasCriticalFailure,
+        critical_failure_details: criticalFailureDetails || [],
+        system_recommendation: systemRecommendation,
+        updated_at: new Date().toISOString(),
+      };
+      if (status) updatePayload.status = status;
+
+      const { error: updErr } = await supabase
+        .from('employee_assessments')
+        .update(updatePayload)
+        .eq('id', assessmentId);
+      if (updErr) throw updErr;
+
+      return { success: true };
+    } catch (e: any) {
+      console.error('Error in saveAssessmentScoresAndAnswers:', e);
+      return { success: false, error: e.message };
+    }
+  },
+
+  submitFinalAssessment: async (params: {
+    assessmentId: string;
+    managerDecision: 'Confirm Employment' | 'Extend Probation' | 'Dismiss';
+    decisionReason?: string;
+    decisionOverrideExplanation?: string;
+    generalComments?: string;
+    strengths?: string;
+    weaknesses?: string;
+    finalScore: number;
+    practicalScore: number;
+    questionsScore: number;
+    hasCriticalFailure: boolean;
+    criticalFailureDetails?: string[];
+    systemRecommendation: string;
+    userName?: string;
+    userId?: string;
+    objectives?: Array<{
+      objective_number: number;
+      objective_text: string;
+      expected_standard: string;
+      responsible_manager?: string;
+      training_required?: string;
+      target_completion_date?: string;
+    }>;
+  }) => {
+    try {
+      const {
+        assessmentId,
+        managerDecision,
+        decisionReason,
+        decisionOverrideExplanation,
+        generalComments,
+        strengths,
+        weaknesses,
+        finalScore,
+        practicalScore,
+        questionsScore,
+        hasCriticalFailure,
+        criticalFailureDetails,
+        systemRecommendation,
+        userName,
+        userId,
+        objectives,
+      } = params;
+
+      let finalStatus: string = 'Completed';
+      if (managerDecision === 'Extend Probation') {
+        finalStatus = 'Probation Extended';
+      } else if (managerDecision === 'Dismiss') {
+        finalStatus = 'Dismissed';
+      }
+
+      const updatePayload = {
+        manager_decision: managerDecision,
+        decision_reason: decisionReason,
+        decision_override_explanation: decisionOverrideExplanation,
+        general_comments: generalComments,
+        strengths,
+        weaknesses,
+        final_score: finalScore,
+        practical_score: practicalScore,
+        questions_score: questionsScore,
+        has_critical_failure: hasCriticalFailure,
+        critical_failure_details: criticalFailureDetails || [],
+        system_recommendation: systemRecommendation,
+        status: finalStatus,
+        completed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      const { error: updErr } = await supabase
+        .from('employee_assessments')
+        .update(updatePayload)
+        .eq('id', assessmentId);
+      if (updErr) throw updErr;
+
+      await supabase.from('assessment_reassessment_objectives').delete().eq('assessment_id', assessmentId);
+
+      if (managerDecision === 'Extend Probation' && objectives && objectives.length > 0) {
+        const objInserts = await Promise.all(
+          objectives.map(async (obj, idx) =>
+            injectRestaurantId({
+              assessment_id: assessmentId,
+              objective_number: obj.objective_number || idx + 1,
+              objective_text: obj.objective_text,
+              expected_standard: obj.expected_standard,
+              responsible_manager: obj.responsible_manager,
+              training_required: obj.training_required,
+              target_completion_date: obj.target_completion_date,
+              created_at: new Date().toISOString(),
+            })
+          )
+        );
+        const { error: objErr } = await supabase
+          .from('assessment_reassessment_objectives')
+          .insert(objInserts);
+        if (objErr) throw objErr;
+      }
+
+      await supabase.from('assessment_audit_logs').insert([
+        await injectRestaurantId({
+          assessment_id: assessmentId,
+          action: 'submitted_final_decision',
+          details: {
+            manager_decision: managerDecision,
+            final_score: finalScore,
+            system_recommendation: systemRecommendation,
+            overridden: managerDecision !== systemRecommendation,
+          },
+          performed_by_name: userName || 'Manager',
+          performed_by_id: userId,
+        }),
+      ]);
+
+      return { success: true };
+    } catch (e: any) {
+      console.error('Error in submitFinalAssessment:', e);
+      return { success: false, error: e.message };
+    }
+  },
+
+  reopenAssessment: async (params: {
+    assessmentId: string;
+    reason: string;
+    userName: string;
+    userId?: string;
+  }) => {
+    try {
+      const { assessmentId, reason, userName, userId } = params;
+
+      const { error: updErr } = await supabase
+        .from('employee_assessments')
+        .update({
+          status: 'In Progress',
+          completed_at: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', assessmentId);
+      if (updErr) throw updErr;
+
+      await supabase.from('assessment_audit_logs').insert([
+        await injectRestaurantId({
+          assessment_id: assessmentId,
+          action: 'reopened',
+          reason,
+          details: { reopened_by: userName },
+          performed_by_name: userName,
+          performed_by_id: userId,
+        }),
+      ]);
+
+      return { success: true };
+    } catch (e: any) {
+      console.error('Error in reopenAssessment:', e);
+      return { success: false, error: e.message };
+    }
+  },
+
+  recordEmployeeAcknowledgement: async (assessmentId: string, acknowledgementText: string, employeeName: string) => {
+    try {
+      const { error } = await supabase
+        .from('employee_assessments')
+        .update({
+          employee_acknowledgement: acknowledgementText,
+          employee_acknowledged_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', assessmentId);
+      if (error) throw error;
+
+      await supabase.from('assessment_audit_logs').insert([
+        await injectRestaurantId({
+          assessment_id: assessmentId,
+          action: 'employee_acknowledged',
+          details: { acknowledgement: acknowledgementText },
+          performed_by_name: employeeName,
+        }),
+      ]);
+
+      return { success: true };
+    } catch (e: any) {
+      console.error('Error in recordEmployeeAcknowledgement:', e);
+      return { success: false, error: e.message };
+    }
+  },
+
+  getAssessmentDashboardMetrics: async (filters?: {
+    branch?: string;
+    position?: string;
+    dateFrom?: string;
+    dateTo?: string;
+  }) => {
+    try {
+      const assessmentsRes = await api.getEmployeeAssessments(filters);
+      if (!assessmentsRes.success || !assessmentsRes.data) {
+        throw new Error(assessmentsRes.error || 'Failed to fetch assessments');
+      }
+
+      const list: any[] = assessmentsRes.data;
+
+      let inProgress = 0;
+      let completed = 0;
+      let extendedProbation = 0;
+      let reassessmentsDue = 0;
+      let confirmed = 0;
+      let dismissalCount = 0;
+      let totalScoreSum = 0;
+      let scoredCount = 0;
+
+      const positionScores: Record<string, { sum: number; count: number }> = {};
+      const branchScores: Record<string, { sum: number; count: number }> = {};
+
+      list.forEach((item) => {
+        if (item.status === 'In Progress' || item.status === 'Draft' || item.status === 'Assigned') {
+          inProgress++;
+        } else if (item.status === 'Completed' || item.status === 'Probation Extended' || item.status === 'Dismissed') {
+          completed++;
+        }
+
+        if (item.status === 'Probation Extended') {
+          extendedProbation++;
+          reassessmentsDue++;
+        }
+
+        if (item.manager_decision === 'Confirm Employment' || (!item.manager_decision && item.system_recommendation === 'Confirm Employment')) {
+          confirmed++;
+        } else if (item.manager_decision === 'Dismiss' || (!item.manager_decision && item.system_recommendation === 'Dismiss')) {
+          dismissalCount++;
+        }
+
+        const score = typeof item.final_score === 'number' ? item.final_score : null;
+        if (score !== null && score > 0) {
+          totalScoreSum += score;
+          scoredCount++;
+
+          const pos = item.position || 'Other';
+          if (!positionScores[pos]) positionScores[pos] = { sum: 0, count: 0 };
+          positionScores[pos].sum += score;
+          positionScores[pos].count++;
+
+          const br = item.branch || 'Main';
+          if (!branchScores[br]) branchScores[br] = { sum: 0, count: 0 };
+          branchScores[br].sum += score;
+          branchScores[br].count++;
+        }
+      });
+
+      const averageScore = scoredCount > 0 ? Math.round((totalScoreSum / scoredCount) * 100) / 100 : 0;
+
+      const avgByPosition = Object.entries(positionScores).map(([pos, data]) => ({
+        position: pos,
+        average: Math.round((data.sum / data.count) * 10) / 10,
+        count: data.count,
+      }));
+
+      const avgByBranch = Object.entries(branchScores).map(([br, data]) => ({
+        branch: br,
+        average: Math.round((data.sum / data.count) * 10) / 10,
+        count: data.count,
+      }));
+
+      return {
+        success: true,
+        data: {
+          totalAssessments: list.length,
+          inProgress,
+          completed,
+          extendedProbation,
+          reassessmentsDue,
+          confirmed,
+          dismissalCount,
+          averageScore,
+          avgByPosition,
+          avgByBranch,
+        },
+      };
+    } catch (e: any) {
+      console.error('Error in getAssessmentDashboardMetrics:', e);
+      return { success: false, error: e.message };
+    }
+  },
 };
+
 
 
 

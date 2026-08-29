@@ -67,6 +67,9 @@ const DEFAULT_PERMISSIONS = {
   can_manage_price_intelligence: false,
   can_view_inventory: false,
   can_manage_inventory: false,
+  can_manage_assessments: false,
+  can_evaluate_assessments: false,
+  can_view_own_assessment: false,
   allowed_departments: ''
 };
 
@@ -162,6 +165,9 @@ const CATEGORIES = [
     icon: <Briefcase size={18} style={{ color: '#6f42c1' }} />,
     permissions: [
       { key: 'can_manage_hr', label: 'Manage Payroll & Salaries' },
+      { key: 'can_manage_assessments', label: 'Manage Assessment Templates & Settings' },
+      { key: 'can_evaluate_assessments', label: 'Conduct & Score Employee Assessments' },
+      { key: 'can_view_own_assessment', label: 'View Own Assessment Feedback' },
     ]
   },
   {

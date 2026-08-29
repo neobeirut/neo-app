@@ -13,8 +13,10 @@ import TipsDistributionScreen from './screens/TipsDistributionScreen';
 import PermissionsScreen from './screens/PermissionsScreen';
 import SOPsScreen from './screens/SOPsScreen';
 import SOPFormScreen from './screens/SOPFormScreen';
-import { LayoutDashboard, ChefHat, Users, LogOut, DollarSign, Shield, BookOpen, TrendingUp, MessageSquare, Newspaper, AlertTriangle, Sparkles, Trash2, History, Coins, Truck, ShoppingBag, Calendar, ClipboardList, Package, CheckSquare, Receipt, Briefcase, Store, ChevronDown, ChevronRight, Clock } from 'lucide-react';
+import { LayoutDashboard, ChefHat, Users, LogOut, DollarSign, Shield, BookOpen, TrendingUp, MessageSquare, Newspaper, AlertTriangle, Sparkles, Trash2, History, Coins, Truck, ShoppingBag, Calendar, ClipboardList, Package, CheckSquare, Receipt, Briefcase, Store, ChevronDown, ChevronRight, Clock, Target } from 'lucide-react';
 import { api } from './api/client';
+import AssessmentsScreen from './screens/AssessmentsScreen';
+import AssessmentConductWebScreen from './screens/AssessmentConductWebScreen';
 import FinanceDashboardScreen from './screens/FinanceDashboardScreen';
 import PaymentDetailsScreen from './screens/PaymentDetailsScreen';
 import ComplaintsDashboardScreen from './screens/ComplaintsDashboardScreen';
@@ -109,6 +111,7 @@ import InventoryScreen from './screens/InventoryScreen';
         name: 'People',
         items: [
           { to: '/employees', label: 'Employees', icon: <Users size={18} />, visible: isAdminOrSuper || !!permissions?.can_manage_hr, key: 'employees' },
+          { to: '/assessments', label: 'Employee Assessments', icon: <Target size={18} />, visible: isAdminOrSuper || !!permissions?.can_manage_assessments || !!permissions?.can_evaluate_assessments, key: 'assessments' },
           { to: '/attendance', label: 'Attendance & Timesheets', icon: <Clock size={18} />, visible: isAdminOrSuper || !!permissions?.can_manage_attendance || permissions?.can_punch_clock !== false, key: 'attendance' },
           { to: '/tips', label: 'Tips Config', icon: <DollarSign size={18} />, visible: isAdminOrSuper || !!permissions?.can_manage_tips, key: 'tips' },
           { to: '/permissions', label: 'Security & Matrix', icon: <Shield size={18} />, visible: isAdminOrSuper, key: 'permissions' },
@@ -389,6 +392,12 @@ function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () 
                 <Route path="/employees" element={<EmployeesScreen user={user} />} />
                 <Route path="/employees/new" element={<EmployeeFormScreen user={user} />} />
                 <Route path="/employees/edit/:id" element={<EmployeeFormScreen user={user} />} />
+              </>
+            )}
+            {isSectionEnabled('assessments') && (
+              <>
+                <Route path="/assessments" element={<AssessmentsScreen user={user} />} />
+                <Route path="/assessments/conduct/:id" element={<AssessmentConductWebScreen user={user} />} />
               </>
             )}
             {isSectionEnabled('attendance') && (
