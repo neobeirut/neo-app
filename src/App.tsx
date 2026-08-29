@@ -71,7 +71,7 @@ import InventoryScreen from './screens/InventoryScreen';
     };
 
     const isSectionEnabled = (key: string) => {
-      if (isPrivileged || key === 'inventory_reporting' || key === 'inventory' || key === 'attendance') return true;
+      if (isPrivileged || key === 'inventory_reporting' || key === 'inventory' || key === 'attendance' || key === 'assessments') return true;
       const enabledSections = user?.restaurants?.settings?.enabled_sections;
       if (!enabledSections) return true; // Default to enabled if not configured
       return enabledSections.includes(key);
@@ -265,7 +265,7 @@ import InventoryScreen from './screens/InventoryScreen';
 
 function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () => void; onUpdateUser: (user: any) => void }) {
   const isSectionEnabled = (key: string) => {
-    if (key === 'inventory_reporting' || key === 'inventory') return true;
+    if (key === 'inventory_reporting' || key === 'inventory' || key === 'assessments') return true;
     const enabledSections = user?.restaurants?.settings?.enabled_sections;
     if (!enabledSections) return true; // Default to enabled if not configured
     return enabledSections.includes(key);
@@ -288,7 +288,10 @@ function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () 
     can_view_suppliers: isPrivileged,
     can_manage_suppliers: isPrivileged,
     can_view_price_intelligence: isPrivileged,
-    can_manage_price_intelligence: isPrivileged
+    can_manage_price_intelligence: isPrivileged,
+    can_manage_assessments: isPrivileged,
+    can_evaluate_assessments: isPrivileged,
+    can_view_own_assessment: isPrivileged,
   });
   const [branchesList, setBranchesList] = useState<string[]>([]);
 
