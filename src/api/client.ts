@@ -4407,7 +4407,9 @@ export const api = {
         `)
         .order('name', { ascending: true });
 
-      if (restId) query = query.eq('restaurant_id', restId);
+      if (restId) {
+        query = query.or(`restaurant_id.eq.${restId},restaurant_id.is.null`);
+      }
       if (!params?.includeArchived) query = query.eq('is_archived', false);
       if (params?.position) query = query.eq('position', params.position);
 
