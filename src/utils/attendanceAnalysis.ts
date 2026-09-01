@@ -31,14 +31,14 @@ export function parseTimeToMinutes(timeStr: string): number {
   return h * 60 + m;
 }
 
-export function computeHoursDuration(startTimeStr: string, endTimeStr: string, breakMins: number = 0): number {
+export function computeHoursDuration(startTimeStr: string, endTimeStr: string): number {
   if (!startTimeStr || !endTimeStr) return 0;
   let startMin = parseTimeToMinutes(startTimeStr);
   let endMin = parseTimeToMinutes(endTimeStr);
   if (endMin <= startMin) endMin += 1440; // Overnight
 
-  const netMins = Math.max(0, endMin - startMin - breakMins);
-  return Math.round((netMins / 60) * 100) / 100;
+  const totalMins = endMin - startMin;
+  return Math.round((totalMins / 60) * 100) / 100;
 }
 
 export function computePunchDuration(punchInIso: string | null, punchOutIso: string | null): number {
@@ -138,7 +138,7 @@ export function reconcileSchedulesAndPunches({
     } else if (workShift && !punch) {
       // Scheduled but NO punch -> ABSENT
       flags.push('ABSENCE');
-      scheduledHours = computeHoursDuration(workShift.start_time, workShift.end_time, workShift.break_duration_mins || 0);
+      scheduledHours = computeHoursDuration(workShift.start_time, workShift.end_time);
       actualHours = 0;
       varianceHours = -scheduledHours;
       status = 'ABSENT';
@@ -156,16 +156,10 @@ export function reconcileSchedulesAndPunches({
       }
     } else if (workShift && punch) {
       // Both schedule & punch exist -> Reconcile times and flags!
-      const breakMins = workShift.break_duration_mins || 0;
-      scheduledHours = computeHoursDuration(workShift.start_time, workShift.end_time, breakMins);
-      const rawPunchHours = computePunchDuration(punch.punch_in, punch.punch_out);
-      
-      // Deduct scheduled break from actual presence since staff do not check out/in during breaks
-      if (rawPunchHours > 0 && breakMins > 0) {
-        actualHours = Math.max(0, Math.round((rawPunchHours - (breakMins / 60)) * 100) / 100);
-      } else {
-        actualHours = rawPunchHours;
-      }
+      // Full shift duration including break (e.g. 12PM-9PM = 9h)
+      scheduledHours = computeHoursDuration(workShift.start_time, workShift.end_time);
+      // Full punch duration on-site (e.g. 12PM-9PM = 9h)
+      actualHours = computePunchDuration(punch.punch_in, punch.punch_out);
 
       varianceHours = Math.round((actualHours - scheduledHours) * 100) / 100;
       overtimeHours = Math.max(0, varianceHours);
