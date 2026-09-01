@@ -3876,12 +3876,12 @@ export const api = {
       return { success: false, error: 'No schedules found in the source week to copy.' };
     }
 
-    let empQuery = supabase.from('employees').select('employee_id, status, is_active');
+    let empQuery = supabase.from('employees').select('employee_id, status');
     if (rid) empQuery = empQuery.eq('restaurant_id', rid);
     const { data: empData } = await empQuery;
     const activeEmpIds = new Set(
       (empData || [])
-        .filter((e: any) => e.status !== 'Inactive' && e.is_active !== false)
+        .filter((e: any) => e.status !== 'Inactive')
         .map((e: any) => e.employee_id)
     );
 
@@ -3957,12 +3957,12 @@ export const api = {
       return { success: false, error: 'No schedules found in the source month to copy.' };
     }
 
-    let empQuery = supabase.from('employees').select('employee_id, status, is_active');
+    let empQuery = supabase.from('employees').select('employee_id, status');
     if (rid) empQuery = empQuery.eq('restaurant_id', rid);
     const { data: empData } = await empQuery;
     const activeEmpIds = new Set(
       (empData || [])
-        .filter((e: any) => e.status !== 'Inactive' && e.is_active !== false)
+        .filter((e: any) => e.status !== 'Inactive')
         .map((e: any) => e.employee_id)
     );
 

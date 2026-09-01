@@ -2,6 +2,8 @@
   "cleanUrls": true,
   "outputDirectory": "dist",
   "routes": [
+    { "src": "^/tablet-punch-pwa$", "dest": "/tablet-punch-pwa/" },
+    { "src": "^/tablet-punch-pwa/(.*)", "dest": "/tablet-punch-pwa/$1" },
     { "src": "^/assets/(.*)", "dest": "/assets/$1" },
     { "src": "^/privacy-policy(/.*)?$", "dest": "/privacy-policy.html" },
     { "src": "^/privacy(/.*)?$", "dest": "/privacy.html" },

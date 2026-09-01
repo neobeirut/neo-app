@@ -53,6 +53,7 @@ const DEFAULT_PERMISSIONS = {
   can_view_voids: false,
   can_manage_voids: false,
   can_punch_clock: false,
+  can_punch_other_device: false,
   can_view_finance_dashboard: false,
   can_view_signin_logs: false,
   can_view_client_orders: false,
@@ -176,6 +177,7 @@ const CATEGORIES = [
     icon: <Clock size={18} style={{ color: '#007bff' }} />,
     permissions: [
       { key: 'can_punch_clock', label: 'Punch Clock (In / Out / Break)' },
+      { key: 'can_punch_other_device', label: 'Can Punch from Other than his Phone (e.g. Tablet)' },
       { key: 'can_view_schedule', label: 'View Shift Schedule' },
       { key: 'can_manage_schedules', label: 'Manage Schedules (Builder & Publish)' },
       { key: 'can_view_timesheet', label: 'View Monthly Timesheets' },

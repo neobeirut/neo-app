@@ -3,7 +3,8 @@ expo-orders-app/
 flow-website/
 scratch/
 *.sql
-*.png
+schedex_*.png
+step*.png
 *.log
 
 # Root scripts

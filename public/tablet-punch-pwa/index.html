@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Flow Store Tablet Punch</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="manifest" href="manifest.json">
+  <!-- Supabase JS Library from CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+  <div class="container">
+    <!-- Activation Screen -->
+    <div id="activation-screen" class="activation-card">
+      <h1 class="title">Activate Store Tablet</h1>
+      <p class="subtitle">Please enter your restaurant activation code to link this tablet device.</p>
+      
+      <div class="input-group">
+        <input type="text" id="activation-code-input" class="text-input" placeholder="ENTER ACTIVATION CODE" autocomplete="off" style="text-transform: uppercase;">
+      </div>
+      
+      <button class="btn btn-primary" onclick="handleActivate()">Activate Tablet</button>
+    </div>
+
+    <!-- Main Punch Screen -->
+    <div id="punch-screen" class="hidden">
+      <!-- Header -->
+      <div class="header">
+        <div class="logo-container">
+          <img id="restaurant-logo" class="logo hidden" src="" alt="Logo">
+          <span id="restaurant-title" class="restaurant-name">Restaurant</span>
+        </div>
+        <button class="settings-btn" onclick="handleResetActivation()" title="Reset Tablet Activation">⚙️</button>
+      </div>
+
+      <!-- Branch Selection -->
+      <div class="branch-section">
+        <select id="branch-select" class="select-dropdown" onchange="handleBranchChange(this.value)">
+          <!-- Loaded dynamically -->
+        </select>
+      </div>
+
+      <!-- Live Clock -->
+      <div class="clock-display">
+        <div id="time-display" class="time">00:00:00</div>
+        <div id="date-display" class="date">Loading date...</div>
+      </div>
+
+      <!-- Punch Action Buttons -->
+      <div class="punch-actions">
+        <button class="punch-btn punch-btn-in" onclick="openPinModal('In')">
+          <div class="punch-btn-icon">📥</div>
+          <div class="punch-btn-text">CLOCK IN</div>
+        </button>
+        <button class="punch-btn punch-btn-out" onclick="openPinModal('Out')">
+          <div class="punch-btn-icon">📤</div>
+          <div class="punch-btn-text">CLOCK OUT</div>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Custom Touchscreen PIN Modal -->
+  <div id="pin-modal" class="modal-overlay hidden">
+    <div class="modal-content">
+      <h2 id="pin-modal-title" class="modal-title">Clock In/Out</h2>
+      <p class="modal-subtitle">Enter your 4-digit PIN code to verify your identity.</p>
+
+      <!-- Pin dot visual indicators -->
+      <div class="pin-display">
+        <div class="pin-dot"></div>
+        <div class="pin-dot"></div>
+        <div class="pin-dot"></div>
+        <div class="pin-dot"></div>
+      </div>
+
+      <!-- Numeric Keypad Grid -->
+      <div class="keyboard-grid">
+        <button class="key-btn" onclick="handleKeypress('1')">1</button>
+        <button class="key-btn" onclick="handleKeypress('2')">2</button>
+        <button class="key-btn" onclick="handleKeypress('3')">3</button>
+        
+        <button class="key-btn" onclick="handleKeypress('4')">4</button>
+        <button class="key-btn" onclick="handleKeypress('5')">5</button>
+        <button class="key-btn" onclick="handleKeypress('6')">6</button>
+        
+        <button class="key-btn" onclick="handleKeypress('7')">7</button>
+        <button class="key-btn" onclick="handleKeypress('8')">8</button>
+        <button class="key-btn" onclick="handleKeypress('9')">9</button>
+        
+        <button class="key-btn key-btn-utility" onclick="handleClear()">C</button>
+        <button class="key-btn" onclick="handleKeypress('0')">0</button>
+        <button class="key-btn key-btn-utility" onclick="handleBackspace()">⌫</button>
+      </div>
+
+      <button class="modal-cancel-btn" onclick="closePinModal()">Cancel</button>
+    </div>
+  </div>
+
+  <!-- Fullscreen Loading & Status Feedback Overlay -->
+  <div id="status-screen" class="modal-overlay hidden">
+    <div class="modal-content">
+      <div class="status-content">
+        <div id="status-icon" class="status-icon"></div>
+        <h2 id="status-title" class="status-title">Title</h2>
+        <p id="status-msg" class="status-message">Status message details...</p>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

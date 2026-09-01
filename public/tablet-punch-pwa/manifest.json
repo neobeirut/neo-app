@@ -1,0 +1,17 @@
+{
+  "name": "Flow Store Tablet Punch",
+  "short_name": "Tablet Punch",
+  "description": "Clock in and clock out for store employees using the store tablet.",
+  "start_url": "/tablet-punch-pwa/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f8fafc",
+  "theme_color": "#4f46e5",
+  "icons": [
+    {
+      "src": "flow-icon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

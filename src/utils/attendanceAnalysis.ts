@@ -156,8 +156,17 @@ export function reconcileSchedulesAndPunches({
       }
     } else if (workShift && punch) {
       // Both schedule & punch exist -> Reconcile times and flags!
-      scheduledHours = computeHoursDuration(workShift.start_time, workShift.end_time, workShift.break_duration_mins || 0);
-      actualHours = computePunchDuration(punch.punch_in, punch.punch_out);
+      const breakMins = workShift.break_duration_mins || 0;
+      scheduledHours = computeHoursDuration(workShift.start_time, workShift.end_time, breakMins);
+      const rawPunchHours = computePunchDuration(punch.punch_in, punch.punch_out);
+      
+      // Deduct scheduled break from actual presence since staff do not check out/in during breaks
+      if (rawPunchHours > 0 && breakMins > 0) {
+        actualHours = Math.max(0, Math.round((rawPunchHours - (breakMins / 60)) * 100) / 100);
+      } else {
+        actualHours = rawPunchHours;
+      }
+
       varianceHours = Math.round((actualHours - scheduledHours) * 100) / 100;
       overtimeHours = Math.max(0, varianceHours);
 
