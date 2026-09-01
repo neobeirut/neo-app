@@ -24,7 +24,7 @@ export default function AttendanceAnalysisView({
   branches
 }: AttendanceAnalysisViewProps) {
   // Date Range state (Default to current week)
-  const [dateMode, setDateMode] = useState<'this_week' | 'last_week' | 'this_month' | 'custom'>('this_week');
+  const [dateMode, setDateMode] = useState<'today' | 'this_week' | 'last_week' | 'this_month' | 'custom'>('this_week');
   const [startDate, setStartDate] = useState(() => {
     const d = new Date();
     const day = d.getDay();
@@ -85,11 +85,15 @@ export default function AttendanceAnalysisView({
   };
 
   // Preset Date Range Handler
-  const handleDateModeChange = (mode: 'this_week' | 'last_week' | 'this_month' | 'custom') => {
+  const handleDateModeChange = (mode: 'today' | 'this_week' | 'last_week' | 'this_month' | 'custom') => {
     setDateMode(mode);
     const now = new Date();
 
-    if (mode === 'this_week') {
+    if (mode === 'today') {
+      const todayStr = now.toISOString().split('T')[0];
+      setStartDate(todayStr);
+      setEndDate(todayStr);
+    } else if (mode === 'this_week') {
       const day = now.getDay();
       const diff = now.getDate() - day + (day === 0 ? -6 : 1);
       const mon = new Date(now.setDate(diff));
@@ -288,6 +292,21 @@ export default function AttendanceAnalysisView({
           {/* Date Range Switcher & Inputs */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
             <div style={{ display: 'inline-flex', backgroundColor: '#f1f5f9', padding: '3px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+              <button
+                onClick={() => handleDateModeChange('today')}
+                style={{
+                  padding: '5px 12px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  backgroundColor: dateMode === 'today' ? 'var(--surface)' : 'transparent',
+                  color: dateMode === 'today' ? 'var(--primary)' : 'var(--text-muted)'
+                }}
+              >
+                Today
+              </button>
               <button
                 onClick={() => handleDateModeChange('this_week')}
                 style={{

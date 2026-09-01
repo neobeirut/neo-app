@@ -27,7 +27,7 @@ export default function AttendanceReportsView({
   const [activeReport, setActiveReport] = useState<ReportType>('SHIFT_SCHEDULE');
 
   // Filters State
-  const [dateMode, setDateMode] = useState<'this_week' | 'last_week' | 'this_month' | 'custom'>('this_month');
+  const [dateMode, setDateMode] = useState<'today' | 'this_week' | 'last_week' | 'this_month' | 'custom'>('this_month');
   const [startDate, setStartDate] = useState(() => {
     const d = new Date();
     return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0];
@@ -63,11 +63,15 @@ export default function AttendanceReportsView({
   };
 
   // Preset Date Range Handler
-  const handleDateModeChange = (mode: 'this_week' | 'last_week' | 'this_month' | 'custom') => {
+  const handleDateModeChange = (mode: 'today' | 'this_week' | 'last_week' | 'this_month' | 'custom') => {
     setDateMode(mode);
     const now = new Date();
 
-    if (mode === 'this_week') {
+    if (mode === 'today') {
+      const todayStr = now.toISOString().split('T')[0];
+      setStartDate(todayStr);
+      setEndDate(todayStr);
+    } else if (mode === 'this_week') {
       const day = now.getDay();
       const diff = now.getDate() - day + (day === 0 ? -6 : 1);
       const mon = new Date(now.setDate(diff));
@@ -349,6 +353,7 @@ export default function AttendanceReportsView({
             {/* Date Presets & Date Inputs */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
               <div style={{ display: 'inline-flex', backgroundColor: '#f1f5f9', padding: '3px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                <button onClick={() => handleDateModeChange('today')} style={{ padding: '5px 12px', borderRadius: '6px', border: 'none', fontSize: '12px', fontWeight: 600, cursor: 'pointer', backgroundColor: dateMode === 'today' ? 'var(--surface)' : 'transparent', color: dateMode === 'today' ? 'var(--primary)' : 'var(--text-muted)' }}>Today</button>
                 <button onClick={() => handleDateModeChange('this_week')} style={{ padding: '5px 12px', borderRadius: '6px', border: 'none', fontSize: '12px', fontWeight: 600, cursor: 'pointer', backgroundColor: dateMode === 'this_week' ? 'var(--surface)' : 'transparent', color: dateMode === 'this_week' ? 'var(--primary)' : 'var(--text-muted)' }}>This Week</button>
                 <button onClick={() => handleDateModeChange('last_week')} style={{ padding: '5px 12px', borderRadius: '6px', border: 'none', fontSize: '12px', fontWeight: 600, cursor: 'pointer', backgroundColor: dateMode === 'last_week' ? 'var(--surface)' : 'transparent', color: dateMode === 'last_week' ? 'var(--primary)' : 'var(--text-muted)' }}>Last Week</button>
                 <button onClick={() => handleDateModeChange('this_month')} style={{ padding: '5px 12px', borderRadius: '6px', border: 'none', fontSize: '12px', fontWeight: 600, cursor: 'pointer', backgroundColor: dateMode === 'this_month' ? 'var(--surface)' : 'transparent', color: dateMode === 'this_month' ? 'var(--primary)' : 'var(--text-muted)' }}>This Month</button>
