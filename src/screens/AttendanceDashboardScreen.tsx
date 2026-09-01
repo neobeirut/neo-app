@@ -368,7 +368,7 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
       ? `${selectedLog.employees.first_name || ''} ${selectedLog.employees.last_name || ''}` 
       : 'Unknown Employee';
 
-    // Detect manual clock out addition or updates
+    // Detect manual clock out addition, removal, or updates
     if (!selectedLog.punch_out && formPunchOut) {
       const logMsg = `[System] Clock out manually added by ${user.name || 'Manager'} on ${new Date().toLocaleString()}`;
       finalPunchOutNotes = formPunchOutNotes 
@@ -379,6 +379,17 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
         user.name || 'Manager',
         'Manual Clock Out Added',
         `Added clock out for ${empName} on shift ${selectedLog.id}. Clock out time: ${new Date(formPunchOut).toLocaleString()}`
+      );
+    } else if (selectedLog.punch_out && !formPunchOut) {
+      const logMsg = `[System] Clock out removed / reset by ${user.name || 'Manager'} on ${new Date().toLocaleString()}`;
+      finalPunchOutNotes = formPunchOutNotes 
+        ? `${formPunchOutNotes}\n${logMsg}`
+        : logMsg;
+
+      await api.logActivity(
+        user.name || 'Manager',
+        'Manual Clock Out Removed',
+        `Removed clock out for ${empName} on shift ${selectedLog.id}. Employee is now marked as active.`
       );
     } else if (selectedLog.punch_out && formPunchOut && new Date(selectedLog.punch_out).getTime() !== new Date(formPunchOut).getTime()) {
       const logMsg = `[System] Clock out manually updated by ${user.name || 'Manager'} on ${new Date().toLocaleString()}`;
@@ -1254,13 +1265,36 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
-                  <label style={filterLabelStyle}>Clock In Time *</label>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                    <label style={filterLabelStyle}>Clock In Time *</label>
+                    {formPunchIn && (
+                      <button
+                        type="button"
+                        onClick={() => setFormPunchIn('')}
+                        style={{ fontSize: '11px', color: '#dc2626', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
                   <input type="datetime-local" style={filterInputStyle} value={formPunchIn} onChange={e => setFormPunchIn(e.target.value)} required />
                 </div>
                 <div>
-                  <label style={filterLabelStyle}>Clock Out Time</label>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                    <label style={filterLabelStyle}>Clock Out Time</label>
+                    {formPunchOut && (
+                      <button
+                        type="button"
+                        onClick={() => setFormPunchOut('')}
+                        style={{ fontSize: '11px', color: '#dc2626', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}
+                        title="Remove accidental clock out"
+                      >
+                        ✕ Remove Clock Out
+                      </button>
+                    )}
+                  </div>
                   <input type="datetime-local" style={filterInputStyle} value={formPunchOut} onChange={e => setFormPunchOut(e.target.value)} />
-                  <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: '4px 0 0 0' }}>Leave empty to keep shift active.</p>
+                  <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: '4px 0 0 0' }}>Leave empty to keep shift active or if user clocked out by mistake.</p>
                 </div>
               </div>
               <div>
