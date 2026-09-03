@@ -82,6 +82,62 @@ export async function PATCH(request, { params }) {
           `;
         }
       }
+
+      // Send "We are preparing your items now!" when confirmed from POS
+      if (status === "preparing" || status === "confirmed") {
+        try {
+          let phoneToNotify = customerPhone;
+          if (!phoneToNotify) {
+            const [orderRow] = await sql`SELECT customer_phone FROM orders WHERE id = ${id} LIMIT 1`;
+            phoneToNotify = orderRow?.customer_phone;
+          }
+          if (phoneToNotify) {
+            const normPhone = String(phoneToNotify).replace(/\D/g, "").replace(/^00/, "").replace(/^0/, "961");
+            const target = normPhone.length === 8 ? "961" + normPhone : normPhone;
+            const apiKey = process.env.INFOBIP_API_KEY || "d42824b2b707759420c14250c320ec7b-449822b8-55e1-4d67-906f-8a19af1d302e";
+            const baseUrl = (process.env.INFOBIP_BASE_URL || "https://y4r1q1.api.infobip.com").replace(/\/$/, "");
+            const sender = "96181202607";
+
+            // 1. Send template order_preparing
+            await fetch(`${baseUrl}/whatsapp/1/message/template`, {
+              method: "POST",
+              headers: {
+                "Authorization": `App ${apiKey}`,
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+              },
+              body: JSON.stringify({
+                messages: [{
+                  from: sender,
+                  to: target,
+                  content: {
+                    templateName: "order_preparing",
+                    templateData: { body: { placeholders: [] } },
+                    language: "en"
+                  }
+                }]
+              })
+            });
+
+            // 2. Also send free-form message as backup if session active
+            await fetch(`${baseUrl}/whatsapp/1/message/text`, {
+              method: "POST",
+              headers: {
+                "Authorization": `App ${apiKey}`,
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+              },
+              body: JSON.stringify({
+                from: sender,
+                to: target,
+                content: { text: "We are preparing your items now!" }
+              })
+            }).catch(() => {});
+          }
+        } catch (e) {
+          console.error("Failed to send order_preparing notification from POS:", e);
+        }
+      }
     }
 
     return Response.json({ success: true, orderId: id, status });
