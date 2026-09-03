@@ -580,11 +580,25 @@ export default function AttendanceAnalysisView({
                       {/* Actual Punch */}
                       <td style={{ padding: '12px 16px' }}>
                         {rec.actual_punch_in ? (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600, color: 'var(--text-main)' }}>
-                            <Clock size={14} style={{ color: 'var(--primary)' }} />
-                            <span>In: {formatPunch(rec.actual_punch_in)}</span>
-                            <span>•</span>
-                            <span>Out: {formatPunch(rec.actual_punch_out)}</span>
+                          <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600, color: 'var(--text-main)' }}>
+                              <Clock size={14} style={{ color: 'var(--primary)' }} />
+                              <span>In: {formatPunch(rec.actual_punch_in)}</span>
+                              <span>•</span>
+                              <span>Out: {formatPunch(rec.actual_punch_out)}</span>
+                            </div>
+                            {rec.raw_punch && (rec.raw_punch.total_break_mins > 0 || rec.raw_punch.punch_in_method) && (
+                              <div style={{ fontSize: '11px', color: '#b45309', fontWeight: 600, marginTop: '3px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                {rec.raw_punch.total_break_mins > 0 && (
+                                  <span>☕ {rec.raw_punch.total_break_mins}m break</span>
+                                )}
+                                {rec.raw_punch.punch_in_method && (
+                                  <span style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '4px', backgroundColor: rec.raw_punch.punch_in_method === 'wifi' ? '#e0f2fe' : '#f0fdf4', color: rec.raw_punch.punch_in_method === 'wifi' ? '#0369a1' : '#15803d' }}>
+                                    {rec.raw_punch.punch_in_method === 'wifi' ? 'Wi-Fi' : 'GPS'}
+                                  </span>
+                                )}
+                              </div>
+                            )}
                           </div>
                         ) : (
                           <span style={{ fontSize: '12px', color: '#dc2626', fontWeight: 600 }}>No Punch Logged</span>
