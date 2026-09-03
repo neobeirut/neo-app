@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { api } from '../api/client';
 import {
   Search, Plus, Edit, Trash2, Phone, MapPin, X,
-  Compass, HelpCircle, Clock, Check, AlertCircle
+  Compass, HelpCircle, Clock, Check, AlertCircle, Wifi
 } from 'lucide-react';
 
 /* ─── types ─── */
@@ -275,6 +275,9 @@ export default function BranchManagementScreen() {
   const [latitude,    setLatitude]    = useState('');
   const [longitude,   setLongitude]   = useState('');
   const [radiusMeters,setRadiusMeters]= useState('200');
+  const [wifiSsids,   setWifiSsids]   = useState('');
+  const [wifiGraceMins, setWifiGraceMins] = useState('15');
+  const [autoPunchEnabled, setAutoPunchEnabled] = useState(true);
   const [saving,      setSaving]      = useState(false);
 
   // Which branch's shift modal is open
@@ -313,9 +316,13 @@ export default function BranchManagementScreen() {
       setLatitude(branch.latitude !== null ? String(branch.latitude) : '');
       setLongitude(branch.longitude !== null ? String(branch.longitude) : '');
       setRadiusMeters(branch.radius_meters !== null ? String(branch.radius_meters) : '200');
+      setWifiSsids(branch.wifi_ssids || '');
+      setWifiGraceMins(branch.wifi_disconnect_grace_mins !== null && branch.wifi_disconnect_grace_mins !== undefined ? String(branch.wifi_disconnect_grace_mins) : '15');
+      setAutoPunchEnabled(branch.auto_punch_enabled !== false);
     } else {
       setIsEditMode(false); setName(''); setTotalTables(''); setTotalChairs('');
       setPhone(''); setLatitude(''); setLongitude(''); setRadiusMeters('200');
+      setWifiSsids(''); setWifiGraceMins('15'); setAutoPunchEnabled(true);
     }
     setShowModal(true);
   };
@@ -333,6 +340,10 @@ export default function BranchManagementScreen() {
       latitude:  latitude.trim()  ? parseFloat(latitude)  : null,
       longitude: longitude.trim() ? parseFloat(longitude) : null,
       radius_meters: radiusMeters.trim() ? parseInt(radiusMeters, 10) : 200,
+      wifi_ssids: wifiSsids.trim() || null,
+      wifi_disconnect_grace_mins: wifiGraceMins.trim() ? parseInt(wifiGraceMins, 10) : 15,
+      auto_punch_enabled: autoPunchEnabled,
+      auto_punch_mode: 'break'
     });
     setSaving(false);
     if (res.success) { setShowModal(false); loadBranches(); }
@@ -425,6 +436,15 @@ export default function BranchManagementScreen() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <HelpCircle size={14} color="#94a3b8" />
                       <span>Geofence: <strong>{branch.radius_meters || 200}m</strong></span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Wifi size={14} color="#0284c7" />
+                      <span>
+                        Wi-Fi: {branch.wifi_ssids ? <strong style={{ color: '#0369a1' }}>{branch.wifi_ssids}</strong> : <span style={{ color: '#94a3b8' }}>Not set</span>}
+                        {branch.wifi_disconnect_grace_mins && (
+                          <span style={{ color: '#64748b', fontSize: '11px', marginLeft: '6px' }}>({branch.wifi_disconnect_grace_mins}m grace)</span>
+                        )}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -535,6 +555,54 @@ export default function BranchManagementScreen() {
               <div>
                 <label style={{ display: 'block', fontSize: '13px', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>Verification Geofence Radius (meters)</label>
                 <input type="number" placeholder="e.g. 200" style={{ width: '100%' }} value={radiusMeters} onChange={e => setRadiusMeters(e.target.value)} />
+              </div>
+
+              {/* Branch Wi-Fi & Auto-Break Settings */}
+              <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '10px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div style={{ fontWeight: 800, fontSize: '13px', color: '#166534', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Wifi size={16} /> Branch Wi-Fi & Auto-Break Configuration
+                </div>
+                <div style={{ fontSize: '11px', color: '#15803d', lineHeight: '16px' }}>
+                  Employees connected to authorized branch Wi-Fi can punch immediately. If disconnected &gt; grace period, an auto-break is recorded.
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#166534', marginBottom: '4px' }}>
+                    Authorized Wi-Fi SSID(s)
+                  </label>
+                  <input 
+                    type="text" 
+                    placeholder="e.g. Flow_Staff, Flow_5G" 
+                    style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid #86efac', fontSize: '13px', boxSizing: 'border-box' }} 
+                    value={wifiSsids} 
+                    onChange={e => setWifiSsids(e.target.value)} 
+                  />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', alignItems: 'center' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#166534', marginBottom: '4px' }}>
+                      Grace Period (minutes)
+                    </label>
+                    <input 
+                      type="number" 
+                      placeholder="15" 
+                      style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid #86efac', fontSize: '13px', boxSizing: 'border-box' }} 
+                      value={wifiGraceMins} 
+                      onChange={e => setWifiGraceMins(e.target.value)} 
+                    />
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '16px' }}>
+                    <input 
+                      type="checkbox" 
+                      id="autoPunchToggle" 
+                      checked={autoPunchEnabled} 
+                      onChange={e => setAutoPunchEnabled(e.target.checked)} 
+                      style={{ width: '16px', height: '16px', accentColor: '#16a34a' }}
+                    />
+                    <label htmlFor="autoPunchToggle" style={{ fontSize: '12px', fontWeight: 700, color: '#166534', cursor: 'pointer' }}>
+                      Enable Auto-Break
+                    </label>
+                  </div>
+                </div>
               </div>
 
               {/* Shift schedule hint inside the form */}
