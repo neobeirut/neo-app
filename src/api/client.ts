@@ -3626,12 +3626,21 @@ export const api = {
     if (rid) empQuery = empQuery.eq('restaurant_id', rid);
     const { data: empData } = await empQuery;
 
-    const empMap = new Map((empData || []).map((e) => [e.employee_id || e.id, e]));
+    const empMap = new Map();
+    (empData || []).forEach((e: any) => {
+      if (e.employee_id) empMap.set(String(e.employee_id), e);
+      if (e.id) empMap.set(String(e.id), e);
+    });
 
-    const merged = (schedData || []).map((s) => ({
-      ...s,
-      employees: empMap.get(s.employee_id) || s.employees || null
-    })).filter((s) => {
+    const merged = (schedData || []).map((s) => {
+      const emp = empMap.get(String(s.employee_id)) || s.employees || null;
+      const empName = emp ? (`${emp.first_name || ''} ${emp.last_name || ''}`.trim() || emp.name || emp.full_name) : null;
+      return {
+        ...s,
+        employees: emp,
+        employee_name: empName || s.employee_name || null
+      };
+    }).filter((s) => {
       const emp = s.employees;
       if (!emp) return true;
       const status = (emp.status || '').toString().trim().toLowerCase();
@@ -4921,9 +4930,14 @@ export const api = {
 
       await supabase.from('assessment_audit_logs').insert([
         await injectRestaurantId({
+          entity_type: 'assessment',
+          entity_id: data.id,
           assessment_id: data.id,
           action: 'created',
+          user_name: params.createdBy || params.evaluatorName || 'Manager',
+          user_id: params.evaluatorUserId || null,
           details: { template_name: tmpl.name, employee_id: params.employeeId, is_reassessment: params.isReassessment },
+          new_value: { template_name: tmpl.name, employee_id: params.employeeId, is_reassessment: params.isReassessment },
           performed_by_name: params.createdBy || params.evaluatorName || 'Manager',
           performed_by_id: params.evaluatorUserId,
         }),
@@ -4959,6 +4973,7 @@ export const api = {
           await injectRestaurantId({
             assessment_id: assessmentId,
             criterion_id: criterionId,
+            section_id: s.section_id || null,
             score: s.is_not_observed ? null : s.score,
             is_not_observed: !!s.is_not_observed,
             comment: s.comment || null,
@@ -4975,6 +4990,7 @@ export const api = {
           await injectRestaurantId({
             assessment_id: assessmentId,
             question_id: questionId,
+            section_id: a.section_id || null,
             score: a.score,
             recorded_answer: a.recorded_answer || null,
             selected_option: a.selected_option || null,
@@ -5125,9 +5141,19 @@ export const api = {
 
       await supabase.from('assessment_audit_logs').insert([
         await injectRestaurantId({
+          entity_type: 'assessment',
+          entity_id: assessmentId,
           assessment_id: assessmentId,
           action: 'submitted_final_decision',
+          user_name: userName || 'Manager',
+          user_id: userId || null,
           details: {
+            manager_decision: managerDecision,
+            final_score: finalScore,
+            system_recommendation: systemRecommendation,
+            overridden: managerDecision !== systemRecommendation,
+          },
+          new_value: {
             manager_decision: managerDecision,
             final_score: finalScore,
             system_recommendation: systemRecommendation,
@@ -5166,10 +5192,15 @@ export const api = {
 
       await supabase.from('assessment_audit_logs').insert([
         await injectRestaurantId({
+          entity_type: 'assessment',
+          entity_id: assessmentId,
           assessment_id: assessmentId,
           action: 'reopened',
           reason,
-          details: { reopened_by: userName },
+          user_name: userName,
+          user_id: userId || null,
+          details: { reopened_by: userName, reason },
+          new_value: { reopened_by: userName, reason },
           performed_by_name: userName,
           performed_by_id: userId,
         }),
@@ -5196,9 +5227,13 @@ export const api = {
 
       await supabase.from('assessment_audit_logs').insert([
         await injectRestaurantId({
+          entity_type: 'assessment',
+          entity_id: assessmentId,
           assessment_id: assessmentId,
           action: 'employee_acknowledged',
+          user_name: employeeName,
           details: { acknowledgement: acknowledgementText },
+          new_value: { acknowledgement: acknowledgementText },
           performed_by_name: employeeName,
         }),
       ]);

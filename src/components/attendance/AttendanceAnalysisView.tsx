@@ -122,6 +122,44 @@ export default function AttendanceAnalysisView({
     }
   };
 
+  // Unified Employee Lookup Map
+  const empLookupMap = useMemo(() => {
+    const map = new Map<string, any>();
+    (employees || []).forEach((e: any) => {
+      if (e.employee_id) map.set(String(e.employee_id), e);
+      if (e.id) map.set(String(e.id), e);
+    });
+    (schedules || []).forEach((s: any) => {
+      if (s.employees) {
+        if (s.employees.employee_id) map.set(String(s.employees.employee_id), s.employees);
+        if (s.employees.id) map.set(String(s.employees.id), s.employees);
+        if (s.employee_id) map.set(String(s.employee_id), s.employees);
+      }
+    });
+    (attendanceLogs || []).forEach((l: any) => {
+      if (l.employees) {
+        if (l.employees.employee_id) map.set(String(l.employees.employee_id), l.employees);
+        if (l.employees.id) map.set(String(l.employees.id), l.employees);
+        if (l.employee_id) map.set(String(l.employee_id), l.employees);
+      }
+    });
+    return map;
+  }, [employees, schedules, attendanceLogs]);
+
+  const resolveEmployeeName = (empId: string, fallbackName?: string, rawObj?: any) => {
+    const obj = rawObj || empLookupMap.get(String(empId));
+    if (obj) {
+      const full = `${obj.first_name || ''} ${obj.last_name || ''}`.trim();
+      if (full) return full;
+      if (obj.name) return obj.name;
+      if (obj.full_name) return obj.full_name;
+    }
+    if (fallbackName && fallbackName !== empId && !fallbackName.includes('-')) {
+      return fallbackName;
+    }
+    return fallbackName || empId;
+  };
+
   // Reconciled Dataset
   const reconciledRecords = useMemo(() => {
     return reconcileSchedulesAndPunches({
@@ -134,7 +172,10 @@ export default function AttendanceAnalysisView({
 
   // Filtered dataset
   const filteredRecords = useMemo(() => {
-    return reconciledRecords.filter((rec) => {
+    return reconciledRecords.map(rec => ({
+      ...rec,
+      employee_name: resolveEmployeeName(rec.employee_id, rec.employee_name, rec.raw_schedule?.employees || rec.raw_punch?.employees)
+    })).filter((rec) => {
       const name = rec.employee_name.toLowerCase();
       const pos = rec.position.toLowerCase();
       const query = searchQuery.toLowerCase();
@@ -153,7 +194,7 @@ export default function AttendanceAnalysisView({
 
       return matchesSearch && matchesBranch && matchesEmp && matchesFlag;
     });
-  }, [reconciledRecords, searchQuery, filterBranch, filterEmployee, filterFlag]);
+  }, [reconciledRecords, searchQuery, filterBranch, filterEmployee, filterFlag, empLookupMap]);
 
   // Summary Metrics
   const summaryKPIs = useMemo(() => {

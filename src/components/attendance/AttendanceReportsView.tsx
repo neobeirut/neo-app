@@ -121,25 +121,66 @@ export default function AttendanceReportsView({
     window.print();
   };
 
+  // Unified Employee Lookup Map
+  const empLookupMap = useMemo(() => {
+    const map = new Map<string, any>();
+    (employees || []).forEach((e: any) => {
+      if (e.employee_id) map.set(String(e.employee_id), e);
+      if (e.id) map.set(String(e.id), e);
+    });
+    (attendanceLogs || []).forEach((l: any) => {
+      if (l.employees) {
+        if (l.employees.employee_id) map.set(String(l.employees.employee_id), l.employees);
+        if (l.employees.id) map.set(String(l.employees.id), l.employees);
+        if (l.employee_id) map.set(String(l.employee_id), l.employees);
+      }
+    });
+    (schedules || []).forEach((s: any) => {
+      if (s.employees) {
+        if (s.employees.employee_id) map.set(String(s.employees.employee_id), s.employees);
+        if (s.employees.id) map.set(String(s.employees.id), s.employees);
+        if (s.employee_id) map.set(String(s.employee_id), s.employees);
+      }
+    });
+    return map;
+  }, [employees, attendanceLogs, schedules]);
+
+  const getEmployeeDisplayName = (empId: string, empObj?: any) => {
+    const emp = empObj || empLookupMap.get(String(empId));
+    if (emp) {
+      const full = `${emp.first_name || ''} ${emp.last_name || ''}`.trim();
+      if (full) return full;
+      if (emp.name) return emp.name;
+      if (emp.full_name) return emp.full_name;
+    }
+    return empId;
+  };
+
   // Filter Search Logic
   const filteredSchedules = useMemo(() => {
     if (!searchQuery.trim()) return schedules;
     const q = searchQuery.toLowerCase();
-    return schedules.filter((s) =>
-      (s.employee_name || s.employee_id || '').toLowerCase().includes(q) ||
-      (s.position || '').toLowerCase().includes(q) ||
-      (s.shift_name || '').toLowerCase().includes(q)
-    );
-  }, [schedules, searchQuery]);
+    return schedules.filter((s) => {
+      const name = getEmployeeDisplayName(s.employee_id, s.employees);
+      return (
+        name.toLowerCase().includes(q) ||
+        (s.position || '').toLowerCase().includes(q) ||
+        (s.shift_name || '').toLowerCase().includes(q)
+      );
+    });
+  }, [schedules, searchQuery, empLookupMap]);
 
   const filteredAttendanceLogs = useMemo(() => {
     if (!searchQuery.trim()) return attendanceLogs;
     const q = searchQuery.toLowerCase();
-    return attendanceLogs.filter((l) =>
-      (l.employees ? `${l.employees.first_name || ''} ${l.employees.last_name || ''}` : l.employee_id).toLowerCase().includes(q) ||
-      (l.branch || '').toLowerCase().includes(q)
-    );
-  }, [attendanceLogs, searchQuery]);
+    return attendanceLogs.filter((l) => {
+      const name = getEmployeeDisplayName(l.employee_id, l.employees);
+      return (
+        name.toLowerCase().includes(q) ||
+        (l.branch || '').toLowerCase().includes(q)
+      );
+    });
+  }, [attendanceLogs, searchQuery, empLookupMap]);
 
   const filteredReconciled = useMemo(() => {
     if (!searchQuery.trim()) return reconciledRecords;
@@ -170,7 +211,7 @@ export default function AttendanceReportsView({
       headers = ['Employee ID', 'Employee Name', 'Position', 'Branch', 'Date', 'Shift Name', 'Start Time', 'End Time', 'Break (mins)', 'Status'];
       rows = filteredSchedules.map((s) => [
         `"${s.employee_id}"`,
-        `"${s.employee_name || s.employee_id}"`,
+        `"${getEmployeeDisplayName(s.employee_id, s.employees)}"`,
         `"${s.position || ''}"`,
         `"${s.branch || ''}"`,
         `"${s.date}"`,
@@ -185,7 +226,7 @@ export default function AttendanceReportsView({
       rows = filteredAttendanceLogs.map((l) => [
         `"${l.id}"`,
         `"${l.employee_id}"`,
-        `"${l.employees ? `${l.employees.first_name || ''} ${l.employees.last_name || ''}`.trim() : l.employee_id}"`,
+        `"${getEmployeeDisplayName(l.employee_id, l.employees)}"`,
         `"${l.branch || ''}"`,
         `"${l.date || ''}"`,
         `"${l.punch_in ? new Date(l.punch_in).toLocaleString() : ''}"`,
@@ -425,7 +466,7 @@ export default function AttendanceReportsView({
                 <tbody>
                   {filteredSchedules.map((s, idx) => (
                     <tr key={s.id || idx} style={{ borderBottom: '1px solid var(--border)' }}>
-                      <td style={{ padding: '12px 16px', fontWeight: 700 }}>{s.employee_name || s.employee_id}</td>
+                      <td style={{ padding: '12px 16px', fontWeight: 700 }}>{getEmployeeDisplayName(s.employee_id, s.employees)}</td>
                       <td style={{ padding: '12px 16px', color: 'var(--text-muted)' }}>{s.position} • {s.branch}</td>
                       <td style={{ padding: '12px 16px', fontWeight: 600 }}>{s.date}</td>
                       <td style={{ padding: '12px 16px', fontWeight: 600, color: 'var(--primary)' }}>{s.shift_name}</td>
@@ -455,7 +496,7 @@ export default function AttendanceReportsView({
                 </thead>
                 <tbody>
                   {filteredAttendanceLogs.map((l, idx) => {
-                    const empName = l.employees ? `${l.employees.first_name || ''} ${l.employees.last_name || ''}`.trim() : l.employee_id;
+                    const empName = getEmployeeDisplayName(l.employee_id, l.employees);
                     const durationHrs = l.punch_in && l.punch_out ? Math.round(((new Date(l.punch_out).getTime() - new Date(l.punch_in).getTime()) / 3600000) * 100) / 100 : 0;
                     return (
                       <tr key={l.id || idx} style={{ borderBottom: '1px solid var(--border)' }}>

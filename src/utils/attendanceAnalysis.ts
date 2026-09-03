@@ -74,11 +74,26 @@ export function reconcileSchedulesAndPunches({
 }): ReconciliationRecord[] {
   const records: ReconciliationRecord[] = [];
 
-  const activeEmployees = (employees || []).filter(isEmployeeActive);
   const empMap = new Map<string, any>();
-  activeEmployees.forEach((emp) => {
-    const id = emp.employee_id || emp.id;
-    if (id) empMap.set(id, emp);
+  (employees || []).forEach((emp) => {
+    if (emp.employee_id) empMap.set(String(emp.employee_id), emp);
+    if (emp.id) empMap.set(String(emp.id), emp);
+  });
+
+  // Also collect employees from schedules and attendance logs in case employees prop is incomplete or loading
+  (schedules || []).forEach((s) => {
+    if (s.employees) {
+      if (s.employees.employee_id) empMap.set(String(s.employees.employee_id), s.employees);
+      if (s.employees.id) empMap.set(String(s.employees.id), s.employees);
+      if (s.employee_id) empMap.set(String(s.employee_id), s.employees);
+    }
+  });
+  (attendanceLogs || []).forEach((log) => {
+    if (log.employees) {
+      if (log.employees.employee_id) empMap.set(String(log.employees.employee_id), log.employees);
+      if (log.employees.id) empMap.set(String(log.employees.id), log.employees);
+      if (log.employee_id) empMap.set(String(log.employee_id), log.employees);
+    }
   });
 
   // Group schedules by employee_id + date
@@ -110,16 +125,18 @@ export function reconcileSchedulesAndPunches({
 
   allKeys.forEach((key) => {
     const [empId, dateStr] = key.split('_');
-    const empObj = empMap.get(empId);
-    if (!empObj || !isEmployeeActive(empObj)) {
-      return; // Skip inactive employees
-    }
-    const empName = `${empObj.first_name || ''} ${empObj.last_name || ''}`.trim() || empObj.name || empId;
-    const pos = empObj?.position || 'Staff';
-    const branch = empObj?.branch || 'Main';
-
     const empSchedules = scheduleKeyMap.get(key) || [];
     const empPunches = logKeyMap.get(key) || [];
+
+    const empObj = empMap.get(String(empId)) || empSchedules[0]?.employees || empPunches[0]?.employees;
+    if (empObj && !isEmployeeActive(empObj)) {
+      return; // Skip inactive employees
+    }
+
+    const rawFullName = empObj ? `${empObj.first_name || ''} ${empObj.last_name || ''}`.trim() : '';
+    const empName = rawFullName || empObj?.name || empObj?.full_name || empSchedules[0]?.employee_name || empId;
+    const pos = empObj?.position || empSchedules[0]?.position || 'Staff';
+    const branch = empObj?.branch || empSchedules[0]?.branch || empPunches[0]?.branch || 'Main';
 
     const workShift = empSchedules.find((s) => s.assignment_type === 'shift');
     const leaveShift = empSchedules.find((s) => s.assignment_type !== 'shift');
