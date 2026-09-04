@@ -116,7 +116,7 @@ const DEFAULT_SCHEMAS = {
   },
   cancelled: {
     category: "UTILITY",
-    bodyPlaceholderCount: 0,
+    bodyPlaceholderCount: 1, // Order ID
     hasHeader: false,
     headerType: null,
     hasButtons: false,

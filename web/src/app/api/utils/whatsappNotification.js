@@ -149,7 +149,7 @@ export async function sendWhatsAppNotification(orderId, newStatus) {
     }
 
     // Handle statuses that require Push Notification ONLY
-    if (newStatus === "ready" || newStatus === "cancelled") {
+    if (newStatus === "ready") {
       console.log(`[whatsapp-notification] Sending push notification only for status ${newStatus}`);
       let pushResult = { success: false, sentCount: 0, error: "No push token" };
       try {

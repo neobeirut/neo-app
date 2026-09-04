@@ -82,6 +82,82 @@ export async function PATCH(request, { params }) {
           `;
         }
       }
+      // Send "We are preparing your items now!" when confirmed from POS (only once on transition)
+      if (status === "preparing" || status === "confirmed") {
+        try {
+          const [orderRow] = await sql`SELECT status, customer_phone FROM orders WHERE id = ${id} LIMIT 1`;
+          const phoneToNotify = customerPhone || orderRow?.customer_phone;
+          if (phoneToNotify && orderRow?.status !== "preparing" && orderRow?.status !== "confirmed") {
+            const normPhone = String(phoneToNotify).replace(/\D/g, "").replace(/^00/, "").replace(/^0/, "961");
+            const target = normPhone.length === 8 ? "961" + normPhone : normPhone;
+            const apiKey = process.env.INFOBIP_API_KEY || "d42824b2b707759420c14250c320ec7b-449822b8-55e1-4d67-906f-8a19af1d302e";
+            const baseUrl = (process.env.INFOBIP_BASE_URL || "https://y4r1q1.api.infobip.com").replace(/\/$/, "");
+            const sender = "96181202607";
+
+            await fetch(`${baseUrl}/whatsapp/1/message/template`, {
+              method: "POST",
+              headers: {
+                "Authorization": `App ${apiKey}`,
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+              },
+              body: JSON.stringify({
+                messages: [{
+                  from: sender,
+                  to: target,
+                  content: {
+                    templateName: "order_preparing",
+                    templateData: { body: { placeholders: [] } },
+                    language: "en"
+                  }
+                }]
+              })
+            });
+          }
+        } catch (e) {
+          console.error("Failed to send order_preparing notification from POS:", e);
+        }
+      }
+    }
+
+    // Send "rejected_order" when cancelled/rejected from POS
+    if (status === "cancelled") {
+      try {
+        const [orderRow] = await sql`SELECT customer_phone FROM orders WHERE id = ${id} LIMIT 1`;
+        const phoneToNotify = customerPhone || orderRow?.customer_phone;
+        if (phoneToNotify) {
+          const normPhone = String(phoneToNotify).replace(/\D/g, "").replace(/^00/, "").replace(/^0/, "961");
+          const target = normPhone.length === 8 ? "961" + normPhone : normPhone;
+          const apiKey = process.env.INFOBIP_API_KEY || "d42824b2b707759420c14250c320ec7b-449822b8-55e1-4d67-906f-8a19af1d302e";
+          const baseUrl = (process.env.INFOBIP_BASE_URL || "https://y4r1q1.api.infobip.com").replace(/\/$/, "");
+          const sender = "96181202607";
+
+          console.log(`[pos-status] Sending rejected_order template to ${target} for order #${id}`);
+          const res = await fetch(`${baseUrl}/whatsapp/1/message/template`, {
+            method: "POST",
+            headers: {
+              "Authorization": `App ${apiKey}`,
+              "Content-Type": "application/json",
+              "Accept": "application/json"
+            },
+            body: JSON.stringify({
+              messages: [{
+                from: sender,
+                to: target,
+                content: {
+                  templateName: "rejected_order",
+                  templateData: { body: { placeholders: [String(id)] } },
+                  language: "en"
+                }
+              }]
+            })
+          });
+          const resData = await res.json().catch(() => ({}));
+          console.log(`[pos-status] rejected_order response status: ${res.status}`, JSON.stringify(resData));
+        }
+      } catch (e) {
+        console.error("Failed to send rejected_order notification from POS:", e);
+      }
     }
 
     return Response.json({ success: true, orderId: id, status });
