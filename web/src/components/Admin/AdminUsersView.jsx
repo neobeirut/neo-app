@@ -176,11 +176,13 @@ export default function AdminUsersView() {
       backend: "bg-purple-100 text-purple-800",
       orders: "bg-blue-100 text-blue-800",
       product_status: "bg-green-100 text-green-800",
+      payments: "bg-emerald-100 text-emerald-800",
     };
     const labels = {
       backend: "Backend",
       orders: "Orders",
       product_status: "Product Status",
+      payments: "Payments & Financials",
     };
     return (
       <span
@@ -417,6 +419,17 @@ export default function AdminUsersView() {
                     />
                     <span className="ml-2 text-sm text-gray-700">
                       Product Status - Manage product availability
+                    </span>
+                  </label>
+                  <label className="flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={formData.roles.includes("payments")}
+                      onChange={() => handleRoleToggle("payments")}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    />
+                    <span className="ml-2 text-sm text-gray-700">
+                      Payments & Financials - Manage suppliers, payments, and financial stats
                     </span>
                   </label>
                 </div>

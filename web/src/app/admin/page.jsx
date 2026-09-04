@@ -32,6 +32,7 @@ import WhatsAppInboxView from "@/components/Admin/WhatsAppInboxView";
 import DeliveryPricingView from "@/components/Admin/DeliveryPricingView";
 import WebsiteView from "@/components/Admin/WebsiteView";
 import ReportsView from "@/components/Admin/ReportsView";
+import PaymentsView from "@/components/Admin/PaymentsView";
 
 export default function AdminPage() {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -39,6 +40,7 @@ export default function AdminPage() {
     () => [
       "dashboard",
       "reports",
+      "payments",
       "categories",
       "products",
       "customization-items",
@@ -80,6 +82,9 @@ export default function AdminPage() {
       if (Array.isArray(roles) && roles.includes("product_status")) {
         return "product-status";
       }
+      if (Array.isArray(roles) && roles.includes("payments")) {
+        return "payments";
+      }
 
       return "dashboard";
     } catch (e) {
@@ -106,9 +111,15 @@ export default function AdminPage() {
       orders: "orders",
       product_status: "product-status",
       reports: "reports",
+      payments: "payments",
     };
 
     const tabsFromRoles = roleList.map((r) => map[r]).filter(Boolean);
+
+    // If admin has "payments" role, also grant access to "reports"
+    if (roleList.includes("payments") && !tabsFromRoles.includes("reports")) {
+      tabsFromRoles.push("reports");
+    }
 
     // If admin has "orders" role, automatically add "whatsapp-inbox"
     // (WhatsApp is used for order-related customer communication)
@@ -501,6 +512,11 @@ export default function AdminPage() {
           <ReportsView />
         )}
 
+        {/* Payments View */}
+        {activeTab === "payments" && allowedTabs.includes("payments") && (
+          <PaymentsView />
+        )}
+
         {/* WhatsApp Inbox View */}
         {activeTab === "whatsapp-inbox" &&
           allowedTabs.includes("whatsapp-inbox") && (
@@ -556,6 +572,7 @@ export default function AdminPage() {
           activeTab !== "notifications" &&
           activeTab !== "promo-codes" &&
           activeTab !== "reports" &&
+          activeTab !== "payments" &&
           activeTab !== "whatsapp-inbox" && (
             <button
               onClick={() => {
@@ -677,6 +694,7 @@ export default function AdminPage() {
           activeTab !== "clients" &&
           activeTab !== "admin-users" &&
           activeTab !== "reports" &&
+          activeTab !== "payments" &&
           activeTab !== "orders" &&
           activeTab !== "dashboard" &&
           activeTab !== "events" &&

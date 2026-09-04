@@ -54,6 +54,7 @@ export function SidebarNavigation({
       "customer-messages": Inbox,
       branches: MapPin,
       "delivery-pricing": DollarSign,
+      payments: DollarSign,
       clients: Users,
       "admin-users": Shield,
       website: Globe,
@@ -67,6 +68,10 @@ export function SidebarNavigation({
     {
       title: "Overview & Operations",
       items: ["dashboard", "reports", "orders"]
+    },
+    {
+      title: "Finance & Suppliers",
+      items: ["payments"]
     },
     {
       title: "Catalog Management",
@@ -150,7 +155,7 @@ export function SidebarNavigation({
                       }`}
                     >
                       <Icon size={18} className={isActive ? "text-white" : "text-slate-400 group-hover:text-slate-200"} />
-                      <span className="capitalize">{tabId.replace("-", " ")}</span>
+                      <span className="capitalize">{tabId === "payments" ? "Supplier Payments" : tabId.replace("-", " ")}</span>
                     </button>
                   );
                 })}
