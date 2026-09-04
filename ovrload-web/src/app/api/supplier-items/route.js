@@ -33,7 +33,7 @@ export async function GET(request) {
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { name, unit, category, notes } = body;
+    const { name, unit, category, notes, has_vat, vat_rate } = body;
 
     if (!name || !name.trim()) {
       return corsJson(request, { ok: false, error: "Item name is required" }, { status: 400 });
@@ -47,6 +47,8 @@ export async function POST(request) {
     }
 
     const trimmedName = name.trim();
+    const parsedHasVat = Boolean(has_vat);
+    const parsedVatRate = parsedHasVat ? (vat_rate !== undefined && vat_rate !== null ? Number(vat_rate) : 11) : 0;
 
     const existing = await sql`
       SELECT id FROM supplier_items WHERE LOWER(name) = LOWER(${trimmedName}) LIMIT 1
@@ -57,9 +59,9 @@ export async function POST(request) {
 
     const result = await sql`
       INSERT INTO supplier_items (
-        name, unit, category, notes, created_at, updated_at
+        name, unit, category, notes, has_vat, vat_rate, created_at, updated_at
       ) VALUES (
-        ${trimmedName}, ${unit}, ${category || null}, ${notes || null}, NOW(), NOW()
+        ${trimmedName}, ${unit}, ${category || null}, ${notes || null}, ${parsedHasVat}, ${parsedVatRate}, NOW(), NOW()
       )
       RETURNING *;
     `;
@@ -74,7 +76,7 @@ export async function POST(request) {
 export async function PUT(request) {
   try {
     const body = await request.json();
-    const { id, name, unit, category, notes } = body;
+    const { id, name, unit, category, notes, has_vat, vat_rate } = body;
 
     if (!id) {
       return corsJson(request, { ok: false, error: "Item ID is required" }, { status: 400 });
@@ -90,6 +92,8 @@ export async function PUT(request) {
     }
 
     const trimmedName = name.trim();
+    const parsedHasVat = Boolean(has_vat);
+    const parsedVatRate = parsedHasVat ? (vat_rate !== undefined && vat_rate !== null ? Number(vat_rate) : 11) : 0;
 
     const existing = await sql`
       SELECT id FROM supplier_items WHERE LOWER(name) = LOWER(${trimmedName}) AND id != ${id} LIMIT 1
@@ -105,6 +109,8 @@ export async function PUT(request) {
         unit = ${unit},
         category = ${category || null},
         notes = ${notes || null},
+        has_vat = ${parsedHasVat},
+        vat_rate = ${parsedVatRate},
         updated_at = NOW()
       WHERE id = ${id}
       RETURNING *;

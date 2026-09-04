@@ -22,7 +22,8 @@ import {
   X,
   RefreshCw,
   Layers,
-  AlertCircle
+  AlertCircle,
+  Percent
 } from "lucide-react";
 
 const ALLOWED_UNITS = ["Litre", "Kg", "Box", "Bottle", "Bag", "Pcs", "Gallon"];
@@ -65,7 +66,7 @@ export default function PaymentsView() {
     status: "paid",
     notes: "",
     lines: [
-      { item_id: "", unit: "Kg", qty: "1", price: "0" }
+      { item_id: "", unit: "Kg", qty: "1", price: "0", has_vat: false, vat_rate: "11" }
     ]
   });
 
@@ -82,6 +83,8 @@ export default function PaymentsView() {
     name: "",
     unit: "Kg",
     category: "",
+    has_vat: false,
+    vat_rate: "11",
     notes: ""
   });
 
@@ -175,6 +178,7 @@ export default function PaymentsView() {
   // --- Actions: Payments ---
   const handleOpenNewPayment = () => {
     setEditingPayment(null);
+    const defaultItem = items[0];
     setPaymentForm({
       invoice_number: "",
       payment_date: new Date().toISOString().split("T")[0],
@@ -184,10 +188,12 @@ export default function PaymentsView() {
       notes: "",
       lines: [
         { 
-          item_id: items.length > 0 ? String(items[0].id) : "", 
-          unit: items.length > 0 ? items[0].unit : "Kg", 
+          item_id: defaultItem ? String(defaultItem.id) : "", 
+          unit: defaultItem ? defaultItem.unit : "Kg", 
           qty: "1", 
-          price: "0" 
+          price: "0",
+          has_vat: Boolean(defaultItem?.has_vat),
+          vat_rate: defaultItem?.vat_rate !== null && defaultItem?.vat_rate !== undefined ? String(defaultItem.vat_rate) : "11"
         }
       ]
     });
@@ -208,7 +214,9 @@ export default function PaymentsView() {
           item_id: String(p.item_id),
           unit: p.unit || "Kg",
           qty: String(p.qty),
-          price: String(p.price)
+          price: String(p.price),
+          has_vat: Boolean(p.has_vat),
+          vat_rate: p.vat_rate !== null && p.vat_rate !== undefined ? String(p.vat_rate) : "11"
         }
       ]
     });
@@ -219,11 +227,13 @@ export default function PaymentsView() {
     const updated = [...paymentForm.lines];
     updated[index][field] = value;
 
-    // If item changed, automatically set the unit to item's default unit
+    // If item changed, automatically set unit and default VAT from the chosen item
     if (field === "item_id") {
       const matched = items.find((i) => String(i.id) === String(value));
-      if (matched && matched.unit) {
-        updated[index].unit = matched.unit;
+      if (matched) {
+        if (matched.unit) updated[index].unit = matched.unit;
+        updated[index].has_vat = Boolean(matched.has_vat);
+        updated[index].vat_rate = matched.vat_rate !== null && matched.vat_rate !== undefined ? String(matched.vat_rate) : "11";
       }
     }
 
@@ -240,7 +250,9 @@ export default function PaymentsView() {
           item_id: defaultItem ? String(defaultItem.id) : "",
           unit: defaultItem ? defaultItem.unit : "Kg",
           qty: "1",
-          price: "0"
+          price: "0",
+          has_vat: Boolean(defaultItem?.has_vat),
+          vat_rate: defaultItem?.vat_rate !== null && defaultItem?.vat_rate !== undefined ? String(defaultItem.vat_rate) : "11"
         }
       ]
     });
@@ -254,12 +266,23 @@ export default function PaymentsView() {
     });
   };
 
-  const computeGrandTotal = useMemo(() => {
-    return paymentForm.lines.reduce((sum, line) => {
+  const computeTotals = useMemo(() => {
+    let subtotal = 0;
+    let totalVat = 0;
+    paymentForm.lines.forEach((line) => {
       const q = parseFloat(line.qty) || 0;
       const p = parseFloat(line.price) || 0;
-      return sum + q * p;
-    }, 0);
+      const lineSub = q * p;
+      const vRate = line.has_vat ? (parseFloat(line.vat_rate) || 0) : 0;
+      const lineVat = lineSub * (vRate / 100);
+      subtotal += lineSub;
+      totalVat += lineVat;
+    });
+    return {
+      subtotal: Math.round(subtotal * 100) / 100,
+      totalVat: Math.round(totalVat * 100) / 100,
+      grandTotal: Math.round((subtotal + totalVat) * 100) / 100
+    };
   }, [paymentForm.lines]);
 
   const handleSavePayment = async (e) => {
@@ -301,6 +324,8 @@ export default function PaymentsView() {
             unit: line.unit,
             qty: line.qty,
             price: line.price,
+            has_vat: line.has_vat,
+            vat_rate: line.has_vat ? Number(line.vat_rate || 11) : 0,
             payment_method: paymentForm.payment_method,
             status: paymentForm.status,
             notes: paymentForm.notes
@@ -325,6 +350,8 @@ export default function PaymentsView() {
             unit: l.unit,
             qty: l.qty,
             price: l.price,
+            has_vat: l.has_vat,
+            vat_rate: l.has_vat ? Number(l.vat_rate || 11) : 0,
             payment_method: paymentForm.payment_method,
             status: paymentForm.status,
             notes: paymentForm.notes
@@ -356,10 +383,10 @@ export default function PaymentsView() {
       const res = await fetch(`/api/supplier-payments?id=${id}`, { method: "DELETE" });
       const data = await res.json();
       if (data.ok) {
-        showToast("Payment record deleted.");
+        showToast("Payment deleted.");
         fetchData();
       } else {
-        alert("Error: " + data.error);
+        alert("Failed to delete payment: " + data.error);
       }
     } catch (err) {
       alert("Failed to delete payment: " + err.message);
@@ -369,7 +396,14 @@ export default function PaymentsView() {
   // --- Actions: Suppliers ---
   const handleOpenNewSupplier = () => {
     setEditingSupplier(null);
-    setSupplierForm({ name: "", phone: "", contact_person: "", address: "", category: "", notes: "" });
+    setSupplierForm({
+      name: "",
+      phone: "",
+      contact_person: "",
+      address: "",
+      category: "",
+      notes: ""
+    });
     setShowSupplierModal(true);
   };
 
@@ -433,7 +467,7 @@ export default function PaymentsView() {
   // --- Actions: Items ---
   const handleOpenNewItem = () => {
     setEditingItem(null);
-    setItemForm({ name: "", unit: "Kg", category: "", notes: "" });
+    setItemForm({ name: "", unit: "Kg", category: "", has_vat: false, vat_rate: "11", notes: "" });
     setShowItemModal(true);
   };
 
@@ -443,6 +477,8 @@ export default function PaymentsView() {
       name: it.name || "",
       unit: it.unit || "Kg",
       category: it.category || "",
+      has_vat: Boolean(it.has_vat),
+      vat_rate: it.vat_rate !== null && it.vat_rate !== undefined ? String(it.vat_rate) : "11",
       notes: it.notes || ""
     });
     setShowItemModal(true);
@@ -492,21 +528,25 @@ export default function PaymentsView() {
     }
   };
 
-  // CSV Export
+  // CSV Export with VAT columns
   const handleExportCSV = () => {
     if (payments.length === 0) {
       alert("No payments to export");
       return;
     }
 
-    let csv = "Date,Invoice Number,Supplier,Item,Unit,Quantity,Price ($),Total ($),Payment Method,Status,Notes\n";
+    let csv = "Date,Invoice Number,Supplier,Item,Unit,Quantity,Unit Price ($),Subtotal ($),VAT Rate (%),VAT Amount ($),Total ($),Payment Method,Status,Notes\n";
     payments.forEach((p) => {
       const date = p.payment_date ? p.payment_date.split("T")[0] : "";
       const inv = (p.invoice_number || "").replace(/"/g, '""');
       const sup = (p.supplier_name || "").replace(/"/g, '""');
       const item = (p.item_name || "").replace(/"/g, '""');
       const notes = (p.notes || "").replace(/"/g, '""');
-      csv += `"${date}","${inv}","${sup}","${item}","${p.unit}",${p.qty},${p.price},${p.total_amount},"${p.payment_method}","${p.status}","${notes}"\n`;
+      const subtotal = Number(p.subtotal_amount || (Number(p.qty) * Number(p.price))).toFixed(2);
+      const vatRate = p.has_vat ? Number(p.vat_rate || 11) : 0;
+      const vatAmount = Number(p.vat_amount || 0).toFixed(2);
+      const total = Number(p.total_amount || 0).toFixed(2);
+      csv += `"${date}","${inv}","${sup}","${item}","${p.unit}",${p.qty},${p.price},${subtotal},${vatRate},${vatAmount},${total},"${p.payment_method}","${p.status}","${notes}"\n`;
     });
 
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -548,28 +588,20 @@ export default function PaymentsView() {
             Supplier Payments &amp; Finances
           </h1>
           <p className="text-sm text-gray-500 mt-1">
-            Track raw item purchases, manage food &amp; beverage suppliers, and analyze cost stats.
+            Manage procurement, supplier records, raw material catalog with VAT, and track restaurant gross margins.
           </p>
         </div>
 
+        {/* Action Buttons */}
         <div className="flex flex-wrap items-center gap-2.5">
-          <button
-            onClick={fetchData}
-            disabled={loading}
-            className="p-2.5 text-gray-600 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-xl transition flex items-center gap-2 text-sm font-medium"
-            title="Refresh Data"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin text-emerald-600" : ""}`} />
-            <span className="hidden sm:inline">Refresh</span>
-          </button>
-
           {activeTab === "payments" && (
             <>
               <button
                 onClick={handleExportCSV}
-                className="px-4 py-2.5 text-gray-700 bg-white hover:bg-gray-50 border border-gray-200 rounded-xl transition flex items-center gap-2 text-sm font-medium shadow-sm"
+                className="px-3.5 py-2.5 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl transition flex items-center gap-2 text-xs font-semibold"
+                title="Export current payments to CSV"
               >
-                <Download className="w-4 h-4 text-gray-500" />
+                <Download className="w-4 h-4" />
                 <span>Export CSV</span>
               </button>
               <button
@@ -630,8 +662,8 @@ export default function PaymentsView() {
           }`}
         >
           <Truck className="w-4 h-4" />
-          Suppliers
-          <span className="text-xs bg-gray-100 text-gray-700 px-2 py-0.5 rounded-full font-medium">
+          Suppliers Directory
+          <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-medium">
             {suppliers.length}
           </span>
         </button>
@@ -645,8 +677,8 @@ export default function PaymentsView() {
           }`}
         >
           <Package className="w-4 h-4" />
-          Raw Supplies (Items)
-          <span className="text-xs bg-gray-100 text-gray-700 px-2 py-0.5 rounded-full font-medium">
+          Raw Supply Items
+          <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-medium">
             {items.length}
           </span>
         </button>
@@ -674,10 +706,11 @@ export default function PaymentsView() {
                 <DollarSign className="w-6 h-6" />
               </div>
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Total Spend</p>
+                <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Total Gross Spend</p>
                 <h3 className="text-2xl font-bold text-gray-900 mt-0.5">
                   ${(stats?.summary?.totalSpend || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </h3>
+                <span className="text-[11px] text-gray-400">Incl. all taxes &amp; VAT</span>
               </div>
             </div>
 
@@ -686,10 +719,24 @@ export default function PaymentsView() {
                 <FileText className="w-6 h-6" />
               </div>
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Total Payments</p>
+                <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Net Spend (Excl. VAT)</p>
                 <h3 className="text-2xl font-bold text-gray-900 mt-0.5">
-                  {stats?.summary?.totalPayments || payments.length}
+                  ${((stats?.summary?.netSpend !== undefined ? stats?.summary?.netSpend : (stats?.summary?.totalSpend || 0)) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </h3>
+                <span className="text-[11px] text-gray-400">{stats?.summary?.totalPayments || payments.length} invoices</span>
+              </div>
+            </div>
+
+            <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4">
+              <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+                <Percent className="w-6 h-6" />
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Total VAT Paid</p>
+                <h3 className="text-2xl font-bold text-amber-700 mt-0.5">
+                  ${(stats?.summary?.totalVat || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </h3>
+                <span className="text-[11px] text-gray-400">Claimable / deductible tax</span>
               </div>
             </div>
 
@@ -702,18 +749,7 @@ export default function PaymentsView() {
                 <h3 className="text-2xl font-bold text-gray-900 mt-0.5">
                   {stats?.summary?.totalSuppliers || suppliers.length}
                 </h3>
-              </div>
-            </div>
-
-            <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
-                <TrendingUp className="w-6 h-6" />
-              </div>
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Average Payment</p>
-                <h3 className="text-2xl font-bold text-gray-900 mt-0.5">
-                  ${(stats?.summary?.avgPayment || 0).toFixed(2)}
-                </h3>
+                <span className="text-[11px] text-gray-400">Avg ${(stats?.summary?.avgPayment || 0).toFixed(2)}/invoice</span>
               </div>
             </div>
           </div>
@@ -800,7 +836,7 @@ export default function PaymentsView() {
                 <option value="all">All Supply Items</option>
                 {items.map((i) => (
                   <option key={i.id} value={i.id}>
-                    {i.name} ({i.unit})
+                    {i.name} ({i.unit}){i.has_vat ? " [VAT]" : ""}
                   </option>
                 ))}
               </select>
@@ -820,6 +856,8 @@ export default function PaymentsView() {
                     <th className="py-3.5 px-4">Unit</th>
                     <th className="py-3.5 px-4 text-right">Qty</th>
                     <th className="py-3.5 px-4 text-right">Unit Price</th>
+                    <th className="py-3.5 px-4 text-right">Subtotal</th>
+                    <th className="py-3.5 px-4 text-right">VAT</th>
                     <th className="py-3.5 px-4 text-right">Total ($)</th>
                     <th className="py-3.5 px-4 text-center">Status</th>
                     <th className="py-3.5 px-4 text-right">Actions</th>
@@ -828,77 +866,94 @@ export default function PaymentsView() {
                 <tbody className="divide-y divide-gray-100">
                   {loading && payments.length === 0 ? (
                     <tr>
-                      <td colSpan="10" className="py-12 text-center text-gray-400">
+                      <td colSpan="12" className="py-12 text-center text-gray-400">
                         <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-emerald-600" />
                         Loading payments...
                       </td>
                     </tr>
                   ) : filteredPayments.length === 0 ? (
                     <tr>
-                      <td colSpan="10" className="py-12 text-center text-gray-400">
+                      <td colSpan="12" className="py-12 text-center text-gray-400">
                         <DollarSign className="w-10 h-10 mx-auto mb-2 text-gray-300 stroke-1" />
                         <p className="font-semibold text-gray-600 text-sm">No payments recorded</p>
                         <p className="text-xs text-gray-400 mt-1">Click "Record Payment" above to add your first entry.</p>
                       </td>
                     </tr>
                   ) : (
-                    filteredPayments.map((p) => (
-                      <tr key={p.id} className="hover:bg-gray-50/80 transition">
-                        <td className="py-3.5 px-4 font-medium text-gray-900 whitespace-nowrap">
-                          {p.payment_date ? p.payment_date.split("T")[0] : "-"}
-                        </td>
-                        <td className="py-3.5 px-4 text-gray-500 font-mono">
-                          {p.invoice_number || <span className="text-gray-300 italic">None</span>}
-                        </td>
-                        <td className="py-3.5 px-4 font-semibold text-gray-900">
-                          {p.supplier_name}
-                        </td>
-                        <td className="py-3.5 px-4 text-gray-800">
-                          {p.item_name}
-                        </td>
-                        <td className="py-3.5 px-4">
-                          <span className="bg-gray-100 text-gray-700 font-medium px-2 py-0.5 rounded text-[11px]">
-                            {p.unit}
-                          </span>
-                        </td>
-                        <td className="py-3.5 px-4 text-right font-medium text-gray-900">
-                          {Number(p.qty).toLocaleString()}
-                        </td>
-                        <td className="py-3.5 px-4 text-right text-gray-600 font-mono">
-                          ${Number(p.price).toFixed(2)}
-                        </td>
-                        <td className="py-3.5 px-4 text-right font-bold text-emerald-700 font-mono text-sm">
-                          ${Number(p.total_amount).toFixed(2)}
-                        </td>
-                        <td className="py-3.5 px-4 text-center">
-                          <span
-                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                              p.status === "paid"
-                                ? "bg-emerald-100 text-emerald-800"
-                                : "bg-amber-100 text-amber-800"
-                            }`}
-                          >
-                            {p.status}
-                          </span>
-                        </td>
-                        <td className="py-3.5 px-4 text-right space-x-2 whitespace-nowrap">
-                          <button
-                            onClick={() => handleOpenEditPayment(p)}
-                            className="p-1 text-gray-400 hover:text-blue-600 transition"
-                            title="Edit"
-                          >
-                            <Edit2 className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => handleDeletePayment(p.id)}
-                            className="p-1 text-gray-400 hover:text-rose-600 transition"
-                            title="Delete"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))
+                    filteredPayments.map((p) => {
+                      const subtotal = Number(p.subtotal_amount || (Number(p.qty) * Number(p.price)));
+                      const vatAmt = Number(p.vat_amount || 0);
+                      const hasVat = p.has_vat || vatAmt > 0;
+                      return (
+                        <tr key={p.id} className="hover:bg-gray-50/80 transition">
+                          <td className="py-3.5 px-4 font-medium text-gray-900 whitespace-nowrap">
+                            {p.payment_date ? p.payment_date.split("T")[0] : "-"}
+                          </td>
+                          <td className="py-3.5 px-4 text-gray-500 font-mono">
+                            {p.invoice_number || <span className="text-gray-300 italic">None</span>}
+                          </td>
+                          <td className="py-3.5 px-4 font-semibold text-gray-900">
+                            {p.supplier_name}
+                          </td>
+                          <td className="py-3.5 px-4 text-gray-800">
+                            {p.item_name}
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <span className="bg-gray-100 text-gray-700 font-medium px-2 py-0.5 rounded text-[11px]">
+                              {p.unit}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4 text-right font-medium text-gray-900 font-mono">
+                            {Number(p.qty).toLocaleString()}
+                          </td>
+                          <td className="py-3.5 px-4 text-right text-gray-600 font-mono">
+                            ${Number(p.price).toFixed(2)}
+                          </td>
+                          <td className="py-3.5 px-4 text-right text-gray-700 font-mono font-medium">
+                            ${subtotal.toFixed(2)}
+                          </td>
+                          <td className="py-3.5 px-4 text-right font-mono">
+                            {hasVat && vatAmt > 0 ? (
+                              <span className="inline-block bg-amber-50 text-amber-800 border border-amber-200/60 px-1.5 py-0.5 rounded text-[11px] font-semibold">
+                                +${vatAmt.toFixed(2)} <span className="text-[9px] text-amber-600 font-normal">({Number(p.vat_rate || 11)}%)</span>
+                              </span>
+                            ) : (
+                              <span className="text-gray-400 text-[11px]">—</span>
+                            )}
+                          </td>
+                          <td className="py-3.5 px-4 text-right font-bold text-emerald-700 font-mono text-sm">
+                            ${Number(p.total_amount).toFixed(2)}
+                          </td>
+                          <td className="py-3.5 px-4 text-center">
+                            <span
+                              className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                                p.status === "paid"
+                                  ? "bg-emerald-100 text-emerald-800"
+                                  : "bg-amber-100 text-amber-800"
+                              }`}
+                            >
+                              {p.status}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4 text-right space-x-2 whitespace-nowrap">
+                            <button
+                              onClick={() => handleOpenEditPayment(p)}
+                              className="p-1 text-gray-400 hover:text-blue-600 transition"
+                              title="Edit"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleDeletePayment(p.id)}
+                              className="p-1 text-gray-400 hover:text-rose-600 transition"
+                              title="Delete"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
@@ -907,62 +962,75 @@ export default function PaymentsView() {
         </div>
       )}
 
-      {/* ── TAB 2: SUPPLIERS ──────────────────────────────────────────────── */}
+      {/* ── TAB 2: SUPPLIERS DIRECTORY ────────────────────────────────────── */}
       {activeTab === "suppliers" && (
         <div className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {suppliers.map((s) => (
               <div
                 key={s.id}
-                className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition flex flex-col justify-between"
+                className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 hover:border-emerald-200 transition space-y-3"
               >
-                <div>
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <h3 className="font-bold text-gray-900 text-base">{s.name}</h3>
-                      {s.contact_person && (
-                        <p className="text-xs text-gray-500 mt-0.5">Contact: {s.contact_person}</p>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => handleOpenEditSupplier(s)}
-                        className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-gray-50 rounded-lg transition"
-                      >
-                        <Edit2 className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteSupplier(s.id)}
-                        className="p-1.5 text-gray-400 hover:text-rose-600 hover:bg-gray-50 rounded-lg transition"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h3 className="font-bold text-gray-900 text-base">{s.name}</h3>
+                    {s.category && (
+                      <span className="inline-block bg-gray-100 text-gray-600 text-[10px] uppercase font-bold px-2 py-0.5 rounded mt-1">
+                        {s.category}
+                      </span>
+                    )}
                   </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => handleOpenEditSupplier(s)}
+                      className="p-1.5 text-gray-400 hover:text-blue-600 rounded-lg transition"
+                      title="Edit"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteSupplier(s.id)}
+                      className="p-1.5 text-gray-400 hover:text-rose-600 rounded-lg transition"
+                      title="Delete"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
 
+                <div className="space-y-1 text-xs text-gray-600">
+                  {s.contact_person && (
+                    <p className="flex items-center gap-2">
+                      <span className="text-gray-400">Contact:</span>
+                      <span className="font-medium text-gray-800">{s.contact_person}</span>
+                    </p>
+                  )}
                   {s.phone && (
-                    <p className="text-xs text-gray-600 mt-2 flex items-center gap-1.5">
-                      <span className="font-medium text-gray-400">Phone:</span> {s.phone}
+                    <p className="flex items-center gap-2 font-mono">
+                      <span className="text-gray-400">Phone:</span>
+                      <a href={`tel:${s.phone}`} className="text-emerald-600 hover:underline font-semibold">
+                        {s.phone}
+                      </a>
                     </p>
                   )}
                   {s.address && (
-                    <p className="text-xs text-gray-500 mt-1 line-clamp-1">
-                      <span className="font-medium text-gray-400">Address:</span> {s.address}
+                    <p className="text-gray-500 text-[11px] truncate" title={s.address}>
+                      {s.address}
                     </p>
                   )}
                 </div>
 
-                <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between">
+                <div className="pt-3 border-t border-gray-100 flex items-center justify-between text-xs">
                   <div>
-                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Total Spent</span>
-                    <span className="text-base font-bold text-emerald-600 font-mono">
-                      ${Number(s.total_spend || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    <span className="text-[10px] text-gray-400 uppercase tracking-wider block">Total Spend</span>
+                    <span className="font-bold text-emerald-700 font-mono text-sm">
+                      ${Number(s.total_spend || 0).toFixed(2)}
                     </span>
                   </div>
                   <div className="text-right">
-                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Orders</span>
-                    <span className="text-xs font-semibold text-gray-700">
-                      {s.total_payments || 0} invoices
+                    <span className="text-[10px] text-gray-400 uppercase tracking-wider block">Invoices</span>
+                    <span className="font-semibold text-gray-800">
+                      {s.payment_count || 0}
                     </span>
                   </div>
                 </div>
@@ -970,13 +1038,13 @@ export default function PaymentsView() {
             ))}
 
             {suppliers.length === 0 && (
-              <div className="col-span-full py-12 text-center bg-white rounded-2xl border border-gray-100 p-8">
-                <Truck className="w-10 h-10 text-gray-300 mx-auto mb-2" />
-                <h3 className="text-base font-bold text-gray-700">No suppliers yet</h3>
-                <p className="text-xs text-gray-400 mt-1 mb-4">Add your food, packaging, and beverage vendors.</p>
+              <div className="col-span-full bg-white p-12 rounded-2xl border border-gray-100 text-center text-gray-400">
+                <Truck className="w-12 h-12 mx-auto mb-2 text-gray-300 stroke-1" />
+                <p className="font-semibold text-gray-600 text-base">No suppliers registered</p>
+                <p className="text-xs text-gray-400 mt-1">Click "Add Supplier" above to add vendors.</p>
                 <button
                   onClick={handleOpenNewSupplier}
-                  className="px-4 py-2 text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl text-xs font-semibold transition"
+                  className="mt-4 px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-semibold hover:bg-emerald-700 transition"
                 >
                   + Add First Supplier
                 </button>
@@ -994,7 +1062,7 @@ export default function PaymentsView() {
               <div>
                 <h3 className="font-bold text-gray-900 text-sm">Raw Supply Items Directory</h3>
                 <p className="text-xs text-gray-500">
-                  Ingredients and supplies tracked with designated measurement units: {ALLOWED_UNITS.join(", ")}.
+                  Ingredients and supplies tracked with designated measurement units and VAT status.
                 </p>
               </div>
               <button
@@ -1013,6 +1081,7 @@ export default function PaymentsView() {
                     <th className="py-3.5 px-4">Item Name</th>
                     <th className="py-3.5 px-4">Standard Unit</th>
                     <th className="py-3.5 px-4">Category</th>
+                    <th className="py-3.5 px-4 text-center">VAT Rate</th>
                     <th className="py-3.5 px-4 text-right">Times Purchased</th>
                     <th className="py-3.5 px-4 text-right">Total Qty Bought</th>
                     <th className="py-3.5 px-4 text-right">Avg Unit Price</th>
@@ -1023,7 +1092,7 @@ export default function PaymentsView() {
                 <tbody className="divide-y divide-gray-100">
                   {items.length === 0 ? (
                     <tr>
-                      <td colSpan="8" className="py-12 text-center text-gray-400">
+                      <td colSpan="9" className="py-12 text-center text-gray-400">
                         <Package className="w-10 h-10 mx-auto mb-2 text-gray-300 stroke-1" />
                         <p className="font-semibold text-gray-600 text-sm">No raw items defined</p>
                         <p className="text-xs text-gray-400 mt-1">Click "Add Raw Item" to create tracking items.</p>
@@ -1042,6 +1111,18 @@ export default function PaymentsView() {
                         </td>
                         <td className="py-3.5 px-4 text-gray-500">
                           {it.category || "-"}
+                        </td>
+                        <td className="py-3.5 px-4 text-center">
+                          {it.has_vat ? (
+                            <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-800 font-semibold px-2 py-0.5 rounded text-[11px] border border-amber-200/60">
+                              <Percent className="w-3 h-3 text-amber-600" />
+                              <span>{Number(it.vat_rate || 11)}% VAT</span>
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center text-gray-400 font-medium px-2 py-0.5 rounded text-[11px] bg-gray-50 border border-gray-100">
+                              Exempt (0%)
+                            </span>
+                          )}
                         </td>
                         <td className="py-3.5 px-4 text-right font-medium text-gray-700">
                           {it.purchase_count || 0}
@@ -1091,10 +1172,10 @@ export default function PaymentsView() {
               Financial &amp; Profitability Overview
             </h2>
             <p className="text-xs text-gray-400 mb-6">
-              Comparing customer sales revenue against raw supplier payments for estimated gross margin.
+              Comparing customer sales revenue against raw supplier payments for estimated gross margin and VAT breakdown.
             </p>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
               <div className="bg-white/5 border border-white/10 rounded-xl p-4">
                 <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Customer Sales Revenue</span>
                 <div className="text-2xl font-bold text-white font-mono mt-1">
@@ -1104,19 +1185,27 @@ export default function PaymentsView() {
               </div>
 
               <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Supplier Expenses</span>
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Supplier Gross Spend</span>
                 <div className="text-2xl font-bold text-rose-400 font-mono mt-1">
                   -${(stats.summary.totalSpend || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </div>
-                <span className="text-[11px] text-gray-400 mt-0.5 block">{stats.summary.totalPayments || 0} supplier invoices</span>
+                <span className="text-[11px] text-gray-400 mt-0.5 block">{stats.summary.totalPayments || 0} invoices (incl. VAT)</span>
               </div>
 
               <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Estimated Gross Margin ($)</span>
-                <div className={`text-2xl font-bold font-mono mt-1 ${stats.summary.grossMargin >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
-                  ${(stats.summary.grossMargin || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Net Purchases (Excl. VAT)</span>
+                <div className="text-2xl font-bold text-blue-300 font-mono mt-1">
+                  -${(stats.summary.netSpend || (stats.summary.totalSpend - (stats.summary.totalVat || 0))).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </div>
-                <span className="text-[11px] text-gray-400 mt-0.5 block">Revenue minus Supplier Costs</span>
+                <span className="text-[11px] text-gray-400 mt-0.5 block">Pure raw material cost</span>
+              </div>
+
+              <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+                <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider block">Total VAT Paid</span>
+                <div className="text-2xl font-bold text-amber-300 font-mono mt-1">
+                  ${(stats.summary.totalVat || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </div>
+                <span className="text-[11px] text-gray-400 mt-0.5 block">Tax paid to suppliers</span>
               </div>
 
               <div className="bg-white/5 border border-white/10 rounded-xl p-4">
@@ -1124,7 +1213,7 @@ export default function PaymentsView() {
                 <div className={`text-2xl font-bold font-mono mt-1 ${stats.summary.grossMarginPercent >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
                   {stats.summary.grossMarginPercent || 0}%
                 </div>
-                <span className="text-[11px] text-gray-400 mt-0.5 block">Estimated food profitability</span>
+                <span className="text-[11px] text-gray-400 mt-0.5 block">${(stats.summary.grossMargin || 0).toFixed(2)} food margin</span>
               </div>
             </div>
           </div>
@@ -1173,15 +1262,20 @@ export default function PaymentsView() {
                   <Package className="w-4 h-4 text-emerald-600" />
                   Top Cost Items (Raw Materials)
                 </span>
-                <span className="text-xs font-medium text-gray-500">Spend Share</span>
+                <span className="text-xs font-medium text-gray-500">Spend &amp; VAT</span>
               </h3>
 
               <div className="space-y-3.5">
                 {(stats.byItem || []).map((i) => (
                   <div key={i.id} className="space-y-1">
                     <div className="flex justify-between text-xs">
-                      <span className="font-semibold text-gray-800">
+                      <span className="font-semibold text-gray-800 flex items-center gap-1.5">
                         {i.name}{" "}
+                        {i.has_vat && (
+                          <span className="text-[9px] bg-amber-50 text-amber-800 font-semibold px-1 rounded border border-amber-200/50">
+                            {Number(i.vat_rate || 11)}% VAT
+                          </span>
+                        )}
                         <span className="text-[10px] font-normal text-gray-400">
                           ({Number(i.total_qty).toLocaleString()} {i.unit} @ ${Number(i.avg_unit_price).toFixed(2)})
                         </span>
@@ -1201,7 +1295,7 @@ export default function PaymentsView() {
                 ))}
 
                 {(stats.byItem || []).length === 0 && (
-                  <p className="text-xs text-gray-400 text-center py-6">No item expense data available for this range.</p>
+                  <p className="text-xs text-gray-400 text-center py-6">No item spend data recorded yet.</p>
                 )}
               </div>
             </div>
@@ -1209,68 +1303,55 @@ export default function PaymentsView() {
         </div>
       )}
 
-      {/* ── MODAL: RECORD PAYMENT ─────────────────────────────────────────── */}
+      {/* ── MODAL: RECORD / EDIT PAYMENT ──────────────────────────────────── */}
       {showPaymentModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-5 border-b border-gray-100 flex items-center justify-between">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl space-y-4 my-8 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
               <h3 className="font-bold text-gray-900 text-base flex items-center gap-2">
                 <DollarSign className="w-5 h-5 text-emerald-600" />
-                {editingPayment ? "Edit Payment Record" : "Record Supplier Payment"}
+                {editingPayment ? "Edit Supplier Payment" : "Record Supplier Payment"}
               </h3>
               <button
                 onClick={() => setShowPaymentModal(false)}
-                className="p-1 text-gray-400 hover:text-gray-600 rounded-lg"
+                className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleSavePayment} className="p-5 space-y-4">
+            <form onSubmit={handleSavePayment} className="space-y-4">
+              {/* Top Row: Date, Invoice #, Supplier */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">Payment Date *</label>
                   <input
                     type="date"
+                    required
                     value={paymentForm.payment_date}
                     onChange={(e) => setPaymentForm({ ...paymentForm, payment_date: e.target.value })}
-                    required
-                    className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-emerald-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">
-                    Invoice # <span className="text-gray-400 font-normal">(optional)</span>
-                  </label>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Invoice Number (Optional)</label>
                   <input
                     type="text"
-                    placeholder="e.g. INV-10492"
+                    placeholder="e.g. INV-2026-0041"
                     value={paymentForm.invoice_number}
                     onChange={(e) => setPaymentForm({ ...paymentForm, invoice_number: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-emerald-500"
                   />
                 </div>
 
                 <div>
-                  <div className="flex justify-between items-center mb-1">
-                    <label className="block text-xs font-semibold text-gray-700">Supplier *</label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowPaymentModal(false);
-                        handleOpenNewSupplier();
-                      }}
-                      className="text-[10px] text-emerald-600 hover:underline font-semibold"
-                    >
-                      + New
-                    </button>
-                  </div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Supplier *</label>
                   <select
+                    required
                     value={paymentForm.supplier_id}
                     onChange={(e) => setPaymentForm({ ...paymentForm, supplier_id: e.target.value })}
-                    required
-                    className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-emerald-500"
                   >
                     <option value="">Select Supplier</option>
                     {suppliers.map((s) => (
@@ -1282,131 +1363,192 @@ export default function PaymentsView() {
                 </div>
               </div>
 
-              {/* Items Table in Modal */}
-              <div className="border border-gray-200 rounded-xl p-3 bg-gray-50/50 space-y-3">
-                <div className="flex justify-between items-center">
-                  <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">Itemized Line Items</span>
+              {/* Items & Line Details */}
+              <div className="space-y-2 border border-gray-100 rounded-xl p-3 bg-gray-50/50">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-bold text-gray-800 uppercase tracking-wider">
+                    Purchased Items &amp; VAT
+                  </span>
                   {!editingPayment && (
                     <button
                       type="button"
                       onClick={handleAddPaymentLine}
-                      className="text-xs text-emerald-600 hover:text-emerald-700 font-semibold flex items-center gap-1"
+                      className="text-xs font-semibold text-emerald-700 hover:text-emerald-800 flex items-center gap-1"
                     >
-                      <Plus className="w-3.5 h-3.5" />
-                      Add Line Item
+                      <Plus className="w-3.5 h-3.5" /> Add Line
                     </button>
                   )}
                 </div>
 
-                <div className="space-y-2.5">
+                <div className="space-y-3">
                   {paymentForm.lines.map((line, idx) => {
-                    const lineTotal = (parseFloat(line.qty) || 0) * (parseFloat(line.price) || 0);
+                    const q = parseFloat(line.qty) || 0;
+                    const p = parseFloat(line.price) || 0;
+                    const lineSub = q * p;
+                    const vRate = line.has_vat ? (parseFloat(line.vat_rate) || 0) : 0;
+                    const lineVat = lineSub * (vRate / 100);
+                    const lineTotal = lineSub + lineVat;
+
                     return (
                       <div
                         key={idx}
-                        className="bg-white p-3 rounded-xl border border-gray-200 shadow-sm grid grid-cols-12 gap-2.5 items-center text-xs"
+                        className="bg-white p-3 rounded-xl border border-gray-200 space-y-2 shadow-xs"
                       >
-                        <div className="col-span-12 sm:col-span-4">
-                          <div className="flex justify-between items-center mb-1">
-                            <span className="text-[10px] font-medium text-gray-500">Item</span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setShowPaymentModal(false);
-                                handleOpenNewItem();
-                              }}
-                              className="text-[10px] text-emerald-600 hover:underline"
+                        <div className="grid grid-cols-12 gap-2 items-center">
+                          {/* Item Dropdown */}
+                          <div className="col-span-12 sm:col-span-4">
+                            <div className="flex justify-between items-center mb-1">
+                              <span className="text-[10px] font-medium text-gray-500">Item</span>
+                              <button
+                                type="button"
+                                onClick={handleOpenNewItem}
+                                className="text-[10px] text-emerald-600 hover:underline font-semibold"
+                              >
+                                + New
+                              </button>
+                            </div>
+                            <select
+                              value={line.item_id}
+                              onChange={(e) => handleLineItemChange(idx, "item_id", e.target.value)}
+                              required
+                              className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none"
                             >
-                              + New
-                            </button>
+                              <option value="">Select Item</option>
+                              {items.map((i) => (
+                                <option key={i.id} value={i.id}>
+                                  {i.name} ({i.unit}){i.has_vat ? " [VAT]" : ""}
+                                </option>
+                              ))}
+                            </select>
                           </div>
-                          <select
-                            value={line.item_id}
-                            onChange={(e) => handleLineItemChange(idx, "item_id", e.target.value)}
-                            required
-                            className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none"
-                          >
-                            <option value="">Select Item</option>
-                            {items.map((i) => (
-                              <option key={i.id} value={i.id}>
-                                {i.name} ({i.unit})
-                              </option>
-                            ))}
-                          </select>
-                        </div>
 
-                        <div className="col-span-6 sm:col-span-2">
-                          <span className="text-[10px] font-medium text-gray-500 block mb-1">Unit</span>
-                          <select
-                            value={line.unit}
-                            onChange={(e) => handleLineItemChange(idx, "unit", e.target.value)}
-                            className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none"
-                          >
-                            {ALLOWED_UNITS.map((u) => (
-                              <option key={u} value={u}>
-                                {u}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-
-                        <div className="col-span-6 sm:col-span-2">
-                          <span className="text-[10px] font-medium text-gray-500 block mb-1">Qty</span>
-                          <input
-                            type="number"
-                            step="0.001"
-                            min="0.001"
-                            value={line.qty}
-                            onChange={(e) => handleLineItemChange(idx, "qty", e.target.value)}
-                            required
-                            className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none"
-                          />
-                        </div>
-
-                        <div className="col-span-6 sm:col-span-2">
-                          <span className="text-[10px] font-medium text-gray-500 block mb-1">Price ($)</span>
-                          <input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            value={line.price}
-                            onChange={(e) => handleLineItemChange(idx, "price", e.target.value)}
-                            required
-                            className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none font-mono"
-                          />
-                        </div>
-
-                        <div className="col-span-5 sm:col-span-1 text-right">
-                          <span className="text-[10px] font-medium text-gray-500 block mb-1">Total</span>
-                          <span className="font-bold text-emerald-700 font-mono">
-                            ${lineTotal.toFixed(2)}
-                          </span>
-                        </div>
-
-                        <div className="col-span-1 text-right">
-                          {paymentForm.lines.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() => handleRemovePaymentLine(idx)}
-                              className="p-1 text-gray-400 hover:text-rose-600 transition"
+                          {/* Unit */}
+                          <div className="col-span-6 sm:col-span-2">
+                            <span className="text-[10px] font-medium text-gray-500 block mb-1">Unit</span>
+                            <select
+                              value={line.unit}
+                              onChange={(e) => handleLineItemChange(idx, "unit", e.target.value)}
+                              className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none"
                             >
-                              <X className="w-3.5 h-3.5" />
-                            </button>
+                              {ALLOWED_UNITS.map((u) => (
+                                <option key={u} value={u}>
+                                  {u}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          {/* Qty */}
+                          <div className="col-span-6 sm:col-span-2">
+                            <span className="text-[10px] font-medium text-gray-500 block mb-1">Qty</span>
+                            <input
+                              type="number"
+                              step="0.001"
+                              min="0.001"
+                              value={line.qty}
+                              onChange={(e) => handleLineItemChange(idx, "qty", e.target.value)}
+                              required
+                              className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none font-mono"
+                            />
+                          </div>
+
+                          {/* Unit Price */}
+                          <div className="col-span-6 sm:col-span-2">
+                            <span className="text-[10px] font-medium text-gray-500 block mb-1">Price ($)</span>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={line.price}
+                              onChange={(e) => handleLineItemChange(idx, "price", e.target.value)}
+                              required
+                              className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none font-mono"
+                            />
+                          </div>
+
+                          {/* Actions / Remove */}
+                          <div className="col-span-6 sm:col-span-2 text-right">
+                            <span className="text-[10px] font-medium text-gray-500 block mb-1">Line Total</span>
+                            <div className="flex items-center justify-end gap-1.5">
+                              <span className="font-bold text-emerald-700 font-mono text-xs">
+                                ${lineTotal.toFixed(2)}
+                              </span>
+                              {paymentForm.lines.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemovePaymentLine(idx)}
+                                  className="p-1 text-gray-400 hover:text-rose-600 transition"
+                                  title="Remove line"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* VAT Toggle & Breakdown for this line */}
+                        <div className="flex flex-wrap items-center justify-between text-xs pt-1.5 border-t border-gray-100 gap-2 bg-gray-50/70 px-2 py-1 rounded-lg">
+                          <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={line.has_vat}
+                              onChange={(e) => handleLineItemChange(idx, "has_vat", e.target.checked)}
+                              className="w-3.5 h-3.5 text-emerald-600 rounded focus:ring-emerald-500"
+                            />
+                            <span className="font-semibold text-gray-700 text-[11px]">Item has VAT</span>
+                          </label>
+
+                          {line.has_vat && (
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[10px] text-gray-500 font-medium">Rate:</span>
+                              <input
+                                type="number"
+                                step="0.5"
+                                min="0"
+                                max="100"
+                                value={line.vat_rate}
+                                onChange={(e) => handleLineItemChange(idx, "vat_rate", e.target.value)}
+                                className="w-14 px-1.5 py-0.5 text-[11px] border border-gray-300 rounded font-mono outline-none text-center"
+                              />
+                              <span className="text-[11px] font-bold text-emerald-700">%</span>
+                            </div>
                           )}
+
+                          <div className="flex items-center gap-2 font-mono text-[11px] text-gray-600 ml-auto">
+                            <span>Subtotal: ${lineSub.toFixed(2)}</span>
+                            {line.has_vat && (
+                              <span className="text-amber-700 font-semibold">
+                                + VAT: ${lineVat.toFixed(2)}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
                     );
                   })}
                 </div>
 
-                <div className="pt-2 flex justify-between items-center text-sm font-bold text-gray-900 border-t border-gray-200">
-                  <span>Grand Total:</span>
-                  <span className="text-emerald-700 font-mono text-base">
-                    ${computeGrandTotal.toFixed(2)}
-                  </span>
+                {/* Totals Summary Breakdown */}
+                <div className="pt-3 border-t border-gray-200 mt-2 space-y-1 text-xs">
+                  <div className="flex justify-between text-gray-600 font-mono">
+                    <span>Subtotal (Excl. VAT):</span>
+                    <span>${computeTotals.subtotal.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-amber-700 font-mono font-medium">
+                    <span>Total VAT:</span>
+                    <span>+${computeTotals.totalVat.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm font-bold text-gray-900 border-t border-gray-200 pt-1.5">
+                    <span>Grand Total (Incl. VAT):</span>
+                    <span className="text-emerald-700 font-mono text-base">
+                      ${computeTotals.grandTotal.toFixed(2)}
+                    </span>
+                  </div>
                 </div>
               </div>
 
+              {/* Payment Method, Status, Notes */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">Payment Method</label>
@@ -1419,46 +1561,49 @@ export default function PaymentsView() {
                     <option value="Card">Card</option>
                     <option value="Credit / Pending">Credit / Pending</option>
                     <option value="Bank Transfer">Bank Transfer</option>
+                    <option value="Wish Money">Wish Money</option>
+                    <option value="OMT">OMT</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">Status</label>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Payment Status</label>
                   <select
                     value={paymentForm.status}
                     onChange={(e) => setPaymentForm({ ...paymentForm, status: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs outline-none"
                   >
-                    <option value="paid">Paid</option>
-                    <option value="pending">Pending</option>
+                    <option value="paid">Paid (Disbursed)</option>
+                    <option value="pending">Pending / On Account</option>
                   </select>
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">Notes</label>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Payment Notes</label>
                 <textarea
                   rows="2"
-                  placeholder="Additional delivery or invoice details..."
+                  placeholder="Receipt reference, delivery notes, or payment terms..."
                   value={paymentForm.notes}
                   onChange={(e) => setPaymentForm({ ...paymentForm, notes: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs outline-none"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-emerald-500"
                 />
               </div>
 
-              <div className="pt-3 border-t border-gray-100 flex justify-end gap-2.5">
+              {/* Modal Buttons */}
+              <div className="pt-3 border-t border-gray-100 flex justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => setShowPaymentModal(false)}
-                  className="px-4 py-2 text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl transition"
+                  className="px-4 py-2 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl text-xs font-semibold transition"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition shadow-md shadow-emerald-600/20"
+                  className="px-5 py-2 text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl text-xs font-semibold shadow-md shadow-emerald-600/20 transition"
                 >
-                  {editingPayment ? "Update Payment" : "Save Payment"}
+                  {editingPayment ? "Update Payment Record" : "Confirm & Save Payment"}
                 </button>
               </div>
             </form>
@@ -1466,29 +1611,30 @@ export default function PaymentsView() {
         </div>
       )}
 
-      {/* ── MODAL: ADD/EDIT SUPPLIER ─────────────────────────────────────── */}
+      {/* ── MODAL: CREATE / EDIT SUPPLIER ─────────────────────────────────── */}
       {showSupplierModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-5">
-            <div className="flex items-center justify-between pb-3 border-b border-gray-100">
-              <h3 className="font-bold text-gray-900 text-sm">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+              <h3 className="font-bold text-gray-900 text-base flex items-center gap-2">
+                <Truck className="w-5 h-5 text-emerald-600" />
                 {editingSupplier ? "Edit Supplier" : "Add New Supplier"}
               </h3>
               <button
                 onClick={() => setShowSupplierModal(false)}
-                className="p-1 text-gray-400 hover:text-gray-600"
+                className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveSupplier} className="space-y-3 mt-4 text-xs">
+            <form onSubmit={handleSaveSupplier} className="space-y-3 text-xs">
               <div>
-                <label className="block font-semibold text-gray-700 mb-1">Supplier Name *</label>
+                <label className="block font-semibold text-gray-700 mb-1">Supplier / Company Name *</label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Al Wadi Al Akhdar"
+                  placeholder="e.g. Al-Wadi Poultry, Metro Packaging"
                   value={supplierForm.name}
                   onChange={(e) => setSupplierForm({ ...supplierForm, name: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500"
@@ -1499,7 +1645,7 @@ export default function PaymentsView() {
                 <label className="block font-semibold text-gray-700 mb-1">Phone Number</label>
                 <input
                   type="text"
-                  placeholder="e.g. 70 123 456"
+                  placeholder="e.g. 01 234 567 or 70 123 456"
                   value={supplierForm.phone}
                   onChange={(e) => setSupplierForm({ ...supplierForm, phone: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500"
@@ -1510,7 +1656,7 @@ export default function PaymentsView() {
                 <label className="block font-semibold text-gray-700 mb-1">Contact Person</label>
                 <input
                   type="text"
-                  placeholder="e.g. Fadi"
+                  placeholder="e.g. Sales Rep, Delivery Manager"
                   value={supplierForm.contact_person}
                   onChange={(e) => setSupplierForm({ ...supplierForm, contact_person: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500"
@@ -1518,10 +1664,21 @@ export default function PaymentsView() {
               </div>
 
               <div>
-                <label className="block font-semibold text-gray-700 mb-1">Address / Location</label>
+                <label className="block font-semibold text-gray-700 mb-1">Category</label>
                 <input
                   type="text"
-                  placeholder="e.g. Dora, Beirut"
+                  placeholder="e.g. Meat, Packaging, Dairy, Bakery, Beverages"
+                  value={supplierForm.category}
+                  onChange={(e) => setSupplierForm({ ...supplierForm, category: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-gray-700 mb-1">Address</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Sin El Fil, Dekwaneh Industrial"
                   value={supplierForm.address}
                   onChange={(e) => setSupplierForm({ ...supplierForm, address: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500"
@@ -1532,7 +1689,7 @@ export default function PaymentsView() {
                 <label className="block font-semibold text-gray-700 mb-1">Notes</label>
                 <textarea
                   rows="2"
-                  placeholder="Terms, delivery days..."
+                  placeholder="Payment credit terms, delivery schedules, bank details..."
                   value={supplierForm.notes}
                   onChange={(e) => setSupplierForm({ ...supplierForm, notes: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500"
@@ -1551,7 +1708,7 @@ export default function PaymentsView() {
                   type="submit"
                   className="px-4 py-1.5 text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl font-semibold transition"
                 >
-                  {editingSupplier ? "Update" : "Create Supplier"}
+                  {editingSupplier ? "Update Supplier" : "Create Supplier"}
                 </button>
               </div>
             </form>
@@ -1559,23 +1716,24 @@ export default function PaymentsView() {
         </div>
       )}
 
-      {/* ── MODAL: ADD/EDIT ITEM ─────────────────────────────────────────── */}
+      {/* ── MODAL: CREATE / EDIT RAW ITEM WITH VAT ─────────────────────────── */}
       {showItemModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-5">
-            <div className="flex items-center justify-between pb-3 border-b border-gray-100">
-              <h3 className="font-bold text-gray-900 text-sm">
-                {editingItem ? "Edit Raw Item" : "Add Raw Supply Item"}
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+              <h3 className="font-bold text-gray-900 text-base flex items-center gap-2">
+                <Package className="w-5 h-5 text-emerald-600" />
+                {editingItem ? "Edit Raw Item" : "Add Raw Material / Supply Item"}
               </h3>
               <button
                 onClick={() => setShowItemModal(false)}
-                className="p-1 text-gray-400 hover:text-gray-600"
+                className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveItem} className="space-y-3 mt-4 text-xs">
+            <form onSubmit={handleSaveItem} className="space-y-3.5 text-xs">
               <div>
                 <label className="block font-semibold text-gray-700 mb-1">Item Name *</label>
                 <input
@@ -1603,6 +1761,44 @@ export default function PaymentsView() {
                     </option>
                   ))}
                 </select>
+              </div>
+
+              {/* VAT Section */}
+              <div className="bg-gray-50 p-3 rounded-xl border border-gray-200/80 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label htmlFor="item-vat-toggle" className="text-xs font-bold text-gray-800 cursor-pointer flex items-center gap-1.5">
+                      <Percent className="w-3.5 h-3.5 text-amber-600" />
+                      Subject to VAT (Value Added Tax)
+                    </label>
+                    <p className="text-[11px] text-gray-500 mt-0.5">
+                      Check if suppliers bill VAT on this item (Standard in Lebanon: 11%).
+                    </p>
+                  </div>
+                  <input
+                    id="item-vat-toggle"
+                    type="checkbox"
+                    checked={itemForm.has_vat}
+                    onChange={(e) => setItemForm({ ...itemForm, has_vat: e.target.checked })}
+                    className="w-4 h-4 text-emerald-600 rounded focus:ring-emerald-500 cursor-pointer"
+                  />
+                </div>
+
+                {itemForm.has_vat && (
+                  <div className="pt-2 border-t border-gray-200/60 flex items-center gap-2">
+                    <span className="text-xs font-medium text-gray-700">VAT Rate (%):</span>
+                    <input
+                      type="number"
+                      step="0.5"
+                      min="0"
+                      max="100"
+                      value={itemForm.vat_rate}
+                      onChange={(e) => setItemForm({ ...itemForm, vat_rate: e.target.value })}
+                      className="w-24 px-2.5 py-1 text-xs border border-gray-300 rounded-lg outline-none font-mono focus:ring-1 focus:ring-emerald-500"
+                    />
+                    <span className="text-xs font-bold text-emerald-700 font-mono">%</span>
+                  </div>
+                )}
               </div>
 
               <div>

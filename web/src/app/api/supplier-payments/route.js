@@ -56,14 +56,16 @@ export async function GET(request) {
     const summaryQuery = `
       SELECT 
         COUNT(p.id)::integer AS total_count,
-        COALESCE(SUM(p.total_amount), 0)::numeric AS total_spend
+        COALESCE(SUM(p.total_amount), 0)::numeric AS total_spend,
+        COALESCE(SUM(COALESCE(p.vat_amount, 0)), 0)::numeric AS total_vat,
+        COALESCE(SUM(COALESCE(p.subtotal_amount, p.total_amount)), 0)::numeric AS total_subtotal
       FROM supplier_payments p
       JOIN suppliers s ON s.id = p.supplier_id
       JOIN supplier_items si ON si.id = p.item_id
       WHERE ${whereClause};
     `;
     const summaryRes = await sql(summaryQuery, values);
-    const summary = summaryRes[0] || { total_count: 0, total_spend: 0 };
+    const summary = summaryRes[0] || { total_count: 0, total_spend: 0, total_vat: 0, total_subtotal: 0 };
 
     // 2. Paginated rows
     values.push(limit);
@@ -92,7 +94,9 @@ export async function GET(request) {
       payments,
       summary: {
         totalCount: summary.total_count,
-        totalSpend: Number(summary.total_spend)
+        totalSpend: Number(summary.total_spend),
+        totalVat: Number(summary.total_vat || 0),
+        totalSubtotal: Number(summary.total_subtotal || 0)
       }
     });
   } catch (error) {
@@ -123,6 +127,8 @@ export async function POST(request) {
         unit,
         qty,
         price,
+        has_vat,
+        vat_rate,
         payment_method,
         status,
         notes,
@@ -142,25 +148,33 @@ export async function POST(request) {
         return corsJson(request, { ok: false, error: "Valid price is required" }, { status: 400 });
       }
 
-      const numQty = Number(qty);
-      const numPrice = Number(price);
-      const totalAmount = Math.round(numQty * numPrice * 100) / 100;
+      let itemRecord = null;
+      if (!unit || has_vat === undefined) {
+        const itemRes = await sql`SELECT unit, has_vat, vat_rate FROM supplier_items WHERE id = ${item_id} LIMIT 1`;
+        if (itemRes.length > 0) itemRecord = itemRes[0];
+      }
 
-      // Verify or fetch unit from item
       let finalUnit = unit;
       if (!finalUnit || !ALLOWED_UNITS.includes(finalUnit)) {
-        const itemRes = await sql`SELECT unit FROM supplier_items WHERE id = ${item_id} LIMIT 1`;
-        if (itemRes.length > 0) {
-          finalUnit = itemRes[0].unit;
-        } else {
-          finalUnit = 'Pcs';
-        }
+        finalUnit = itemRecord ? itemRecord.unit : 'Pcs';
       }
+
+      const parsedHasVat = has_vat !== undefined ? Boolean(has_vat) : Boolean(itemRecord?.has_vat);
+      const parsedVatRate = parsedHasVat
+        ? (vat_rate !== undefined && vat_rate !== null ? Number(vat_rate) : (itemRecord?.vat_rate ? Number(itemRecord.vat_rate) : 11))
+        : 0;
+
+      const numQty = Number(qty);
+      const numPrice = Number(price);
+      const subtotalAmount = Math.round(numQty * numPrice * 100) / 100;
+      const vatAmount = parsedHasVat ? Math.round(subtotalAmount * (parsedVatRate / 100) * 100) / 100 : 0;
+      const totalAmount = Math.round((subtotalAmount + vatAmount) * 100) / 100;
 
       const row = await sql`
         INSERT INTO supplier_payments (
           invoice_number, payment_date, supplier_id, item_id,
-          unit, qty, price, total_amount, payment_method, status, notes, created_by, created_at, updated_at
+          unit, qty, price, has_vat, vat_rate, vat_amount, subtotal_amount, total_amount,
+          payment_method, status, notes, created_by, created_at, updated_at
         ) VALUES (
           ${invoice_number ? String(invoice_number).trim() : null},
           ${payment_date ? payment_date : new Date().toISOString().split('T')[0]},
@@ -169,6 +183,10 @@ export async function POST(request) {
           ${finalUnit},
           ${numQty},
           ${numPrice},
+          ${parsedHasVat},
+          ${parsedVatRate},
+          ${vatAmount},
+          ${subtotalAmount},
           ${totalAmount},
           ${payment_method || 'Cash'},
           ${status || 'paid'},
@@ -206,6 +224,8 @@ export async function PUT(request) {
       unit,
       qty,
       price,
+      has_vat,
+      vat_rate,
       payment_method,
       status,
       notes
@@ -224,9 +244,13 @@ export async function PUT(request) {
       return corsJson(request, { ok: false, error: "Valid price is required" }, { status: 400 });
     }
 
+    const parsedHasVat = Boolean(has_vat);
+    const parsedVatRate = parsedHasVat ? (vat_rate !== undefined && vat_rate !== null ? Number(vat_rate) : 11) : 0;
     const numQty = Number(qty);
     const numPrice = Number(price);
-    const totalAmount = Math.round(numQty * numPrice * 100) / 100;
+    const subtotalAmount = Math.round(numQty * numPrice * 100) / 100;
+    const vatAmount = parsedHasVat ? Math.round(subtotalAmount * (parsedVatRate / 100) * 100) / 100 : 0;
+    const totalAmount = Math.round((subtotalAmount + vatAmount) * 100) / 100;
 
     const result = await sql`
       UPDATE supplier_payments
@@ -238,6 +262,10 @@ export async function PUT(request) {
         unit = ${unit},
         qty = ${numQty},
         price = ${numPrice},
+        has_vat = ${parsedHasVat},
+        vat_rate = ${parsedVatRate},
+        vat_amount = ${vatAmount},
+        subtotal_amount = ${subtotalAmount},
         total_amount = ${totalAmount},
         payment_method = ${payment_method || 'Cash'},
         status = ${status || 'paid'},

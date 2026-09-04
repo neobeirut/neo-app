@@ -34,6 +34,8 @@ export async function GET(request) {
     const summaryQuery = `
       SELECT 
         COALESCE(SUM(p.total_amount), 0)::numeric AS total_spend,
+        COALESCE(SUM(COALESCE(p.vat_amount, 0)), 0)::numeric AS total_vat,
+        COALESCE(SUM(COALESCE(p.subtotal_amount, p.total_amount)), 0)::numeric AS net_spend,
         COUNT(p.id)::integer AS total_payments,
         COUNT(DISTINCT p.supplier_id)::integer AS total_suppliers,
         COUNT(DISTINCT p.item_id)::integer AS total_items,
@@ -66,14 +68,18 @@ export async function GET(request) {
         si.id,
         si.name,
         si.unit,
+        si.has_vat,
+        si.vat_rate,
         COALESCE(SUM(p.qty), 0)::numeric AS total_qty,
         COALESCE(SUM(p.total_amount), 0)::numeric AS total_spend,
+        COALESCE(SUM(COALESCE(p.vat_amount, 0)), 0)::numeric AS total_vat,
+        COALESCE(SUM(COALESCE(p.subtotal_amount, p.total_amount)), 0)::numeric AS net_spend,
         ROUND(COALESCE(AVG(p.price), 0)::numeric, 2) AS avg_unit_price,
         COUNT(p.id)::integer AS purchase_count
       FROM supplier_payments p
       JOIN supplier_items si ON si.id = p.item_id
       WHERE ${whereClause}
-      GROUP BY si.id, si.name, si.unit
+      GROUP BY si.id, si.name, si.unit, si.has_vat, si.vat_rate
       ORDER BY total_spend DESC
       LIMIT 10;
     `;
@@ -127,6 +133,8 @@ export async function GET(request) {
       ok: true,
       summary: {
         totalSpend,
+        totalVat: Number(summary.total_vat || 0),
+        netSpend: Number(summary.net_spend || (totalSpend - Number(summary.total_vat || 0))),
         totalPayments: parseInt(summary.total_payments || 0, 10),
         totalSuppliers: parseInt(summary.total_suppliers || 0, 10),
         totalItems: parseInt(summary.total_items || 0, 10),
@@ -145,6 +153,8 @@ export async function GET(request) {
         ...i,
         total_qty: Number(i.total_qty),
         total_spend: Number(i.total_spend),
+        total_vat: Number(i.total_vat || 0),
+        net_spend: Number(i.net_spend || 0),
         avg_unit_price: Number(i.avg_unit_price),
         percentage: totalSpend > 0 ? Math.round((Number(i.total_spend) / totalSpend) * 1000) / 10 : 0
       })),
