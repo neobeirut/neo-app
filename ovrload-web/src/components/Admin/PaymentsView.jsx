@@ -40,8 +40,8 @@ export default function PaymentsView() {
   const [error, setError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
 
-  // Filters for Payments
-  const [datePreset, setDatePreset] = useState("this_month");
+  // Filters for Payments & Reports
+  const [datePreset, setDatePreset] = useState("all");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [selectedSupplierFilter, setSelectedSupplierFilter] = useState("all");
@@ -98,11 +98,22 @@ export default function PaymentsView() {
       const todayStr = now.toISOString().split("T")[0];
       setStartDate(todayStr);
       setEndDate(todayStr);
+    } else if (datePreset === "yesterday") {
+      const yest = new Date(now);
+      yest.setDate(now.getDate() - 1);
+      const yestStr = yest.toISOString().split("T")[0];
+      setStartDate(yestStr);
+      setEndDate(yestStr);
     } else if (datePreset === "this_week") {
       const day = now.getDay() || 7;
       const monday = new Date(now);
       monday.setDate(now.getDate() - day + 1);
       setStartDate(monday.toISOString().split("T")[0]);
+      setEndDate(now.toISOString().split("T")[0]);
+    } else if (datePreset === "7days") {
+      const d = new Date(now);
+      d.setDate(now.getDate() - 7);
+      setStartDate(d.toISOString().split("T")[0]);
       setEndDate(now.toISOString().split("T")[0]);
     } else if (datePreset === "this_month") {
       const firstDay = new Date(y, m, 1).toISOString().split("T")[0];
@@ -114,6 +125,12 @@ export default function PaymentsView() {
       const lastDay = new Date(y, m, 0).toISOString().split("T")[0];
       setStartDate(firstDay);
       setEndDate(lastDay);
+    } else if (datePreset === "august_2026") {
+      setStartDate("2026-08-01");
+      setEndDate("2026-08-31");
+    } else if (datePreset === "july_2026") {
+      setStartDate("2026-07-01");
+      setEndDate("2026-07-31");
     } else if (datePreset === "all") {
       setStartDate("");
       setEndDate("");
@@ -761,11 +778,13 @@ export default function PaymentsView() {
                 <Calendar className="w-3.5 h-3.5" /> Date Range:
               </span>
               {[
-                { id: "today", label: "Today" },
-                { id: "this_week", label: "This Week" },
+                { id: "all", label: "All Time" },
                 { id: "this_month", label: "This Month" },
                 { id: "last_month", label: "Last Month" },
-                { id: "all", label: "All Time" },
+                { id: "august_2026", label: "August 2026" },
+                { id: "july_2026", label: "July 2026" },
+                { id: "this_week", label: "This Week" },
+                { id: "today", label: "Today" },
                 { id: "custom", label: "Custom" }
               ].map((p) => (
                 <button
@@ -1163,10 +1182,149 @@ export default function PaymentsView() {
       )}
 
       {/* ── TAB 4: FINANCIAL & STATS REPORT ──────────────────────────────── */}
-      {activeTab === "reports" && stats && (
+      {activeTab === "reports" && (
         <div className="space-y-6">
-          {/* Financial Profitability / Cost vs Revenue Overview */}
-          <div className="bg-[#181C24] border border-[#262D3D] text-white p-5 sm:p-6 rounded-2xl shadow-lg space-y-4">
+          {/* Top Filter Bar for Reports: Period Selector & Date Presets */}
+          <div className="bg-[#181C24] border border-[#262D3D] p-4 sm:p-5 rounded-2xl shadow-lg flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <Calendar className="w-5 h-5 text-[#eb660c]" />
+                <h3 className="text-base font-extrabold text-white">Report Period Filter</h3>
+              </div>
+              <p className="text-xs text-gray-400 mt-0.5">
+                Active Period:{" "}
+                <span className="text-white font-bold">
+                  {startDate && endDate
+                    ? `${startDate} → ${endDate}`
+                    : !startDate && !endDate
+                    ? "All Recorded History"
+                    : startDate
+                    ? `From ${startDate}`
+                    : `Until ${endDate}`}
+                </span>
+              </p>
+            </div>
+
+            {/* Presets */}
+            <div className="flex flex-wrap items-center gap-2">
+              {[
+                { id: "all", label: "All Time" },
+                { id: "this_month", label: "This Month" },
+                { id: "last_month", label: "Last Month" },
+                { id: "august_2026", label: "August 2026" },
+                { id: "july_2026", label: "July 2026" },
+                { id: "this_week", label: "This Week" },
+                { id: "today", label: "Today" },
+                { id: "custom", label: "Custom Range" }
+              ].map((btn) => (
+                <button
+                  key={btn.id}
+                  onClick={() => setDatePreset(btn.id)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                    datePreset === btn.id
+                      ? "bg-[#eb660c] text-white shadow-md"
+                      : "bg-[#0F1115] text-gray-400 hover:text-white border border-[#262D3D]"
+                  }`}
+                >
+                  {btn.label}
+                </button>
+              ))}
+
+              <button
+                onClick={fetchData}
+                disabled={loading}
+                className="p-2 bg-[#0F1115] hover:bg-[#262D3D] text-gray-300 hover:text-white rounded-xl text-xs font-bold border border-[#262D3D] transition-all"
+                title="Refresh Report Data"
+              >
+                <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin text-[#eb660c]" : ""}`} />
+              </button>
+            </div>
+          </div>
+
+          {/* Custom Date Inputs (only shown when 'custom' is active) */}
+          {datePreset === "custom" && (
+            <div className="bg-[#181C24] border border-[#eb660c]/40 rounded-2xl p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-xl animate-in fade-in">
+              <div className="flex flex-wrap items-center gap-4 w-full md:w-auto">
+                <div
+                  className="flex items-center gap-2 bg-[#0F1115] border border-[#262D3D] px-3 py-2 rounded-xl cursor-pointer hover:border-[#eb660c] transition-colors"
+                  onClick={(e) => {
+                    const input = e.currentTarget.querySelector('input');
+                    if (input && input.showPicker) input.showPicker();
+                  }}
+                >
+                  <Calendar className="w-4 h-4 text-[#eb660c]" />
+                  <span className="text-xs text-gray-400 font-extrabold">From:</span>
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
+                    className="bg-transparent text-white text-xs font-black focus:outline-none cursor-pointer"
+                  />
+                </div>
+
+                <div
+                  className="flex items-center gap-2 bg-[#0F1115] border border-[#262D3D] px-3 py-2 rounded-xl cursor-pointer hover:border-[#eb660c] transition-colors"
+                  onClick={(e) => {
+                    const input = e.currentTarget.querySelector('input');
+                    if (input && input.showPicker) input.showPicker();
+                  }}
+                >
+                  <Calendar className="w-4 h-4 text-[#eb660c]" />
+                  <span className="text-xs text-gray-400 font-extrabold">To:</span>
+                  <input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
+                    className="bg-transparent text-white text-xs font-black focus:outline-none cursor-pointer"
+                  />
+                </div>
+
+                <button
+                  onClick={fetchData}
+                  className="px-4 py-2 bg-[#eb660c] hover:bg-[#d55909] text-white rounded-xl text-xs font-black shadow-md transition-all flex items-center gap-2"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
+                  Apply Filter
+                </button>
+              </div>
+
+              {/* Quick presets inside custom picker */}
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-gray-400 font-bold hidden lg:inline">Presets:</span>
+                <button
+                  onClick={() => { setStartDate("2026-08-01"); setEndDate("2026-08-31"); }}
+                  className="px-2.5 py-1 bg-[#0F1115] hover:bg-[#262D3D] text-xs font-bold text-gray-300 rounded-lg border border-[#262D3D]"
+                >
+                  August 2026
+                </button>
+                <button
+                  onClick={() => { setStartDate("2026-07-01"); setEndDate("2026-07-31"); }}
+                  className="px-2.5 py-1 bg-[#0F1115] hover:bg-[#262D3D] text-xs font-bold text-gray-300 rounded-lg border border-[#262D3D]"
+                >
+                  July 2026
+                </button>
+                <button
+                  onClick={() => {
+                    const today = new Date().toISOString().slice(0, 10);
+                    const d = new Date();
+                    d.setDate(d.getDate() - 30);
+                    setStartDate(d.toISOString().slice(0, 10));
+                    setEndDate(today);
+                  }}
+                  className="px-2.5 py-1 bg-[#0F1115] hover:bg-[#262D3D] text-xs font-bold text-gray-300 rounded-lg border border-[#262D3D]"
+                >
+                  Last 30 Days
+                </button>
+              </div>
+            </div>
+          )}
+
+          {stats ? (
+            <>
+              {/* Financial Profitability / Cost vs Revenue Overview */}
+              <div className="bg-[#181C24] border border-[#262D3D] text-white p-5 sm:p-6 rounded-2xl shadow-lg space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-[#262D3D] pb-3 gap-2">
               <div>
                 <h2 className="text-base font-extrabold text-white flex items-center gap-2">
@@ -1348,8 +1506,13 @@ export default function PaymentsView() {
                   <p className="text-xs text-gray-400 text-center py-6">No item spend data recorded yet.</p>
                 )}
               </div>
+            </>
+          ) : (
+            <div className="bg-[#181C24] border border-[#262D3D] rounded-2xl p-12 text-center text-gray-400 shadow-lg">
+              <RefreshCw className="w-8 h-8 animate-spin mx-auto text-[#eb660c] mb-3" />
+              <p className="text-sm font-semibold text-white">Loading report data...</p>
             </div>
-          </div>
+          )}
         </div>
       )}
 
