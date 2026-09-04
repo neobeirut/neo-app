@@ -1506,13 +1506,15 @@ export default function PaymentsView() {
                   <p className="text-xs text-gray-400 text-center py-6">No item spend data recorded yet.</p>
                 )}
               </div>
-            </>
-          ) : (
-            <div className="bg-[#181C24] border border-[#262D3D] rounded-2xl p-12 text-center text-gray-400 shadow-lg">
-              <RefreshCw className="w-8 h-8 animate-spin mx-auto text-[#eb660c] mb-3" />
-              <p className="text-sm font-semibold text-white">Loading report data...</p>
             </div>
-          )}
+          </div>
+        </>
+      ) : (
+        <div className="bg-[#181C24] border border-[#262D3D] rounded-2xl p-12 text-center text-gray-400 shadow-lg">
+          <RefreshCw className="w-8 h-8 animate-spin mx-auto text-[#eb660c] mb-3" />
+          <p className="text-sm font-semibold text-white">Loading report data...</p>
+        </div>
+      )}
         </div>
       )}
 
