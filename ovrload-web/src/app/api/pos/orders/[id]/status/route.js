@@ -121,6 +121,8 @@ export async function PATCH(request, { params }) {
           console.error("Failed to send order_preparing notification from POS:", e);
         }
       }
+    }
+
     // Send "rejected_order" when cancelled/rejected from POS
     if (status === "cancelled") {
       try {
