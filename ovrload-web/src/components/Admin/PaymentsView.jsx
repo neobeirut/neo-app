@@ -1166,54 +1166,104 @@ export default function PaymentsView() {
       {activeTab === "reports" && stats && (
         <div className="space-y-6">
           {/* Financial Profitability / Cost vs Revenue Overview */}
-          <div className="bg-gradient-to-br from-gray-900 to-gray-850 text-white p-6 rounded-2xl shadow-xl">
-            <h2 className="text-lg font-bold flex items-center gap-2 mb-1">
-              <TrendingUp className="w-5 h-5 text-emerald-400" />
-              Financial &amp; Profitability Overview
-            </h2>
-            <p className="text-xs text-gray-400 mb-6">
-              Comparing customer sales revenue against raw supplier payments for estimated gross margin and VAT breakdown.
-            </p>
+          <div className="bg-[#181C24] border border-[#262D3D] text-white p-5 sm:p-6 rounded-2xl shadow-lg space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-[#262D3D] pb-3 gap-2">
+              <div>
+                <h2 className="text-base font-extrabold text-white flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5 text-[#eb660c]" />
+                  Financial &amp; Profitability Overview
+                </h2>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Comparing customer sales revenue against raw supplier payments for estimated gross margin and VAT breakdown.
+                </p>
+              </div>
+              <div className="text-xs font-bold text-gray-400 bg-[#0F1115] px-3 py-1.5 rounded-xl border border-[#262D3D] self-start sm:self-auto flex items-center gap-2">
+                <span>Food Cost Margin:</span>
+                <span className={`font-black ${stats.summary.grossMarginPercent >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                  {stats.summary.grossMarginPercent || 0}%
+                </span>
+              </div>
+            </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-              <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Customer Sales Revenue</span>
-                <div className="text-2xl font-bold text-white font-mono mt-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+              {/* Sales Revenue */}
+              <div className="bg-[#0F1115] border border-[#262D3D] rounded-xl p-4 space-y-2 shadow-sm">
+                <div className="flex justify-between items-center text-gray-400">
+                  <span className="text-xs font-bold">Sales Revenue</span>
+                  <div className="p-2 rounded-xl bg-[#eb660c]/20 text-[#eb660c]">
+                    <DollarSign className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className="text-2xl font-black text-white font-mono">
                   ${(stats.summary.orderRevenue || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </div>
-                <span className="text-[11px] text-gray-400 mt-0.5 block">{stats.summary.orderCount || 0} completed orders</span>
+                <div className="text-[11px] text-gray-400 font-medium">
+                  {stats.summary.orderCount || 0} completed orders
+                </div>
               </div>
 
-              <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Supplier Gross Spend</span>
-                <div className="text-2xl font-bold text-rose-400 font-mono mt-1">
+              {/* Supplier Gross Spend */}
+              <div className="bg-[#0F1115] border border-[#262D3D] rounded-xl p-4 space-y-2 shadow-sm">
+                <div className="flex justify-between items-center text-gray-400">
+                  <span className="text-xs font-bold">Supplier Spend</span>
+                  <div className="p-2 rounded-xl bg-rose-500/20 text-rose-400">
+                    <FileText className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className="text-2xl font-black text-rose-400 font-mono">
                   -${(stats.summary.totalSpend || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </div>
-                <span className="text-[11px] text-gray-400 mt-0.5 block">{stats.summary.totalPayments || 0} invoices (incl. VAT)</span>
+                <div className="text-[11px] text-gray-400 font-medium">
+                  {stats.summary.totalPayments || 0} invoices (incl. VAT)
+                </div>
               </div>
 
-              <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Net Purchases (Excl. VAT)</span>
-                <div className="text-2xl font-bold text-blue-300 font-mono mt-1">
+              {/* Net Purchases (Excl. VAT) */}
+              <div className="bg-[#0F1115] border border-[#262D3D] rounded-xl p-4 space-y-2 shadow-sm">
+                <div className="flex justify-between items-center text-gray-400">
+                  <span className="text-xs font-bold">Net Purchases</span>
+                  <div className="p-2 rounded-xl bg-blue-500/20 text-blue-400">
+                    <Package className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className="text-2xl font-black text-blue-400 font-mono">
                   -${(stats.summary.netSpend || (stats.summary.totalSpend - (stats.summary.totalVat || 0))).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </div>
-                <span className="text-[11px] text-gray-400 mt-0.5 block">Pure raw material cost</span>
+                <div className="text-[11px] text-gray-400 font-medium">
+                  Excl. VAT raw cost
+                </div>
               </div>
 
-              <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-                <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider block">Total VAT Paid</span>
-                <div className="text-2xl font-bold text-amber-300 font-mono mt-1">
+              {/* Total VAT Paid */}
+              <div className="bg-[#0F1115] border border-[#262D3D] rounded-xl p-4 space-y-2 shadow-sm">
+                <div className="flex justify-between items-center text-gray-400">
+                  <span className="text-xs font-bold text-amber-400">Total VAT Paid</span>
+                  <div className="p-2 rounded-xl bg-amber-500/20 text-amber-400">
+                    <Percent className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className="text-2xl font-black text-amber-400 font-mono">
                   ${(stats.summary.totalVat || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </div>
-                <span className="text-[11px] text-gray-400 mt-0.5 block">Tax paid to suppliers</span>
+                <div className="text-[11px] text-gray-400 font-medium">
+                  Tax paid to suppliers
+                </div>
               </div>
 
-              <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Gross Margin %</span>
-                <div className={`text-2xl font-bold font-mono mt-1 ${stats.summary.grossMarginPercent >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+              {/* Gross Margin */}
+              <div className="bg-[#0F1115] border border-[#262D3D] rounded-xl p-4 space-y-2 shadow-sm">
+                <div className="flex justify-between items-center text-gray-400">
+                  <span className="text-xs font-bold">Gross Margin %</span>
+                  <div className="p-2 rounded-xl bg-emerald-500/20 text-emerald-400">
+                    <TrendingUp className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className={`text-2xl font-black font-mono ${stats.summary.grossMarginPercent >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
                   {stats.summary.grossMarginPercent || 0}%
                 </div>
-                <span className="text-[11px] text-gray-400 mt-0.5 block">${(stats.summary.grossMargin || 0).toFixed(2)} food margin</span>
+                <div className="text-[11px] text-gray-400 font-medium">
+                  ${(stats.summary.grossMargin || 0).toFixed(2)} food margin
+                </div>
               </div>
             </div>
           </div>
