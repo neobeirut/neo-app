@@ -2,7 +2,7 @@ import sql from "@/app/api/utils/sql";
 import { toLebanonE164, sendWhatsAppFreeForm } from "@/app/api/utils/customerWhatsApp";
 
 // Automated Infobip WhatsApp sender for new orders
-// Sends full summary to OVR LOAD / Branch and short summary (NO personal info/location) to Client
+// Sends full summary to OVRLOAD / Branch and short summary (NO personal info/location) to Client
 export async function sendAutomatedOrderWhatsAppMessages({ orderId, orderNumber, branchId }) {
   console.log(`[automated_order_whatsapp] START for order #${orderNumber}`);
   try {
@@ -40,7 +40,7 @@ export async function sendAutomatedOrderWhatsAppMessages({ orderId, orderNumber,
         ? `\n📍 GPS Location: https://maps.google.com/?q=${order.latitude},${order.longitude}`
         : "";
 
-    // 1. FULL ORDER NOTIFICATION FOR OVR LOAD (Sent to 81202607)
+    // 1. FULL ORDER NOTIFICATION FOR OVRLOAD (Sent to 81202607)
     const ovrloadMsgText = `🛒 *New Order #${orderNumber}*\n\n*Order Type:* ${String(
       order.order_type || "delivery"
     ).toUpperCase()}\n\n*Items:*\n${itemsText}\n\n*Subtotal:* $${Number(
@@ -59,16 +59,16 @@ export async function sendAutomatedOrderWhatsAppMessages({ orderId, orderNumber,
     try {
       const branchPhoneE164 = toLebanonE164(rawBranchPhone);
       await sendWhatsAppFreeForm(branchPhoneE164, ovrloadMsgText);
-      console.log(`[automated_order_whatsapp] Sent full order notification to OVR LOAD (${branchPhoneE164})`);
+      console.log(`[automated_order_whatsapp] Sent full order notification to OVRLOAD (${branchPhoneE164})`);
     } catch (e) {
-      console.error("[automated_order_whatsapp] Failed sending to OVR LOAD phone:", e);
+      console.error("[automated_order_whatsapp] Failed sending to OVRLOAD phone:", e);
     }
 
     // 2. SHORTENED ORDER CONFIRMATION FOR CLIENT (NO personal info, NO location)
     if (order.customer_phone) {
       try {
         const clientPhoneE164 = toLebanonE164(order.customer_phone);
-        const clientMsgText = `🛒 *Order #${orderNumber} Confirmed - OVR LOAD*\n\n*Order Type:* ${String(
+        const clientMsgText = `🛒 *Order #${orderNumber} Confirmed - OVRLOAD*\n\n*Order Type:* ${String(
           order.order_type || "delivery"
         ).toUpperCase()}\n\n*Items:*\n${itemsText}\n\n*Subtotal:* $${Number(order.subtotal_amount || 0).toFixed(
           2
@@ -76,7 +76,7 @@ export async function sendAutomatedOrderWhatsAppMessages({ orderId, orderNumber,
           2
         )}\n*Total:* $${Number(order.total_amount || 0).toFixed(
           2
-        )}\n*Schedule:* ${order.scheduled_date || ""} ${order.scheduled_time || ""}\n\nThank you for ordering with OVR LOAD! 🙏`;
+        )}\n*Schedule:* ${order.scheduled_date || ""} ${order.scheduled_time || ""}\n\nThank you for ordering with OVRLOAD! 🙏`;
 
         await sendWhatsAppFreeForm(clientPhoneE164, clientMsgText);
         console.log(`[automated_order_whatsapp] Sent short order confirmation to Client (${clientPhoneE164})`);
