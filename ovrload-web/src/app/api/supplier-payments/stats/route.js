@@ -99,12 +99,14 @@ export async function GET(request) {
     `;
     const timeline = await sql(timelineQuery, values);
 
-    // 5. Compare against Total Sales Revenue from orders in the same period
+    // 5. Compare against Total Sales Revenue from orders in the same period (sales - discount)
     let orderRevenue = 0;
+    let grossSales = 0;
+    let orderDiscounts = 0;
     let orderCount = 0;
     try {
       const orderValues = [];
-      let orderWhere = ["status NOT IN ('cancelled')"];
+      let orderWhere = ["COALESCE(status, 'completed') NOT IN ('cancelled', 'voided', 'pending')"];
       if (startDate) {
         orderValues.push(startDate);
         orderWhere.push(`created_at >= $${orderValues.length}::date`);
@@ -114,11 +116,19 @@ export async function GET(request) {
         orderWhere.push(`created_at <= $${orderValues.length}::date + INTERVAL '1 day'`);
       }
       const orderRes = await sql(
-        `SELECT COALESCE(SUM(total_amount), 0)::numeric AS total_rev, COUNT(id)::integer AS order_count FROM orders WHERE ${orderWhere.join(' AND ')};`,
+        `SELECT 
+           COALESCE(SUM(COALESCE(subtotal_amount, total_amount) - COALESCE(discount_amount, 0)), 0)::numeric AS total_rev,
+           COALESCE(SUM(COALESCE(subtotal_amount, total_amount)), 0)::numeric AS gross_sales,
+           COALESCE(SUM(COALESCE(discount_amount, 0)), 0)::numeric AS total_discount,
+           COUNT(id)::integer AS order_count 
+         FROM orders 
+         WHERE ${orderWhere.join(' AND ')};`,
         orderValues
       );
       if (orderRes.length > 0) {
         orderRevenue = Number(orderRes[0].total_rev || 0);
+        grossSales = Number(orderRes[0].gross_sales || 0);
+        orderDiscounts = Number(orderRes[0].total_discount || 0);
         orderCount = parseInt(orderRes[0].order_count || 0, 10);
       }
     } catch (orderErr) {
@@ -140,6 +150,8 @@ export async function GET(request) {
         totalItems: parseInt(summary.total_items || 0, 10),
         avgPayment: Number(summary.avg_payment || 0),
         orderRevenue,
+        grossSales,
+        orderDiscounts,
         orderCount,
         grossMargin,
         grossMarginPercent

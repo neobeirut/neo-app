@@ -313,10 +313,10 @@ export default function ReportsView() {
 
       {/* METRIC KPI CARDS */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        {/* Net Revenue */}
+        {/* Sales Revenue */}
         <div className="bg-[#181C24] border border-[#262D3D] rounded-2xl p-4 space-y-2 shadow-lg">
           <div className="flex justify-between items-center text-gray-400">
-            <span className="text-xs font-bold">Net Revenue</span>
+            <span className="text-xs font-bold">Sales Revenue</span>
             <div className="p-2 rounded-xl bg-[#eb660c]/20 text-[#eb660c]">
               <DollarSign className="w-4 h-4" />
             </div>

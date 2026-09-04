@@ -130,11 +130,11 @@ export async function GET(request) {
     const summaryRows = await sql(
       `SELECT 
         COUNT(*)::int as total_orders,
-        COALESCE(SUM(total_amount::float), 0) as total_revenue,
+        COALESCE(SUM((COALESCE(subtotal_amount, total_amount) - COALESCE(discount_amount, 0))::float), 0) as total_revenue,
         COALESCE(SUM(subtotal_amount::float), 0) as gross_subtotal,
         COALESCE(SUM(discount_amount::float), 0) as total_discounts,
         COALESCE(SUM(delivery_fee::float), 0) as total_delivery_fees,
-        COALESCE(AVG(total_amount::float), 0) as avg_order_value
+        COALESCE(AVG((COALESCE(subtotal_amount, total_amount) - COALESCE(discount_amount, 0))::float), 0) as avg_order_value
       FROM orders
       WHERE ${salesStatusFilter} ${dateWhereClause}`
     );
@@ -144,7 +144,7 @@ export async function GET(request) {
       `SELECT 
         COALESCE(order_source, 'Pick-up') as channel,
         COUNT(*)::int as order_count,
-        COALESCE(SUM(total_amount::float), 0) as total_revenue,
+        COALESCE(SUM((COALESCE(subtotal_amount, total_amount) - COALESCE(discount_amount, 0))::float), 0) as total_revenue,
         COALESCE(SUM(discount_amount::float), 0) as total_discount
       FROM orders
       WHERE ${salesStatusFilter} ${dateWhereClause}
@@ -161,7 +161,7 @@ export async function GET(request) {
           ELSE 'Cash'
         END as method,
         COUNT(*)::int as order_count,
-        COALESCE(SUM(total_amount::float), 0) as total_revenue
+        COALESCE(SUM((COALESCE(subtotal_amount, total_amount) - COALESCE(discount_amount, 0))::float), 0) as total_revenue
       FROM orders
       WHERE ${salesStatusFilter} ${dateWhereClause}
       GROUP BY 
@@ -230,7 +230,7 @@ export async function GET(request) {
       `SELECT 
         EXTRACT(HOUR FROM ${beirutTimeExpr})::int as hour,
         COUNT(*)::int as order_count,
-        COALESCE(SUM(total_amount::float), 0) as total_revenue
+        COALESCE(SUM((COALESCE(subtotal_amount, total_amount) - COALESCE(discount_amount, 0))::float), 0) as total_revenue
       FROM orders
       WHERE ${salesStatusFilter} ${dateWhereClause}
       GROUP BY EXTRACT(HOUR FROM ${beirutTimeExpr})
@@ -246,7 +246,7 @@ export async function GET(request) {
           ELSE 'offpeak'
         END as period,
         COUNT(*)::int as order_count,
-        COALESCE(SUM(total_amount::float), 0) as total_revenue
+        COALESCE(SUM((COALESCE(subtotal_amount, total_amount) - COALESCE(discount_amount, 0))::float), 0) as total_revenue
       FROM orders
       WHERE ${salesStatusFilter} ${dateWhereClause}
       GROUP BY 

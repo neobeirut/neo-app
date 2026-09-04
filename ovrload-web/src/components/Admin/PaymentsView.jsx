@@ -1355,8 +1355,9 @@ export default function PaymentsView() {
                 <div className="text-2xl font-black text-white font-mono">
                   ${(stats.summary.orderRevenue || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </div>
-                <div className="text-[11px] text-gray-400 font-medium">
-                  {stats.summary.orderCount || 0} completed orders
+                <div className="text-[11px] text-gray-400 font-medium flex items-center justify-between">
+                  <span>Gross: ${(stats.summary.grossSales || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  <span className="text-rose-400 font-semibold">Disc: -${(stats.summary.orderDiscounts || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
               </div>
 
