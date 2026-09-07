@@ -12,7 +12,7 @@ export async function GET(request) {
     const optIn = (searchParams.get("opt_in") || "").trim(); // 'true', 'false', or ''
     const category = (searchParams.get("category") || "").trim();
     const tag = (searchParams.get("tag") || "").trim();
-    const limit = Math.min(Number(searchParams.get("limit")) || 50, 100);
+    const limit = Math.min(Number(searchParams.get("limit")) || 50, 2000);
     const offset = Math.max(Number(searchParams.get("offset")) || 0, 0);
 
     const contacts = await sql`
@@ -66,7 +66,7 @@ export async function GET(request) {
     `;
 
     const categoriesRows = await sql`
-      SELECT DISTINCT category FROM whatsapp_contacts WHERE category IS NOT NULL AND category != '' ORDER BY category ASC
+      SELECT category, COUNT(*)::int as count FROM whatsapp_contacts WHERE category IS NOT NULL AND category != '' GROUP BY category ORDER BY category ASC
     `;
 
     return Response.json({
@@ -74,6 +74,7 @@ export async function GET(request) {
       contacts,
       total: totalRow?.total || 0,
       categories: categoriesRows.map((r) => r.category),
+      categoryCounts: Object.fromEntries(categoriesRows.map((r) => [r.category, r.count])),
       limit,
       offset,
     });

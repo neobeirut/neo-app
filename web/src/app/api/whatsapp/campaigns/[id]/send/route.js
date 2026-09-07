@@ -151,7 +151,8 @@ export async function POST(request, { params }) {
     const { id } = params;
     const body = await request.json().catch(() => ({}));
     const { 
-      audienceType = "opted_in", // 'opted_in', 'tag', 'tier', 'manual', 'all'
+      audienceType = "opted_in", // 'opted_in', 'category', 'tag', 'tier', 'manual', 'all'
+      selectedCategory = null,
       selectedTag = null,
       selectedTier = null,
       manualContactIds = [],
@@ -177,11 +178,17 @@ export async function POST(request, { params }) {
     // 1. Resolve eligible recipients with strict marketing opt-in compliance
     let contacts = [];
 
-    if (audienceType === 'tag' && selectedTag) {
+    if (audienceType === 'category' && selectedCategory) {
+      contacts = await sql`
+        SELECT id, phone_e164, whatsapp_opt_in FROM whatsapp_contacts
+        WHERE category ILIKE ${selectedCategory}
+        ${!allowUnopted ? sql`AND whatsapp_opt_in = true` : sql``}
+      `;
+    } else if (audienceType === 'tag' && selectedTag) {
       contacts = await sql`
         SELECT id, phone_e164, whatsapp_opt_in FROM whatsapp_contacts
         WHERE ${selectedTag} = ANY(tags)
-        ${!allowUnopted ? sql`AND whatsapp_opt_in = true` : sql`true`}
+        ${!allowUnopted ? sql`AND whatsapp_opt_in = true` : sql``}
       `;
     } else if (audienceType === 'tier' && selectedTier) {
       contacts = await sql`
@@ -189,13 +196,13 @@ export async function POST(request, { params }) {
         FROM whatsapp_contacts con
         INNER JOIN auth_users u ON u.id = con.customer_id
         WHERE u.membership_tier = ${selectedTier}
-        ${!allowUnopted ? sql`AND con.whatsapp_opt_in = true` : sql`true`}
+        ${!allowUnopted ? sql`AND con.whatsapp_opt_in = true` : sql``}
       `;
     } else if (audienceType === 'manual' && manualContactIds.length > 0) {
       contacts = await sql`
         SELECT id, phone_e164, whatsapp_opt_in FROM whatsapp_contacts
         WHERE id = ANY(${manualContactIds})
-        ${!allowUnopted ? sql`AND whatsapp_opt_in = true` : sql`true`}
+        ${!allowUnopted ? sql`AND whatsapp_opt_in = true` : sql``}
       `;
     } else {
       // Default: All opted-in clients

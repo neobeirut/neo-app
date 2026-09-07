@@ -52,13 +52,17 @@ export default function WhatsAppCampaigns({ adminToken, onOpenChat }) {
   const [campaignName, setCampaignName] = useState("");
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [templateVariables, setTemplateVariables] = useState({});
-  const [audienceType, setAudienceType] = useState("opted_in"); // 'opted_in', 'tag', 'tier', 'manual', 'csv'
+  const [audienceType, setAudienceType] = useState("category"); // 'category', 'manual', 'opted_in', 'tag', 'tier', 'csv'
+  const [categories, setCategories] = useState(["BDD", "General"]);
+  const [categoryCounts, setCategoryCounts] = useState({});
+  const [selectedCategory, setSelectedCategory] = useState("BDD");
+  const [contactSearch, setContactSearch] = useState("");
   const [selectedTag, setSelectedTag] = useState("");
   const [selectedTier, setSelectedTier] = useState("");
   const [selectedContactIds, setSelectedContactIds] = useState([]);
   const [csvPhones, setCsvPhones] = useState("");
   const [headerMediaUrl, setHeaderMediaUrl] = useState("");
-  const [allowUnopted, setAllowUnopted] = useState(false);
+  const [allowUnopted, setAllowUnopted] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [wizardError, setWizardError] = useState(null);
 
@@ -88,13 +92,15 @@ export default function WhatsAppCampaigns({ adminToken, onOpenChat }) {
     setCampaignName("");
     setSelectedTemplate(null);
     setTemplateVariables({});
-    setAudienceType("opted_in");
+    setAudienceType("category");
+    setSelectedCategory("BDD");
+    setContactSearch("");
     setSelectedTag("");
     setSelectedTier("");
     setSelectedContactIds([]);
     setCsvPhones("");
     setHeaderMediaUrl("");
-    setAllowUnopted(false);
+    setAllowUnopted(true);
     setWizardError(null);
     setWizardOpen(true);
 
@@ -102,7 +108,7 @@ export default function WhatsAppCampaigns({ adminToken, onOpenChat }) {
     try {
       const [tplRes, conRes] = await Promise.all([
         fetch("/api/whatsapp/templates", { headers: { "x-admin-token": getEffectiveToken() } }),
-        fetch("/api/whatsapp/contacts?limit=100", { headers: { "x-admin-token": getEffectiveToken() } }),
+        fetch("/api/whatsapp/contacts?limit=2000", { headers: { "x-admin-token": getEffectiveToken() } }),
       ]);
       const tplData = await tplRes.json();
       const conData = await conRes.json();
@@ -114,6 +120,17 @@ export default function WhatsAppCampaigns({ adminToken, onOpenChat }) {
       }
       if (conData.ok) {
         setContacts(conData.contacts || []);
+        if (conData.categoryCounts) {
+          setCategoryCounts(conData.categoryCounts);
+        }
+        if (conData.categories && conData.categories.length > 0) {
+          setCategories(conData.categories);
+          if (conData.categories.includes("BDD")) {
+            setSelectedCategory("BDD");
+          } else {
+            setSelectedCategory(conData.categories[0]);
+          }
+        }
       }
     } catch (e) {}
   };
@@ -149,6 +166,16 @@ export default function WhatsAppCampaigns({ adminToken, onOpenChat }) {
       .filter(Boolean);
   };
 
+  const filteredManualContacts = contacts.filter((c) => {
+    if (!contactSearch.trim()) return true;
+    const q = contactSearch.toLowerCase();
+    return (
+      (c.name && c.name.toLowerCase().includes(q)) ||
+      (c.phone_e164 && c.phone_e164.toLowerCase().includes(q)) ||
+      (c.category && c.category.toLowerCase().includes(q))
+    );
+  });
+
   const handleCreateAndSendCampaign = async () => {
     if (!campaignName.trim() || !selectedTemplate) return;
 
@@ -173,7 +200,13 @@ export default function WhatsAppCampaigns({ adminToken, onOpenChat }) {
           template_language: selectedTemplate.language || "en",
           template_variables: placeholders,
           template_id: selectedTemplate.id,
-          filter_criteria: { audienceType, selectedTag, selectedTier, headerMediaUrl: headerMediaUrl.trim() || null },
+          filter_criteria: {
+            audienceType,
+            selectedCategory: audienceType === "category" ? selectedCategory : null,
+            selectedTag: audienceType === "tag" ? selectedTag : null,
+            selectedTier: audienceType === "tier" ? selectedTier : null,
+            headerMediaUrl: headerMediaUrl.trim() || null,
+          },
         }),
       });
 
@@ -195,11 +228,12 @@ export default function WhatsAppCampaigns({ adminToken, onOpenChat }) {
         },
         body: JSON.stringify({
           audienceType,
+          selectedCategory: audienceType === "category" ? selectedCategory : null,
           selectedTag: audienceType === "tag" ? selectedTag : null,
           selectedTier: audienceType === "tier" ? selectedTier : null,
           manualContactIds: audienceType === "manual" ? selectedContactIds : [],
           manualPhones,
-          allowUnopted,
+          allowUnopted: allowUnopted || audienceType === "category" || audienceType === "manual",
           headerMediaUrl: headerMediaUrl.trim() || null,
         }),
       });
@@ -604,6 +638,8 @@ export default function WhatsAppCampaigns({ adminToken, onOpenChat }) {
                     </label>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       {[
+                        { id: "category", label: "Filter by Contact Category", desc: "Select group like BDD (817) or General" },
+                        { id: "manual", label: "Select Individual Contacts", desc: "Pick specific contacts with checkboxes" },
                         { id: "opted_in", label: "All Opted-In Clients", desc: "Contacts with explicit marketing consent" },
                         { id: "tag", label: "Filter by Contact Tag", desc: "Contacts matching a specific tag" },
                         { id: "tier", label: "Filter by Customer Tier", desc: "Platinum, Gold, Silver members" },
@@ -625,6 +661,129 @@ export default function WhatsAppCampaigns({ adminToken, onOpenChat }) {
                   </div>
 
                   {/* Dynamic Audience Inputs */}
+                  {audienceType === "category" && (
+                    <div className="space-y-3 p-3 bg-slate-950/80 rounded-xl border border-slate-800">
+                      <div>
+                        <label className="block text-slate-300 font-medium mb-1.5 text-xs">
+                          Select Contact Category
+                        </label>
+                        <select
+                          value={selectedCategory}
+                          onChange={(e) => setSelectedCategory(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-white focus:outline-none focus:ring-1 focus:ring-emerald-500 text-sm font-semibold"
+                        >
+                          {categories.map((cat) => {
+                            const count =
+                              categoryCounts[cat] ??
+                              contacts.filter((c) => (c.category || "General") === cat).length;
+                            return (
+                              <option key={cat} value={cat}>
+                                {cat} ({count} contact{count === 1 ? "" : "s"})
+                              </option>
+                            );
+                          })}
+                        </select>
+                      </div>
+
+                      <div className="flex items-center justify-between text-xs text-slate-400 bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
+                        <span>Target Audience for this Category:</span>
+                        <span className="font-bold text-emerald-400">
+                          {categoryCounts[selectedCategory] ??
+                            contacts.filter((c) => (c.category || "General") === selectedCategory).length}{" "}
+                          contacts
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {audienceType === "manual" && (
+                    <div className="space-y-3 p-3 bg-slate-950/80 rounded-xl border border-slate-800">
+                      <div className="flex items-center justify-between">
+                        <label className="text-slate-300 text-xs font-semibold">
+                          Select Specific Contacts ({selectedContactIds.length} selected)
+                        </label>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const ids = filteredManualContacts.map((c) => c.id);
+                              setSelectedContactIds((prev) => Array.from(new Set([...prev, ...ids])));
+                            }}
+                            className="text-[11px] text-emerald-400 hover:text-emerald-300 font-medium"
+                          >
+                            Select All Filtered ({filteredManualContacts.length})
+                          </button>
+                          <span className="text-slate-600 text-[11px]">•</span>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedContactIds([])}
+                            className="text-[11px] text-slate-400 hover:text-slate-300"
+                          >
+                            Deselect All
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="relative">
+                        <Search className="absolute left-3 top-2.5 text-slate-500" size={14} />
+                        <input
+                          type="text"
+                          value={contactSearch}
+                          onChange={(e) => setContactSearch(e.target.value)}
+                          placeholder="Search contacts by name, phone, or category..."
+                          className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-9 pr-3 py-2 text-white focus:outline-none focus:ring-1 focus:ring-emerald-500 text-xs"
+                        />
+                      </div>
+
+                      <div className="max-h-56 overflow-y-auto rounded-xl border border-slate-800 bg-slate-900 divide-y divide-slate-800/60">
+                        {filteredManualContacts.length === 0 ? (
+                          <div className="p-4 text-center text-slate-500 text-xs">No contacts match search</div>
+                        ) : (
+                          filteredManualContacts.map((c) => {
+                            const isChecked = selectedContactIds.includes(c.id);
+                            return (
+                              <label
+                                key={c.id}
+                                className={
+                                  "flex items-center gap-3 p-2.5 hover:bg-slate-800/50 cursor-pointer text-xs transition " +
+                                  (isChecked ? "bg-emerald-950/40" : "")
+                                }
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setSelectedContactIds((prev) => [...prev, c.id]);
+                                    } else {
+                                      setSelectedContactIds((prev) => prev.filter((id) => id !== c.id));
+                                    }
+                                  }}
+                                  className="rounded bg-slate-950 border-slate-700 text-emerald-500 focus:ring-emerald-500"
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-semibold text-white truncate">
+                                      {c.name || "Unknown Name"}
+                                    </span>
+                                    {c.category && (
+                                      <span className="px-1.5 py-0.5 text-[9px] bg-slate-800 text-slate-300 rounded border border-slate-700">
+                                        {c.category}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="text-[11px] text-slate-400 font-mono mt-0.5">
+                                    {c.phone_e164 || c.phone}
+                                  </div>
+                                </div>
+                              </label>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   {audienceType === "tag" && (
                     <div>
                       <label className="block text-slate-400 mb-1">Enter Tag Name</label>
@@ -712,7 +871,15 @@ export default function WhatsAppCampaigns({ adminToken, onOpenChat }) {
                     </div>
                     <div className="flex justify-between border-b border-slate-800 pb-2">
                       <span className="text-slate-400">Audience:</span>
-                      <span className="font-medium text-emerald-400 capitalize">{audienceType.replace("_", " ")}</span>
+                      <span className="font-medium text-emerald-400">
+                        {audienceType === "category"
+                          ? `Category: ${selectedCategory} (${categoryCounts[selectedCategory] ?? contacts.filter(c => (c.category || "General") === selectedCategory).length} contacts)`
+                          : audienceType === "manual"
+                          ? `Individual Contacts (${selectedContactIds.length} selected)`
+                          : audienceType === "csv"
+                          ? `CSV Numbers (${parseCsvPhonesList().length} numbers)`
+                          : audienceType.replace("_", " ")}
+                      </span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-400">Batch Rate Limiting:</span>
@@ -722,8 +889,13 @@ export default function WhatsAppCampaigns({ adminToken, onOpenChat }) {
 
                   <div>
                     <span className="text-slate-400 font-semibold mb-1 block">Message Preview:</span>
-                    <div className="p-3 bg-emerald-950/30 border border-emerald-800/80 rounded-xl text-emerald-100 whitespace-pre-wrap text-sm">
-                      {getRenderedPreview()}
+                    <div className="p-3 bg-emerald-950/30 border border-emerald-800/80 rounded-xl text-emerald-100 whitespace-pre-wrap text-sm space-y-2">
+                      {headerMediaUrl && (
+                        <div className="rounded-lg overflow-hidden border border-emerald-800/40 max-w-[220px] mb-2">
+                          <img src={headerMediaUrl} alt="Header Preview" className="w-full h-auto object-cover max-h-[140px]" />
+                        </div>
+                      )}
+                      <div>{getRenderedPreview()}</div>
                     </div>
                   </div>
                 </div>
@@ -748,6 +920,16 @@ export default function WhatsAppCampaigns({ adminToken, onOpenChat }) {
                     if (wizardStep === 1 && (!campaignName.trim() || !selectedTemplate)) {
                       setWizardError("Campaign name and template are required");
                       return;
+                    }
+                    if (wizardStep === 3) {
+                      if (audienceType === "manual" && selectedContactIds.length === 0) {
+                        setWizardError("Please select at least one contact");
+                        return;
+                      }
+                      if (audienceType === "csv" && parseCsvPhonesList().length === 0) {
+                        setWizardError("Please enter at least one valid phone number");
+                        return;
+                      }
                     }
                     setWizardError(null);
                     setWizardStep((s) => s + 1);
