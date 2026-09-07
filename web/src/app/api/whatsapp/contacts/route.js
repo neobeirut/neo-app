@@ -9,7 +9,7 @@ export async function GET(request) {
 
     const { searchParams } = new URL(request.url);
     const search = (searchParams.get("search") || "").trim();
-    const optIn = searchParams.get("opt_in"); // 'true', 'false', or null
+    const optIn = (searchParams.get("opt_in") || "").trim(); // 'true', 'false', or ''
     const category = (searchParams.get("category") || "").trim();
     const tag = (searchParams.get("tag") || "").trim();
     const limit = Math.min(Number(searchParams.get("limit")) || 50, 100);
@@ -30,21 +30,18 @@ export async function GET(request) {
       LEFT JOIN auth_users u ON u.id = con.customer_id
       LEFT JOIN whatsapp_conversations wc ON wc.contact_id = con.id
       WHERE (
-        ${search ? sql`(
-          con.name ILIKE ${'%' + search + '%'}
-          OR con.phone_e164 ILIKE ${'%' + search + '%'}
-          OR COALESCE(con.email, '') ILIKE ${'%' + search + '%'}
-        )` : sql`true`}
+        ${search} = '' OR con.name ILIKE ${'%' + search + '%'} OR con.phone_e164 ILIKE ${'%' + search + '%'} OR COALESCE(con.email, '') ILIKE ${'%' + search + '%'}
       )
       AND (
-        ${optIn === 'true' ? sql`con.whatsapp_opt_in = true` : 
-          optIn === 'false' ? sql`(con.whatsapp_opt_in = false OR con.whatsapp_opt_in IS NULL)` : sql`true`}
+        ${optIn} = '' 
+        OR (${optIn} = 'true' AND con.whatsapp_opt_in = true)
+        OR (${optIn} = 'false' AND (con.whatsapp_opt_in = false OR con.whatsapp_opt_in IS NULL))
       )
       AND (
-        ${category && category !== 'all' ? sql`con.category = ${category}` : sql`true`}
+        ${category} = '' OR ${category} = 'all' OR con.category = ${category}
       )
       AND (
-        ${tag ? sql`${tag} = ANY(con.tags)` : sql`true`}
+        ${tag} = '' OR ${tag} = ANY(con.tags)
       )
       ORDER BY con.updated_at DESC, con.id DESC
       LIMIT ${limit} OFFSET ${offset}
@@ -53,21 +50,18 @@ export async function GET(request) {
     const [totalRow] = await sql`
       SELECT COUNT(*)::int as total FROM whatsapp_contacts
       WHERE (
-        ${search ? sql`(
-          name ILIKE ${'%' + search + '%'}
-          OR phone_e164 ILIKE ${'%' + search + '%'}
-          OR COALESCE(email, '') ILIKE ${'%' + search + '%'}
-        )` : sql`true`}
+        ${search} = '' OR name ILIKE ${'%' + search + '%'} OR phone_e164 ILIKE ${'%' + search + '%'} OR COALESCE(email, '') ILIKE ${'%' + search + '%'}
       )
       AND (
-        ${optIn === 'true' ? sql`whatsapp_opt_in = true` : 
-          optIn === 'false' ? sql`(whatsapp_opt_in = false OR whatsapp_opt_in IS NULL)` : sql`true`}
+        ${optIn} = '' 
+        OR (${optIn} = 'true' AND whatsapp_opt_in = true)
+        OR (${optIn} = 'false' AND (whatsapp_opt_in = false OR whatsapp_opt_in IS NULL))
       )
       AND (
-        ${category && category !== 'all' ? sql`category = ${category}` : sql`true`}
+        ${category} = '' OR ${category} = 'all' OR category = ${category}
       )
       AND (
-        ${tag ? sql`${tag} = ANY(tags)` : sql`true`}
+        ${tag} = '' OR ${tag} = ANY(tags)
       )
     `;
 

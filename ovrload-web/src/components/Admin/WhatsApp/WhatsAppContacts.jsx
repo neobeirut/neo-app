@@ -136,6 +136,14 @@ export default function WhatsAppContacts({ adminToken, onOpenChat }) {
   const [importError, setImportError] = useState(null);
   const fileInputRef = useRef(null);
 
+  const getEffectiveToken = () => {
+    return (
+      adminToken ||
+      (typeof window !== "undefined" ? localStorage.getItem("admin_token") : "") ||
+      ""
+    );
+  };
+
   useEffect(() => {
     fetchContacts();
   }, [page, optInFilter, categoryFilter]);
@@ -154,7 +162,7 @@ export default function WhatsAppContacts({ adminToken, onOpenChat }) {
       if (categoryFilter && categoryFilter !== "all") params.set("category", categoryFilter);
 
       const res = await fetch("/api/whatsapp/contacts?" + params.toString(), {
-        headers: { "x-admin-token": adminToken },
+        headers: { "x-admin-token": getEffectiveToken() },
       });
       const data = await res.json();
       if (data.ok) {
@@ -235,7 +243,7 @@ export default function WhatsAppContacts({ adminToken, onOpenChat }) {
         method,
         headers: {
           "Content-Type": "application/json",
-          "x-admin-token": adminToken,
+          "x-admin-token": getEffectiveToken(),
         },
         body: JSON.stringify({
           name: formName,
@@ -269,7 +277,7 @@ export default function WhatsAppContacts({ adminToken, onOpenChat }) {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          "x-admin-token": adminToken,
+          "x-admin-token": getEffectiveToken(),
         },
         body: JSON.stringify({
           whatsapp_opt_in: !contact.whatsapp_opt_in,
@@ -347,7 +355,7 @@ export default function WhatsAppContacts({ adminToken, onOpenChat }) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-admin-token": adminToken,
+          "x-admin-token": getEffectiveToken(),
         },
         body: JSON.stringify({ contacts: importPreviewRows }),
       });
@@ -427,6 +435,15 @@ export default function WhatsAppContacts({ adminToken, onOpenChat }) {
             <option value="opted_in">✓ Opted In</option>
             <option value="not_opted_in">✗ Not Opted In</option>
           </select>
+
+          {/* Refresh Button */}
+          <button
+            onClick={fetchContacts}
+            className="p-1.5 bg-slate-950 border border-slate-800 hover:bg-slate-800 text-slate-400 hover:text-white rounded-xl text-xs transition active:scale-95 shrink-0"
+            title="Refresh Contacts"
+          >
+            <RefreshCw size={14} className={loading ? "animate-spin text-emerald-400" : ""} />
+          </button>
 
           {/* Import Contacts Button */}
           <button
