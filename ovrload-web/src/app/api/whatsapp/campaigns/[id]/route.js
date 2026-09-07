@@ -27,20 +27,33 @@ export async function GET(request, { params }) {
       return Response.json({ error: "Campaign not found" }, { status: 404 });
     }
 
-    const recipients = await sql`
-      SELECT 
-        r.*,
-        con.name as contact_name,
-        con.email as contact_email,
-        wc.id as conversation_id
-      FROM whatsapp_campaign_recipients r
-      LEFT JOIN whatsapp_contacts con ON con.id = r.contact_id
-      LEFT JOIN whatsapp_conversations wc ON wc.contact_id = con.id
-      WHERE r.campaign_id = ${id}
-      ${statusFilter !== 'all' ? sql`AND r.status = ${statusFilter}` : sql`true`}
-      ORDER BY r.id ASC
-      LIMIT ${limit} OFFSET ${offset}
-    `;
+    const recipients = statusFilter !== 'all'
+      ? await sql`
+          SELECT 
+            r.*,
+            con.name as contact_name,
+            con.email as contact_email,
+            wc.id as conversation_id
+          FROM whatsapp_campaign_recipients r
+          LEFT JOIN whatsapp_contacts con ON con.id = r.contact_id
+          LEFT JOIN whatsapp_conversations wc ON wc.contact_id = con.id
+          WHERE r.campaign_id = ${id} AND r.status = ${statusFilter}
+          ORDER BY r.id ASC
+          LIMIT ${limit} OFFSET ${offset}
+        `
+      : await sql`
+          SELECT 
+            r.*,
+            con.name as contact_name,
+            con.email as contact_email,
+            wc.id as conversation_id
+          FROM whatsapp_campaign_recipients r
+          LEFT JOIN whatsapp_contacts con ON con.id = r.contact_id
+          LEFT JOIN whatsapp_conversations wc ON wc.contact_id = con.id
+          WHERE r.campaign_id = ${id}
+          ORDER BY r.id ASC
+          LIMIT ${limit} OFFSET ${offset}
+        `;
 
     const [totalRecipientsRow] = await sql`
       SELECT COUNT(*)::int as total FROM whatsapp_campaign_recipients WHERE campaign_id = ${id}

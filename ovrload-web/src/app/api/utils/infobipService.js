@@ -138,6 +138,7 @@ export async function sendInfobipTemplateMessage({
   headerMediaUrl = null,
   headerMediaType = "IMAGE",
   buttons = [],
+  carouselCards = null,
   messageId = null,
 }) {
   const config = await getInfobipConfig();
@@ -159,6 +160,47 @@ export async function sendInfobipTemplateMessage({
 
   if (buttons && buttons.length > 0) {
     templateData.buttons = buttons;
+  }
+
+  // Handle WhatsApp Carousel templates (such as new_clients_message)
+  const effectiveCards =
+    carouselCards ||
+    (templateName === "new_clients_message"
+      ? [
+          {
+            cardIndex: 0,
+            header: {
+              type: "IMAGE",
+              mediaUrl: "https://app.neobeirut.com/ovrload/images/Caesar-Loaded-Wrap-Meal.jpg",
+            },
+          },
+          {
+            cardIndex: 1,
+            header: {
+              type: "IMAGE",
+              mediaUrl: "https://app.neobeirut.com/ovrload/images/Crispy-Chicken-Loaded-Wrap-Meal.jpg",
+            },
+          },
+          {
+            cardIndex: 2,
+            header: {
+              type: "IMAGE",
+              mediaUrl: "https://app.neobeirut.com/ovrload/images/Beef-Loaded-Quesa-Meal.jpg",
+            },
+          },
+        ]
+      : null);
+
+  if (effectiveCards && effectiveCards.length > 0) {
+    templateData.carousel = {
+      cards: effectiveCards.map((c, idx) => ({
+        cardIndex: typeof c.cardIndex === "number" ? c.cardIndex : idx,
+        header: c.header || {
+          type: c.type || "IMAGE",
+          mediaUrl: c.mediaUrl || c.url,
+        },
+      })),
+    };
   }
 
   const payload = {

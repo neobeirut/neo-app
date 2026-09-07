@@ -33,8 +33,27 @@ async function processCampaignBatch(campaignId, adminId) {
       ORDER BY r.id ASC
     `;
 
-    const templateVariables = Array.isArray(campaign.template_variables) ? campaign.template_variables : [];
-    const headerMediaUrl = campaign.filter_criteria?.headerMediaUrl || campaign.filter_criteria?.imageUrl || null;
+    let templateVariables = campaign.template_variables;
+    if (typeof templateVariables === "string") {
+      try {
+        templateVariables = JSON.parse(templateVariables);
+      } catch (e) {
+        templateVariables = [];
+      }
+    }
+    if (!Array.isArray(templateVariables)) {
+      templateVariables = [];
+    }
+
+    let filterCriteria = campaign.filter_criteria;
+    if (typeof filterCriteria === "string") {
+      try {
+        filterCriteria = JSON.parse(filterCriteria);
+      } catch (e) {
+        filterCriteria = {};
+      }
+    }
+    const headerMediaUrl = filterCriteria?.headerMediaUrl || filterCriteria?.imageUrl || null;
 
     for (let i = 0; i < pendingRecipients.length; i += batchSize) {
       // Check if campaign was cancelled mid-flight
@@ -61,6 +80,11 @@ async function processCampaignBatch(campaignId, adminId) {
             }
             return String(val || '');
           });
+
+          // Ensure new_clients_message receives the contact's name for {{1}}
+          if (campaign.template_name === 'new_clients_message' && personalizedPlaceholders.length === 0) {
+            personalizedPlaceholders.push(rec.contact_name || 'there');
+          }
 
           const res = await sendInfobipTemplateMessage({
             to: rec.phone_e164,
@@ -94,7 +118,7 @@ async function processCampaignBatch(campaignId, adminId) {
               VALUES (
                 ${conv.id}, ${rec.contact_id}, ${res.messageId}, 'outgoing',
                 'template', ${'[Campaign: ' + campaign.name + ']'}, ${campaign.template_name},
-                ${JSON.stringify(templateVariables)}, 'sent', ${adminId}, ${JSON.stringify(res.raw || {})}, now(), now()
+                ${JSON.stringify(personalizedPlaceholders)}, 'sent', ${adminId}, ${JSON.stringify(res.raw || {})}, now(), now()
               )
             `;
           }
