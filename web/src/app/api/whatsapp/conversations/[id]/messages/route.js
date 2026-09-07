@@ -20,7 +20,7 @@ export async function GET(request, { params }) {
       FROM whatsapp_messages wm
       LEFT JOIN admin_users au ON au.id = wm.sent_by_user_id
       WHERE wm.conversation_id = ${id}
-      ${beforeId ? sql`AND wm.id < ${Number(beforeId)}` : sql`true`}
+      AND (${beforeId || ''} = '' OR wm.id < ${Number(beforeId || 0)})
       ORDER BY wm.created_at DESC, wm.id DESC
       LIMIT ${limit}
     `;

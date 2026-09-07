@@ -60,32 +60,29 @@ export async function GET(request) {
       LEFT JOIN auth_users u ON u.id = wc.customer_id
       LEFT JOIN admin_users au ON au.id = wc.assigned_user_id
       WHERE (
-        -- Search filter
-        ${search ? sql`(
-          COALESCE(con.name, '') ILIKE ${'%' + search + '%'}
-          OR COALESCE(u.name, '') ILIKE ${'%' + search + '%'}
-          OR wc.phone ILIKE ${'%' + search + '%'}
-          OR COALESCE(con.phone_e164, '') ILIKE ${'%' + search + '%'}
-          OR COALESCE(wc.last_message, '') ILIKE ${'%' + search + '%'}
-        )` : sql`true`}
+        ${search} = '' 
+        OR COALESCE(con.name, '') ILIKE ${'%' + search + '%'}
+        OR COALESCE(u.name, '') ILIKE ${'%' + search + '%'}
+        OR wc.phone ILIKE ${'%' + search + '%'}
+        OR COALESCE(con.phone_e164, '') ILIKE ${'%' + search + '%'}
+        OR COALESCE(wc.last_message, '') ILIKE ${'%' + search + '%'}
       )
       AND (
-        -- Category filters
-        ${filter === 'unread' ? sql`wc.unread_count > 0` : sql`true`}
+        ${filter} != 'unread' OR wc.unread_count > 0
       )
       AND (
-        ${filter === 'open' ? sql`(wc.status = 'open' OR wc.status IS NULL)` : sql`true`}
+        ${filter} != 'open' OR (wc.status = 'open' OR wc.status IS NULL)
       )
       AND (
-        ${filter === 'closed' ? sql`wc.status = 'closed'` : sql`true`}
+        ${filter} != 'closed' OR wc.status = 'closed'
       )
       AND (
-        ${filter === 'assigned_to_me' ? sql`wc.assigned_user_id = ${admin.id}` : sql`true`}
+        ${filter} != 'assigned_to_me' OR wc.assigned_user_id = ${admin.id}
       )
       AND (
-        ${filter === 'unassigned' ? sql`wc.assigned_user_id IS NULL` : sql`true`}
+        ${filter} != 'unassigned' OR wc.assigned_user_id IS NULL
       )
-      ORDER BY wc.last_message_at DESC NULLS LAST, wc.created_at DESC
+      ORDER BY wc.last_message_at DESC NULLS LAST, wc.created_at DESC NULLS LAST
       LIMIT ${limit} OFFSET ${offset}
     `;
 

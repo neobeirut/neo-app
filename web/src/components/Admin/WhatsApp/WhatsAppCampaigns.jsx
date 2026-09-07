@@ -28,6 +28,13 @@ import {
 } from "lucide-react";
 
 export default function WhatsAppCampaigns({ adminToken, onOpenChat }) {
+  const getEffectiveToken = () => {
+    return (
+      adminToken ||
+      (typeof window !== "undefined" ? localStorage.getItem("admin_token") : "") ||
+      ""
+    );
+  };
   const [campaigns, setCampaigns] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedCampaign, setSelectedCampaign] = useState(null);
@@ -62,7 +69,7 @@ export default function WhatsAppCampaigns({ adminToken, onOpenChat }) {
     setLoading(true);
     try {
       const res = await fetch("/api/whatsapp/campaigns", {
-        headers: { "x-admin-token": adminToken },
+        headers: { "x-admin-token": getEffectiveToken() },
       });
       const data = await res.json();
       if (data.ok) {
@@ -92,8 +99,8 @@ export default function WhatsAppCampaigns({ adminToken, onOpenChat }) {
     // Fetch templates and contacts for wizard
     try {
       const [tplRes, conRes] = await Promise.all([
-        fetch("/api/whatsapp/templates", { headers: { "x-admin-token": adminToken } }),
-        fetch("/api/whatsapp/contacts?limit=100", { headers: { "x-admin-token": adminToken } }),
+        fetch("/api/whatsapp/templates", { headers: { "x-admin-token": getEffectiveToken() } }),
+        fetch("/api/whatsapp/contacts?limit=100", { headers: { "x-admin-token": getEffectiveToken() } }),
       ]);
       const tplData = await tplRes.json();
       const conData = await conRes.json();
@@ -155,7 +162,7 @@ export default function WhatsAppCampaigns({ adminToken, onOpenChat }) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-admin-token": adminToken,
+          "x-admin-token": getEffectiveToken(),
         },
         body: JSON.stringify({
           name: campaignName.trim(),
@@ -181,7 +188,7 @@ export default function WhatsAppCampaigns({ adminToken, onOpenChat }) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-admin-token": adminToken,
+          "x-admin-token": getEffectiveToken(),
         },
         body: JSON.stringify({
           audienceType,
@@ -213,7 +220,7 @@ export default function WhatsAppCampaigns({ adminToken, onOpenChat }) {
     setLoadingDetails(true);
     try {
       const res = await fetch("/api/whatsapp/campaigns/" + campaign.id + "?status=" + recipientFilter, {
-        headers: { "x-admin-token": adminToken },
+        headers: { "x-admin-token": getEffectiveToken() },
       });
       const data = await res.json();
       if (data.ok) {

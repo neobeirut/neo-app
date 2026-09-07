@@ -33,6 +33,14 @@ import {
 import SendTemplateModal from "./SendTemplateModal";
 
 export default function WhatsAppInbox({ adminToken, adminUser, initialPhone = null }) {
+  const getEffectiveToken = () => {
+    return (
+      adminToken ||
+      (typeof window !== "undefined" ? localStorage.getItem("admin_token") : "") ||
+      ""
+    );
+  };
+
   // Conversations state
   const [conversations, setConversations] = useState([]);
   const [selectedConversation, setSelectedConversation] = useState(null);
@@ -211,7 +219,7 @@ export default function WhatsAppInbox({ adminToken, adminUser, initialPhone = nu
       if (searchQuery.trim()) query.set("search", searchQuery.trim());
 
       const res = await fetch("/api/whatsapp/conversations?" + query.toString(), {
-        headers: { "x-admin-token": adminToken },
+        headers: { "x-admin-token": getEffectiveToken() },
       });
       const data = await res.json();
       if (data.ok) {
@@ -242,7 +250,7 @@ export default function WhatsAppInbox({ adminToken, adminUser, initialPhone = nu
     if (showSpinner) setLoadingMessages(true);
     try {
       const res = await fetch("/api/whatsapp/conversations/" + convId + "/messages?limit=50", {
-        headers: { "x-admin-token": adminToken },
+        headers: { "x-admin-token": getEffectiveToken() },
       });
       const data = await res.json();
       if (data.ok) {
@@ -258,7 +266,7 @@ export default function WhatsAppInbox({ adminToken, adminUser, initialPhone = nu
   const fetchConversationDetails = async (convId) => {
     try {
       const res = await fetch("/api/whatsapp/conversations/" + convId, {
-        headers: { "x-admin-token": adminToken },
+        headers: { "x-admin-token": getEffectiveToken() },
       });
       const data = await res.json();
       if (data.ok) {
@@ -273,7 +281,7 @@ export default function WhatsAppInbox({ adminToken, adminUser, initialPhone = nu
   const fetchStaffList = async () => {
     try {
       const res = await fetch("/api/admin-users", {
-        headers: { "x-admin-token": adminToken },
+        headers: { "x-admin-token": getEffectiveToken() },
       });
       const data = await res.json();
       if (data.admins) {
@@ -286,7 +294,7 @@ export default function WhatsAppInbox({ adminToken, adminUser, initialPhone = nu
     try {
       await fetch("/api/whatsapp/conversations/" + convId + "/read", {
         method: "POST",
-        headers: { "x-admin-token": adminToken },
+        headers: { "x-admin-token": getEffectiveToken() },
       });
       setConversations((prev) =>
         prev.map((c) => (c.id === convId ? { ...c, unread_count: 0 } : c))
@@ -337,7 +345,7 @@ export default function WhatsAppInbox({ adminToken, adminUser, initialPhone = nu
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-admin-token": adminToken,
+          "x-admin-token": getEffectiveToken(),
         },
         body: JSON.stringify({
           text: textToSend,
@@ -390,7 +398,7 @@ export default function WhatsAppInbox({ adminToken, adminUser, initialPhone = nu
 
       const res = await fetch("/api/whatsapp/media/upload", {
         method: "POST",
-        headers: { "x-admin-token": adminToken },
+        headers: { "x-admin-token": getEffectiveToken() },
         body: formData,
       });
 
@@ -427,7 +435,7 @@ export default function WhatsAppInbox({ adminToken, adminUser, initialPhone = nu
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-admin-token": adminToken,
+          "x-admin-token": getEffectiveToken(),
         },
         body: JSON.stringify({ assigned_user_id: userId }),
       });
@@ -452,7 +460,7 @@ export default function WhatsAppInbox({ adminToken, adminUser, initialPhone = nu
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-admin-token": adminToken,
+          "x-admin-token": getEffectiveToken(),
         },
         body: JSON.stringify({ status: newStatus }),
       });
@@ -473,7 +481,7 @@ export default function WhatsAppInbox({ adminToken, adminUser, initialPhone = nu
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          "x-admin-token": adminToken,
+          "x-admin-token": getEffectiveToken(),
         },
         body: JSON.stringify({ notes: contactNotes }),
       });
@@ -500,7 +508,7 @@ export default function WhatsAppInbox({ adminToken, adminUser, initialPhone = nu
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          "x-admin-token": adminToken,
+          "x-admin-token": getEffectiveToken(),
         },
         body: JSON.stringify({ tags: updatedTags }),
       });
@@ -519,7 +527,7 @@ export default function WhatsAppInbox({ adminToken, adminUser, initialPhone = nu
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          "x-admin-token": adminToken,
+          "x-admin-token": getEffectiveToken(),
         },
         body: JSON.stringify({
           whatsapp_opt_in: !currentOptIn,

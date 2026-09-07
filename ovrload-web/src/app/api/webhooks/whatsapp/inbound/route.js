@@ -7,6 +7,8 @@ import {
   sendWhatsAppFreeForm,
   normalizePhone,
 } from "@/app/api/utils/customerWhatsApp";
+import { broadcastWhatsAppEvent } from "@/app/api/utils/realtimeBroadcaster";
+import { normalizePhoneE164 } from "@/app/api/utils/phoneNormalizer";
 
 /**
  * Workflow 2: Receive WhatsApp Replies (Webhook)
@@ -257,6 +259,139 @@ async function processInboundMessage(result) {
 
   // Normalize the phone number for consistent matching
   const normalizedPhone = normalizePhone(fromPhone);
+
+  // ── Unified WhatsApp Module Message Pipeline ─────────────────────────────
+  let unifiedContact = null;
+  let unifiedConversation = null;
+
+  try {
+    const senderE164 = normalizePhoneE164(fromPhone);
+    const contactProfileName = result.contact?.name || result.sender?.name || null;
+
+    // 1. Find or create Contact in whatsapp_contacts
+    let [existingContact] = await sql`
+      SELECT id, name, phone_e164, customer_id, whatsapp_opt_in
+      FROM whatsapp_contacts
+      WHERE phone_e164 = ${senderE164}
+      LIMIT 1
+    `;
+
+    if (!existingContact) {
+      const digitsOnly = senderE164.replace(/\D/g, "");
+      const [linkedCustomer] = await sql`
+        SELECT id, name, email 
+        FROM auth_users 
+        WHERE REPLACE(REPLACE(phone, ' ', ''), '+', '') LIKE '%' || ${digitsOnly.slice(-8)}
+           OR phone = ${senderE164}
+        LIMIT 1
+      `;
+
+      const nameToUse = contactProfileName || linkedCustomer?.name || `WhatsApp ${senderE164.slice(-4)}`;
+      const emailToUse = linkedCustomer?.email || null;
+      const customerId = linkedCustomer?.id || null;
+
+      [existingContact] = await sql`
+        INSERT INTO whatsapp_contacts (
+          name, phone_e164, email, customer_id, whatsapp_opt_in, whatsapp_opt_in_source, created_at, updated_at
+        )
+        VALUES (
+          ${nameToUse}, ${senderE164}, ${emailToUse}, ${customerId}, false, 'inbound_message', now(), now()
+        )
+        RETURNING id, name, phone_e164, customer_id, whatsapp_opt_in
+      `;
+    } else if (contactProfileName && (!existingContact.name || existingContact.name.startsWith("WhatsApp "))) {
+      await sql`
+        UPDATE whatsapp_contacts 
+        SET name = ${contactProfileName}, updated_at = now() 
+        WHERE id = ${existingContact.id}
+      `;
+      existingContact.name = contactProfileName;
+    }
+    unifiedContact = existingContact;
+
+    // 2. Find or create Unified Conversation
+    let [convRow] = await sql`
+      SELECT id, contact_id, status, assigned_user_id, unread_count
+      FROM whatsapp_conversations
+      WHERE contact_id = ${unifiedContact.id} 
+         OR phone = ${fromPhone}
+         OR phone = ${senderE164}
+         OR REPLACE(REPLACE(phone, ' ', ''), '+', '') = ${senderE164.replace('+', '')}
+      LIMIT 1
+    `;
+
+    const now = new Date();
+    let convId;
+
+    if (!convRow) {
+      convId = `conv-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      [convRow] = await sql`
+        INSERT INTO whatsapp_conversations (
+          id, phone, customer_id, contact_id, last_message, last_message_at,
+          last_customer_message_at, last_message_preview, unread_count,
+          session_active, service_window_active, status, created_at, updated_at
+        )
+        VALUES (
+          ${convId}, ${senderE164}, ${unifiedContact.customer_id}, ${unifiedContact.id},
+          ${messageText}, ${now}, ${now}, ${messageText.slice(0, 150)}, 1,
+          true, true, 'open', ${now}, ${now}
+        )
+        RETURNING *
+      `;
+    } else {
+      convId = convRow.id;
+      [convRow] = await sql`
+        UPDATE whatsapp_conversations
+        SET 
+          contact_id = COALESCE(${unifiedContact.id}, contact_id),
+          last_message = ${messageText},
+          last_message_preview = ${messageText.slice(0, 150)},
+          last_message_at = ${now},
+          last_customer_message_at = ${now},
+          unread_count = COALESCE(unread_count, 0) + 1,
+          session_active = true,
+          service_window_active = true,
+          status = 'open',
+          latest_location_lat = COALESCE(${detectedLat}, latest_location_lat),
+          latest_location_lng = COALESCE(${detectedLng}, latest_location_lng),
+          latest_location_address = COALESCE(${detectedAddress}, latest_location_address),
+          latest_location_url = COALESCE(${detectedUrl}, latest_location_url),
+          latest_location_at = CASE WHEN ${detectedLat}::numeric IS NOT NULL OR ${detectedUrl}::text IS NOT NULL THEN ${timestamp} ELSE latest_location_at END,
+          updated_at = ${now}
+        WHERE id = ${convId}
+        RETURNING *
+      `;
+    }
+    unifiedConversation = convRow;
+
+    // 3. Save message in whatsapp_messages
+    const [savedMessage] = await sql`
+      INSERT INTO whatsapp_messages (
+        conversation_id, contact_id, infobip_message_id, direction,
+        message_type, text_content, media_url,
+        status, raw_infobip_payload, created_at, updated_at
+      )
+      VALUES (
+        ${convId}, ${unifiedContact.id}, ${infobipMessageId}, 'incoming',
+        'text', ${messageText}, ${detectedUrl || null},
+        'delivered', ${JSON.stringify(result)}, ${timestamp}, now()
+      )
+      ON CONFLICT (infobip_message_id) DO NOTHING
+      RETURNING *
+    `;
+
+    // 4. Broadcast Realtime SSE Events to staff UI
+    if (savedMessage) {
+      broadcastWhatsAppEvent("whatsapp.message.received", {
+        message: savedMessage,
+        conversation: unifiedConversation,
+        contact: unifiedContact,
+      });
+      broadcastWhatsAppEvent("whatsapp.conversation.updated", unifiedConversation);
+    }
+  } catch (unifiedErr) {
+    console.error("[whatsapp-webhook] Unified pipeline error:", unifiedErr);
+  }
 
   // ── Find customer by phone ────────────────────────────────────────────────
   const [customer] = await sql`

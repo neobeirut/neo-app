@@ -1,5 +1,4 @@
-﻿import sql from "@/app/api/utils/sql";
-import { isOverloadClosed, hasAutoReplyBeenSent, recordAutoReplySent, sendClosedAutoReply } from "@/app/api/utils/whatsappAfterHours";
+import sql from "@/app/api/utils/sql";
 import {
   markWhatsAppSessionActive,
   logWhatsAppMessage,
@@ -8,6 +7,8 @@ import {
   sendWhatsAppFreeForm,
   normalizePhone,
 } from "@/app/api/utils/customerWhatsApp";
+import { broadcastWhatsAppEvent } from "@/app/api/utils/realtimeBroadcaster";
+import { normalizePhoneE164 } from "@/app/api/utils/phoneNormalizer";
 
 /**
  * Workflow 2: Receive WhatsApp Replies (Webhook)
@@ -22,18 +23,18 @@ import {
  *
  * POST /api/webhooks/whatsapp/inbound
  *
- * â”€â”€â”€ Infobip inbound webhook payload shape â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+ * ─── Infobip inbound webhook payload shape ─────────────────────────────────
  * {
  *   "results": [
  *     {
- *       "from": "+9611234567",          â† sender phone (E.164)
- *       "to": "96176489078",            â† your WA number
+ *       "from": "+9611234567",          ← sender phone (E.164)
+ *       "to": "96176489078",            ← your WA number
  *       "integrationType": "WHATSAPP",
  *       "receivedAt": "2024-01-01T00:00:00.000+0000",
  *       "messageId": "ABEGe4iX5oWGAgo-sJwNhpcc95Q",
  *       "message": {
  *         "type": "TEXT",
- *         "text": "Hello"               â† message body
+ *         "text": "Hello"               ← message body
  *       },
  *       "contact": { "name": "Customer Name" }
  *     }
@@ -41,15 +42,15 @@ import {
  *   "messageCount": 1,
  *   "pendingMessageCount": 0
  * }
- * â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+ * ───────────────────────────────────────────────────────────────────────────
  */
 export async function POST(request) {
   try {
-    // â”€â”€ 1. Parse raw body â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── 1. Parse raw body ────────────────────────────────────────────────────
     const rawPayload = await request.json().catch(() => ({}));
 
     console.log("============================================");
-    console.log("[whatsapp-webhook] ðŸ“¥ RAW INFOBIP PAYLOAD:");
+    console.log("[whatsapp-webhook] 📥 RAW INFOBIP PAYLOAD:");
     console.log(JSON.stringify(rawPayload, null, 2));
     console.log("============================================");
 
@@ -65,7 +66,7 @@ export async function POST(request) {
       )
     `.catch((e) => console.error("Failed to log debug payload:", e));
 
-    // â”€â”€ 2. Extract the first result from Infobip's results[] array â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── 2. Extract the first result from Infobip's results[] array ───────────
     // Infobip always wraps messages in a "results" array.
     // Fall back to treating the root object as a single message for compatibility.
     const results = Array.isArray(rawPayload.results)
@@ -73,7 +74,7 @@ export async function POST(request) {
       : [rawPayload];
 
     if (results.length === 0) {
-      console.log("[whatsapp-webhook] âš  Empty results array â€” nothing to do");
+      console.log("[whatsapp-webhook] ⚠ Empty results array — nothing to do");
       return Response.json({ ok: true, message: "No results in payload" });
     }
 
@@ -99,36 +100,16 @@ export async function POST(request) {
  * @param {object} result - One item from results[]
  */
 async function processInboundMessage(result) {
-  // Check if OVRLOAD is closed and trigger after-hours auto-reply with deduplication
-  try {
-    const { isClosed, beirutInfo } = isOverloadClosed();
-    const rawSender = result.from || result.sender?.contact?.identifierValue || result.sender?.identifierValue || result.sender;
-    if (isClosed && rawSender) {
-      const alreadySent = await hasAutoReplyBeenSent(rawSender, beirutInfo.periodId);
-      if (!alreadySent) {
-        console.log("[whatsapp-webhook] OVRLOAD is closed (" + beirutInfo.formatted + "). Sending after-hours auto-reply to " + rawSender + "...");
-        const sendResult = await sendClosedAutoReply(rawSender);
-        if (sendResult?.ok) {
-          await recordAutoReplySent(rawSender, beirutInfo.periodId);
-          console.log("[whatsapp-webhook] Successfully sent closed auto-reply to " + rawSender);
-        }
-      } else {
-        console.log("[whatsapp-webhook] Closed auto-reply already sent to " + rawSender + " for period " + beirutInfo.periodId + ". Duplicate skipped.");
-      }
-    }
-  } catch (afterHoursErr) {
-    console.error("[whatsapp-webhook] Error in after-hours auto-reply check:", afterHoursErr?.message || afterHoursErr);
-  }
-
+  // ── Extract fields using Infobip format ───────────────────────────────────
   let fromPhone = null;
   let messageText = null;
   let timestamp = null;
   let infobipMessageId = null;
 
-  // â”€â”€ Phone: Infobip puts it directly at result.from â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Phone: Infobip puts it directly at result.from ────────────────────────
   if (result.from) {
     fromPhone = String(result.from).trim();
-    console.log("[whatsapp-webhook] âœ“ Phone from result.from:", fromPhone);
+    console.log("[whatsapp-webhook] ✓ Phone from result.from:", fromPhone);
   } else {
     // Fallback: old Bird paths (kept for migration safety)
     fromPhone =
@@ -136,34 +117,34 @@ async function processInboundMessage(result) {
       result.sender?.identifierValue ||
       null;
     if (fromPhone) {
-      console.log("[whatsapp-webhook] âœ“ Phone from Bird fallback:", fromPhone);
+      console.log("[whatsapp-webhook] ✓ Phone from Bird fallback:", fromPhone);
     } else {
       console.log(
-        "[whatsapp-webhook] âœ— Could not find phone. Keys:",
+        "[whatsapp-webhook] ✗ Could not find phone. Keys:",
         Object.keys(result),
       );
     }
   }
 
-  // â”€â”€ Message text: Infobip puts it at result.message.text â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Message text: Infobip puts it at result.message.text ─────────────────
   if (result.message?.text) {
     messageText = result.message.text;
     console.log(
-      "[whatsapp-webhook] âœ“ Message from result.message.text:",
+      "[whatsapp-webhook] ✓ Message from result.message.text:",
       messageText,
     );
   } else if (result.message?.caption) {
     // Image/video captions
     messageText = result.message.caption;
     console.log(
-      "[whatsapp-webhook] âœ“ Message from result.message.caption:",
+      "[whatsapp-webhook] ✓ Message from result.message.caption:",
       messageText,
     );
   } else if (result.message?.type && result.message.type !== "TEXT") {
     // Non-text message types: audio, image, video, etc.
     messageText = `[${result.message.type} message]`;
     console.log(
-      "[whatsapp-webhook] âœ“ Non-text message type:",
+      "[whatsapp-webhook] ✓ Non-text message type:",
       result.message.type,
     );
   } else {
@@ -176,22 +157,22 @@ async function processInboundMessage(result) {
       null;
     if (messageText) {
       console.log(
-        "[whatsapp-webhook] âœ“ Message from Bird fallback:",
+        "[whatsapp-webhook] ✓ Message from Bird fallback:",
         messageText,
       );
     } else {
       console.log(
-        "[whatsapp-webhook] âœ— Could not find message text. message obj:",
+        "[whatsapp-webhook] ✗ Could not find message text. message obj:",
         JSON.stringify(result.message || {}, null, 2),
       );
     }
   }
 
-  // â”€â”€ Timestamp: Infobip uses result.receivedAt â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Timestamp: Infobip uses result.receivedAt ─────────────────────────────
   if (result.receivedAt) {
     timestamp = new Date(result.receivedAt);
     console.log(
-      "[whatsapp-webhook] âœ“ Timestamp from result.receivedAt:",
+      "[whatsapp-webhook] ✓ Timestamp from result.receivedAt:",
       timestamp,
     );
   } else if (result.createdAt) {
@@ -200,20 +181,20 @@ async function processInboundMessage(result) {
     timestamp = new Date(result.timestamp);
   } else {
     timestamp = new Date();
-    console.log("[whatsapp-webhook] âš  Using current time as timestamp");
+    console.log("[whatsapp-webhook] ⚠ Using current time as timestamp");
   }
 
-  // â”€â”€ Message ID: Infobip uses result.messageId â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Message ID: Infobip uses result.messageId ─────────────────────────────
   infobipMessageId = result.messageId || result.id || null;
 
-  console.log("[whatsapp-webhook] ðŸ“‹ PARSED VALUES:");
+  console.log("[whatsapp-webhook] 📋 PARSED VALUES:");
   console.log("  Phone:", fromPhone);
   console.log("  Message:", messageText);
   console.log("  Timestamp:", timestamp);
   console.log("  Infobip Message ID:", infobipMessageId);
 
   if (!fromPhone || !messageText) {
-    console.error("[whatsapp-webhook] âŒ Missing required fields:", {
+    console.error("[whatsapp-webhook] ❌ Missing required fields:", {
       fromPhone,
       messageText,
     });
@@ -226,10 +207,10 @@ async function processInboundMessage(result) {
   }
 
   console.log(
-    `[whatsapp-webhook] âœ… Parsed â€” From: ${fromPhone}, Message: "${messageText}"`,
+    `[whatsapp-webhook] ✅ Parsed — From: ${fromPhone}, Message: "${messageText}"`,
   );
 
-  // â”€â”€ Location Detection (Native Infobip location object or Google Maps URL in text) â”€â”€
+  // ── Location Detection (Native Infobip location object or Google Maps URL in text) ──
   let detectedLat = null;
   let detectedLng = null;
   let detectedAddress = null;
@@ -242,7 +223,7 @@ async function processInboundMessage(result) {
     detectedAddress = locObj.address || locObj.name || null;
     detectedUrl = locObj.url || (detectedLat && detectedLng ? `https://maps.google.com/?q=${detectedLat},${detectedLng}` : null);
     if (!messageText || messageText === "[LOCATION message]") {
-      messageText = `ðŸ“ Shared Location: ${detectedAddress || (detectedLat && detectedLng ? `${detectedLat}, ${detectedLng}` : "Pinned Location")}`;
+      messageText = `📍 Shared Location: ${detectedAddress || (detectedLat && detectedLng ? `${detectedLat}, ${detectedLng}` : "Pinned Location")}`;
     }
   } else if (messageText && typeof messageText === "string") {
     // Check for Google Maps URLs or coordinates in text
@@ -273,13 +254,146 @@ async function processInboundMessage(result) {
   }
 
   if (detectedLat || detectedUrl) {
-    console.log(`[whatsapp-webhook] ðŸ“ Location detected from ${fromPhone}: Lat=${detectedLat}, Lng=${detectedLng}, URL=${detectedUrl}`);
+    console.log(`[whatsapp-webhook] 📍 Location detected from ${fromPhone}: Lat=${detectedLat}, Lng=${detectedLng}, URL=${detectedUrl}`);
   }
 
   // Normalize the phone number for consistent matching
   const normalizedPhone = normalizePhone(fromPhone);
 
-  // â”€â”€ Find customer by phone â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Unified WhatsApp Module Message Pipeline ─────────────────────────────
+  let unifiedContact = null;
+  let unifiedConversation = null;
+
+  try {
+    const senderE164 = normalizePhoneE164(fromPhone);
+    const contactProfileName = result.contact?.name || result.sender?.name || null;
+
+    // 1. Find or create Contact in whatsapp_contacts
+    let [existingContact] = await sql`
+      SELECT id, name, phone_e164, customer_id, whatsapp_opt_in
+      FROM whatsapp_contacts
+      WHERE phone_e164 = ${senderE164}
+      LIMIT 1
+    `;
+
+    if (!existingContact) {
+      const digitsOnly = senderE164.replace(/\D/g, "");
+      const [linkedCustomer] = await sql`
+        SELECT id, name, email 
+        FROM auth_users 
+        WHERE REPLACE(REPLACE(phone, ' ', ''), '+', '') LIKE '%' || ${digitsOnly.slice(-8)}
+           OR phone = ${senderE164}
+        LIMIT 1
+      `;
+
+      const nameToUse = contactProfileName || linkedCustomer?.name || `WhatsApp ${senderE164.slice(-4)}`;
+      const emailToUse = linkedCustomer?.email || null;
+      const customerId = linkedCustomer?.id || null;
+
+      [existingContact] = await sql`
+        INSERT INTO whatsapp_contacts (
+          name, phone_e164, email, customer_id, whatsapp_opt_in, whatsapp_opt_in_source, created_at, updated_at
+        )
+        VALUES (
+          ${nameToUse}, ${senderE164}, ${emailToUse}, ${customerId}, false, 'inbound_message', now(), now()
+        )
+        RETURNING id, name, phone_e164, customer_id, whatsapp_opt_in
+      `;
+    } else if (contactProfileName && (!existingContact.name || existingContact.name.startsWith("WhatsApp "))) {
+      await sql`
+        UPDATE whatsapp_contacts 
+        SET name = ${contactProfileName}, updated_at = now() 
+        WHERE id = ${existingContact.id}
+      `;
+      existingContact.name = contactProfileName;
+    }
+    unifiedContact = existingContact;
+
+    // 2. Find or create Unified Conversation
+    let [convRow] = await sql`
+      SELECT id, contact_id, status, assigned_user_id, unread_count
+      FROM whatsapp_conversations
+      WHERE contact_id = ${unifiedContact.id} 
+         OR phone = ${fromPhone}
+         OR phone = ${senderE164}
+         OR REPLACE(REPLACE(phone, ' ', ''), '+', '') = ${senderE164.replace('+', '')}
+      LIMIT 1
+    `;
+
+    const now = new Date();
+    let convId;
+
+    if (!convRow) {
+      convId = `conv-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      [convRow] = await sql`
+        INSERT INTO whatsapp_conversations (
+          id, phone, customer_id, contact_id, last_message, last_message_at,
+          last_customer_message_at, last_message_preview, unread_count,
+          session_active, service_window_active, status, created_at, updated_at
+        )
+        VALUES (
+          ${convId}, ${senderE164}, ${unifiedContact.customer_id}, ${unifiedContact.id},
+          ${messageText}, ${now}, ${now}, ${messageText.slice(0, 150)}, 1,
+          true, true, 'open', ${now}, ${now}
+        )
+        RETURNING *
+      `;
+    } else {
+      convId = convRow.id;
+      [convRow] = await sql`
+        UPDATE whatsapp_conversations
+        SET 
+          contact_id = COALESCE(${unifiedContact.id}, contact_id),
+          last_message = ${messageText},
+          last_message_preview = ${messageText.slice(0, 150)},
+          last_message_at = ${now},
+          last_customer_message_at = ${now},
+          unread_count = COALESCE(unread_count, 0) + 1,
+          session_active = true,
+          service_window_active = true,
+          status = 'open',
+          latest_location_lat = COALESCE(${detectedLat}, latest_location_lat),
+          latest_location_lng = COALESCE(${detectedLng}, latest_location_lng),
+          latest_location_address = COALESCE(${detectedAddress}, latest_location_address),
+          latest_location_url = COALESCE(${detectedUrl}, latest_location_url),
+          latest_location_at = CASE WHEN ${detectedLat}::numeric IS NOT NULL OR ${detectedUrl}::text IS NOT NULL THEN ${timestamp} ELSE latest_location_at END,
+          updated_at = ${now}
+        WHERE id = ${convId}
+        RETURNING *
+      `;
+    }
+    unifiedConversation = convRow;
+
+    // 3. Save message in whatsapp_messages
+    const [savedMessage] = await sql`
+      INSERT INTO whatsapp_messages (
+        conversation_id, contact_id, infobip_message_id, direction,
+        message_type, text_content, media_url,
+        status, raw_infobip_payload, created_at, updated_at
+      )
+      VALUES (
+        ${convId}, ${unifiedContact.id}, ${infobipMessageId}, 'incoming',
+        'text', ${messageText}, ${detectedUrl || null},
+        'delivered', ${JSON.stringify(result)}, ${timestamp}, now()
+      )
+      ON CONFLICT (infobip_message_id) DO NOTHING
+      RETURNING *
+    `;
+
+    // 4. Broadcast Realtime SSE Events to staff UI
+    if (savedMessage) {
+      broadcastWhatsAppEvent("whatsapp.message.received", {
+        message: savedMessage,
+        conversation: unifiedConversation,
+        contact: unifiedContact,
+      });
+      broadcastWhatsAppEvent("whatsapp.conversation.updated", unifiedConversation);
+    }
+  } catch (unifiedErr) {
+    console.error("[whatsapp-webhook] Unified pipeline error:", unifiedErr);
+  }
+
+  // ── Find customer by phone ────────────────────────────────────────────────
   const [customer] = await sql`
     SELECT id, name, phone
     FROM auth_users
@@ -454,7 +568,7 @@ async function processInboundMessage(result) {
         )
         VALUES (
           ${customer.id}, ${orderId}, ${fromPhone}, 'inbound', 'customer_reply',
-          ${`âš ï¸ LOW RATING (${rating}/5): ${messageText}`}, ${infobipMessageId}, 'received', now()
+          ${`⚠️ LOW RATING (${rating}/5): ${messageText}`}, ${infobipMessageId}, 'received', now()
         )
       `;
 
@@ -470,7 +584,7 @@ async function processInboundMessage(result) {
       try {
         await sendWhatsAppFreeForm(
           fromPhone,
-          `Thank you so much for the ${rating}-star rating! ðŸ™ We're glad you enjoyed your order.`,
+          `Thank you so much for the ${rating}-star rating! 🙏 We're glad you enjoyed your order.`,
         );
       } catch (e) {
         console.error("[whatsapp-webhook] Failed to send acknowledgment:", e);
@@ -533,7 +647,7 @@ async function processInboundMessage(result) {
 }
 
 /**
- * GET â€” Webhook verification endpoint
+ * GET — Webhook verification endpoint
  * Infobip verifies by sending a GET with a challenge in the query string
  * or simply checking that the URL returns HTTP 200.
  */

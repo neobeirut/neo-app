@@ -16,6 +16,13 @@ import {
 } from "lucide-react";
 
 export default function WhatsAppSettings({ adminToken }) {
+  const getEffectiveToken = () => {
+    return (
+      adminToken ||
+      (typeof window !== "undefined" ? localStorage.getItem("admin_token") : "") ||
+      ""
+    );
+  };
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
   const [testingConnection, setTestingConnection] = useState(false);
@@ -38,7 +45,7 @@ export default function WhatsAppSettings({ adminToken }) {
     setLoading(true);
     try {
       const res = await fetch("/api/whatsapp/settings", {
-        headers: { "x-admin-token": adminToken },
+        headers: { "x-admin-token": getEffectiveToken() },
       });
       const json = await res.json();
       if (json.ok) {
@@ -63,7 +70,7 @@ export default function WhatsAppSettings({ adminToken }) {
     try {
       const res = await fetch("/api/whatsapp/settings", {
         method: "POST",
-        headers: { "x-admin-token": adminToken },
+        headers: { "x-admin-token": getEffectiveToken() },
       });
       const json = await res.json();
       if (json.ok && json.test) {
@@ -88,7 +95,7 @@ export default function WhatsAppSettings({ adminToken }) {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          "x-admin-token": adminToken,
+          "x-admin-token": getEffectiveToken(),
         },
         body: JSON.stringify({
           serviceWindowHours: Number(serviceWindowHours),

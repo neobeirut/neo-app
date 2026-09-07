@@ -17,6 +17,13 @@ import {
 } from "lucide-react";
 
 export default function WhatsAppTemplates({ adminToken }) {
+  const getEffectiveToken = () => {
+    return (
+      adminToken ||
+      (typeof window !== "undefined" ? localStorage.getItem("admin_token") : "") ||
+      ""
+    );
+  };
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -42,7 +49,7 @@ export default function WhatsAppTemplates({ adminToken }) {
     setLoading(true);
     try {
       const res = await fetch("/api/whatsapp/templates", {
-        headers: { "x-admin-token": adminToken },
+        headers: { "x-admin-token": getEffectiveToken() },
       });
       const data = await res.json();
       if (data.ok) {
@@ -61,7 +68,7 @@ export default function WhatsAppTemplates({ adminToken }) {
     try {
       const res = await fetch("/api/whatsapp/templates/sync", {
         method: "POST",
-        headers: { "x-admin-token": adminToken },
+        headers: { "x-admin-token": getEffectiveToken() },
       });
       const data = await res.json();
       if (data.ok) {
@@ -99,7 +106,7 @@ export default function WhatsAppTemplates({ adminToken }) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-admin-token": adminToken,
+          "x-admin-token": getEffectiveToken(),
         },
         body: JSON.stringify({
           name: formName.trim().toLowerCase(),
