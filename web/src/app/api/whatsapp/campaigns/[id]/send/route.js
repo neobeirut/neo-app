@@ -22,13 +22,19 @@ async function processCampaignBatch(campaignId, adminId) {
     } catch (e) {}
 
     const pendingRecipients = await sql`
-      SELECT id, contact_id, phone_e164 
-      FROM whatsapp_campaign_recipients 
-      WHERE campaign_id = ${campaignId} AND status = 'pending'
-      ORDER BY id ASC
+      SELECT 
+        r.id, 
+        r.contact_id, 
+        r.phone_e164,
+        COALESCE(con.name, 'there') as contact_name
+      FROM whatsapp_campaign_recipients r
+      LEFT JOIN whatsapp_contacts con ON con.id = r.contact_id
+      WHERE r.campaign_id = ${campaignId} AND r.status = 'pending'
+      ORDER BY r.id ASC
     `;
 
     const templateVariables = Array.isArray(campaign.template_variables) ? campaign.template_variables : [];
+    const headerMediaUrl = campaign.filter_criteria?.headerMediaUrl || campaign.filter_criteria?.imageUrl || null;
 
     for (let i = 0; i < pendingRecipients.length; i += batchSize) {
       // Check if campaign was cancelled mid-flight
@@ -42,11 +48,27 @@ async function processCampaignBatch(campaignId, adminId) {
 
       await Promise.all(chunk.map(async (rec) => {
         try {
+          const personalizedPlaceholders = templateVariables.map((val) => {
+            if (typeof val === 'string') {
+              let res = val
+                .replace(/\{\{name\}\}/gi, rec.contact_name)
+                .replace(/\{\{contact_name\}\}/gi, rec.contact_name)
+                .replace(/\{\{phone\}\}/gi, rec.phone_e164);
+              if (res === '[contact_name]' || res === 'contact_name') {
+                res = rec.contact_name;
+              }
+              return res;
+            }
+            return String(val || '');
+          });
+
           const res = await sendInfobipTemplateMessage({
             to: rec.phone_e164,
             templateName: campaign.template_name,
             language: campaign.template_language || 'en',
-            placeholders: templateVariables,
+            placeholders: personalizedPlaceholders,
+            headerMediaUrl: headerMediaUrl || undefined,
+            headerMediaType: "IMAGE",
           });
 
           await sql`
@@ -135,12 +157,22 @@ export async function POST(request, { params }) {
       manualContactIds = [],
       manualPhones = [],
       allowUnopted = false, // Must be explicitly allowed if permitted by law
+      headerMediaUrl = null,
     } = body;
 
     const [campaign] = await sql`SELECT * FROM whatsapp_campaigns WHERE id = ${id} LIMIT 1`;
     if (!campaign) return Response.json({ error: "Campaign not found" }, { status: 404 });
     if (campaign.status === 'running') return Response.json({ error: "Campaign is already running" }, { status: 400 });
     if (campaign.status === 'completed') return Response.json({ error: "Campaign is already completed" }, { status: 400 });
+
+    if (headerMediaUrl) {
+      await sql`
+        UPDATE whatsapp_campaigns
+        SET filter_criteria = COALESCE(filter_criteria, '{}'::jsonb) || ${JSON.stringify({ headerMediaUrl })}::jsonb
+        WHERE id = ${id}
+      `;
+      campaign.filter_criteria = { ...(campaign.filter_criteria || {}), headerMediaUrl };
+    }
 
     // 1. Resolve eligible recipients with strict marketing opt-in compliance
     let contacts = [];

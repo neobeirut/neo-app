@@ -57,6 +57,7 @@ export default function WhatsAppCampaigns({ adminToken, onOpenChat }) {
   const [selectedTier, setSelectedTier] = useState("");
   const [selectedContactIds, setSelectedContactIds] = useState([]);
   const [csvPhones, setCsvPhones] = useState("");
+  const [headerMediaUrl, setHeaderMediaUrl] = useState("");
   const [allowUnopted, setAllowUnopted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [wizardError, setWizardError] = useState(null);
@@ -92,6 +93,7 @@ export default function WhatsAppCampaigns({ adminToken, onOpenChat }) {
     setSelectedTier("");
     setSelectedContactIds([]);
     setCsvPhones("");
+    setHeaderMediaUrl("");
     setAllowUnopted(false);
     setWizardError(null);
     setWizardOpen(true);
@@ -132,7 +134,8 @@ export default function WhatsAppCampaigns({ adminToken, onOpenChat }) {
     let preview = selectedTemplate.body || "";
     Object.entries(templateVariables).forEach(([num, val]) => {
       const token = "{{" + num + "}}";
-      preview = preview.split(token).join(val || token);
+      const displayVal = val === "{{name}}" ? "[Customer Name]" : (val || token);
+      preview = preview.split(token).join(displayVal);
     });
     return preview;
   };
@@ -170,7 +173,7 @@ export default function WhatsAppCampaigns({ adminToken, onOpenChat }) {
           template_language: selectedTemplate.language || "en",
           template_variables: placeholders,
           template_id: selectedTemplate.id,
-          filter_criteria: { audienceType, selectedTag, selectedTier },
+          filter_criteria: { audienceType, selectedTag, selectedTier, headerMediaUrl: headerMediaUrl.trim() || null },
         }),
       });
 
@@ -197,6 +200,7 @@ export default function WhatsAppCampaigns({ adminToken, onOpenChat }) {
           manualContactIds: audienceType === "manual" ? selectedContactIds : [],
           manualPhones,
           allowUnopted,
+          headerMediaUrl: headerMediaUrl.trim() || null,
         }),
       });
 
@@ -506,6 +510,30 @@ export default function WhatsAppCampaigns({ adminToken, onOpenChat }) {
               {/* STEP 2: Variables */}
               {wizardStep === 2 && (
                 <div className="space-y-4">
+                  {/* Template Header Image (if image template) */}
+                  {(selectedTemplate?.header === "IMAGE" || (selectedTemplate?.header && selectedTemplate?.header.toLowerCase().includes("image"))) && (
+                    <div className="p-3.5 bg-slate-950 border border-emerald-800/40 rounded-xl space-y-2">
+                      <label className="block text-emerald-400 font-semibold text-xs flex items-center gap-1.5">
+                        <span>🖼️ Template Header Image URL</span>
+                      </label>
+                      <input
+                        type="url"
+                        value={headerMediaUrl}
+                        onChange={(e) => setHeaderMediaUrl(e.target.value)}
+                        placeholder="https://your-domain.com/path/to/promo.jpg"
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:ring-1 focus:ring-emerald-500 text-xs"
+                      />
+                      <p className="text-[10px] text-slate-400">
+                        Direct public HTTPS image link (JPG or PNG) to display at the top of each message.
+                      </p>
+                      {headerMediaUrl && (
+                        <div className="mt-2 rounded-lg overflow-hidden border border-slate-800 max-w-[200px]">
+                          <img src={headerMediaUrl} alt="Header Preview" className="w-full h-auto object-cover max-h-[120px]" />
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {Object.keys(templateVariables).length === 0 ? (
                     <div className="p-6 text-center text-slate-400 bg-slate-950/60 rounded-xl border border-slate-800">
                       <CheckCircle className="w-8 h-8 text-emerald-400 mx-auto mb-2" />
@@ -516,21 +544,35 @@ export default function WhatsAppCampaigns({ adminToken, onOpenChat }) {
                     </div>
                   ) : (
                     <div>
-                      <h4 className="font-semibold text-slate-300 mb-2">Fill Template Variables</h4>
+                      <div className="flex items-center justify-between mb-2">
+                        <h4 className="font-semibold text-slate-300 text-xs">Fill Template Variables</h4>
+                        <span className="text-[10px] text-slate-400">Tip: Click &quot;+ Insert Contact Name&quot; to personalize per recipient</span>
+                      </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         {Object.keys(templateVariables).map((num) => (
                           <div key={num}>
-                            <label className="block text-slate-400 mb-1">
-                              Placeholder &#123;&#123;{num}&#125;&#125;
-                            </label>
+                            <div className="flex items-center justify-between mb-1">
+                              <label className="text-slate-400 text-xs font-medium">
+                                Placeholder &#123;&#123;{num}&#125;&#125;
+                              </label>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setTemplateVariables((prev) => ({ ...prev, [num]: "{{name}}" }))
+                                }
+                                className="text-[10px] text-emerald-400 hover:text-emerald-300 bg-emerald-950/60 px-1.5 py-0.5 rounded border border-emerald-800/40"
+                              >
+                                + Insert Contact Name
+                              </button>
+                            </div>
                             <input
                               type="text"
                               value={templateVariables[num]}
                               onChange={(e) =>
                                 setTemplateVariables((prev) => ({ ...prev, [num]: e.target.value }))
                               }
-                              placeholder={"Value for {{" + num + "}}"}
-                              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:ring-1 focus:ring-emerald-500 text-xs"
+                              placeholder={"Value for {{" + num + "}} or {{name}}"}
+                              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:ring-1 focus:ring-emerald-500 text-xs font-mono"
                             />
                           </div>
                         ))}
@@ -540,9 +582,14 @@ export default function WhatsAppCampaigns({ adminToken, onOpenChat }) {
 
                   {/* Live Preview Card */}
                   <div>
-                    <label className="block text-slate-400 font-semibold mb-1">Live Preview</label>
-                    <div className="p-4 bg-emerald-950/30 border border-emerald-800/80 rounded-xl text-emerald-100 whitespace-pre-wrap text-sm">
-                      {getRenderedPreview()}
+                    <label className="block text-slate-400 font-semibold mb-1 text-xs">Live Message Preview</label>
+                    <div className="p-4 bg-emerald-950/30 border border-emerald-800/80 rounded-xl text-emerald-100 whitespace-pre-wrap text-sm space-y-2">
+                      {headerMediaUrl && (
+                        <div className="rounded-lg overflow-hidden border border-emerald-800/40 max-w-[220px] mb-2">
+                          <img src={headerMediaUrl} alt="Header Preview" className="w-full h-auto object-cover max-h-[140px]" />
+                        </div>
+                      )}
+                      <div>{getRenderedPreview()}</div>
                     </div>
                   </div>
                 </div>

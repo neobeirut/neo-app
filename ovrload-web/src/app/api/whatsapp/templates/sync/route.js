@@ -11,14 +11,14 @@ export async function POST(request) {
     try {
       infobipTemplates = await fetchInfobipTemplates();
     } catch (err) {
-      if (err.message?.includes("403") || err.message?.includes("Insufficient permissions")) {
+      if (err.message?.includes("403") || err.message?.includes("Insufficient permissions") || err.message?.includes("Unauthorized access")) {
         const existing = await sql`SELECT count(*) FROM whatsapp_templates`;
         return Response.json({
-          ok: true,
-          syncedCount: 0,
+          ok: false,
+          error: "Infobip API Key does not have the 'WhatsApp Templates' read scope enabled. You can register your new Infobip template name directly by clicking '+ Add Template' above.",
+          permissionNeeded: true,
           totalTemplates: parseInt(existing[0]?.count, 10) || 0,
-          notice: "API Key is active for messaging. 7 approved templates are currently active in your database."
-        });
+        }, { status: 403 });
       }
       return Response.json({ ok: false, error: "Failed to connect to Infobip templates API: " + err.message }, { status: 502 });
     }

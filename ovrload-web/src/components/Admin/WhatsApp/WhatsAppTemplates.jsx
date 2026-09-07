@@ -358,14 +358,47 @@ export default function WhatsAppTemplates({ adminToken }) {
               </div>
 
               <div>
-                <label className="block text-slate-400 font-semibold mb-1">Header (Optional)</label>
-                <input
-                  type="text"
-                  value={formHeader}
-                  onChange={(e) => setFormHeader(e.target.value)}
-                  placeholder="e.g. Order Update"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                />
+                <label className="block text-slate-400 font-semibold mb-1">Header Type (Optional)</label>
+                <div className="grid grid-cols-3 gap-2 mb-2">
+                  {[
+                    { id: "NONE", label: "None" },
+                    { id: "IMAGE", label: "🖼️ Image" },
+                    { id: "TEXT", label: "✍️ Text" },
+                  ].map((h) => (
+                    <button
+                      key={h.id}
+                      type="button"
+                      onClick={() => {
+                        if (h.id === "NONE") setFormHeader("");
+                        else if (h.id === "IMAGE") setFormHeader("IMAGE");
+                        else if (formHeader === "IMAGE" || !formHeader) setFormHeader("Header Title");
+                      }}
+                      className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition ${
+                        (h.id === "NONE" && !formHeader) ||
+                        (h.id === "IMAGE" && formHeader === "IMAGE") ||
+                        (h.id === "TEXT" && formHeader && formHeader !== "IMAGE")
+                          ? "bg-emerald-600 border-emerald-500 text-white font-bold"
+                          : "bg-slate-950 border-slate-800 text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      {h.label}
+                    </button>
+                  ))}
+                </div>
+                {formHeader && formHeader !== "IMAGE" && (
+                  <input
+                    type="text"
+                    value={formHeader}
+                    onChange={(e) => setFormHeader(e.target.value)}
+                    placeholder="e.g. Special Announcement"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
+                )}
+                {formHeader === "IMAGE" && (
+                  <p className="text-[11px] text-emerald-400 bg-emerald-950/40 border border-emerald-800/60 rounded-lg p-2">
+                    ✓ Image header enabled. You will be able to specify the image URL when launching a campaign.
+                  </p>
+                )}
               </div>
 
               <div>
