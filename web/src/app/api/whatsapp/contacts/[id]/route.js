@@ -41,7 +41,7 @@ export async function PATCH(request, { params }) {
 
     const { id } = params;
     const body = await request.json().catch(() => ({}));
-    const { name, phone, email, notes, tags, whatsapp_opt_in, whatsapp_opt_in_source } = body;
+    const { name, phone, email, category, notes, tags, whatsapp_opt_in, whatsapp_opt_in_source } = body;
 
     let normalizedPhone = undefined;
     if (phone) {
@@ -67,6 +67,7 @@ export async function PATCH(request, { params }) {
         name = COALESCE(${name !== undefined ? name : null}, name),
         phone_e164 = COALESCE(${normalizedPhone || null}, phone_e164),
         email = COALESCE(${email !== undefined ? email : null}, email),
+        category = COALESCE(${category !== undefined ? category : null}, category),
         notes = COALESCE(${notes !== undefined ? notes : null}, notes),
         tags = COALESCE(${tags !== undefined ? tags : null}, tags),
         whatsapp_opt_in = COALESCE(${whatsapp_opt_in !== undefined ? whatsapp_opt_in : null}, whatsapp_opt_in),

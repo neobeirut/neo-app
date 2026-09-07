@@ -13,11 +13,13 @@ CREATE TABLE IF NOT EXISTS whatsapp_contacts (
   whatsapp_opt_in BOOLEAN DEFAULT FALSE,
   whatsapp_opt_in_at TIMESTAMP WITH TIME ZONE,
   whatsapp_opt_in_source VARCHAR(50) DEFAULT 'manual',
+  category VARCHAR(100) DEFAULT 'General',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_whatsapp_contacts_phone_e164 ON whatsapp_contacts(phone_e164);
+CREATE INDEX IF NOT EXISTS idx_whatsapp_contacts_category ON whatsapp_contacts(category);
 CREATE INDEX IF NOT EXISTS idx_whatsapp_contacts_customer_id ON whatsapp_contacts(customer_id);
 CREATE INDEX IF NOT EXISTS idx_whatsapp_contacts_opt_in ON whatsapp_contacts(whatsapp_opt_in);
 

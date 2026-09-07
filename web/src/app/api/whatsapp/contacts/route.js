@@ -10,6 +10,7 @@ export async function GET(request) {
     const { searchParams } = new URL(request.url);
     const search = (searchParams.get("search") || "").trim();
     const optIn = searchParams.get("opt_in"); // 'true', 'false', or null
+    const category = (searchParams.get("category") || "").trim();
     const tag = (searchParams.get("tag") || "").trim();
     const limit = Math.min(Number(searchParams.get("limit")) || 50, 100);
     const offset = Math.max(Number(searchParams.get("offset")) || 0, 0);
@@ -40,6 +41,9 @@ export async function GET(request) {
           optIn === 'false' ? sql`(con.whatsapp_opt_in = false OR con.whatsapp_opt_in IS NULL)` : sql`true`}
       )
       AND (
+        ${category && category !== 'all' ? sql`con.category = ${category}` : sql`true`}
+      )
+      AND (
         ${tag ? sql`${tag} = ANY(con.tags)` : sql`true`}
       )
       ORDER BY con.updated_at DESC, con.id DESC
@@ -48,12 +52,34 @@ export async function GET(request) {
 
     const [totalRow] = await sql`
       SELECT COUNT(*)::int as total FROM whatsapp_contacts
+      WHERE (
+        ${search ? sql`(
+          name ILIKE ${'%' + search + '%'}
+          OR phone_e164 ILIKE ${'%' + search + '%'}
+          OR COALESCE(email, '') ILIKE ${'%' + search + '%'}
+        )` : sql`true`}
+      )
+      AND (
+        ${optIn === 'true' ? sql`whatsapp_opt_in = true` : 
+          optIn === 'false' ? sql`(whatsapp_opt_in = false OR whatsapp_opt_in IS NULL)` : sql`true`}
+      )
+      AND (
+        ${category && category !== 'all' ? sql`category = ${category}` : sql`true`}
+      )
+      AND (
+        ${tag ? sql`${tag} = ANY(tags)` : sql`true`}
+      )
+    `;
+
+    const categoriesRows = await sql`
+      SELECT DISTINCT category FROM whatsapp_contacts WHERE category IS NOT NULL AND category != '' ORDER BY category ASC
     `;
 
     return Response.json({
       ok: true,
       contacts,
       total: totalRow?.total || 0,
+      categories: categoriesRows.map((r) => r.category),
       limit,
       offset,
     });
@@ -69,7 +95,7 @@ export async function POST(request) {
     if (!admin) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = await request.json().catch(() => ({}));
-    const { name, phone, email, notes, tags = [], whatsapp_opt_in = false, opt_in_source = "manual" } = body;
+    const { name, phone, email, category = "General", notes, tags = [], whatsapp_opt_in = false, opt_in_source = "manual" } = body;
 
     if (!phone) {
       return Response.json({ error: "Phone number is required" }, { status: 400 });
@@ -103,16 +129,17 @@ export async function POST(request) {
 
     const finalName = (name || "").trim() || linkedUser?.name || `WhatsApp ${normalizedPhone.slice(-4)}`;
     const finalEmail = (email || "").trim() || linkedUser?.email || null;
+    const finalCategory = (category || "").trim() || "General";
     const customerId = linkedUser?.id || null;
     const optInAt = whatsapp_opt_in ? new Date() : null;
 
     const [newContact] = await sql`
       INSERT INTO whatsapp_contacts (
-        name, phone_e164, email, notes, tags, customer_id,
+        name, phone_e164, email, category, notes, tags, customer_id,
         whatsapp_opt_in, whatsapp_opt_in_at, whatsapp_opt_in_source, created_at, updated_at
       )
       VALUES (
-        ${finalName}, ${normalizedPhone}, ${finalEmail}, ${notes || null}, ${tags}, ${customerId},
+        ${finalName}, ${normalizedPhone}, ${finalEmail}, ${finalCategory}, ${notes || null}, ${tags}, ${customerId},
         ${Boolean(whatsapp_opt_in)}, ${optInAt}, ${opt_in_source}, now(), now()
       )
       RETURNING *
@@ -120,7 +147,7 @@ export async function POST(request) {
 
     await sql`
       INSERT INTO whatsapp_audit_logs (admin_user_id, action, entity_type, entity_id, details, created_at)
-      VALUES (${admin.id}, 'contact.created', 'contact', ${newContact.id}, ${JSON.stringify({ name: finalName, phone: normalizedPhone })}, now())
+      VALUES (${admin.id}, 'contact.created', 'contact', ${newContact.id}, ${JSON.stringify({ name: finalName, phone: normalizedPhone, category: finalCategory })}, now())
     `;
 
     return Response.json({ ok: true, contact: newContact }, { status: 201 });
