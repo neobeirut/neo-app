@@ -178,32 +178,66 @@ export async function POST(request, { params }) {
     // 1. Resolve eligible recipients with strict marketing opt-in compliance
     let contacts = [];
 
+    if (audienceType === 'manual' && (!manualContactIds || manualContactIds.length === 0)) {
+      return Response.json({
+        ok: false,
+        error: "Please select at least one contact.",
+      }, { status: 400 });
+    }
+
     if (audienceType === 'category' && selectedCategory) {
-      contacts = await sql`
-        SELECT id, phone_e164, whatsapp_opt_in FROM whatsapp_contacts
-        WHERE category ILIKE ${selectedCategory}
-        ${!allowUnopted ? sql`AND whatsapp_opt_in = true` : sql``}
-      `;
+      if (allowUnopted) {
+        contacts = await sql`
+          SELECT id, phone_e164, whatsapp_opt_in FROM whatsapp_contacts
+          WHERE category ILIKE ${selectedCategory}
+        `;
+      } else {
+        contacts = await sql`
+          SELECT id, phone_e164, whatsapp_opt_in FROM whatsapp_contacts
+          WHERE category ILIKE ${selectedCategory} AND whatsapp_opt_in = true
+        `;
+      }
     } else if (audienceType === 'tag' && selectedTag) {
-      contacts = await sql`
-        SELECT id, phone_e164, whatsapp_opt_in FROM whatsapp_contacts
-        WHERE ${selectedTag} = ANY(tags)
-        ${!allowUnopted ? sql`AND whatsapp_opt_in = true` : sql``}
-      `;
+      if (allowUnopted) {
+        contacts = await sql`
+          SELECT id, phone_e164, whatsapp_opt_in FROM whatsapp_contacts
+          WHERE ${selectedTag} = ANY(tags)
+        `;
+      } else {
+        contacts = await sql`
+          SELECT id, phone_e164, whatsapp_opt_in FROM whatsapp_contacts
+          WHERE ${selectedTag} = ANY(tags) AND whatsapp_opt_in = true
+        `;
+      }
     } else if (audienceType === 'tier' && selectedTier) {
-      contacts = await sql`
-        SELECT con.id, con.phone_e164, con.whatsapp_opt_in
-        FROM whatsapp_contacts con
-        INNER JOIN auth_users u ON u.id = con.customer_id
-        WHERE u.membership_tier = ${selectedTier}
-        ${!allowUnopted ? sql`AND con.whatsapp_opt_in = true` : sql``}
-      `;
+      if (allowUnopted) {
+        contacts = await sql`
+          SELECT con.id, con.phone_e164, con.whatsapp_opt_in
+          FROM whatsapp_contacts con
+          INNER JOIN auth_users u ON u.id = con.customer_id
+          WHERE u.membership_tier = ${selectedTier}
+        `;
+      } else {
+        contacts = await sql`
+          SELECT con.id, con.phone_e164, con.whatsapp_opt_in
+          FROM whatsapp_contacts con
+          INNER JOIN auth_users u ON u.id = con.customer_id
+          WHERE u.membership_tier = ${selectedTier} AND con.whatsapp_opt_in = true
+        `;
+      }
     } else if (audienceType === 'manual' && manualContactIds.length > 0) {
-      contacts = await sql`
-        SELECT id, phone_e164, whatsapp_opt_in FROM whatsapp_contacts
-        WHERE id = ANY(${manualContactIds})
-        ${!allowUnopted ? sql`AND whatsapp_opt_in = true` : sql``}
-      `;
+      const numericIds = manualContactIds.map(Number).filter(n => !isNaN(n));
+      if (allowUnopted) {
+        contacts = await sql`
+          SELECT id, phone_e164, whatsapp_opt_in FROM whatsapp_contacts
+          WHERE id = ANY(${numericIds})
+        `;
+      } else {
+        contacts = await sql`
+          SELECT id, phone_e164, whatsapp_opt_in FROM whatsapp_contacts
+          WHERE id = ANY(${numericIds}) AND whatsapp_opt_in = true
+        `;
+      }
     } else {
       // Default: All opted-in clients
       contacts = await sql`
