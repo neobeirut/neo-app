@@ -35,10 +35,18 @@ export async function sendAutomatedOrderWhatsAppMessages({ orderId, orderNumber,
       .map((i) => `• ${i.quantity}x ${i.product_name} ($${Number(i.total_price || 0).toFixed(2)})`)
       .join("\n");
 
-    const locLink =
-      order.latitude && order.longitude
-        ? `\n📍 GPS Location: https://maps.google.com/?q=${order.latitude},${order.longitude}`
-        : "";
+    let cleanAddress = (order.delivery_address || "").trim();
+    let mapsPinUrl = "";
+    const mapsMatch = cleanAddress.match(/\[Maps Pin:\s*(.*?)\]/i);
+    if (mapsMatch) {
+      mapsPinUrl = mapsMatch[1].trim();
+      cleanAddress = cleanAddress.replace(/\[Maps Pin:\s*.*?\]/gi, "").trim();
+    }
+    if (!mapsPinUrl && order.latitude && order.longitude) {
+      mapsPinUrl = `https://maps.google.com/?q=${order.latitude},${order.longitude}`;
+    }
+    const locLink = mapsPinUrl ? `\n📍 GPS Location: ${mapsPinUrl}` : "";
+    const displayAddress = cleanAddress || (mapsPinUrl ? "Pinned Location" : "Not specified");
 
     // 1. FULL ORDER NOTIFICATION FOR OVRLOAD (Sent to 81202607)
     const ovrloadMsgText = `🛒 *New Order #${orderNumber}*\n\n*Order Type:* ${String(
@@ -51,7 +59,7 @@ export async function sendAutomatedOrderWhatsAppMessages({ orderId, orderNumber,
       2
     )}\n\n*Customer Name:* ${order.customer_name || "N/A"}\n*Customer Phone:* ${
       order.customer_phone || "N/A"
-    }\n*Delivery Address:* ${order.delivery_address || "Not specified"}${locLink}\n*Schedule:* ${
+    }\n*Delivery Address:* ${displayAddress}${locLink}\n*Schedule:* ${
       order.scheduled_date || ""
     } ${order.scheduled_time || ""}`;
 
