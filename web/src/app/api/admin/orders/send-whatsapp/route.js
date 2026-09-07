@@ -11,8 +11,8 @@ import {
 } from "@/app/api/utils/whatsappTemplateRegistry";
 import { resolveOrderId } from "../../../orders/utils/orderIdResolver";
 
-// The only provisioned sender in Infobip for this account
-const FORCED_SENDER = "96176489078";
+// Active provisioned sender in Infobip for OVRLOAD
+const FORCED_SENDER = process.env.INFOBIP_WHATSAPP_SENDER?.replace(/\D/g, "") || "96181202607";
 
 const normalizePhone = (phone) => normalizePhoneUtil(phone);
 

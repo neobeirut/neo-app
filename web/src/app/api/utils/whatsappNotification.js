@@ -36,7 +36,7 @@ function getPushTitle(status) {
  *
  * Solution: FORCE all sends to use ONLY the provisioned sender
  */
-const FORCED_WHATSAPP_SENDER = "96176489078";
+const FORCED_WHATSAPP_SENDER = process.env.INFOBIP_WHATSAPP_SENDER?.replace(/\D/g, "") || "96181202607";
 
 /**
  * Validate sender phone number before sending

@@ -287,7 +287,7 @@ export async function POST(request) {
     `;
 
     // Check for sender mismatch
-    const expectedSender = "96176489078";
+    const expectedSender = process.env.INFOBIP_WHATSAPP_SENDER?.replace(/\D/g, "") || "96181202607";
     const actualSender = config.sender;
     const senderMismatch = actualSender !== expectedSender;
 
