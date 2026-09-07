@@ -24,7 +24,9 @@ import {
   LogOut,
   Menu,
   X,
-  ChevronRight
+  ChevronRight,
+  Megaphone,
+  FileText
 } from "lucide-react";
 
 export function SidebarNavigation({
@@ -51,6 +53,10 @@ export function SidebarNavigation({
       loyalty: Award,
       rewards: Gift,
       "whatsapp-inbox": MessageSquare,
+      "whatsapp-contacts": Users,
+      "whatsapp-campaigns": Megaphone,
+      "whatsapp-templates": FileText,
+      "whatsapp-settings": Settings,
       "customer-messages": Inbox,
       branches: MapPin,
       "delivery-pricing": DollarSign,
@@ -64,6 +70,25 @@ export function SidebarNavigation({
     return iconMap[tabId] || ChevronRight;
   };
 
+  const getLabel = (tabId) => {
+    const labelMap = {
+      "whatsapp-inbox": "Inbox",
+      "whatsapp-contacts": "Contacts",
+      "whatsapp-campaigns": "Campaigns",
+      "whatsapp-templates": "Templates",
+      "whatsapp-settings": "Settings",
+      "customer-messages": "Customer Messages",
+      "customization-items": "Customization Items",
+      "product-status": "Product Status",
+      "delivery-pricing": "Delivery Pricing",
+      "promo-codes": "Promo Codes",
+      "admin-users": "Admin Users",
+      "bulk-upload": "Bulk Upload",
+      payments: "Supplier Payments"
+    };
+    return labelMap[tabId] || tabId.replace(/-/g, " ");
+  };
+
   const navGroups = [
     {
       title: "Overview & Operations",
@@ -72,6 +97,16 @@ export function SidebarNavigation({
     {
       title: "Finance & Suppliers",
       items: ["payments"]
+    },
+    {
+      title: "WhatsApp",
+      items: [
+        "whatsapp-inbox",
+        "whatsapp-contacts",
+        "whatsapp-campaigns",
+        "whatsapp-templates",
+        "whatsapp-settings"
+      ]
     },
     {
       title: "Catalog Management",
@@ -83,7 +118,7 @@ export function SidebarNavigation({
     },
     {
       title: "Customer Engagement",
-      items: ["whatsapp-inbox", "customer-messages"]
+      items: ["customer-messages"]
     },
     {
       title: "System Config",
@@ -155,7 +190,7 @@ export function SidebarNavigation({
                       }`}
                     >
                       <Icon size={18} className={isActive ? "text-white" : "text-slate-400 group-hover:text-slate-200"} />
-                      <span className="capitalize">{tabId === "payments" ? "Supplier Payments" : tabId.replace("-", " ")}</span>
+                      <span>{getLabel(tabId)}</span>
                     </button>
                   );
                 })}

@@ -29,6 +29,7 @@ import PromoCodesView from "@/components/Admin/PromoCodesView";
 import NotificationsView from "@/components/Admin/NotificationsView";
 import CustomerMessagesView from "@/components/Admin/CustomerMessagesView";
 import WhatsAppInboxView from "@/components/Admin/WhatsAppInboxView";
+import WhatsAppModule from "@/components/Admin/WhatsApp/WhatsAppModule";
 import DeliveryPricingView from "@/components/Admin/DeliveryPricingView";
 import WebsiteView from "@/components/Admin/WebsiteView";
 import ReportsView from "@/components/Admin/ReportsView";
@@ -50,6 +51,10 @@ export default function AdminPage() {
       "events",
       "notifications",
       "whatsapp-inbox",
+      "whatsapp-contacts",
+      "whatsapp-campaigns",
+      "whatsapp-templates",
+      "whatsapp-settings",
       "customer-messages",
       "product-status",
       "rewards",
@@ -121,13 +126,21 @@ export default function AdminPage() {
       tabsFromRoles.push("reports");
     }
 
-    // If admin has "orders" role, automatically add "whatsapp-inbox"
+    // If admin has "orders" role, automatically add WhatsApp tabs
     // (WhatsApp is used for order-related customer communication)
-    if (
-      roleList.includes("orders") &&
-      !tabsFromRoles.includes("whatsapp-inbox")
-    ) {
-      tabsFromRoles.push("whatsapp-inbox");
+    if (roleList.includes("orders")) {
+      const whatsappTabs = [
+        "whatsapp-inbox",
+        "whatsapp-contacts",
+        "whatsapp-campaigns",
+        "whatsapp-templates",
+        "whatsapp-settings"
+      ];
+      whatsappTabs.forEach((tab) => {
+        if (!tabsFromRoles.includes(tab)) {
+          tabsFromRoles.push(tab);
+        }
+      });
     }
 
     // Ensure uniqueness and stable ordering
@@ -492,7 +505,13 @@ export default function AdminPage() {
         </header>
 
         {/* Content Body Container */}
-        <main className="flex-1 p-6 md:p-8 max-w-6xl w-full mx-auto">
+        <main
+          className={`flex-1 ${
+            activeTab.startsWith("whatsapp-")
+              ? "p-0 w-full"
+              : "p-6 md:p-8 max-w-6xl w-full mx-auto"
+          }`}
+        >
 
         {/* Dashboard View */}
         {activeTab === "dashboard" && allowedTabs.includes("dashboard") && (
@@ -517,10 +536,12 @@ export default function AdminPage() {
           <PaymentsView />
         )}
 
-        {/* WhatsApp Inbox View */}
-        {activeTab === "whatsapp-inbox" &&
-          allowedTabs.includes("whatsapp-inbox") && (
-            <WhatsAppInboxView
+        {/* WhatsApp Unified Module (Inbox, Contacts, Campaigns, Templates, Settings) */}
+        {activeTab.startsWith("whatsapp-") &&
+          allowedTabs.includes(activeTab) && (
+            <WhatsAppModule
+              activeTab={activeTab}
+              onTabChange={setActiveTab}
               adminToken={
                 typeof window !== "undefined"
                   ? localStorage.getItem("admin_token")
@@ -573,7 +594,7 @@ export default function AdminPage() {
           activeTab !== "promo-codes" &&
           activeTab !== "reports" &&
           activeTab !== "payments" &&
-          activeTab !== "whatsapp-inbox" && (
+          !activeTab.startsWith("whatsapp-") && (
             <button
               onClick={() => {
                 if (activeTab === "products") {
@@ -700,7 +721,7 @@ export default function AdminPage() {
           activeTab !== "events" &&
           activeTab !== "notifications" &&
           activeTab !== "promo-codes" &&
-          activeTab !== "whatsapp-inbox" &&
+          !activeTab.startsWith("whatsapp-") &&
           activeTab !== "customer-messages" &&
           activeTab !== "customization-items" &&
           activeTab !== "delivery-pricing" &&

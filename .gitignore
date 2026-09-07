@@ -32,6 +32,8 @@ dist-ssr
 # Build outputs
 /web/.react-router/
 /web/build/
+/ovrload-web/.react-router/
+/ovrload-web/build/
 /mobile/.expo/
 /mobile/dist/
 /mobile/web-build/
