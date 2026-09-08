@@ -1,4 +1,5 @@
 import sql from "@/app/api/utils/sql";
+import { sendInfobipTemplateMessage } from "@/app/api/utils/infobipService";
 
 // PATCH /api/orders/driver-status
 // No user session required — used by the Driver PWA to mark orders as picked up
@@ -17,6 +18,15 @@ export async function PATCH(request) {
       return Response.json({ error: "Invalid status" }, { status: 400 });
     }
 
+    const [existingOrder] = await sql`
+      SELECT id, status, customer_phone FROM orders WHERE id = ${Number(orderId)} LIMIT 1
+    `;
+    if (!existingOrder) {
+      return Response.json({ error: "Order not found" }, { status: 404 });
+    }
+    const prevStatus = existingOrder.status;
+    const phoneToNotify = existingOrder.customer_phone;
+
     const result = await sql`
       UPDATE orders
       SET status = ${newStatus}
@@ -26,6 +36,23 @@ export async function PATCH(request) {
 
     if (result.length === 0) {
       return Response.json({ error: "Order not found" }, { status: 404 });
+    }
+
+    // Send "Your order {{1}} is out for delivery." when marked as completed/delivered/out_for_delivery
+    const isPickupOrDelivery = newStatus === "completed" || newStatus === "delivered" || newStatus === "out_for_delivery";
+    const wasPickupOrDelivery = prevStatus === "completed" || prevStatus === "delivered" || prevStatus === "out_for_delivery";
+    if (isPickupOrDelivery && !wasPickupOrDelivery && phoneToNotify) {
+      try {
+        const orderTag = `#${orderId}`;
+        console.log(`[driver-status] Sending out_for_delivery template to ${phoneToNotify} for order ${orderTag}`);
+        await sendInfobipTemplateMessage({
+          to: phoneToNotify,
+          templateName: "out_for_delivery",
+          placeholders: [orderTag],
+        });
+      } catch (e) {
+        console.error("[driver-status] Failed sending out_for_delivery template:", e);
+      }
     }
 
     return Response.json({ success: true, order: result[0] });

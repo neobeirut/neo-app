@@ -214,6 +214,8 @@ export async function PATCH(request, { params }) {
     let whatsappResult = { attempted: false, sent: false, error: null };
     const isPreparingOrAccepted = status === "preparing" || status === "confirmed" || status === "accepted";
     const wasPreparingOrAccepted = prevStatus === "preparing" || prevStatus === "confirmed" || prevStatus === "accepted";
+    const isPickupOrDelivery = status === "completed" || status === "delivered" || status === "out_for_delivery";
+    const wasPickupOrDelivery = prevStatus === "completed" || prevStatus === "delivered" || prevStatus === "out_for_delivery";
 
     if (isPreparingOrAccepted && !wasPreparingOrAccepted && phoneToNotify) {
       try {
@@ -228,6 +230,21 @@ export async function PATCH(request, { params }) {
         whatsappResult.templateName = "order_preparing";
       } catch (e) {
         console.error("[admin-order-update] Failed sending order_preparing template:", e);
+      }
+    } else if (isPickupOrDelivery && !wasPickupOrDelivery && phoneToNotify) {
+      try {
+        const orderTag = `#${resolvedId}`;
+        console.log(`[admin-order-update] Sending out_for_delivery WhatsApp to ${phoneToNotify} for order ${orderTag}`);
+        const outRes = await sendInfobipTemplateMessage({
+          to: phoneToNotify,
+          templateName: "out_for_delivery",
+          placeholders: [orderTag],
+        });
+        whatsappResult.attempted = true;
+        whatsappResult.sent = !outRes?.error;
+        whatsappResult.templateName = "out_for_delivery";
+      } catch (e) {
+        console.error("[admin-order-update] Failed sending out_for_delivery template:", e);
       }
     } else if (status === "cancelled" && prevStatus !== "cancelled" && phoneToNotify) {
       try {

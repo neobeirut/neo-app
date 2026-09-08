@@ -129,6 +129,46 @@ export async function PATCH(request, { params }) {
           console.error("Failed to send order_preparing notification from POS:", e);
         }
       }
+
+      // Send "out_for_delivery" when marked as out_for_delivery, completed, or delivered from POS
+      const isPickupOrDelivery = status === "out_for_delivery" || status === "completed" || status === "delivered";
+      const wasPickupOrDelivery = prevStatus === "out_for_delivery" || prevStatus === "completed" || prevStatus === "delivered";
+
+      if (isPickupOrDelivery && !wasPickupOrDelivery && phoneToNotify) {
+        try {
+          const normPhone = String(phoneToNotify).replace(/\D/g, "").replace(/^00/, "").replace(/^0/, "961");
+          const target = normPhone.length === 8 ? "961" + normPhone : normPhone;
+          const apiKey = process.env.INFOBIP_API_KEY || "d42824b2b707759420c14250c320ec7b-449822b8-55e1-4d67-906f-8a19af1d302e";
+          const baseUrl = (process.env.INFOBIP_BASE_URL || "https://y4r1q1.api.infobip.com").replace(/\/$/, "");
+          const sender = "96181202607";
+          const orderTag = `#${id}`;
+
+          console.log(`[pos-status] Sending out_for_delivery template to ${target} for order ${orderTag}`);
+          const outRes = await fetch(`${baseUrl}/whatsapp/1/message/template`, {
+            method: "POST",
+            headers: {
+              "Authorization": `App ${apiKey}`,
+              "Content-Type": "application/json",
+              "Accept": "application/json"
+            },
+            body: JSON.stringify({
+              messages: [{
+                from: sender,
+                to: target,
+                content: {
+                  templateName: "out_for_delivery",
+                  templateData: { body: { placeholders: [orderTag] } },
+                  language: "en"
+                }
+              }]
+            })
+          });
+          const outData = await outRes.json().catch(() => ({}));
+          console.log(`[pos-status] out_for_delivery response status: ${outRes.status}`, JSON.stringify(outData));
+        } catch (e) {
+          console.error("Failed to send out_for_delivery notification from POS:", e);
+        }
+      }
     }
 
     // Send "rejected_order" when cancelled/rejected from POS
