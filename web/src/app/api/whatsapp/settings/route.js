@@ -26,7 +26,7 @@ export async function GET(request) {
     } catch (e) {}
 
     // Construct origin URL for webhook endpoints
-    const origin = request.headers.get("origin") || request.headers.get("host") || "https://ovrload-backend-production.up.railway.app";
+    const origin = request.headers.get("origin") || request.headers.get("host") || "https://neobeirut.com";
     const hostWithProtocol = origin.startsWith("http") ? origin : `https://${origin}`;
 
     return Response.json({

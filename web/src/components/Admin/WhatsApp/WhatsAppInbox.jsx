@@ -951,7 +951,7 @@ export default function WhatsAppInbox({ adminToken, adminUser, initialPhone = nu
               {[
                 "Your order is currently being prepared! 🌯",
                 "Your order is out for delivery with our driver 🛵",
-                "Thank you for contacting OVRLOAD! How can we help you today?",
+                "Thank you for contacting Neo Beirut! How can we help you today?",
                 "We are checking this for you right away. One moment please!",
               ].map((qr, idx) => (
                 <button

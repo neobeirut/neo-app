@@ -28,7 +28,6 @@ import LoyaltyPerksAdmin from "@/components/Admin/LoyaltyPerksAdmin";
 import PromoCodesView from "@/components/Admin/PromoCodesView";
 import NotificationsView from "@/components/Admin/NotificationsView";
 import CustomerMessagesView from "@/components/Admin/CustomerMessagesView";
-import WhatsAppInboxView from "@/components/Admin/WhatsAppInboxView";
 import WhatsAppModule from "@/components/Admin/WhatsApp/WhatsAppModule";
 import DeliveryPricingView from "@/components/Admin/DeliveryPricingView";
 import WebsiteView from "@/components/Admin/WebsiteView";

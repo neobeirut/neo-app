@@ -31,7 +31,7 @@ export default function PrivacyPolicyPage() {
           </div>
           <div className="space-y-3 text-slate-600 text-base leading-relaxed border-t border-slate-100 pt-6">
             <p>
-              Flow (&quot;Flow&quot;, &quot;we&quot;, &quot;our&quot;, or &quot;us&quot;) provides a digital operations management platform designed for restaurants, cafés, hospitality businesses, and multi-location organizations.
+              Flow (&quot;Flow&quot;, &quot;we&quot;, &quot;our&quot;, or &quot;us&quot;) provides a digital operations management platform designed for restaurants, cafÃ©s, hospitality businesses, and multi-location organizations.
             </p>
             <p>
               This Privacy Policy explains how information is collected, used, stored, and protected when users access the Flow mobile application, web application, website, and related services.
