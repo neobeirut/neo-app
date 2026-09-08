@@ -163,9 +163,9 @@ export default function WhatsAppModule({
   ];
 
   return (
-    <div className="flex flex-col h-[calc(100vh-4.25rem)] w-full bg-slate-950 text-slate-100 overflow-hidden">
+    <div className="flex flex-col h-full w-full bg-slate-950 text-slate-100 overflow-hidden">
       {/* Top Header & Navigation Subtab Bar */}
-      <div className="bg-slate-900 border-b border-slate-800 px-6 py-3.5 flex flex-wrap items-center justify-between gap-4 flex-shrink-0">
+      <div className="bg-slate-900 border-b border-slate-800 px-6 py-3.5 flex flex-wrap items-center justify-between gap-4 shrink-0">
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-emerald-600/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 font-bold shadow-sm">
@@ -238,7 +238,7 @@ export default function WhatsAppModule({
       </div>
 
       {/* Main Subcomponent Content View */}
-      <div className="flex-1 overflow-hidden relative">
+      <div className="flex-1 min-h-0 overflow-hidden relative">
         {subTab === "inbox" && (
           <WhatsAppInbox
             adminToken={adminToken}

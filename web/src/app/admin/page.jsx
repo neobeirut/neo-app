@@ -456,9 +456,15 @@ export default function AdminPage() {
       />
 
       {/* Main Content Pane */}
-      <div className="flex-1 flex flex-col min-h-screen overflow-x-hidden">
+      <div
+        className={`flex-1 flex flex-col ${
+          activeTab.startsWith("whatsapp-")
+            ? "h-screen overflow-hidden"
+            : "min-h-screen overflow-x-hidden"
+        }`}
+      >
         {/* Sticky Header Top-Bar */}
-        <header className="bg-white border-b border-slate-200 px-6 py-4 flex justify-between items-center sticky top-0 z-10 shadow-sm">
+        <header className="bg-white border-b border-slate-200 px-6 py-4 flex justify-between items-center sticky top-0 z-10 shadow-sm shrink-0">
           <div className="flex items-center gap-3">
             {/* Mobile Sidebar Trigger */}
             <button
@@ -507,7 +513,7 @@ export default function AdminPage() {
         <main
           className={`flex-1 ${
             activeTab.startsWith("whatsapp-")
-              ? "p-0 w-full"
+              ? "p-0 w-full overflow-hidden flex flex-col min-h-0"
               : "p-6 md:p-8 max-w-6xl w-full mx-auto"
           }`}
         >

@@ -71,10 +71,25 @@ export default function WhatsAppInbox({ adminToken, adminUser, initialPhone = nu
 
   // Realtime & scroll
   const messagesEndRef = useRef(null);
+  const messagesContainerRef = useRef(null);
   const sseRef = useRef(null);
 
   const scrollToBottom = (behavior = "smooth") => {
-    messagesEndRef.current?.scrollIntoView({ behavior });
+    const el = messagesContainerRef.current;
+    if (el) {
+      el.scrollTo({
+        top: el.scrollHeight,
+        behavior,
+      });
+      requestAnimationFrame(() => {
+        if (el) {
+          el.scrollTo({
+            top: el.scrollHeight,
+            behavior,
+          });
+        }
+      });
+    }
   };
 
   useEffect(() => {
@@ -572,13 +587,13 @@ export default function WhatsAppInbox({ adminToken, adminUser, initialPhone = nu
   };
 
   return (
-    <div className="flex h-[calc(100vh-145px)] bg-slate-950 text-slate-100 rounded-2xl overflow-hidden border border-slate-800 shadow-2xl">
+    <div className="flex h-full w-full bg-slate-950 text-slate-100 overflow-hidden">
       {/* ========================================================= */}
       {/* LEFT PANEL: Filters, Search, Conversation List */}
       {/* ========================================================= */}
-      <div className="w-80 sm:w-96 border-r border-slate-800/80 flex flex-col bg-slate-900/90 shrink-0">
+      <div className="w-80 sm:w-96 border-r border-slate-800/80 flex flex-col bg-slate-900/90 shrink-0 h-full">
         {/* Search & Filter Header */}
-        <div className="p-4 border-b border-slate-800/80 space-y-3">
+        <div className="p-4 border-b border-slate-800/80 space-y-3 shrink-0">
           <div className="flex items-center justify-between">
             <h2 className="text-base font-bold text-white flex items-center gap-2">
               <MessageSquare className="w-5 h-5 text-emerald-500" />
@@ -630,7 +645,7 @@ export default function WhatsAppInbox({ adminToken, adminUser, initialPhone = nu
         </div>
 
         {/* Conversation List */}
-        <div className="flex-1 overflow-y-auto divide-y divide-slate-800/40">
+        <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-slate-800/40">
           {loadingConversations ? (
             <div className="text-center py-12 text-slate-500 text-xs">
               <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-emerald-500 mx-auto mb-2" />
@@ -718,7 +733,7 @@ export default function WhatsAppInbox({ adminToken, adminUser, initialPhone = nu
       {/* ========================================================= */}
       {/* CENTER PANEL: Active Conversation, Chat History, Composer */}
       {/* ========================================================= */}
-      <div className="flex-1 flex flex-col bg-slate-950 min-w-0 border-r border-slate-800/80">
+      <div className="flex-1 flex flex-col bg-slate-950 min-w-0 border-r border-slate-800/80 h-full">
         {selectedConversation ? (
           <>
             {/* Conversation Header */}
@@ -785,7 +800,7 @@ export default function WhatsAppInbox({ adminToken, adminUser, initialPhone = nu
 
             {/* 24-Hour Customer Service Window Alert Banner */}
             {!selectedConversation.is_window_active && (
-              <div className="bg-amber-950/50 border-b border-amber-800/80 px-4 py-2.5 flex items-center justify-between gap-3 text-xs text-amber-200">
+              <div className="bg-amber-950/50 border-b border-amber-800/80 px-4 py-2.5 flex items-center justify-between gap-3 text-xs text-amber-200 shrink-0">
                 <div className="flex items-center gap-2">
                   <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
                   <span>
@@ -803,7 +818,7 @@ export default function WhatsAppInbox({ adminToken, adminUser, initialPhone = nu
             )}
 
             {/* Message History List */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-3.5 bg-slate-950/60">
+            <div ref={messagesContainerRef} className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3.5 bg-slate-950/60">
               {loadingMessages ? (
                 <div className="text-center py-12 text-slate-500 text-xs">
                   <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-emerald-500 mx-auto mb-2" />
@@ -944,7 +959,7 @@ export default function WhatsAppInbox({ adminToken, adminUser, initialPhone = nu
             </div>
 
             {/* Quick Reply Snippets */}
-            <div className="px-4 py-2 border-t border-slate-800/80 bg-slate-900/60 flex items-center gap-2 overflow-x-auto scrollbar-none text-xs">
+            <div className="px-4 py-2 border-t border-slate-800/80 bg-slate-900/60 flex items-center gap-2 overflow-x-auto scrollbar-none text-xs shrink-0">
               <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider shrink-0">
                 Quick:
               </span>
@@ -967,7 +982,7 @@ export default function WhatsAppInbox({ adminToken, adminUser, initialPhone = nu
 
             {/* Pending Attachment Chip */}
             {pendingAttachment && (
-              <div className="px-4 py-2 bg-slate-900 border-t border-slate-800 flex items-center justify-between text-xs text-emerald-400">
+              <div className="px-4 py-2 bg-slate-900 border-t border-slate-800 flex items-center justify-between text-xs text-emerald-400 shrink-0">
                 <div className="flex items-center gap-2 truncate">
                   <Paperclip className="w-4 h-4" />
                   <span className="truncate">Attached: {pendingAttachment.filename}</span>
@@ -982,7 +997,7 @@ export default function WhatsAppInbox({ adminToken, adminUser, initialPhone = nu
             )}
 
             {/* Sticky Composer */}
-            <div className="p-3 bg-slate-900 border-t border-slate-800">
+            <div className="p-3 bg-slate-900 border-t border-slate-800 shrink-0">
               {composerError && (
                 <div className="mb-2 p-2 bg-red-950/80 border border-red-800 text-red-300 rounded-xl text-xs flex items-center justify-between">
                   <span>{composerError}</span>
@@ -1093,7 +1108,7 @@ export default function WhatsAppInbox({ adminToken, adminUser, initialPhone = nu
       {/* RIGHT PANEL: Contact Details, CRM Order Data, Notes */}
       {/* ========================================================= */}
       {selectedConversation && (
-        <div className="w-72 sm:w-80 bg-slate-900/80 p-4 overflow-y-auto space-y-4 shrink-0 text-xs">
+        <div className="w-72 sm:w-80 bg-slate-900/80 p-4 overflow-y-auto space-y-4 shrink-0 text-xs h-full">
           {/* Contact Card Header */}
           <div className="text-center pb-3 border-b border-slate-800">
             <div className="w-14 h-14 rounded-full bg-gradient-to-tr from-emerald-600 to-teal-700 flex items-center justify-center text-white font-bold text-base mx-auto mb-2 shadow-lg">
