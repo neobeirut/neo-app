@@ -8,6 +8,7 @@ import {
   lockUntilMonthsFromNowDate,
 } from "@/app/api/utils/loyalty";
 import { sendWhatsAppNotification } from "@/app/api/utils/whatsappNotification";
+import { sendInfobipTemplateMessage } from "@/app/api/utils/infobipService";
 import { resolveOrderId } from "../../utils/orderIdResolver";
 
 // Push notification helpers removed. Managed centrally via whatsappNotification.js
@@ -182,12 +183,15 @@ export async function PATCH(request, { params }) {
     }
 
     const [currentOrder] = await sql`
-      SELECT status FROM orders WHERE id = ${resolvedId}
+      SELECT status, customer_phone, customer_name FROM orders WHERE id = ${resolvedId}
     `;
 
     if (!currentOrder) {
       return Response.json({ error: "Order not found" }, { status: 404 });
     }
+
+    const prevStatus = currentOrder?.status;
+    const phoneToNotify = currentOrder?.customer_phone;
 
     await sql`
       UPDATE orders
@@ -208,45 +212,61 @@ export async function PATCH(request, { params }) {
 
     // ========== Send WhatsApp notification automatically (direct call, no HTTP) ==========
     let whatsappResult = { attempted: false, sent: false, error: null };
-    try {
-      console.log(`[admin-order-update] Sending WhatsApp for order ${resolvedId}...`);
+    const isPreparingOrAccepted = status === "preparing" || status === "confirmed" || status === "accepted";
+    const wasPreparingOrAccepted = prevStatus === "preparing" || prevStatus === "confirmed" || prevStatus === "accepted";
 
-      const whatsappData = await sendWhatsAppNotification(resolvedId, status);
-
-      whatsappResult.attempted = true;
-      whatsappResult.sent = whatsappData?.ok && whatsappData?.sent;
-      whatsappResult.error = whatsappData?.error || null;
-      whatsappResult.method = whatsappData?.method || null;
-      whatsappResult.templateName = whatsappData?.templateName || null;
-      whatsappResult.messageId = whatsappData?.messageId || null;
-
-      if (!whatsappData?.ok) {
-        console.log(
-          `[admin-order-update] WhatsApp notification failed for order ${id}:`,
-          whatsappData?.error || "Unknown error",
-        );
-      } else {
-        console.log(
-          `[admin-order-update] WhatsApp notification sent for order ${id} via ${whatsappData?.method}`,
-        );
+    if (isPreparingOrAccepted && !wasPreparingOrAccepted && phoneToNotify) {
+      try {
+        console.log(`[admin-order-update] Sending order_preparing WhatsApp to ${phoneToNotify} for order #${resolvedId}`);
+        const prepRes = await sendInfobipTemplateMessage({
+          to: phoneToNotify,
+          templateName: "order_preparing",
+          placeholders: [],
+        });
+        whatsappResult.attempted = true;
+        whatsappResult.sent = !prepRes?.error;
+        whatsappResult.templateName = "order_preparing";
+      } catch (e) {
+        console.error("[admin-order-update] Failed sending order_preparing template:", e);
       }
-    } catch (whatsappError) {
-      console.error(
-        `[admin-order-update] WhatsApp notification error for order ${id}:`,
-        whatsappError,
-      );
+    } else if (status === "cancelled" && prevStatus !== "cancelled" && phoneToNotify) {
+      try {
+        console.log(`[admin-order-update] Sending rejected_order WhatsApp to ${phoneToNotify} for order #${resolvedId}`);
+        await sendInfobipTemplateMessage({
+          to: phoneToNotify,
+          templateName: "rejected_order",
+          placeholders: [String(resolvedId)],
+        });
+        whatsappResult.attempted = true;
+        whatsappResult.templateName = "rejected_order";
+      } catch (e) {
+        console.error("[admin-order-update] Failed sending rejected_order template:", e);
+      }
+    } else {
+      try {
+        console.log(`[admin-order-update] Sending WhatsApp for order ${resolvedId}...`);
+        const whatsappData = await sendWhatsAppNotification(resolvedId, status);
+        whatsappResult.attempted = true;
+        whatsappResult.sent = whatsappData?.ok && whatsappData?.sent;
+        whatsappResult.error = whatsappData?.error || null;
+      } catch (whatsappError) {
+        console.error(
+          `[admin-order-update] WhatsApp notification error for order ${id}:`,
+          whatsappError,
+        );
 
-      const errorMsg = String(whatsappError?.message || whatsappError);
-      whatsappResult.attempted = true;
-      whatsappResult.error = errorMsg;
+        const errorMsg = String(whatsappError?.message || whatsappError);
+        whatsappResult.attempted = true;
+        whatsappResult.error = errorMsg;
 
-      // Extract RAW_RESPONSE if present (contains Infobip's full error response)
-      const rawResponseMatch = errorMsg.match(/RAW_RESPONSE=(.+)$/);
-      if (rawResponseMatch) {
-        try {
-          whatsappResult.infobipRawResponse = JSON.parse(rawResponseMatch[1]);
-        } catch {
-          whatsappResult.infobipRawResponse = rawResponseMatch[1];
+        // Extract RAW_RESPONSE if present (contains Infobip's full error response)
+        const rawResponseMatch = errorMsg.match(/RAW_RESPONSE=(.+)$/);
+        if (rawResponseMatch) {
+          try {
+            whatsappResult.infobipRawResponse = JSON.parse(rawResponseMatch[1]);
+          } catch {
+            whatsappResult.infobipRawResponse = rawResponseMatch[1];
+          }
         }
       }
     }

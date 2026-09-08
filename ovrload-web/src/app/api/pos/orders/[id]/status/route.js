@@ -23,6 +23,15 @@ export async function PATCH(request, { params }) {
       return Response.json({ error: "Missing status field" }, { status: 400 });
     }
 
+    const [existingOrder] = await sql`
+      SELECT id, status, customer_phone FROM orders WHERE id = ${id} LIMIT 1
+    `;
+    if (!existingOrder) {
+      return Response.json({ error: "Order not found" }, { status: 404 });
+    }
+    const prevStatus = existingOrder.status;
+    const phoneToNotify = customerPhone || existingOrder.customer_phone;
+
     if (voidReason) {
       await sql`
         UPDATE orders 
@@ -83,40 +92,40 @@ export async function PATCH(request, { params }) {
         }
       }
 
-      // Send "We are preparing your items now!" when confirmed from POS (only once on transition)
-      if (status === "preparing" || status === "confirmed") {
-        try {
-          const [orderRow] = await sql`SELECT status, customer_phone FROM orders WHERE id = ${id} LIMIT 1`;
-          const phoneToNotify = customerPhone || orderRow?.customer_phone;
-          // Only send if not previously preparing or confirmed
-          if (phoneToNotify && orderRow?.status !== "preparing" && orderRow?.status !== "confirmed") {
-            const normPhone = String(phoneToNotify).replace(/\D/g, "").replace(/^00/, "").replace(/^0/, "961");
-            const target = normPhone.length === 8 ? "961" + normPhone : normPhone;
-            const apiKey = process.env.INFOBIP_API_KEY || "d42824b2b707759420c14250c320ec7b-449822b8-55e1-4d67-906f-8a19af1d302e";
-            const baseUrl = (process.env.INFOBIP_BASE_URL || "https://y4r1q1.api.infobip.com").replace(/\/$/, "");
-            const sender = "96181202607";
+      // Send "We are preparing your items now!" when accepted/preparing/confirmed from POS (only once on transition)
+      const isPreparingOrAccepted = status === "preparing" || status === "confirmed" || status === "accepted";
+      const wasPreparingOrAccepted = prevStatus === "preparing" || prevStatus === "confirmed" || prevStatus === "accepted";
 
-            // Direct Meta Template dispatch (sends exactly one message)
-            await fetch(`${baseUrl}/whatsapp/1/message/template`, {
-              method: "POST",
-              headers: {
-                "Authorization": `App ${apiKey}`,
-                "Content-Type": "application/json",
-                "Accept": "application/json"
-              },
-              body: JSON.stringify({
-                messages: [{
-                  from: sender,
-                  to: target,
-                  content: {
-                    templateName: "order_preparing",
-                    templateData: { body: { placeholders: [] } },
-                    language: "en"
-                  }
-                }]
-              })
-            });
-          }
+      if (isPreparingOrAccepted && !wasPreparingOrAccepted && phoneToNotify) {
+        try {
+          const normPhone = String(phoneToNotify).replace(/\D/g, "").replace(/^00/, "").replace(/^0/, "961");
+          const target = normPhone.length === 8 ? "961" + normPhone : normPhone;
+          const apiKey = process.env.INFOBIP_API_KEY || "d42824b2b707759420c14250c320ec7b-449822b8-55e1-4d67-906f-8a19af1d302e";
+          const baseUrl = (process.env.INFOBIP_BASE_URL || "https://y4r1q1.api.infobip.com").replace(/\/$/, "");
+          const sender = "96181202607";
+
+          console.log(`[pos-status] Sending order_preparing template to ${target} for order #${id}`);
+          const prepRes = await fetch(`${baseUrl}/whatsapp/1/message/template`, {
+            method: "POST",
+            headers: {
+              "Authorization": `App ${apiKey}`,
+              "Content-Type": "application/json",
+              "Accept": "application/json"
+            },
+            body: JSON.stringify({
+              messages: [{
+                from: sender,
+                to: target,
+                content: {
+                  templateName: "order_preparing",
+                  templateData: { body: { placeholders: [] } },
+                  language: "en"
+                }
+              }]
+            })
+          });
+          const prepData = await prepRes.json().catch(() => ({}));
+          console.log(`[pos-status] order_preparing response status: ${prepRes.status}`, JSON.stringify(prepData));
         } catch (e) {
           console.error("Failed to send order_preparing notification from POS:", e);
         }
@@ -124,16 +133,13 @@ export async function PATCH(request, { params }) {
     }
 
     // Send "rejected_order" when cancelled/rejected from POS
-    if (status === "cancelled") {
+    if (status === "cancelled" && prevStatus !== "cancelled" && phoneToNotify) {
       try {
-        const [orderRow] = await sql`SELECT customer_phone FROM orders WHERE id = ${id} LIMIT 1`;
-        const phoneToNotify = customerPhone || orderRow?.customer_phone;
-        if (phoneToNotify) {
-          const normPhone = String(phoneToNotify).replace(/\D/g, "").replace(/^00/, "").replace(/^0/, "961");
-          const target = normPhone.length === 8 ? "961" + normPhone : normPhone;
-          const apiKey = process.env.INFOBIP_API_KEY || "d42824b2b707759420c14250c320ec7b-449822b8-55e1-4d67-906f-8a19af1d302e";
-          const baseUrl = (process.env.INFOBIP_BASE_URL || "https://y4r1q1.api.infobip.com").replace(/\/$/, "");
-          const sender = "96181202607";
+        const normPhone = String(phoneToNotify).replace(/\D/g, "").replace(/^00/, "").replace(/^0/, "961");
+        const target = normPhone.length === 8 ? "961" + normPhone : normPhone;
+        const apiKey = process.env.INFOBIP_API_KEY || "d42824b2b707759420c14250c320ec7b-449822b8-55e1-4d67-906f-8a19af1d302e";
+        const baseUrl = (process.env.INFOBIP_BASE_URL || "https://y4r1q1.api.infobip.com").replace(/\/$/, "");
+        const sender = "96181202607";
 
           console.log(`[pos-status] Sending rejected_order template to ${target} for order #${id}`);
           const res = await fetch(`${baseUrl}/whatsapp/1/message/template`, {
@@ -157,7 +163,6 @@ export async function PATCH(request, { params }) {
           });
           const resData = await res.json().catch(() => ({}));
           console.log(`[pos-status] rejected_order response status: ${res.status}`, JSON.stringify(resData));
-        }
       } catch (e) {
         console.error("Failed to send rejected_order notification from POS:", e);
       }
