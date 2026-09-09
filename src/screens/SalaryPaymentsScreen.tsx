@@ -3,9 +3,10 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { api } from '../api/client';
 import { 
   DollarSign, Search, Plus, Trash2, RefreshCw, 
-  Wallet, Eye, Check, RotateCcw, Sparkles, Lock, FileText, Bus
+  Wallet, Eye, Check, RotateCcw, Sparkles, Lock, FileText, Bus, ShieldCheck
 } from 'lucide-react';
 import EmployeePayslipModal from '../components/attendance/EmployeePayslipModal';
+import PayrollValidationScreen from '../components/attendance/PayrollValidationScreen';
 import type { CalculatedPayrollItem } from '../utils/payrollCalculation';
 
 interface SalaryPaymentsScreenProps {
@@ -20,7 +21,8 @@ const MONTHS = [
   { id: 10, name: 'October' }, { id: 11, name: 'November' }, { id: 12, name: 'December' }
 ];
 
-export default function SalaryPaymentsScreen({ user }: SalaryPaymentsScreenProps) {
+export default function SalaryPaymentsScreen({ user, permissions }: SalaryPaymentsScreenProps) {
+  const [activeMainTab, setActiveMainTab] = useState<'disbursements' | 'validation'>('disbursements');
   const currentDate = new Date();
   const [selectedMonth, setSelectedMonth] = useState<number>(currentDate.getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState<number>(currentDate.getFullYear());
@@ -516,21 +518,78 @@ export default function SalaryPaymentsScreen({ user }: SalaryPaymentsScreenProps
             <DollarSign size={24} />
           </div>
           <div>
-            <h1 style={{ fontSize: '24px', fontWeight: 800, color: 'var(--text-main)', margin: 0 }}>Salary Payments</h1>
+            <h1 style={{ fontSize: '24px', fontWeight: 800, color: 'var(--text-main)', margin: 0 }}>Salary & Payroll Management</h1>
             <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: '2px 0 0 0' }}>
-              Finalize payslips with punched days transportation, track advances, and record disbursements.
+              Validate timesheet punches & hours, approve official payslips, and manage salary disbursements & advances.
             </p>
           </div>
         </div>
+      </div>
 
-        {/* Period & Branch Filter Controls */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-          <select 
-            value={selectedMonth} 
-            onChange={e => setSelectedMonth(Number(e.target.value))}
-            style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '14px', background: '#fff', fontWeight: 600 }}
-          >
-            {MONTHS.map(m => (
+      {/* Main Navigation Tabs */}
+      <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', gap: '8px', marginBottom: '-8px' }}>
+        <button
+          onClick={() => setActiveMainTab('disbursements')}
+          style={{
+            padding: '10px 18px',
+            backgroundColor: 'transparent',
+            border: 'none',
+            borderBottom: activeMainTab === 'disbursements' ? '2px solid var(--primary)' : '2px solid transparent',
+            color: activeMainTab === 'disbursements' ? 'var(--primary)' : 'var(--text-muted)',
+            fontWeight: activeMainTab === 'disbursements' ? 700 : 500,
+            fontSize: '14px',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}
+        >
+          <DollarSign size={16} />
+          Salary Payments & Disbursements
+        </button>
+
+        <button
+          onClick={() => {
+            setActiveMainTab('validation');
+            loadPeriodData();
+          }}
+          style={{
+            padding: '10px 18px',
+            backgroundColor: 'transparent',
+            border: 'none',
+            borderBottom: activeMainTab === 'validation' ? '2px solid var(--primary)' : '2px solid transparent',
+            color: activeMainTab === 'validation' ? 'var(--primary)' : 'var(--text-muted)',
+            fontWeight: activeMainTab === 'validation' ? 700 : 500,
+            fontSize: '14px',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}
+        >
+          <ShieldCheck size={16} />
+          Payroll Validation Review & Approval
+        </button>
+      </div>
+
+      {activeMainTab === 'validation' ? (
+        <PayrollValidationScreen
+          user={user}
+          permissions={permissions}
+          employees={employees}
+          branches={branches}
+          onPayslipSaved={loadPeriodData}
+        />
+      ) : (
+        <>
+          {/* Period & Branch Filter Controls */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '10px', flexWrap: 'wrap' }}>
+            <select 
+              value={selectedMonth} 
+              onChange={e => setSelectedMonth(Number(e.target.value))}
+              style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '14px', background: '#fff', fontWeight: 600 }}
+            >
+              {MONTHS.map(m => (
               <option key={m.id} value={m.id}>{m.name}</option>
             ))}
           </select>
@@ -609,9 +668,8 @@ export default function SalaryPaymentsScreen({ user }: SalaryPaymentsScreenProps
             {generatingBatch ? 'Generating...' : kpiMetrics.countUnsaved > 0 ? `Generate All Payslips (${kpiMetrics.countUnsaved} Pending)` : 'All Payslips Saved'}
           </button>
         </div>
-      </div>
 
-      {/* Cashout Salary Sync Alert Banner */}
+          {/* Cashout Salary Sync Alert Banner */}
       {unlinkedCandidatesCount > 0 && (
         <div style={{ padding: '14px 20px', backgroundColor: '#fffbeb', border: '1px solid #fef3c7', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -952,9 +1010,11 @@ export default function SalaryPaymentsScreen({ user }: SalaryPaymentsScreenProps
               )}
             </tbody>
           </table>
-        </div>
+          </div>
 
-      </div>
+        </div>
+      </>
+    )}
 
       {/* Payment & History Modal / Drawer */}
       {showPaymentModal && targetEmployee && (

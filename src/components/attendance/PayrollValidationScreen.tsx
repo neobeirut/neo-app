@@ -15,6 +15,7 @@ interface PayrollValidationScreenProps {
   permissions?: any;
   employees: any[];
   branches: any[];
+  onPayslipSaved?: () => void;
 }
 
 // Local timezone date formatting helper (YYYY-MM-DD)
@@ -39,7 +40,8 @@ export default function PayrollValidationScreen({
   user,
   permissions: _permissions,
   employees,
-  branches
+  branches,
+  onPayslipSaved
 }: PayrollValidationScreenProps) {
   // Period & Filter State
   const [dateRangeMode, setDateRangeMode] = useState<'mtd' | 'this_month' | 'last_month' | 'custom'>('mtd');
@@ -324,6 +326,7 @@ export default function PayrollValidationScreen({
     setSaving(false);
     alert('Payroll period successfully APPROVED and LOCKED!');
     await loadValidationData();
+    if (onPayslipSaved) onPayslipSaved();
   };
 
   // Save Draft Adjustments
@@ -993,7 +996,10 @@ export default function PayrollValidationScreen({
         onClose={() => setShowPayslipModal(false)}
         item={selectedPayslipItem}
         periodName={periodName}
-        onSaved={loadValidationData}
+        onSaved={async () => {
+          await loadValidationData();
+          if (onPayslipSaved) onPayslipSaved();
+        }}
       />
 
     </div>

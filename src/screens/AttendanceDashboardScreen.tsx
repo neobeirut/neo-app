@@ -3,7 +3,6 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { api } from '../api/client';
 import ShiftManagementView from '../components/attendance/ShiftManagementView';
 import AttendanceAnalysisView from '../components/attendance/AttendanceAnalysisView';
-import PayrollValidationScreen from '../components/attendance/PayrollValidationScreen';
 import AttendanceReportsView from '../components/attendance/AttendanceReportsView';
 import LeaveRequestsView from '../components/attendance/LeaveRequestsView';
 import LaborIntelligenceView from '../components/attendance/LaborIntelligenceView';
@@ -33,7 +32,7 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
     );
   }, [user, permissions]);
 
-  const [activeTab, setActiveTab] = useState<'schedule' | 'analysis' | 'payroll' | 'reports' | 'leave' | 'labor_intelligence' | 'active' | 'timesheets' | 'employees'>('schedule');
+  const [activeTab, setActiveTab] = useState<'schedule' | 'analysis' | 'reports' | 'leave' | 'labor_intelligence' | 'active' | 'timesheets' | 'employees'>('schedule');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -640,12 +639,6 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
           Shift vs Attendance Analysis
         </button>
         <button 
-          onClick={() => setActiveTab('payroll')} 
-          style={{ ...tabStyle, borderBottom: activeTab === 'payroll' ? '2px solid var(--primary)' : 'none', color: activeTab === 'payroll' ? 'var(--primary)' : 'var(--text-muted)' }}
-        >
-          Payroll Validation & Approval
-        </button>
-        <button 
           onClick={() => setActiveTab('reports')} 
           style={{ ...tabStyle, borderBottom: activeTab === 'reports' ? '2px solid var(--primary)' : 'none', color: activeTab === 'reports' ? 'var(--primary)' : 'var(--text-muted)' }}
         >
@@ -696,16 +689,6 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
       {/* ATTENDANCE & SHIFT VALIDATION ANALYSIS VIEW */}
       {activeTab === 'analysis' && (
         <AttendanceAnalysisView
-          user={user}
-          permissions={permissions}
-          employees={employees}
-          branches={branches}
-        />
-      )}
-
-      {/* PAYROLL VALIDATION REVIEW & PERIOD LOCKING VIEW */}
-      {activeTab === 'payroll' && (
-        <PayrollValidationScreen
           user={user}
           permissions={permissions}
           employees={employees}
