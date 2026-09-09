@@ -270,6 +270,64 @@ export const api = {
     return { success: true };
   },
 
+  // Staff Departments & Sections (Employees & HR)
+  getStaffDepartments: async () => {
+    const rid = getRestaurantId();
+    let query = supabase.from('staff_departments').select('*').order('display_order', { ascending: true }).order('name', { ascending: true });
+    if (rid) query = query.eq('restaurant_id', rid);
+    const { data, error } = await query;
+    if (error) return { success: false, error: error.message };
+    return { success: true, data: data || [] };
+  },
+
+  saveStaffDepartment: async (dept: { id?: string; name: string; color?: string; display_order?: number }) => {
+    const payload = await injectRestaurantId({ ...dept });
+    if (!payload.restaurant_id) {
+      return { success: false, error: 'Restaurant ID is required' };
+    }
+    const { data, error } = await supabase.from('staff_departments').upsert(payload, { onConflict: 'restaurant_id,name' }).select();
+    if (error) return { success: false, error: error.message };
+    return { success: true, data: data && data.length > 0 ? data[0] : null };
+  },
+
+  deleteStaffDepartment: async (id: string) => {
+    const rid = getRestaurantId();
+    let query = supabase.from('staff_departments').delete().eq('id', id);
+    if (rid) query = query.eq('restaurant_id', rid);
+    const { error } = await query;
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  },
+
+  getStaffSections: async (departmentName?: string) => {
+    const rid = getRestaurantId();
+    let query = supabase.from('staff_sections').select('*').order('display_order', { ascending: true }).order('name', { ascending: true });
+    if (rid) query = query.eq('restaurant_id', rid);
+    if (departmentName) query = query.eq('department_name', departmentName);
+    const { data, error } = await query;
+    if (error) return { success: false, error: error.message };
+    return { success: true, data: data || [] };
+  },
+
+  saveStaffSection: async (section: { id?: string; department_id?: string; department_name: string; name: string; display_order?: number }) => {
+    const payload = await injectRestaurantId({ ...section });
+    if (!payload.restaurant_id) {
+      return { success: false, error: 'Restaurant ID is required' };
+    }
+    const { data, error } = await supabase.from('staff_sections').upsert(payload, { onConflict: 'restaurant_id,department_name,name' }).select();
+    if (error) return { success: false, error: error.message };
+    return { success: true, data: data && data.length > 0 ? data[0] : null };
+  },
+
+  deleteStaffSection: async (id: string) => {
+    const rid = getRestaurantId();
+    let query = supabase.from('staff_sections').delete().eq('id', id);
+    if (rid) query = query.eq('restaurant_id', rid);
+    const { error } = await query;
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  },
+
   getUserById: async (id: string) => {
     const rid = getRestaurantId();
     let query = supabase.from('users').select('*').eq('id', id);

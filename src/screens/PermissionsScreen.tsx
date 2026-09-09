@@ -5,7 +5,7 @@ import {
   ShoppingCart, ClipboardList, ChefHat, DollarSign, Trash2, 
   TrendingUp, Briefcase, GraduationCap, Calendar, Lock, Sliders, CheckCircle2,
   Sparkles, CheckSquare, Receipt, FolderOpen, Package, Clock,
-  Eye, EyeOff, LayoutGrid, Square, Building2, Store, Newspaper, BookOpen, Target, History, AlertTriangle
+  Eye, EyeOff, LayoutGrid, Square, Building2, Store, Newspaper, BookOpen, Target, History, AlertTriangle, Layers
 } from 'lucide-react';
 
 const DEFAULT_PERMISSIONS = {
@@ -481,6 +481,14 @@ export const MODULE_DEFINITIONS: ModuleDefinition[] = [
     desc: 'Staff directory, contracts, salaries, and branch assignments',
     route: '/employees',
     icon: <Users size={18} style={{ color: '#0d6efd' }} />
+  },
+  {
+    key: 'departments_sections',
+    label: 'Departments & Sections',
+    group: 'People',
+    desc: 'Staff organization structure, departments (Floor, Kitchen, Management) and sub-departments/sections',
+    route: '/departments-sections',
+    icon: <Layers size={18} style={{ color: '#6366f1' }} />
   },
   {
     key: 'attendance',

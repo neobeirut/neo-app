@@ -90,11 +90,16 @@ export default function EmployeeFormScreen({ user }: { user?: any }) {
     setLoading(true);
     try {
       const [deptRes, branchRes, subDeptRes] = await Promise.all([
-        api.getDepartmentsList(),
+        api.getStaffDepartments(),
         api.getBranchesList(),
-        api.getSubDepartmentsList()
+        api.getStaffSections()
       ]);
-      if (deptRes.success) setAllDepartments(deptRes.data || []);
+      if (deptRes.success && deptRes.data && deptRes.data.length > 0) {
+        setAllDepartments(deptRes.data);
+      } else {
+        const fallbackDepts = await api.getDepartmentsList();
+        if (fallbackDepts.success) setAllDepartments(fallbackDepts.data || []);
+      }
       if (branchRes.success && branchRes.data) setAllBranches(branchRes.data);
       if (subDeptRes.success && subDeptRes.data) setAllSubDepartments(subDeptRes.data);
 
@@ -193,12 +198,12 @@ export default function EmployeeFormScreen({ user }: { user?: any }) {
       alert('Please select a Department first and enter a Sub-Department name.');
       return;
     }
-    const res = await api.saveSubDepartment({
+    const res = await api.saveStaffSection({
       department_name: department,
       name: newSubDeptName.trim()
     });
     if (res.success) {
-      const updated = await api.getSubDepartmentsList();
+      const updated = await api.getStaffSections();
       if (updated.success && updated.data) {
         setAllSubDepartments(updated.data);
       }
@@ -206,7 +211,7 @@ export default function EmployeeFormScreen({ user }: { user?: any }) {
       setNewSubDeptName('');
       setIsAddingSubDept(false);
     } else {
-      alert(res.error || 'Failed to create sub-department.');
+      alert(res.error || 'Failed to create sub-department section.');
     }
   };
 
