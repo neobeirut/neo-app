@@ -42,7 +42,9 @@ export default function SalaryPaymentsScreen({ user }: SalaryPaymentsScreenProps
 
   // Payment Modal State
   const [showPaymentModal, setShowPaymentModal] = useState<boolean>(false);
-  const [targetEmployee, setTargetEmployee] = useState<any | null>(null);
+  const [targetEmployeeId, setTargetEmployeeId] = useState<string | null>(null);
+  const [deletingPaymentId, setDeletingPaymentId] = useState<string | null>(null);
+  const [showAllPaymentsModal, setShowAllPaymentsModal] = useState<boolean>(false);
   const [paymentAmountUsd, setPaymentAmountUsd] = useState<string>('');
   const [paymentAmountLbp, setPaymentAmountLbp] = useState<string>('');
   const [exchangeRate, setExchangeRate] = useState<string>('90000');
@@ -118,7 +120,7 @@ export default function SalaryPaymentsScreen({ user }: SalaryPaymentsScreenProps
   };
 
   const handleOpenPaymentModal = (emp: any) => {
-    setTargetEmployee(emp);
+    setTargetEmployeeId(String(emp.employee_id));
     setPaymentAmountUsd('');
     setPaymentAmountLbp('');
     setPaymentDate(new Date().toISOString().split('T')[0]);
@@ -170,16 +172,26 @@ export default function SalaryPaymentsScreen({ user }: SalaryPaymentsScreenProps
 
     setSavingPayment(false);
     setShowPaymentModal(false);
-    loadPeriodData();
+    setTargetEmployeeId(null);
+    await loadPeriodData();
   };
 
   const handleDeletePayment = async (paymentId: string) => {
-    if (!confirm('Are you sure you want to delete this payment record?')) return;
-    const res = await api.deleteSalaryPayment(paymentId);
-    if (res.success) {
-      loadPeriodData();
-    } else {
-      alert(res.error || 'Failed to delete payment');
+    if (!confirm('Are you sure you want to delete this payment record? This action cannot be undone.')) return;
+    setDeletingPaymentId(paymentId);
+    try {
+      const res = await api.deleteSalaryPayment(paymentId);
+      if (res.success) {
+        // Immediately remove payment from local state for instant responsive UI update
+        setPayments(prev => prev.filter(p => p.id !== paymentId));
+        await loadPeriodData();
+      } else {
+        alert(res.error || 'Failed to delete payment');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error deleting payment');
+    } finally {
+      setDeletingPaymentId(null);
     }
   };
 
@@ -356,6 +368,33 @@ export default function SalaryPaymentsScreen({ user }: SalaryPaymentsScreenProps
     });
   }, [employees, payrolls, payments, activeLoans, empPunchesMap]);
 
+  // Derived current target employee for the modal (dynamically reactive to combinedRoster and payments)
+  const targetEmployee = useMemo(() => {
+    if (!targetEmployeeId) return null;
+    return combinedRoster.find(e => String(e.employee_id) === String(targetEmployeeId)) || null;
+  }, [targetEmployeeId, combinedRoster]);
+
+  // Chronological list of all payments with mapped employee info for the All Payments audit modal
+  const paymentsWithEmployee = useMemo(() => {
+    const empMap = new Map<string, any>();
+    employees.forEach(e => {
+      empMap.set(String(e.employee_id), e);
+    });
+    return payments.map(p => {
+      const emp = empMap.get(String(p.employee_id));
+      const fullName = emp ? `${emp.first_name || ''} ${emp.last_name || ''}`.trim() : 'Unknown';
+      const branch = emp?.branch || '-';
+      const rate = Number(p.exchange_rate) || 90000;
+      const totalUsd = Number(p.amount_usd || 0) + (Number(p.amount_lbp || 0) / rate);
+      return {
+        ...p,
+        employeeName: fullName,
+        branch,
+        totalUsd
+      };
+    }).sort((a, b) => (b.payment_date || '').localeCompare(a.payment_date || ''));
+  }, [payments, employees]);
+
   const handleGenerateAllPayslips = async () => {
     const unsavedEmps = combinedRoster.filter(e => !e.isSaved);
     if (unsavedEmps.length === 0) {
@@ -523,6 +562,28 @@ export default function SalaryPaymentsScreen({ user }: SalaryPaymentsScreenProps
             style={{ padding: '8px 12px', backgroundColor: '#fff', border: '1px solid var(--border)', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
           >
             <RefreshCw size={15} />
+          </button>
+
+          {/* All Payments Log / Audit Modal Button */}
+          <button
+            onClick={() => setShowAllPaymentsModal(true)}
+            style={{
+              padding: '8px 14px',
+              backgroundColor: '#fff',
+              border: '1px solid var(--border)',
+              borderRadius: '8px',
+              fontSize: '13px',
+              fontWeight: 600,
+              color: '#1e293b',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+            title="View and manage all salary payments and cash advances recorded for this month"
+          >
+            <FileText size={15} color="var(--primary)" />
+            All Payments ({payments.length})
           </button>
 
           {/* 1-Click Batch Generate All Payslips Button */}
@@ -701,7 +762,13 @@ export default function SalaryPaymentsScreen({ user }: SalaryPaymentsScreenProps
                       {/* Cashout Salary Taken */}
                       <td style={{ padding: '14px 16px', textAlign: 'right' }}>
                         {item.cashoutSalaryTaken > 0 ? (
-                          <span style={{ color: '#d97706', fontWeight: 600 }}>${item.cashoutSalaryTaken.toFixed(2)}</span>
+                          <button
+                            onClick={() => handleOpenPaymentModal(item)}
+                            style={{ background: '#fffbeb', border: '1px solid #fde68a', color: '#b45309', padding: '3px 8px', borderRadius: '6px', cursor: 'pointer', fontWeight: 700, fontSize: '12px' }}
+                            title="Click to view or delete cashout advances"
+                          >
+                            ${item.cashoutSalaryTaken.toFixed(2)}
+                          </button>
                         ) : (
                           <span style={{ color: 'var(--text-muted)' }}>-</span>
                         )}
@@ -710,15 +777,46 @@ export default function SalaryPaymentsScreen({ user }: SalaryPaymentsScreenProps
                       {/* Manual Paid */}
                       <td style={{ padding: '14px 16px', textAlign: 'right' }}>
                         {item.manualPaid > 0 ? (
-                          <span style={{ color: '#059669', fontWeight: 600 }}>${item.manualPaid.toFixed(2)}</span>
+                          <button
+                            onClick={() => handleOpenPaymentModal(item)}
+                            style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', color: '#059669', padding: '3px 8px', borderRadius: '6px', cursor: 'pointer', fontWeight: 700, fontSize: '12px' }}
+                            title="Click to view or delete manual payments"
+                          >
+                            ${item.manualPaid.toFixed(2)}
+                          </button>
                         ) : (
                           <span style={{ color: 'var(--text-muted)' }}>-</span>
                         )}
                       </td>
 
                       {/* Total Paid */}
-                      <td style={{ padding: '14px 16px', textAlign: 'right', fontWeight: 700, color: item.totalPaid > 0 ? '#059669' : 'inherit' }}>
-                        ${item.totalPaid.toFixed(2)}
+                      <td style={{ padding: '14px 16px', textAlign: 'right' }}>
+                        {item.totalPaid > 0 ? (
+                          <button
+                            onClick={() => handleOpenPaymentModal(item)}
+                            style={{
+                              background: '#ecfdf5',
+                              border: '1px solid #6ee7b7',
+                              color: '#047857',
+                              padding: '4px 10px',
+                              borderRadius: '8px',
+                              cursor: 'pointer',
+                              fontWeight: 800,
+                              fontSize: '13px',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px'
+                            }}
+                            title="Click to view details or delete payments"
+                          >
+                            ${item.totalPaid.toFixed(2)}
+                            <span style={{ fontSize: '10px', backgroundColor: '#059669', color: '#fff', padding: '1px 5px', borderRadius: '10px' }}>
+                              {item.paymentList.length}
+                            </span>
+                          </button>
+                        ) : (
+                          <span style={{ color: 'var(--text-muted)' }}>$0.00</span>
+                        )}
                       </td>
 
                       {/* Active Loans */}
@@ -733,9 +831,9 @@ export default function SalaryPaymentsScreen({ user }: SalaryPaymentsScreenProps
                       </td>
 
                       {/* Net Remaining to Pay */}
-                      <td style={{ padding: '14px 16px', textAlign: 'right', fontWeight: 800, fontSize: '14px' }}>
+                      <td style={{ padding: '14px 16px', textAlign: 'right' }}>
                         {item.isSaved && item.remainingToPay !== null ? (
-                          <span style={{ color: item.remainingToPay <= 0 ? '#059669' : '#4f46e5' }}>
+                          <span style={{ fontWeight: 800, fontSize: '14px', color: item.remainingToPay <= 0 ? '#059669' : '#4f46e5' }}>
                             ${item.remainingToPay.toFixed(2)}
                           </span>
                         ) : (
@@ -779,9 +877,9 @@ export default function SalaryPaymentsScreen({ user }: SalaryPaymentsScreenProps
                               <button
                                 onClick={() => handleOpenPaymentModal(item)}
                                 style={{ padding: '6px 10px', backgroundColor: '#eef2ff', color: 'var(--primary)', border: '1px solid #c7d2fe', borderRadius: '6px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
-                                title="Add Payment or View History"
+                                title="Add Payment or View/Delete History"
                               >
-                                <Plus size={13} /> Pay
+                                <Plus size={13} /> Pay {item.paymentList.length > 0 ? `(${item.paymentList.length})` : ''}
                               </button>
 
                               <button
@@ -826,13 +924,23 @@ export default function SalaryPaymentsScreen({ user }: SalaryPaymentsScreenProps
                                 <FileText size={13} /> Generate Payslip
                               </button>
 
-                              <button
-                                disabled
-                                style={{ padding: '6px 10px', backgroundColor: '#f1f5f9', color: '#94a3b8', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '12px', fontWeight: 600, cursor: 'not-allowed', display: 'flex', alignItems: 'center', gap: '4px' }}
-                                title="Payslip must be saved before recording salary payments"
-                              >
-                                <Lock size={12} /> Pay
-                              </button>
+                              {item.paymentList.length > 0 ? (
+                                <button
+                                  onClick={() => handleOpenPaymentModal(item)}
+                                  style={{ padding: '6px 10px', backgroundColor: '#fffbeb', color: '#b45309', border: '1px solid #fde68a', borderRadius: '6px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                  title="View or delete existing payments/advances"
+                                >
+                                  <FileText size={12} /> Payments ({item.paymentList.length})
+                                </button>
+                              ) : (
+                                <button
+                                  disabled
+                                  style={{ padding: '6px 10px', backgroundColor: '#f1f5f9', color: '#94a3b8', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '12px', fontWeight: 600, cursor: 'not-allowed', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                  title="Payslip must be saved before recording salary payments"
+                                >
+                                  <Lock size={12} /> Pay
+                                </button>
+                              )}
                             </>
                           )}
                         </div>
@@ -851,7 +959,7 @@ export default function SalaryPaymentsScreen({ user }: SalaryPaymentsScreenProps
       {/* Payment & History Modal / Drawer */}
       {showPaymentModal && targetEmployee && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 1000, backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-          <div style={{ backgroundColor: '#ffffff', borderRadius: '16px', border: '1px solid var(--border)', width: '100%', maxWidth: '640px', maxHeight: '90vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' }}>
+          <div style={{ backgroundColor: '#ffffff', borderRadius: '16px', border: '1px solid var(--border)', width: '100%', maxWidth: '680px', maxHeight: '90vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' }}>
             
             {/* Header */}
             <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#f8fafc' }}>
@@ -861,7 +969,13 @@ export default function SalaryPaymentsScreen({ user }: SalaryPaymentsScreenProps
                   {targetEmployee.fullName} • {monthName} {selectedYear}
                 </p>
               </div>
-              <button onClick={() => setShowPaymentModal(false)} style={{ padding: '6px', border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+              <button 
+                onClick={() => {
+                  setShowPaymentModal(false);
+                  setTargetEmployeeId(null);
+                }} 
+                style={{ padding: '6px', border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '18px' }}
+              >
                 ✕
               </button>
             </div>
@@ -870,7 +984,9 @@ export default function SalaryPaymentsScreen({ user }: SalaryPaymentsScreenProps
             <div style={{ padding: '16px 24px', backgroundColor: '#f1f5f9', borderBottom: '1px solid var(--border)', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '10px', textAlign: 'center' }}>
               <div>
                 <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Salary Slip</div>
-                <div style={{ fontSize: '15px', fontWeight: 800, color: '#0f172a' }}>${targetEmployee.slipAmount.toFixed(2)}</div>
+                <div style={{ fontSize: '15px', fontWeight: 800, color: '#0f172a' }}>
+                  {targetEmployee.isSaved ? `$${targetEmployee.slipAmount.toFixed(2)}` : 'Pending'}
+                </div>
               </div>
               <div>
                 <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Paid To Date</div>
@@ -882,113 +998,130 @@ export default function SalaryPaymentsScreen({ user }: SalaryPaymentsScreenProps
               </div>
               <div>
                 <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Remaining</div>
-                <div style={{ fontSize: '15px', fontWeight: 800, color: targetEmployee.remainingToPay <= 0 ? '#059669' : '#4f46e5' }}>
-                  ${targetEmployee.remainingToPay.toFixed(2)}
+                <div style={{ fontSize: '15px', fontWeight: 800, color: (targetEmployee.remainingToPay !== null && targetEmployee.remainingToPay <= 0) ? '#059669' : '#4f46e5' }}>
+                  {targetEmployee.remainingToPay !== null ? `$${targetEmployee.remainingToPay.toFixed(2)}` : 'Pending Slip'}
                 </div>
               </div>
             </div>
 
             <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
               
-              {/* Record New Payment Form */}
-              <form onSubmit={handleSavePayment} style={{ display: 'flex', flexDirection: 'column', gap: '14px', backgroundColor: '#f8fafc', padding: '16px', borderRadius: '12px', border: '1px solid var(--border)' }}>
-                <div style={{ fontSize: '14px', fontWeight: 700, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Plus size={16} /> Record Payment / Installment
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              {/* Record New Payment Form or Gatekeep Notice */}
+              {!targetEmployee.isSaved ? (
+                <div style={{ padding: '14px 18px', backgroundColor: '#fffbeb', border: '1px solid #fef3c7', borderRadius: '12px', color: '#92400e', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <Lock size={20} color="#b45309" style={{ flexShrink: 0 }} />
                   <div>
-                    <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>USD Amount</label>
-                    <input 
-                      type="number"
-                      step="any"
-                      placeholder="0.00"
-                      value={paymentAmountUsd}
-                      onChange={e => setPaymentAmountUsd(e.target.value)}
-                      style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '14px', outline: 'none' }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>LBP Amount</label>
-                    <input 
-                      type="number"
-                      step="any"
-                      placeholder="0"
-                      value={paymentAmountLbp}
-                      onChange={e => setPaymentAmountLbp(e.target.value)}
-                      style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '14px', outline: 'none' }}
-                    />
+                    <div style={{ fontWeight: 700, fontSize: '14px' }}>Payslip Not Finalized</div>
+                    <div style={{ fontSize: '12px', marginTop: '3px', color: '#b45309' }}>
+                      Please generate and save this employee's official payslip to disburse new payments. Any drawer cashout advances or prior payments can still be reviewed and deleted below.
+                    </div>
                   </div>
                 </div>
+              ) : (
+                <form onSubmit={handleSavePayment} style={{ display: 'flex', flexDirection: 'column', gap: '14px', backgroundColor: '#f8fafc', padding: '16px', borderRadius: '12px', border: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: '14px', fontWeight: 700, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Plus size={16} /> Record Payment / Installment
+                  </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div>
+                      <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>USD Amount</label>
+                      <input 
+                        type="number"
+                        step="any"
+                        placeholder="0.00"
+                        value={paymentAmountUsd}
+                        onChange={e => setPaymentAmountUsd(e.target.value)}
+                        style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '14px', outline: 'none' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>LBP Amount</label>
+                      <input 
+                        type="number"
+                        step="any"
+                        placeholder="0"
+                        value={paymentAmountLbp}
+                        onChange={e => setPaymentAmountLbp(e.target.value)}
+                        style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '14px', outline: 'none' }}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div>
+                      <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>Payment Date</label>
+                      <input 
+                        type="date"
+                        value={paymentDate}
+                        onChange={e => setPaymentDate(e.target.value)}
+                        style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '14px', outline: 'none' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>Payment Method</label>
+                      <select 
+                        value={paymentMethod}
+                        onChange={e => setPaymentMethod(e.target.value)}
+                        style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '14px', outline: 'none', background: '#fff' }}
+                      >
+                        <option value="Cash">Cash Handover</option>
+                        <option value="Bank Transfer">Bank Transfer (BOB / Whish)</option>
+                        <option value="Loan Settlement">Loan Deduction Settlement</option>
+                        <option value="Check">Company Check</option>
+                      </select>
+                    </div>
+                  </div>
+
                   <div>
-                    <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>Payment Date</label>
+                    <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>Notes / Reference (Optional)</label>
                     <input 
-                      type="date"
-                      value={paymentDate}
-                      onChange={e => setPaymentDate(e.target.value)}
-                      style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '14px', outline: 'none' }}
+                      type="text"
+                      placeholder="e.g. Mid-month installment, final settlement..."
+                      value={paymentNotes}
+                      onChange={e => setPaymentNotes(e.target.value)}
+                      style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '13px', outline: 'none' }}
                     />
                   </div>
-                  <div>
-                    <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>Payment Method</label>
-                    <select 
-                      value={paymentMethod}
-                      onChange={e => setPaymentMethod(e.target.value)}
-                      style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '14px', outline: 'none', background: '#fff' }}
-                    >
-                      <option value="Cash">Cash Handover</option>
-                      <option value="Bank Transfer">Bank Transfer (BOB / Whish)</option>
-                      <option value="Loan Settlement">Loan Deduction Settlement</option>
-                      <option value="Check">Company Check</option>
-                    </select>
-                  </div>
-                </div>
 
-                <div>
-                  <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>Notes / Reference (Optional)</label>
-                  <input 
-                    type="text"
-                    placeholder="e.g. Mid-month installment, final settlement..."
-                    value={paymentNotes}
-                    onChange={e => setPaymentNotes(e.target.value)}
-                    style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '13px', outline: 'none' }}
-                  />
-                </div>
+                  {targetEmployee.activeLoanTotal > 0 && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px' }}>
+                      <input 
+                        type="checkbox"
+                        id="deductLoanCheck"
+                        checked={deductFromLoan}
+                        onChange={e => setDeductFromLoan(e.target.checked)}
+                        style={{ cursor: 'pointer' }}
+                      />
+                      <label htmlFor="deductLoanCheck" style={{ fontSize: '12px', fontWeight: 600, color: '#b45309', cursor: 'pointer' }}>
+                        Apply this payment towards active loan balance in loans table (current balance: ${targetEmployee.activeLoanTotal.toFixed(2)})
+                      </label>
+                    </div>
+                  )}
 
-                {targetEmployee.activeLoanTotal > 0 && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px' }}>
-                    <input 
-                      type="checkbox"
-                      id="deductLoanCheck"
-                      checked={deductFromLoan}
-                      onChange={e => setDeductFromLoan(e.target.checked)}
-                      style={{ cursor: 'pointer' }}
-                    />
-                    <label htmlFor="deductLoanCheck" style={{ fontSize: '12px', fontWeight: 600, color: '#b45309', cursor: 'pointer' }}>
-                      Apply this payment towards active loan balance in loans table (current balance: ${targetEmployee.activeLoanTotal})
-                    </label>
-                  </div>
-                )}
-
-                <button
-                  type="submit"
-                  disabled={savingPayment}
-                  style={{ marginTop: '4px', padding: '10px 16px', backgroundColor: 'var(--primary)', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: savingPayment ? 'not-allowed' : 'pointer' }}
-                >
-                  {savingPayment ? 'Recording...' : 'Record Payment'}
-                </button>
-              </form>
+                  <button
+                    type="submit"
+                    disabled={savingPayment}
+                    style={{ marginTop: '4px', padding: '10px 16px', backgroundColor: 'var(--primary)', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: savingPayment ? 'not-allowed' : 'pointer' }}
+                  >
+                    {savingPayment ? 'Recording...' : 'Record Payment'}
+                  </button>
+                </form>
+              )}
 
               {/* Payment History Table */}
               <div>
-                <div style={{ fontSize: '14px', fontWeight: 700, color: '#0f172a', marginBottom: '8px' }}>
-                  Payments Recorded For This Month ({targetEmployee.paymentList.length})
+                <div style={{ fontSize: '14px', fontWeight: 700, color: '#0f172a', marginBottom: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span>Payments Recorded For This Month ({targetEmployee.paymentList.length})</span>
+                  {targetEmployee.paymentList.length > 0 && (
+                    <span style={{ fontSize: '12px', color: '#059669', fontWeight: 600 }}>
+                      Total: ${targetEmployee.totalPaid.toFixed(2)}
+                    </span>
+                  )}
                 </div>
 
                 {targetEmployee.paymentList.length === 0 ? (
-                  <div style={{ padding: '16px', textAlign: 'center', color: 'var(--text-muted)', border: '1px dashed var(--border)', borderRadius: '8px', fontSize: '13px' }}>
+                  <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)', border: '1px dashed var(--border)', borderRadius: '10px', fontSize: '13px' }}>
                     No payments or cashout advances recorded yet for this month.
                   </div>
                 ) : (
@@ -1008,6 +1141,7 @@ export default function SalaryPaymentsScreen({ user }: SalaryPaymentsScreenProps
                           const rate = Number(p.exchange_rate) || 90000;
                           const totalUsd = Number(p.amount_usd || 0) + (Number(p.amount_lbp || 0) / rate);
                           const isCashout = p.payment_method === 'Cashout Salary';
+                          const isDeleting = deletingPaymentId === p.id;
 
                           return (
                             <tr key={p.id} style={{ borderBottom: '1px solid var(--border)' }}>
@@ -1017,7 +1151,7 @@ export default function SalaryPaymentsScreen({ user }: SalaryPaymentsScreenProps
                                   {p.payment_method}
                                 </span>
                               </td>
-                              <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 700 }}>
+                              <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 700, color: '#059669' }}>
                                 ${totalUsd.toFixed(2)}
                               </td>
                               <td style={{ padding: '8px 12px', color: 'var(--text-muted)' }}>
@@ -1026,10 +1160,33 @@ export default function SalaryPaymentsScreen({ user }: SalaryPaymentsScreenProps
                               <td style={{ padding: '8px 12px', textAlign: 'center' }}>
                                 <button
                                   onClick={() => handleDeletePayment(p.id)}
-                                  style={{ padding: '4px', background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer' }}
-                                  title="Delete payment"
+                                  disabled={isDeleting}
+                                  style={{ 
+                                    padding: '4px 8px', 
+                                    backgroundColor: '#fef2f2', 
+                                    border: '1px solid #fecaca', 
+                                    borderRadius: '6px', 
+                                    color: '#dc2626', 
+                                    cursor: isDeleting ? 'not-allowed' : 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    fontSize: '11px',
+                                    fontWeight: 600
+                                  }}
+                                  title="Delete payment record"
                                 >
-                                  <Trash2 size={13} />
+                                  {isDeleting ? (
+                                    <>
+                                      <RefreshCw size={11} className="animate-spin" />
+                                      Deleting...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Trash2 size={11} />
+                                      Delete
+                                    </>
+                                  )}
                                 </button>
                               </td>
                             </tr>
@@ -1041,6 +1198,119 @@ export default function SalaryPaymentsScreen({ user }: SalaryPaymentsScreenProps
                 )}
               </div>
 
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* All Payments Audit Log Modal */}
+      {showAllPaymentsModal && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+          <div style={{ backgroundColor: '#ffffff', borderRadius: '16px', border: '1px solid var(--border)', width: '100%', maxWidth: '850px', maxHeight: '90vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' }}>
+            
+            {/* Header */}
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#f8fafc' }}>
+              <div>
+                <h3 style={{ fontSize: '18px', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                  All Recorded Salary Payments ({monthName} {selectedYear})
+                </h3>
+                <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: '3px 0 0 0' }}>
+                  Complete ledger of all disbursements and cash advances. Click Delete on any entry to remove it.
+                </p>
+              </div>
+              <button 
+                onClick={() => setShowAllPaymentsModal(false)} 
+                style={{ padding: '6px', border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '18px' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Table Content */}
+            <div style={{ padding: '20px 24px' }}>
+              {paymentsWithEmployee.length === 0 ? (
+                <div style={{ padding: '36px', textAlign: 'center', color: 'var(--text-muted)', border: '1px dashed var(--border)', borderRadius: '12px', fontSize: '14px' }}>
+                  No salary payments or cash advances recorded for {monthName} {selectedYear}.
+                </div>
+              ) : (
+                <div style={{ border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                    <thead>
+                      <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid var(--border)', textAlign: 'left', color: 'var(--text-muted)' }}>
+                        <th style={{ padding: '10px 12px' }}>Date</th>
+                        <th style={{ padding: '10px 12px' }}>Employee</th>
+                        <th style={{ padding: '10px 12px' }}>Branch</th>
+                        <th style={{ padding: '10px 12px' }}>Method</th>
+                        <th style={{ padding: '10px 12px', textAlign: 'right' }}>Amount</th>
+                        <th style={{ padding: '10px 12px' }}>Notes / Shift Source</th>
+                        <th style={{ padding: '10px 12px' }}>Recorded By</th>
+                        <th style={{ padding: '10px 12px', textAlign: 'center' }}>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {paymentsWithEmployee.map((p: any) => {
+                        const isCashout = p.payment_method === 'Cashout Salary';
+                        const isDeleting = deletingPaymentId === p.id;
+
+                        return (
+                          <tr key={p.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                            <td style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>{p.payment_date}</td>
+                            <td style={{ padding: '10px 12px', fontWeight: 700, color: '#0f172a' }}>{p.employeeName}</td>
+                            <td style={{ padding: '10px 12px', color: 'var(--text-muted)' }}>{p.branch}</td>
+                            <td style={{ padding: '10px 12px' }}>
+                              <span style={{ padding: '2px 6px', borderRadius: '4px', backgroundColor: isCashout ? '#fef3c7' : '#eef2ff', color: isCashout ? '#b45309' : '#4338ca', fontWeight: 600, fontSize: '11px' }}>
+                                {p.payment_method}
+                              </span>
+                            </td>
+                            <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 800, color: '#059669' }}>
+                              ${p.totalUsd.toFixed(2)}
+                            </td>
+                            <td style={{ padding: '10px 12px', color: 'var(--text-muted)' }}>
+                              {p.notes || '-'}
+                            </td>
+                            <td style={{ padding: '10px 12px', color: 'var(--text-muted)' }}>
+                              {p.created_by || '-'}
+                            </td>
+                            <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                              <button
+                                onClick={() => handleDeletePayment(p.id)}
+                                disabled={isDeleting}
+                                style={{
+                                  padding: '4px 8px',
+                                  backgroundColor: '#fef2f2',
+                                  border: '1px solid #fecaca',
+                                  borderRadius: '6px',
+                                  color: '#dc2626',
+                                  cursor: isDeleting ? 'not-allowed' : 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  fontSize: '11px',
+                                  fontWeight: 600
+                                }}
+                                title="Delete payment record"
+                              >
+                                {isDeleting ? (
+                                  <>
+                                    <RefreshCw size={11} className="animate-spin" />
+                                    Deleting...
+                                  </>
+                                ) : (
+                                  <>
+                                    <Trash2 size={11} />
+                                    Delete
+                                  </>
+                                )}
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
 
           </div>
