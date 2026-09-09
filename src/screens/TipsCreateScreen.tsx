@@ -16,10 +16,23 @@ export default function TipsCreateScreen() {
   const [cardTips, setCardTips] = useState('');
   const [otherTips, setOtherTips] = useState('');
   const [comments, setComments] = useState('');
+  const [currentBranchSettings, setCurrentBranchSettings] = useState<any>(null);
 
   useEffect(() => {
     fetchBranches();
   }, []);
+
+  useEffect(() => {
+    if (branch) {
+      api.getTipsSettings(branch).then(res => {
+        if (res.success && res.data && res.data.length > 0) {
+          setCurrentBranchSettings(res.data[0]);
+        } else {
+          setCurrentBranchSettings(null);
+        }
+      });
+    }
+  }, [branch]);
 
   const fetchBranches = async () => {
     const [bRes, sRes] = await Promise.all([
@@ -78,14 +91,14 @@ export default function TipsCreateScreen() {
       return;
     }
 
-    // Filter out inactive employees, employees not eligible for tips, and kitchen staff
-    const floorEmployees = empRes.data.filter((e: any) => 
+    // Filter out inactive employees and employees marked not eligible for tips
+    // Note: Kitchen staff are now included so they can receive their department's tip allocation
+    const eligibleEmployees = empRes.data.filter((e: any) => 
       isEmployeeActive(e) && 
-      e.is_tips_eligible !== false && 
-      (e.department !== 'Kitchen' || (e.first_name + ' ' + e.last_name).toLowerCase().includes('pool'))
+      e.is_tips_eligible !== false
     );
 
-    if (floorEmployees.length === 0) {
+    if (eligibleEmployees.length === 0) {
       alert('No active employees eligible for tips found in this branch.');
       setLoading(false);
       return;
@@ -94,12 +107,17 @@ export default function TipsCreateScreen() {
     const user = JSON.parse(localStorage.getItem('neo_admin_user') || '{}');
     const timestamp = Date.now().toString().slice(-6);
     
+    const calculationMode = settings.calculation_mode || 'by_department';
+    const departmentFactors = settings.department_factors || { Floor: 7, Kitchen: 3 };
+
     const newCollection = {
       tips_id: `TIPS-${branch.substring(0,3).toUpperCase()}-${timestamp}`,
       branch,
       date_from: dateFrom,
       date_to: dateTo,
       calculation_type: settings.calculation_type,
+      calculation_mode: calculationMode,
+      department_factors: departmentFactors,
       total_tips: total,
       status: 'Draft',
       entered_by: user?.name || 'Admin',
@@ -108,7 +126,7 @@ export default function TipsCreateScreen() {
 
     const stdHours = parseFloat(settings.standard_shift_hours) || 9;
     
-    const distribution = floorEmployees.map((emp: any) => {
+    const distribution = eligibleEmployees.map((emp: any) => {
       let expectedHours = 0;
       const dDaily = parseFloat(emp.default_daily_hours) || stdHours;
       const dDays = parseFloat(emp.working_days_per_week) || 6;
@@ -124,6 +142,7 @@ export default function TipsCreateScreen() {
       return {
         employee_id: emp.employee_id,
         employee_name: emp.first_name + ' ' + emp.last_name,
+        department: emp.department || 'Floor',
         branch: emp.branch,
         expected_hours: expectedHours.toFixed(1),
         actual_hours_worked: expectedHours.toFixed(1), 
@@ -169,6 +188,38 @@ export default function TipsCreateScreen() {
             {branches.map(b => <option key={b} value={b}>{b}</option>)}
           </select>
         </div>
+
+        {currentBranchSettings && (
+          <div style={{ backgroundColor: '#f8fafc', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px 14px', fontSize: '13px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+              <span style={{ fontWeight: 600, color: 'var(--text-muted)' }}>Calculation Mode:</span>
+              <span style={{ 
+                backgroundColor: currentBranchSettings.calculation_mode === 'by_employee' ? '#e0f2fe' : '#ecfdf5', 
+                color: currentBranchSettings.calculation_mode === 'by_employee' ? '#0369a1' : '#047857',
+                padding: '2px 8px', 
+                borderRadius: '12px', 
+                fontSize: '12px',
+                fontWeight: 700
+              }}>
+                {currentBranchSettings.calculation_mode === 'by_employee' ? 'Option 2: Per Employee Directly' : 'Option 1: By Department then Employee'}
+              </span>
+            </div>
+            {currentBranchSettings.calculation_mode !== 'by_employee' && (() => {
+              const f = currentBranchSettings.department_factors?.Floor ?? 7;
+              const k = currentBranchSettings.department_factors?.Kitchen ?? 3;
+              const sum = (Number(f) + Number(k)) || 1;
+              const fPct = Math.round((Number(f) / sum) * 100);
+              const kPct = Math.round((Number(k) / sum) * 100);
+              return (
+                <div style={{ fontSize: '12px', color: 'var(--text-muted)', display: 'flex', gap: '8px', marginTop: '6px' }}>
+                  <span>Split: <strong>Floor {f}x ({fPct}%)</strong></span>
+                  <span>•</span>
+                  <span><strong>Kitchen {k}x ({kPct}%)</strong></span>
+                </div>
+              );
+            })()}
+          </div>
+        )}
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
           <div>

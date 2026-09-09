@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
-import { Search, Plus, Loader2, DollarSign, Settings, List, ArrowRight } from 'lucide-react';
+import { Search, Plus, Loader2, DollarSign, Settings, List, ArrowRight, CheckCircle, XCircle, Users } from 'lucide-react';
 import { isEmployeeActive } from '../utils/payrollCalculation';
 
 export default function TipsScreen() {
@@ -15,6 +15,7 @@ export default function TipsScreen() {
   const [branches, setBranches] = useState<string[]>([]);
   const [employees, setEmployees] = useState<any[]>([]);
   const [selectedBranch, setSelectedBranch] = useState<string>('All');
+  const [empFilter, setEmpFilter] = useState<'eligible' | 'excluded' | 'all'>('eligible');
   
   useEffect(() => {
     fetchData();
@@ -60,7 +61,14 @@ export default function TipsScreen() {
         const merged = [...existingSettings];
         validBranches.forEach(b => {
           if (!merged.find(s => s.branch === b)) {
-            merged.push({ branch: b, calculation_type: 'Weekly', standard_shift_hours: '9', is_active: true });
+            merged.push({ 
+              branch: b, 
+              calculation_type: 'Weekly', 
+              standard_shift_hours: '9', 
+              is_active: true,
+              calculation_mode: 'by_department',
+              department_factors: { Floor: 7, Kitchen: 3 }
+            });
           }
         });
         setSettings(merged);
@@ -71,7 +79,12 @@ export default function TipsScreen() {
 
   const saveSetting = async (index: number) => {
     const s = settings[index];
-    const res = await api.saveTipsSettings(s);
+    const payload = {
+      ...s,
+      calculation_mode: s.calculation_mode || 'by_department',
+      department_factors: s.department_factors || { Floor: 7, Kitchen: 3 }
+    };
+    const res = await api.saveTipsSettings(payload);
     if (res.success) {
       alert(`Settings saved for ${s.branch}`);
     } else {
@@ -82,6 +95,15 @@ export default function TipsScreen() {
   const updateSetting = (index: number, field: string, val: any) => {
     const updated = [...settings];
     updated[index] = { ...updated[index], [field]: val };
+    setSettings(updated);
+  };
+
+  const updateDeptFactor = (index: number, dept: 'Floor' | 'Kitchen', val: string) => {
+    const updated = [...settings];
+    const num = Math.max(0, parseFloat(val) || 0);
+    const curFactors = { ...(updated[index].department_factors || { Floor: 7, Kitchen: 3 }) };
+    curFactors[dept] = num;
+    updated[index] = { ...updated[index], department_factors: curFactors };
     setSettings(updated);
   };
 
@@ -217,7 +239,7 @@ export default function TipsScreen() {
             )}
 
             {activeTab === 'settings' && (
-              <div style={{ padding: '24px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px' }}>
+              <div style={{ padding: '24px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '20px' }}>
                 {settings.map((s, idx) => (
                   <div key={idx} style={{ border: '1px solid var(--border)', borderRadius: '8px', padding: '20px', backgroundColor: '#f8f9fa' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
@@ -249,9 +271,74 @@ export default function TipsScreen() {
                           <option value="Inactive">Inactive (Disabled from Tips)</option>
                         </select>
                       </div>
+
                       <div>
-                        <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>Calculation Type</label>
-                        <select style={inputStyle} value={s.calculation_type} onChange={e => updateSetting(idx, 'calculation_type', e.target.value)}>
+                        <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>Tips Calculation Mode</label>
+                        <select 
+                          style={inputStyle} 
+                          value={s.calculation_mode || 'by_department'} 
+                          onChange={e => updateSetting(idx, 'calculation_mode', e.target.value)}
+                        >
+                          <option value="by_department">Option 1: By Department, then by Employee</option>
+                          <option value="by_employee">Option 2: Per Employee Directly</option>
+                        </select>
+                      </div>
+
+                      {(s.calculation_mode || 'by_department') === 'by_department' && (() => {
+                        const floorFactor = (s.department_factors?.Floor !== undefined) ? Number(s.department_factors.Floor) : 7;
+                        const kitchenFactor = (s.department_factors?.Kitchen !== undefined) ? Number(s.department_factors.Kitchen) : 3;
+                        const sumFactor = (floorFactor + kitchenFactor) || 1;
+                        const floorPct = Math.round((floorFactor / sumFactor) * 1000) / 10;
+                        const kitchenPct = Math.round((kitchenFactor / sumFactor) * 1000) / 10;
+
+                        return (
+                          <div style={{ backgroundColor: '#fff', border: '1px solid var(--border)', borderRadius: '6px', padding: '12px' }}>
+                            <div style={{ fontSize: '12px', fontWeight: 700, color: '#374151', marginBottom: '8px' }}>
+                              Department Tip Multipliers (Pool Split)
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
+                              <div>
+                                <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>
+                                  Floor Multiplier
+                                </label>
+                                <input 
+                                  type="number" 
+                                  step="0.5"
+                                  min="0"
+                                  style={inputStyle} 
+                                  value={floorFactor} 
+                                  onChange={e => updateDeptFactor(idx, 'Floor', e.target.value)} 
+                                />
+                              </div>
+                              <div>
+                                <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>
+                                  Kitchen Multiplier
+                                </label>
+                                <input 
+                                  type="number" 
+                                  step="0.5"
+                                  min="0"
+                                  style={inputStyle} 
+                                  value={kitchenFactor} 
+                                  onChange={e => updateDeptFactor(idx, 'Kitchen', e.target.value)} 
+                                />
+                              </div>
+                            </div>
+                            <div style={{ display: 'flex', gap: '6px', fontSize: '11px', fontWeight: 600 }}>
+                              <span style={{ flex: 1, backgroundColor: '#eff6ff', color: '#1d4ed8', padding: '4px 6px', borderRadius: '4px', textAlign: 'center' }}>
+                                Floor: {floorPct}%
+                              </span>
+                              <span style={{ flex: 1, backgroundColor: '#fef3c7', color: '#b45309', padding: '4px 6px', borderRadius: '4px', textAlign: 'center' }}>
+                                Kitchen: {kitchenPct}%
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })()}
+
+                      <div>
+                        <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>Calculation Period</label>
+                        <select style={inputStyle} value={s.calculation_type || 'Weekly'} onChange={e => updateSetting(idx, 'calculation_type', e.target.value)}>
                           <option value="Daily">Daily</option>
                           <option value="Weekly">Weekly</option>
                           <option value="Monthly">Monthly</option>
@@ -259,7 +346,7 @@ export default function TipsScreen() {
                       </div>
                       <div>
                         <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>Standard Shift (Hours)</label>
-                        <input type="number" style={inputStyle} value={s.standard_shift_hours} onChange={e => updateSetting(idx, 'standard_shift_hours', e.target.value)} />
+                        <input type="number" style={inputStyle} value={s.standard_shift_hours || '9'} onChange={e => updateSetting(idx, 'standard_shift_hours', e.target.value)} />
                       </div>
                     </div>
                     
@@ -274,93 +361,193 @@ export default function TipsScreen() {
               </div>
             )}
 
-            {activeTab === 'employees' && (
-              <div style={{ padding: '24px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
-                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                    <label style={{ fontWeight: 600, fontSize: '14px' }}>Filter by Branch:</label>
-                    <select style={{ ...inputStyle, width: '200px' }} value={selectedBranch} onChange={e => setSelectedBranch(e.target.value)}>
-                      <option value="All">All Active Branches</option>
-                      {branches.map(b => <option key={b} value={b}>{b}</option>)}
-                    </select>
+            {activeTab === 'employees' && (() => {
+              const branchEmployees = employees.filter(e => selectedBranch === 'All' || e.branch === selectedBranch);
+              const eligibleCount = branchEmployees.filter(e => e.is_tips_eligible !== false).length;
+              const excludedCount = branchEmployees.filter(e => e.is_tips_eligible === false).length;
+
+              const visibleEmployees = branchEmployees.filter(e => {
+                const isTips = e.is_tips_eligible !== false;
+                if (empFilter === 'eligible') return isTips;
+                if (empFilter === 'excluded') return !isTips;
+                return true;
+              });
+
+              return (
+                <div style={{ padding: '24px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '16px' }}>
+                    <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <label style={{ fontWeight: 600, fontSize: '14px' }}>Branch:</label>
+                        <select style={{ ...inputStyle, width: '180px' }} value={selectedBranch} onChange={e => setSelectedBranch(e.target.value)}>
+                          <option value="All">All Active Branches</option>
+                          {branches.map(b => <option key={b} value={b}>{b}</option>)}
+                        </select>
+                      </div>
+
+                      <div style={{ display: 'flex', backgroundColor: '#f1f5f9', padding: '3px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                        <button
+                          type="button"
+                          onClick={() => setEmpFilter('eligible')}
+                          style={{
+                            padding: '6px 14px',
+                            borderRadius: '6px',
+                            border: 'none',
+                            fontSize: '13px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            backgroundColor: empFilter === 'eligible' ? 'white' : 'transparent',
+                            color: empFilter === 'eligible' ? 'var(--primary)' : 'var(--text-muted)',
+                            boxShadow: empFilter === 'eligible' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px'
+                          }}
+                        >
+                          <CheckCircle size={14} color={empFilter === 'eligible' ? '#059669' : undefined} />
+                          Eligible Staff ({eligibleCount})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEmpFilter('excluded')}
+                          style={{
+                            padding: '6px 14px',
+                            borderRadius: '6px',
+                            border: 'none',
+                            fontSize: '13px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            backgroundColor: empFilter === 'excluded' ? 'white' : 'transparent',
+                            color: empFilter === 'excluded' ? '#be123c' : 'var(--text-muted)',
+                            boxShadow: empFilter === 'excluded' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px'
+                          }}
+                        >
+                          <XCircle size={14} color={empFilter === 'excluded' ? '#e11d48' : undefined} />
+                          Excluded ({excludedCount})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEmpFilter('all')}
+                          style={{
+                            padding: '6px 14px',
+                            borderRadius: '6px',
+                            border: 'none',
+                            fontSize: '13px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            backgroundColor: empFilter === 'all' ? 'white' : 'transparent',
+                            color: empFilter === 'all' ? '#111827' : 'var(--text-muted)',
+                            boxShadow: empFilter === 'all' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px'
+                          }}
+                        >
+                          <Users size={14} />
+                          All ({branchEmployees.length})
+                        </button>
+                      </div>
+                    </div>
+                    
+                    <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)' }}>
+                      Showing {visibleEmployees.length} employee{visibleEmployees.length === 1 ? '' : 's'}
+                    </div>
                   </div>
-                  <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)' }}>
-                    {employees.filter(e => selectedBranch === 'All' || e.branch === selectedBranch).length} Active Staff
-                  </div>
-                </div>
-                
-                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                  <thead style={{ position: 'sticky', top: 0, backgroundColor: '#f8f9fa', borderBottom: '2px solid var(--border)', zIndex: 1 }}>
-                    <tr>
-                      <th style={thStyle}>Employee Name</th>
-                      <th style={thStyle}>Branch</th>
-                      <th style={thStyle}>Role</th>
-                      <th style={thStyle}>Default Daily Hours</th>
-                      <th style={thStyle}>Days / Week</th>
-                      <th style={thStyle}>Tip Factor (Multiplier)</th>
-                      <th style={thStyle}>Tips Calculation</th>
-                      <th style={thStyle}>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {employees.filter(e => selectedBranch === 'All' || e.branch === selectedBranch).map(e => {
-                      const isTips = e.is_tips_eligible !== false;
-                      return (
-                        <tr key={e.employee_id} style={{ borderBottom: '1px solid var(--border)' }}>
-                          <td style={tdStyle}><span style={{ fontWeight: 600 }}>{e.first_name} {e.last_name}</span></td>
-                          <td style={tdStyle}>{e.branch}</td>
-                          <td style={tdStyle}>{e.position || e.department}</td>
-                          <td style={tdStyle}>
-                            <input type="number" style={{...inputStyle, width: '80px'}} value={e.default_daily_hours || ''} onChange={ev => updateEmpField(e.employee_id, 'default_daily_hours', ev.target.value)} />
-                          </td>
-                          <td style={tdStyle}>
-                            <input type="number" style={{...inputStyle, width: '80px'}} value={e.working_days_per_week || ''} onChange={ev => updateEmpField(e.employee_id, 'working_days_per_week', ev.target.value)} />
-                          </td>
-                          <td style={tdStyle}>
-                            <input type="number" step="0.1" style={{...inputStyle, width: '80px'}} value={e.tip_factor || ''} onChange={ev => updateEmpField(e.employee_id, 'tip_factor', ev.target.value)} />
-                          </td>
-                          <td style={tdStyle}>
-                            <button
-                              type="button"
-                              onClick={() => toggleEmpTipsEligible(e.employee_id, isTips)}
-                              title={isTips ? 'Included in Tips Calculation. Click to exclude.' : 'Excluded from Tips Calculation. Click to include.'}
-                              style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '6px',
-                                padding: '5px 12px',
-                                backgroundColor: isTips ? '#ecfdf5' : '#fff1f2',
-                                color: isTips ? '#047857' : '#be123c',
-                                border: `1px solid ${isTips ? '#a7f3d0' : '#fecdd3'}`,
-                                borderRadius: '20px',
-                                fontSize: '12px',
+                  
+                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                    <thead style={{ position: 'sticky', top: 0, backgroundColor: '#f8f9fa', borderBottom: '2px solid var(--border)', zIndex: 1 }}>
+                      <tr>
+                        <th style={thStyle}>Employee Name</th>
+                        <th style={thStyle}>Branch</th>
+                        <th style={thStyle}>Department / Role</th>
+                        <th style={thStyle}>Default Daily Hours</th>
+                        <th style={thStyle}>Days / Week</th>
+                        <th style={thStyle}>Tip Factor (Multiplier)</th>
+                        <th style={thStyle}>Tips Eligibility</th>
+                        <th style={thStyle}>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {visibleEmployees.map(e => {
+                        const isTips = e.is_tips_eligible !== false;
+                        return (
+                          <tr key={e.employee_id} style={{ borderBottom: '1px solid var(--border)' }}>
+                            <td style={tdStyle}><span style={{ fontWeight: 600 }}>{e.first_name} {e.last_name}</span></td>
+                            <td style={tdStyle}>{e.branch}</td>
+                            <td style={tdStyle}>
+                              <span style={{ 
+                                padding: '2px 8px', 
+                                borderRadius: '4px', 
+                                fontSize: '12px', 
                                 fontWeight: 600,
-                                cursor: 'pointer',
-                                transition: 'all 0.15s ease'
-                              }}
-                            >
-                              <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: isTips ? '#10b981' : '#f43f5e' }} />
-                              {isTips ? 'Included' : 'Excluded'}
-                            </button>
-                          </td>
-                          <td style={tdStyle}>
-                            <button 
-                              onClick={() => saveEmployeeTipSetup(e.employee_id)}
-                              style={{ padding: '6px 12px', backgroundColor: 'var(--primary)', color: 'white', border: 'none', borderRadius: '4px', fontWeight: 600, cursor: 'pointer', fontSize: '13px' }}
-                            >
-                              Save
-                            </button>
+                                backgroundColor: (e.department || '').toLowerCase().includes('kitchen') ? '#fef3c7' : '#eff6ff',
+                                color: (e.department || '').toLowerCase().includes('kitchen') ? '#b45309' : '#1d4ed8'
+                              }}>
+                                {e.department || 'Floor'}
+                              </span>
+                              <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>{e.position}</div>
+                            </td>
+                            <td style={tdStyle}>
+                              <input type="number" style={{...inputStyle, width: '80px'}} value={e.default_daily_hours || ''} onChange={ev => updateEmpField(e.employee_id, 'default_daily_hours', ev.target.value)} />
+                            </td>
+                            <td style={tdStyle}>
+                              <input type="number" style={{...inputStyle, width: '80px'}} value={e.working_days_per_week || ''} onChange={ev => updateEmpField(e.employee_id, 'working_days_per_week', ev.target.value)} />
+                            </td>
+                            <td style={tdStyle}>
+                              <input type="number" step="0.1" style={{...inputStyle, width: '80px'}} value={e.tip_factor || ''} onChange={ev => updateEmpField(e.employee_id, 'tip_factor', ev.target.value)} />
+                            </td>
+                            <td style={tdStyle}>
+                              <button
+                                type="button"
+                                onClick={() => toggleEmpTipsEligible(e.employee_id, isTips)}
+                                title={isTips ? 'Click to exclude from tips calculation' : 'Click to include in tips calculation'}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '6px',
+                                  padding: '5px 12px',
+                                  backgroundColor: isTips ? '#ecfdf5' : '#fff1f2',
+                                  color: isTips ? '#047857' : '#be123c',
+                                  border: `1px solid ${isTips ? '#a7f3d0' : '#fecdd3'}`,
+                                  borderRadius: '20px',
+                                  fontSize: '12px',
+                                  fontWeight: 600,
+                                  cursor: 'pointer',
+                                  transition: 'all 0.15s ease'
+                                }}
+                              >
+                                <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: isTips ? '#10b981' : '#f43f5e' }} />
+                                {isTips ? 'Included' : 'Excluded'}
+                              </button>
+                            </td>
+                            <td style={tdStyle}>
+                              <button 
+                                onClick={() => saveEmployeeTipSetup(e.employee_id)}
+                                style={{ padding: '6px 12px', backgroundColor: 'var(--primary)', color: 'white', border: 'none', borderRadius: '4px', fontWeight: 600, cursor: 'pointer', fontSize: '13px' }}
+                              >
+                                Save
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {visibleEmployees.length === 0 && (
+                        <tr>
+                          <td colSpan={8} style={{ padding: '36px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                            {empFilter === 'excluded' 
+                              ? 'No excluded employees in this branch. All staff are eligible for tips.'
+                              : 'No employees found matching the filter.'}
                           </td>
                         </tr>
-                      );
-                    })}
-                    {employees.filter(e => selectedBranch === 'All' || e.branch === selectedBranch).length === 0 && (
-                      <tr><td colSpan={8} style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)' }}>No employees found.</td></tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              );
+            })()}
 
           </div>
         )}

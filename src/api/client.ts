@@ -433,11 +433,15 @@ export const api = {
 
     // 2. Insert distribution with the new collection ID
     const rid = colData.restaurant_id || getRestaurantId();
-    const distData = distribution.map(d => ({ 
-      ...d, 
-      tips_collection_id: colData.id,
-      ...(rid ? { restaurant_id: rid } : {})
-    }));
+    const distData = distribution.map(d => {
+      const { points, dept_allocated_pool, ...cleanD } = d;
+      return {
+        ...cleanD,
+        department: d.department || 'Floor',
+        tips_collection_id: colData.id,
+        ...(rid ? { restaurant_id: rid } : {})
+      };
+    });
     const { error: distError } = await supabase.from('tips_distribution').insert(distData);
     if (distError) {
       // rollback collection if distribution fails
@@ -457,11 +461,15 @@ export const api = {
     await supabase.from('tips_distribution').delete().eq('tips_collection_id', collectionId);
     
     const rid = payload.restaurant_id || getRestaurantId();
-    const distData = distribution.map(d => ({ 
-      ...d, 
-      tips_collection_id: collectionId,
-      ...(rid ? { restaurant_id: rid } : {})
-    }));
+    const distData = distribution.map(d => {
+      const { points, dept_allocated_pool, id: _dId, created_at: _cAt, ...cleanD } = d;
+      return {
+        ...cleanD,
+        department: d.department || 'Floor',
+        tips_collection_id: collectionId,
+        ...(rid ? { restaurant_id: rid } : {})
+      };
+    });
     const { error: distError } = await supabase.from('tips_distribution').insert(distData);
     if (distError) return { success: false, error: distError.message };
 
