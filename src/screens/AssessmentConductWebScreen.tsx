@@ -67,6 +67,7 @@ export default function AssessmentConductWebScreen({ user }: { user?: any }) {
           comment: sc.comment,
           evidence_url: sc.evidence_url,
           needs_follow_up: sc.needs_follow_up,
+          section_id: sc.section_id,
         };
       });
       setScoresMap(sMap);
@@ -80,6 +81,7 @@ export default function AssessmentConductWebScreen({ user }: { user?: any }) {
           comment: ans.comment,
           attachment_url: ans.attachment_url,
           is_critical_failed: ans.is_critical_failed,
+          section_id: ans.section_id,
         };
       });
       setAnswersMap(aMap);
@@ -178,10 +180,29 @@ export default function AssessmentConductWebScreen({ user }: { user?: any }) {
   const handleSaveDraft = async (silent = false) => {
     if (!assessmentId) return;
     setSavingDraft(true);
+
+    const enrichedScoresMap: Record<string, any> = {};
+    for (const [cId, s] of Object.entries(scoresMap)) {
+      const crit = allCriteria.find((c: any) => c.id === cId);
+      enrichedScoresMap[cId] = {
+        ...s,
+        section_id: s.section_id || crit?.section_id || null,
+      };
+    }
+
+    const enrichedAnswersMap: Record<string, any> = {};
+    for (const [qId, a] of Object.entries(answersMap)) {
+      const quest = allQuestions.find((q: any) => q.id === qId);
+      enrichedAnswersMap[qId] = {
+        ...a,
+        section_id: a.section_id || quest?.section_id || null,
+      };
+    }
+
     const res = await api.saveAssessmentScoresAndAnswers({
       assessmentId,
-      scoresMap,
-      answersMap,
+      scoresMap: enrichedScoresMap,
+      answersMap: enrichedAnswersMap,
       provisionalScore: overallCalc.provisionalScore,
       practicalScore: overallCalc.practicalScore,
       questionsScore: overallCalc.questionsScore,

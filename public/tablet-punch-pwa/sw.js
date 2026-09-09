@@ -1,4 +1,4 @@
-const CACHE_NAME = 'tablet-punch-cache-v2';
+const CACHE_NAME = 'tablet-punch-cache-v3';
 const ASSETS = [
   './',
   './styles.css',

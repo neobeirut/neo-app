@@ -339,7 +339,7 @@ async function submitPunch() {
     }
 
     // 4. Verify open logs
-    const { data: openPunch } = await _supabase
+    const { data: openPunches } = await _supabase
       .from('employee_attendance')
       .select('*')
       .eq('employee_id', employee.employee_id)
@@ -347,7 +347,9 @@ async function submitPunch() {
       .is('punch_out', null)
       .neq('status', 'Rejected')
       .order('punch_in', { ascending: false })
-      .maybeSingle();
+      .limit(1);
+
+    const openPunch = (openPunches && openPunches.length > 0) ? openPunches[0] : null;
 
     if (currentAction === 'In') {
       if (openPunch) {

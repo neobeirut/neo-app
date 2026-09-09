@@ -337,6 +337,22 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
     }
   };
 
+  const handleToggleCriteria = async (
+    employeeId: string,
+    field: 'is_payroll_eligible' | 'track_attendance',
+    currentVal: boolean
+  ) => {
+    const newVal = !currentVal;
+    // Optimistic update
+    setEmployees(prev => prev.map(e => e.employee_id === employeeId ? { ...e, [field]: newVal } : e));
+    const res = await api.updateEmployeeCriteria(employeeId, { [field]: newVal });
+    if (!res.success) {
+      alert(res.error || 'Failed to update employee criteria');
+      // Revert if failed
+      setEmployees(prev => prev.map(e => e.employee_id === employeeId ? { ...e, [field]: currentVal } : e));
+    }
+  };
+
   const handleDeleteLog = async (logId: string) => {
     if (!window.confirm('Are you sure you want to delete this punch log record? This action cannot be undone.')) return;
     
@@ -1164,6 +1180,8 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
                 <th style={{ padding: '16px' }}>Employee</th>
                 <th style={{ padding: '16px' }}>Salary Type</th>
                 <th style={{ padding: '16px' }}>Wage / Salary Details</th>
+                <th style={{ padding: '16px' }}>Payroll</th>
+                <th style={{ padding: '16px' }}>Attendance</th>
                 <th style={{ padding: '16px' }}>Pairing Status</th>
                 <th style={{ padding: '16px' }}>Actions</th>
               </tr>
@@ -1171,7 +1189,7 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
             <tbody>
               {employees.length === 0 ? (
                 <tr>
-                  <td colSpan={5} style={{ padding: '32px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                  <td colSpan={7} style={{ padding: '32px', textAlign: 'center', color: 'var(--text-muted)' }}>
                     No employees found.
                   </td>
                 </tr>
@@ -1181,6 +1199,8 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
                   const computedWage = emp.salary_type === 'Hourly' 
                     ? (parseFloat(emp.hourly_rate) || 0)
                     : (parseFloat(emp.salary) || 0) / ((parseFloat(emp.working_days_per_week) || 6) * 4.333 * (parseFloat(emp.default_daily_hours) || 9));
+                  const isPayroll = emp.is_payroll_eligible !== false;
+                  const isAttendance = emp.track_attendance !== false;
 
                   return (
                     <tr key={emp.employee_id} style={{ borderBottom: '1px solid var(--border)' }}>
@@ -1206,6 +1226,56 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
                             </div>
                           </div>
                         )}
+                      </td>
+                      <td style={{ padding: '16px' }}>
+                        <button 
+                          type="button"
+                          onClick={() => canManage && handleToggleCriteria(emp.employee_id, 'is_payroll_eligible', isPayroll)}
+                          disabled={!canManage}
+                          title={isPayroll ? 'Included in Payroll Validation. Click to exclude.' : 'Excluded from Payroll. Click to include.'}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '5px 12px',
+                            backgroundColor: isPayroll ? '#f0fdf4' : '#fef2f2',
+                            color: isPayroll ? '#166534' : '#991b1b',
+                            border: `1px solid ${isPayroll ? '#bbf7d0' : '#fecaca'}`,
+                            borderRadius: '20px',
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            cursor: canManage ? 'pointer' : 'default',
+                            transition: 'all 0.15s ease'
+                          }}
+                        >
+                          <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: isPayroll ? '#22c55e' : '#ef4444' }} />
+                          {isPayroll ? 'Yes' : 'No'}
+                        </button>
+                      </td>
+                      <td style={{ padding: '16px' }}>
+                        <button 
+                          type="button"
+                          onClick={() => canManage && handleToggleCriteria(emp.employee_id, 'track_attendance', isAttendance)}
+                          disabled={!canManage}
+                          title={isAttendance ? 'Attendance tracked via punches/schedules. Click to set as Fixed/Exempt.' : 'Exempt from punch clocks (Fixed salary, no absence deductions). Click to track punches.'}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '5px 12px',
+                            backgroundColor: isAttendance ? '#e0f2fe' : '#fef3c7',
+                            color: isAttendance ? '#0369a1' : '#b45309',
+                            border: `1px solid ${isAttendance ? '#bae6fd' : '#fde68a'}`,
+                            borderRadius: '20px',
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            cursor: canManage ? 'pointer' : 'default',
+                            transition: 'all 0.15s ease'
+                          }}
+                        >
+                          <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: isAttendance ? '#0ea5e9' : '#f59e0b' }} />
+                          {isAttendance ? 'Yes' : 'No (Fixed)'}
+                        </button>
                       </td>
                       <td style={{ padding: '16px' }}>
                         {emp.device_id ? (

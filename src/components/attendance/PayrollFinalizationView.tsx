@@ -24,7 +24,11 @@ export default function PayrollFinalizationView({
   branches
 }: PayrollFinalizationViewProps) {
   // Pay Period state
-  const [periodName, setPeriodName] = useState('July 2026 Payroll');
+  const [periodName, setPeriodName] = useState(() => {
+    const d = new Date();
+    const monthName = d.toLocaleString('en-US', { month: 'long' });
+    return `${monthName} ${d.getFullYear()} Payroll`;
+  });
   const [startDate, setStartDate] = useState(() => {
     const d = new Date();
     const firstDay = new Date(d.getFullYear(), d.getMonth(), 1);

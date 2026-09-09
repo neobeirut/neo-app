@@ -43,6 +43,8 @@ export default function EmployeeFormScreen({ user }: { user?: any }) {
   const [pin, setPin] = useState('');
   const [email, setEmail] = useState('');
   const [role, setRole] = useState('User');
+  const [isPayrollEligible, setIsPayrollEligible] = useState(true);
+  const [trackAttendance, setTrackAttendance] = useState(true);
 
   // Reference Data
   const [allDepartments, setAllDepartments] = useState<any[]>([]);
@@ -111,6 +113,8 @@ export default function EmployeeFormScreen({ user }: { user?: any }) {
           setProductionAccess(emp.production_access || false);
           setSalaryType(emp.salary_type || 'Monthly');
           setHourlyRate(emp.hourly_rate?.toString() || '');
+          setIsPayrollEligible(emp.is_payroll_eligible !== false);
+          setTrackAttendance(emp.track_attendance !== false);
           setAppUserId(emp.app_user_id || null);
 
           if (emp.app_user_id) {
@@ -263,6 +267,8 @@ export default function EmployeeFormScreen({ user }: { user?: any }) {
       production_access: productionAccess,
       salary_type: salaryType,
       hourly_rate: salaryType === 'Hourly' ? (hourlyRate ? Number(hourlyRate) : 0) : 0,
+      is_payroll_eligible: isPayrollEligible,
+      track_attendance: trackAttendance,
       secure_payload: securePayloadText,
       salary: ENCRYPTION_ENABLED ? null : (basicSalary ? Number(basicSalary) : null),
       transportation: ENCRYPTION_ENABLED ? null : (transportation ? Number(transportation) : null),
@@ -482,6 +488,41 @@ export default function EmployeeFormScreen({ user }: { user?: any }) {
               <option value="Active">Active</option>
               <option value="Inactive">Inactive</option>
             </select>
+          </div>
+
+          <div style={{ gridColumn: '1 / -1', marginTop: '16px' }}>
+            <h3 style={{ fontSize: '16px', marginBottom: '4px' }}>Payroll & Attendance Rules</h3>
+            <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: 0 }}>Configure whether this employee is included in payroll or requires clock-in/out attendance.</p>
+          </div>
+
+          <div>
+            <label style={labelStyle}>Payroll Eligible</label>
+            <select 
+              style={inputStyle} 
+              value={isPayrollEligible ? 'yes' : 'no'} 
+              onChange={e => setIsPayrollEligible(e.target.value === 'yes')}
+            >
+              <option value="yes">Yes - Include in Payroll Validation</option>
+              <option value="no">No - Exclude completely from Payroll</option>
+            </select>
+            <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
+              If "No", this employee will not appear in the Payroll Validation screen.
+            </div>
+          </div>
+
+          <div>
+            <label style={labelStyle}>Track Attendance (Punch Clock)</label>
+            <select 
+              style={inputStyle} 
+              value={trackAttendance ? 'yes' : 'no'} 
+              onChange={e => setTrackAttendance(e.target.value === 'yes')}
+            >
+              <option value="yes">Yes - Require Punch In/Out</option>
+              <option value="no">No - Fixed Salary (No Punch Required)</option>
+            </select>
+            <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
+              If "No", employee receives full fixed salary without absence deductions and is exempt from punch reports.
+            </div>
           </div>
 
           <div style={{ gridColumn: '1 / -1', marginTop: '16px' }}><h3 style={{ fontSize: '16px', marginBottom: '8px' }}>Contact & Additional Info</h3></div>

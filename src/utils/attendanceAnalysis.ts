@@ -19,6 +19,7 @@ export interface ReconciliationRecord {
   overtime_hours: number;
   flags: ('LATE_ARRIVAL' | 'EARLY_DEPARTURE' | 'MISSING_PUNCH' | 'ABSENCE' | 'UNSCHEDULED_WORK' | 'WRONG_BRANCH')[];
   status: 'ON_TIME' | 'DISCREPANCY' | 'ABSENT' | 'UNSCHEDULED' | 'LEAVE';
+  track_attendance?: boolean;
   raw_schedule: any | null;
   raw_punch: any | null;
 }
@@ -150,15 +151,25 @@ export function reconcileSchedulesAndPunches({
     let overtimeHours = 0;
     let status: 'ON_TIME' | 'DISCREPANCY' | 'ABSENT' | 'UNSCHEDULED' | 'LEAVE' = 'ON_TIME';
 
+    const isAttendanceTracked = empObj?.track_attendance !== false;
+
     if (leaveShift) {
       status = 'LEAVE';
     } else if (workShift && !punch) {
-      // Scheduled but NO punch -> ABSENT
-      flags.push('ABSENCE');
-      scheduledHours = computeHoursDuration(workShift.start_time, workShift.end_time);
-      actualHours = 0;
-      varianceHours = -scheduledHours;
-      status = 'ABSENT';
+      if (isAttendanceTracked) {
+        // Scheduled but NO punch -> ABSENT
+        flags.push('ABSENCE');
+        scheduledHours = computeHoursDuration(workShift.start_time, workShift.end_time);
+        actualHours = 0;
+        varianceHours = -scheduledHours;
+        status = 'ABSENT';
+      } else {
+        // Attendance exempt (fixed salary, no punch clock required) -> ON_TIME
+        scheduledHours = computeHoursDuration(workShift.start_time, workShift.end_time);
+        actualHours = scheduledHours;
+        varianceHours = 0;
+        status = 'ON_TIME';
+      }
     } else if (!workShift && punch) {
       // NO schedule but punch logged -> UNSCHEDULED WORK
       flags.push('UNSCHEDULED_WORK');
@@ -235,6 +246,7 @@ export function reconcileSchedulesAndPunches({
       overtime_hours: overtimeHours,
       flags,
       status,
+      track_attendance: isAttendanceTracked,
       raw_schedule: workShift || leaveShift || null,
       raw_punch: punch
     });

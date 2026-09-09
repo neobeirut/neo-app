@@ -432,7 +432,8 @@ export default function AttendanceReportsView({
                   {employees.filter((e: any) => e.status !== 'Inactive' && e.is_active !== false).map((e: any) => {
                     const empId = e.employee_id || e.id;
                     const fullName = `${e.first_name || ''} ${e.last_name || ''}`.trim() || e.name || empId;
-                    return <option key={empId} value={empId}>{fullName}</option>;
+                    const exemptSuffix = e.track_attendance === false ? ' (Fixed / No Punch)' : '';
+                    return <option key={empId} value={empId}>{fullName}{exemptSuffix}</option>;
                   })}
                 </select>
               </div>

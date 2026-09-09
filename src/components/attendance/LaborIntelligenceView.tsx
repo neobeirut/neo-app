@@ -54,9 +54,13 @@ export default function LaborIntelligenceView({ user: _user, employees, branches
 
   // Helper: compute employee wage
   const getEmployeeWage = (emp: any) => {
-    if (!emp) return 10; // Default $10/hr fallback
-    if (emp.salary_type === 'Hourly') return parseFloat(emp.hourly_rate) || 10;
-    const salary = parseFloat(emp.salary) || 1000;
+    if (!emp) return 0;
+    if (emp.salary_type === 'Hourly') {
+      const parsed = parseFloat(emp.hourly_rate);
+      return !isNaN(parsed) ? parsed : 0;
+    }
+    const parsedSalary = parseFloat(emp.salary);
+    const salary = !isNaN(parsedSalary) ? parsedSalary : 0;
     const days = parseFloat(emp.working_days_per_week) || 6;
     const hours = parseFloat(emp.default_daily_hours) || 9;
     return salary / (days * 4.333 * hours);

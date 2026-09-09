@@ -254,6 +254,15 @@ export const api = {
     return { success: true };
   },
 
+  updateEmployeeCriteria: async (employeeId: string, criteria: { is_payroll_eligible?: boolean; track_attendance?: boolean }) => {
+    const res = await supabase.from('employees').update({
+      ...criteria,
+      updated_at: new Date().toISOString()
+    }).eq('employee_id', employeeId);
+    if (res.error) return { success: false, error: res.error.message };
+    return { success: true };
+  },
+
   getUserById: async (id: string) => {
     const rid = getRestaurantId();
     let query = supabase.from('users').select('*').eq('id', id);

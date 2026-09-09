@@ -10,6 +10,7 @@ export interface CriterionScoreState {
   comment?: string;
   evidence_url?: string;
   needs_follow_up?: boolean;
+  section_id?: string;
 }
 
 export interface QuestionAnswerState {
@@ -19,6 +20,7 @@ export interface QuestionAnswerState {
   comment?: string;
   attachment_url?: string;
   is_critical_failed?: boolean;
+  section_id?: string;
 }
 
 export interface SectionScoreResult {

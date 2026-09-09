@@ -17,6 +17,24 @@ interface PayrollValidationScreenProps {
   branches: any[];
 }
 
+// Local timezone date formatting helper (YYYY-MM-DD)
+const formatLocalDate = (d: Date): string => {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const getMonthDetails = (date = new Date()) => {
+  const year = date.getFullYear();
+  const month = date.getMonth();
+  const monthName = date.toLocaleString('en-US', { month: 'long' });
+  const firstDay = formatLocalDate(new Date(year, month, 1));
+  const today = formatLocalDate(date);
+  const lastDay = formatLocalDate(new Date(year, month + 1, 0));
+  return { year, month, monthName, firstDay, today, lastDay };
+};
+
 export default function PayrollValidationScreen({
   user,
   permissions: _permissions,
@@ -24,14 +42,18 @@ export default function PayrollValidationScreen({
   branches
 }: PayrollValidationScreenProps) {
   // Period & Filter State
-  const [periodName, setPeriodName] = useState('July 2026 Payroll Review');
+  const [dateRangeMode, setDateRangeMode] = useState<'mtd' | 'this_month' | 'last_month' | 'custom'>('mtd');
+  const [periodName, setPeriodName] = useState(() => {
+    const { monthName, year } = getMonthDetails();
+    return `${monthName} ${year} Payroll Review`;
+  });
   const [startDate, setStartDate] = useState(() => {
-    const d = new Date();
-    return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0];
+    const { firstDay } = getMonthDetails();
+    return firstDay;
   });
   const [endDate, setEndDate] = useState(() => {
-    const d = new Date();
-    return new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().split('T')[0];
+    const { today } = getMonthDetails();
+    return today;
   });
 
   const [filterBranch, setFilterBranch] = useState('All');
@@ -89,6 +111,32 @@ export default function PayrollValidationScreen({
       setSelectedPeriod(existing || null);
     }
     setLoading(false);
+  };
+
+  const currentMonthName = useMemo(() => {
+    return new Date().toLocaleString('en-US', { month: 'long' });
+  }, []);
+
+  const handleSelectDateRange = (mode: 'mtd' | 'this_month' | 'last_month') => {
+    setDateRangeMode(mode);
+    const now = new Date();
+    const { year, month, monthName, firstDay, today, lastDay } = getMonthDetails(now);
+
+    if (mode === 'mtd') {
+      setStartDate(firstDay);
+      setEndDate(today);
+      setPeriodName(`${monthName} ${year} Payroll Review`);
+    } else if (mode === 'this_month') {
+      setStartDate(firstDay);
+      setEndDate(lastDay);
+      setPeriodName(`${monthName} ${year} Full Month Payroll Review`);
+    } else if (mode === 'last_month') {
+      const lastMonthDate = new Date(year, month - 1, 1);
+      const lastDetails = getMonthDetails(lastMonthDate);
+      setStartDate(lastDetails.firstDay);
+      setEndDate(lastDetails.lastDay);
+      setPeriodName(`${lastDetails.monthName} ${lastDetails.year} Payroll Review`);
+    }
   };
 
   // Reconciled analysis records
@@ -555,6 +603,7 @@ export default function PayrollValidationScreen({
                     setPeriodName(p.period_name);
                     setStartDate(p.start_date);
                     setEndDate(p.end_date);
+                    setDateRangeMode('custom');
                   }
                 }}
                 value={selectedPeriod?.id || ''}
@@ -577,10 +626,81 @@ export default function PayrollValidationScreen({
               style={{ ...inputStyle, fontWeight: 700, width: '200px' }}
             />
 
+            {/* Quick Date Presets */}
+            <div style={{ display: 'inline-flex', backgroundColor: '#f1f5f9', padding: '3px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+              <button
+                type="button"
+                onClick={() => handleSelectDateRange('mtd')}
+                style={{
+                  padding: '5px 12px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  backgroundColor: dateRangeMode === 'mtd' ? 'var(--surface)' : 'transparent',
+                  color: dateRangeMode === 'mtd' ? 'var(--primary)' : 'var(--text-muted)',
+                  boxShadow: dateRangeMode === 'mtd' ? 'var(--shadow)' : 'none'
+                }}
+              >
+                Month to Date
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSelectDateRange('this_month')}
+                style={{
+                  padding: '5px 12px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  backgroundColor: dateRangeMode === 'this_month' ? 'var(--surface)' : 'transparent',
+                  color: dateRangeMode === 'this_month' ? 'var(--primary)' : 'var(--text-muted)',
+                  boxShadow: dateRangeMode === 'this_month' ? 'var(--shadow)' : 'none'
+                }}
+              >
+                This Month (All {currentMonthName})
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSelectDateRange('last_month')}
+                style={{
+                  padding: '5px 12px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  backgroundColor: dateRangeMode === 'last_month' ? 'var(--surface)' : 'transparent',
+                  color: dateRangeMode === 'last_month' ? 'var(--primary)' : 'var(--text-muted)',
+                  boxShadow: dateRangeMode === 'last_month' ? 'var(--shadow)' : 'none'
+                }}
+              >
+                Last Month
+              </button>
+            </div>
+
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} style={inputStyle} />
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => {
+                  setStartDate(e.target.value);
+                  setDateRangeMode('custom');
+                }}
+                style={inputStyle}
+              />
               <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>to</span>
-              <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} style={inputStyle} />
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => {
+                  setEndDate(e.target.value);
+                  setDateRangeMode('custom');
+                }}
+                style={inputStyle}
+              />
             </div>
           </div>
 
