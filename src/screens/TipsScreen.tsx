@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { Search, Plus, Loader2, DollarSign, Settings, List, ArrowRight } from 'lucide-react';
+import { isEmployeeActive } from '../utils/payrollCalculation';
 
 export default function TipsScreen() {
   const navigate = useNavigate();
@@ -21,46 +22,48 @@ export default function TipsScreen() {
 
   const fetchData = async () => {
     setLoading(true);
+    // Fetch active branches first to ensure deleted or inactive branches never appear
+    const branchesRes = await api.getBranchesList();
+    const validBranches: string[] = (branchesRes.success && branchesRes.data)
+      ? branchesRes.data.map((b: any) => typeof b === 'string' ? b : b.name).filter(Boolean)
+      : [];
+    setBranches(validBranches);
+
     if (activeTab === 'collections') {
       const res = await api.getTipsCollections();
-      if (res.success && res.data) setCollections(res.data);
-    } else if (activeTab === 'employees') {
-      const [branchesRes, empRes] = await Promise.all([
-        api.getBranchesList(),
-        api.getEmployees()
-      ]);
-      if (branchesRes.success && branchesRes.data) {
-        setBranches(branchesRes.data.map((b: any) => typeof b === 'string' ? b : b.name));
+      if (res.success && res.data) {
+        // Exclude collections belonging to deleted branches
+        const activeBranchCols = res.data.filter((c: any) => 
+          validBranches.length === 0 || !c.branch || validBranches.includes(c.branch)
+        );
+        setCollections(activeBranchCols);
       }
+    } else if (activeTab === 'employees') {
+      const empRes = await api.getEmployees();
       if (empRes.success && empRes.data) {
-        setEmployees(empRes.data);
+        // Strictly filter ONLY active employees, and exclude any tied to deleted branches
+        const activeEmps = empRes.data.filter((e: any) => {
+          if (!isEmployeeActive(e)) return false;
+          if (validBranches.length > 0 && e.branch && !validBranches.includes(e.branch)) return false;
+          return true;
+        });
+        setEmployees(activeEmps);
       }
     } else {
-      const [branchesRes, settingsRes] = await Promise.all([
-        api.getBranchesList(),
-        api.getTipsSettings()
-      ]);
-      
-      let bList: string[] = [];
-      if (branchesRes.success && branchesRes.data) {
-        bList = branchesRes.data.map((b: any) => typeof b === 'string' ? b : b.name);
-        setBranches(bList);
-      }
-      
+      // activeTab === 'settings'
+      const settingsRes = await api.getTipsSettings();
       if (settingsRes.success && settingsRes.data) {
-        let currentSettings = settingsRes.data;
-        // Merge missing
-        if (bList.length > 0) {
-          const newSettings = [...currentSettings];
-          bList.forEach(b => {
-            if (!newSettings.find(s => s.branch === b)) {
-              newSettings.push({ branch: b, calculation_type: 'Weekly', standard_shift_hours: '9', is_active: true });
-            }
-          });
-          setSettings(newSettings);
-        } else {
-          setSettings(currentSettings);
-        }
+        // Only keep tips_settings for branches that actually exist and are active
+        const existingSettings = settingsRes.data.filter((s: any) => validBranches.includes(s.branch));
+        
+        // Merge any valid branch that doesn't have a settings record yet
+        const merged = [...existingSettings];
+        validBranches.forEach(b => {
+          if (!merged.find(s => s.branch === b)) {
+            merged.push({ branch: b, calculation_type: 'Weekly', standard_shift_hours: '9', is_active: true });
+          }
+        });
+        setSettings(merged);
       }
     }
     setLoading(false);
@@ -220,9 +223,32 @@ export default function TipsScreen() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
                       <Settings size={20} color="var(--primary)" />
                       <h3 style={{ fontSize: '18px', margin: 0 }}>{s.branch}</h3>
+                      <span style={{ 
+                        marginLeft: 'auto', 
+                        fontSize: '11px', 
+                        fontWeight: 700, 
+                        padding: '2px 8px', 
+                        borderRadius: '12px',
+                        backgroundColor: s.is_active !== false ? '#ecfdf5' : '#fff1f2',
+                        color: s.is_active !== false ? '#047857' : '#be123c',
+                        border: `1px solid ${s.is_active !== false ? '#a7f3d0' : '#fecdd3'}`
+                      }}>
+                        {s.is_active !== false ? 'Active' : 'Inactive'}
+                      </span>
                     </div>
                     
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '16px' }}>
+                      <div>
+                        <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>Branch Status in Tips</label>
+                        <select 
+                          style={inputStyle} 
+                          value={s.is_active !== false ? 'Active' : 'Inactive'} 
+                          onChange={e => updateSetting(idx, 'is_active', e.target.value === 'Active')}
+                        >
+                          <option value="Active">Active (Included in Tips)</option>
+                          <option value="Inactive">Inactive (Disabled from Tips)</option>
+                        </select>
+                      </div>
                       <div>
                         <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>Calculation Type</label>
                         <select style={inputStyle} value={s.calculation_type} onChange={e => updateSetting(idx, 'calculation_type', e.target.value)}>
@@ -250,12 +276,17 @@ export default function TipsScreen() {
 
             {activeTab === 'employees' && (
               <div style={{ padding: '24px' }}>
-                <div style={{ display: 'flex', gap: '16px', marginBottom: '20px', alignItems: 'center' }}>
-                  <label style={{ fontWeight: 600, fontSize: '14px' }}>Filter by Branch:</label>
-                  <select style={{ ...inputStyle, width: '200px' }} value={selectedBranch} onChange={e => setSelectedBranch(e.target.value)}>
-                    <option value="All">All Branches</option>
-                    {branches.map(b => <option key={b} value={b}>{b}</option>)}
-                  </select>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                    <label style={{ fontWeight: 600, fontSize: '14px' }}>Filter by Branch:</label>
+                    <select style={{ ...inputStyle, width: '200px' }} value={selectedBranch} onChange={e => setSelectedBranch(e.target.value)}>
+                      <option value="All">All Active Branches</option>
+                      {branches.map(b => <option key={b} value={b}>{b}</option>)}
+                    </select>
+                  </div>
+                  <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)' }}>
+                    {employees.filter(e => selectedBranch === 'All' || e.branch === selectedBranch).length} Active Staff
+                  </div>
                 </div>
                 
                 <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>

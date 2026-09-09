@@ -196,13 +196,20 @@ export const api = {
   },
 
   // Branches, Departments and Users for Access Control Dropdowns
-  getBranchesList: async () => {
+  getBranchesList: async (includeInactive = false) => {
     const rid = getRestaurantId();
     let query = supabase.from('branches').select('*').order('name');
     if (rid) query = query.eq('restaurant_id', rid);
     const { data, error } = await query;
     if (error) return { success: false, error: error.message };
-    return { success: true, data };
+    const filtered = (data || []).filter((b: any) => {
+      if (includeInactive) return true;
+      const status = (b.status || '').toString().trim().toLowerCase();
+      if (status === 'inactive' || status === 'disabled' || status === 'archived' || status === 'deleted') return false;
+      if (b.is_active === false || b.is_active === 0 || b.is_active === 'false') return false;
+      return true;
+    });
+    return { success: true, data: filtered };
   },
 
   getDepartmentsList: async () => {
@@ -403,11 +410,18 @@ export const api = {
 
   getEmployeesForTips: async (branch: string) => {
     const rid = getRestaurantId();
-    let query = supabase.from('employees').select('*').eq('branch', branch).in('status', ['Active']);
+    let query = supabase.from('employees').select('*').eq('branch', branch);
     if (rid) query = query.eq('restaurant_id', rid);
     const { data, error } = await query;
     if (error) return { success: false, error: error.message };
-    const eligible = (data || []).filter((e: any) => e.is_tips_eligible !== false);
+    const eligible = (data || []).filter((e: any) => {
+      const status = (e.status || '').toString().trim().toLowerCase();
+      if (status === 'inactive' || status === 'disabled' || status === 'archived' || status === 'terminated') return false;
+      if (e.is_active === false || e.is_active === 0 || e.is_active === 'false') return false;
+      if (e.active === false || e.active === 0 || e.active === 'false') return false;
+      if (e.is_tips_eligible === false) return false;
+      return true;
+    });
     return { success: true, data: eligible };
   },
 
@@ -1798,7 +1812,18 @@ export const api = {
   },
 
   deleteBranch: async (name: string) => {
-    const { error } = await supabase.from('branches').delete().eq('name', name);
+    const rid = getRestaurantId();
+    let qTips = supabase.from('tips_settings').delete().eq('branch', name);
+    if (rid) qTips = qTips.eq('restaurant_id', rid);
+    await qTips;
+
+    let qShifts = supabase.from('branch_shifts').delete().eq('branch', name);
+    if (rid) qShifts = qShifts.eq('restaurant_id', rid);
+    await qShifts;
+
+    let query = supabase.from('branches').delete().eq('name', name);
+    if (rid) query = query.eq('restaurant_id', rid);
+    const { error } = await query;
     if (error) return { success: false, error: error.message };
     return { success: true };
   },

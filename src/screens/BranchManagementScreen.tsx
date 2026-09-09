@@ -278,6 +278,7 @@ export default function BranchManagementScreen() {
   const [wifiSsids,   setWifiSsids]   = useState('');
   const [wifiGraceMins, setWifiGraceMins] = useState('15');
   const [autoPunchEnabled, setAutoPunchEnabled] = useState(true);
+  const [branchActive, setBranchActive] = useState(true);
   const [saving,      setSaving]      = useState(false);
 
   // Which branch's shift modal is open
@@ -319,10 +320,12 @@ export default function BranchManagementScreen() {
       setWifiSsids(branch.wifi_ssids || '');
       setWifiGraceMins(branch.wifi_disconnect_grace_mins !== null && branch.wifi_disconnect_grace_mins !== undefined ? String(branch.wifi_disconnect_grace_mins) : '15');
       setAutoPunchEnabled(branch.auto_punch_enabled !== false);
+      setBranchActive(branch.is_active !== false);
     } else {
       setIsEditMode(false); setName(''); setTotalTables(''); setTotalChairs('');
       setPhone(''); setLatitude(''); setLongitude(''); setRadiusMeters('200');
       setWifiSsids(''); setWifiGraceMins('15'); setAutoPunchEnabled(true);
+      setBranchActive(true);
     }
     setShowModal(true);
   };
@@ -343,7 +346,8 @@ export default function BranchManagementScreen() {
       wifi_ssids: wifiSsids.trim() || null,
       wifi_disconnect_grace_mins: wifiGraceMins.trim() ? parseInt(wifiGraceMins, 10) : 15,
       auto_punch_enabled: autoPunchEnabled,
-      auto_punch_mode: 'break'
+      auto_punch_mode: 'break',
+      is_active: branchActive
     });
     setSaving(false);
     if (res.success) { setShowModal(false); loadBranches(); }
@@ -412,7 +416,20 @@ export default function BranchManagementScreen() {
 
                 {/* Branch info */}
                 <div>
-                  <h3 style={{ margin: '0 0 10px', fontSize: '18px', fontWeight: 700, color: '#0f172a' }}>{branch.name}</h3>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                    <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#0f172a' }}>{branch.name}</h3>
+                    <span style={{
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      padding: '2px 8px',
+                      borderRadius: '12px',
+                      backgroundColor: branch.is_active !== false ? '#ecfdf5' : '#fff1f2',
+                      color: branch.is_active !== false ? '#047857' : '#be123c',
+                      border: `1px solid ${branch.is_active !== false ? '#a7f3d0' : '#fecdd3'}`
+                    }}>
+                      {branch.is_active !== false ? 'Active' : 'Inactive'}
+                    </span>
+                  </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '7px', color: '#475569', fontSize: '13px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <Compass size={14} color="#94a3b8" />
@@ -555,6 +572,18 @@ export default function BranchManagementScreen() {
               <div>
                 <label style={{ display: 'block', fontSize: '13px', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>Verification Geofence Radius (meters)</label>
                 <input type="number" placeholder="e.g. 200" style={{ width: '100%' }} value={radiusMeters} onChange={e => setRadiusMeters(e.target.value)} />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>Branch Status</label>
+                <select
+                  style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '14px', background: '#fff', boxSizing: 'border-box' }}
+                  value={branchActive ? 'Active' : 'Inactive'}
+                  onChange={e => setBranchActive(e.target.value === 'Active')}
+                >
+                  <option value="Active">Active (Operational)</option>
+                  <option value="Inactive">Inactive (Disabled)</option>
+                </select>
               </div>
 
               {/* Branch Wi-Fi & Auto-Break Settings */}

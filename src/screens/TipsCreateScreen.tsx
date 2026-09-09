@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { ArrowLeft, Loader2, DollarSign } from 'lucide-react';
+import { isEmployeeActive } from '../utils/payrollCalculation';
 
 export default function TipsCreateScreen() {
   const navigate = useNavigate();
@@ -21,11 +22,23 @@ export default function TipsCreateScreen() {
   }, []);
 
   const fetchBranches = async () => {
-    const res = await api.getBranchesList();
-    if (res.success && res.data) {
-      const bList = res.data.map((b: any) => typeof b === 'string' ? b : b.name);
-      setBranches(bList);
-      if (bList.length > 0) setBranch(bList[0]);
+    const [bRes, sRes] = await Promise.all([
+      api.getBranchesList(),
+      api.getTipsSettings()
+    ]);
+    if (bRes.success && bRes.data) {
+      const activeBranchNames = bRes.data.map((b: any) => typeof b === 'string' ? b : b.name).filter(Boolean);
+      const tipsSettings = (sRes.success && sRes.data) ? sRes.data : [];
+      
+      // Filter out any branches that are disabled/inactive in tips_settings
+      const eligibleBranches = activeBranchNames.filter((name: string) => {
+        const s = tipsSettings.find((setting: any) => setting.branch === name);
+        if (s && s.is_active === false) return false;
+        return true;
+      });
+
+      setBranches(eligibleBranches);
+      if (eligibleBranches.length > 0) setBranch(eligibleBranches[0]);
     }
   };
 
@@ -52,6 +65,12 @@ export default function TipsCreateScreen() {
       return;
     }
 
+    if (settings.is_active === false) {
+      alert(`Tips calculation is currently disabled for branch "${branch}". Please activate it in Branch Settings first.`);
+      setLoading(false);
+      return;
+    }
+
     const empRes = await api.getEmployeesForTips(branch);
     if (!empRes.success || !empRes.data || empRes.data.length === 0) {
       alert('No active employees found in this branch.');
@@ -59,8 +78,18 @@ export default function TipsCreateScreen() {
       return;
     }
 
-    // Filter out employees not eligible for tips, and kitchen staff (who get tips via the Pool)
-    const floorEmployees = empRes.data.filter((e: any) => e.is_tips_eligible !== false && (e.department !== 'Kitchen' || (e.first_name + ' ' + e.last_name).toLowerCase().includes('pool')));
+    // Filter out inactive employees, employees not eligible for tips, and kitchen staff
+    const floorEmployees = empRes.data.filter((e: any) => 
+      isEmployeeActive(e) && 
+      e.is_tips_eligible !== false && 
+      (e.department !== 'Kitchen' || (e.first_name + ' ' + e.last_name).toLowerCase().includes('pool'))
+    );
+
+    if (floorEmployees.length === 0) {
+      alert('No active employees eligible for tips found in this branch.');
+      setLoading(false);
+      return;
+    }
 
     const user = JSON.parse(localStorage.getItem('neo_admin_user') || '{}');
     const timestamp = Date.now().toString().slice(-6);
