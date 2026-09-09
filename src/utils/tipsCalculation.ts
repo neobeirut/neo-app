@@ -1,4 +1,4 @@
-﻿/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 export type TipsCalculationMode = 'by_department' | 'by_employee';
 
@@ -17,6 +17,7 @@ export interface TipsDistributionItem {
   employee_id: string;
   employee_name: string;
   department?: string;
+  sub_department?: string;
   branch?: string;
   actual_hours_worked: number | string;
   expected_hours?: number | string;
@@ -52,7 +53,8 @@ export function normalizeDepartmentName(dept?: string): string {
   const clean = dept.trim();
   if (clean.toLowerCase().startsWith('kitchen')) return 'Kitchen';
   if (clean.toLowerCase().startsWith('floor')) return 'Floor';
-  if (clean.toLowerCase().startsWith('bar')) return 'Bar';
+  if (clean.toLowerCase().startsWith('bar')) return 'Floor';
+  if (clean.toLowerCase().startsWith('retail')) return 'Floor';
   return clean;
 }
 
@@ -85,9 +87,11 @@ export function calculateTipsDistribution(
     const factor = parseFloat(String(item.calculated_factor)) || 1.0;
     const points = hours * factor;
     const department = normalizeDepartmentName(item.department);
+    const sub_department = item.sub_department || '';
     return {
       ...item,
       department,
+      sub_department,
       actual_hours_worked: hours,
       calculated_factor: factor,
       points

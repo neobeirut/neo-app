@@ -105,6 +105,7 @@ export default function EmployeesScreen({ user }: { user?: any }) {
       const matchesSearch = !q ||
         `${e.first_name || ''} ${e.last_name || ''}`.toLowerCase().includes(q) ||
         (e.department || '').toLowerCase().includes(q) ||
+        (e.sub_department || '').toLowerCase().includes(q) ||
         (e.position || '').toLowerCase().includes(q) ||
         (e.branch || '').toLowerCase().includes(q);
 
@@ -287,7 +288,33 @@ export default function EmployeesScreen({ user }: { user?: any }) {
                         </div>
                       </td>
                       <td style={tdStyle}>{emp.branch || 'N/A'}</td>
-                      <td style={tdStyle}><span style={{ backgroundColor: '#e9ecef', padding: '4px 8px', borderRadius: '12px', fontSize: '12px', fontWeight: 600 }}>{emp.department || 'N/A'}</span></td>
+                      <td style={tdStyle}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                          <span style={{ 
+                            backgroundColor: (emp.department || '').toLowerCase().includes('kitchen') ? '#fef3c7' : '#eff6ff', 
+                            color: (emp.department || '').toLowerCase().includes('kitchen') ? '#b45309' : '#1d4ed8',
+                            padding: '3px 8px', 
+                            borderRadius: '6px', 
+                            fontSize: '12px', 
+                            fontWeight: 700 
+                          }}>
+                            {emp.department || 'N/A'}
+                          </span>
+                          {emp.sub_department && (
+                            <span style={{ 
+                              backgroundColor: '#f1f5f9', 
+                              color: '#475569', 
+                              border: '1px solid #cbd5e1', 
+                              padding: '2px 7px', 
+                              borderRadius: '6px', 
+                              fontSize: '11px', 
+                              fontWeight: 600 
+                            }}>
+                              {emp.sub_department}
+                            </span>
+                          )}
+                        </div>
+                      </td>
                       <td style={tdStyle}>{emp.position || 'Staff'}</td>
                       <td style={tdStyle}>
                         {isEmpActive(emp) ? (

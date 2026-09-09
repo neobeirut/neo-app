@@ -85,6 +85,7 @@ export default function TipsDistributionScreen() {
             return {
               ...d,
               department: d.department || emp?.department || 'Floor',
+              sub_department: d.sub_department || emp?.sub_department || '',
               position: d.position || emp?.position || emp?.department
             };
           });
@@ -444,16 +445,31 @@ export default function TipsDistributionScreen() {
                           <tr key={d.employee_id} style={{ borderBottom: '1px solid #f1f5f9' }}>
                             <td style={tdStyle}><span style={{ fontWeight: 600 }}>{d.employee_name}</span></td>
                             <td style={tdStyle}>
-                              <span style={{ 
-                                padding: '2px 8px', 
-                                borderRadius: '4px', 
-                                fontSize: '12px', 
-                                fontWeight: 600,
-                                backgroundColor: (d.department || '').toLowerCase().includes('kitchen') ? '#fef3c7' : '#eff6ff',
-                                color: (d.department || '').toLowerCase().includes('kitchen') ? '#b45309' : '#1d4ed8'
-                              }}>
-                                {d.department || 'Floor'}
-                              </span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                <span style={{ 
+                                  padding: '2px 8px', 
+                                  borderRadius: '4px', 
+                                  fontSize: '12px', 
+                                  fontWeight: 600,
+                                  backgroundColor: (d.department || '').toLowerCase().includes('kitchen') ? '#fef3c7' : '#eff6ff',
+                                  color: (d.department || '').toLowerCase().includes('kitchen') ? '#b45309' : '#1d4ed8'
+                                }}>
+                                  {d.department || 'Floor'}
+                                </span>
+                                {d.sub_department && (
+                                  <span style={{ 
+                                    padding: '2px 8px', 
+                                    borderRadius: '4px', 
+                                    fontSize: '12px', 
+                                    fontWeight: 600,
+                                    backgroundColor: '#f1f5f9',
+                                    color: '#475569',
+                                    border: '1px solid #e2e8f0'
+                                  }}>
+                                    {d.sub_department}
+                                  </span>
+                                )}
+                              </div>
                             </td>
                             <td style={tdStyle}><span style={{ color: 'var(--text-muted)' }}>{d.expected_hours || '0'}h</span></td>
                             
@@ -518,16 +534,31 @@ export default function TipsDistributionScreen() {
                   <tr key={d.employee_id || i} style={{ borderBottom: '1px solid var(--border)' }}>
                     <td style={tdStyle}><span style={{ fontWeight: 600 }}>{d.employee_name}</span></td>
                     <td style={tdStyle}>
-                      <span style={{ 
-                        padding: '2px 8px', 
-                        borderRadius: '4px', 
-                        fontSize: '12px', 
-                        fontWeight: 600,
-                        backgroundColor: (d.department || '').toLowerCase().includes('kitchen') ? '#fef3c7' : '#eff6ff',
-                        color: (d.department || '').toLowerCase().includes('kitchen') ? '#b45309' : '#1d4ed8'
-                      }}>
-                        {d.department || 'Floor'}
-                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                        <span style={{ 
+                          padding: '2px 8px', 
+                          borderRadius: '4px', 
+                          fontSize: '12px', 
+                          fontWeight: 600,
+                          backgroundColor: (d.department || '').toLowerCase().includes('kitchen') ? '#fef3c7' : '#eff6ff',
+                          color: (d.department || '').toLowerCase().includes('kitchen') ? '#b45309' : '#1d4ed8'
+                        }}>
+                          {d.department || 'Floor'}
+                        </span>
+                        {d.sub_department && (
+                          <span style={{ 
+                            padding: '2px 8px', 
+                            borderRadius: '4px', 
+                            fontSize: '12px', 
+                            fontWeight: 600,
+                            backgroundColor: '#f1f5f9',
+                            color: '#475569',
+                            border: '1px solid #e2e8f0'
+                          }}>
+                            {d.sub_department}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td style={tdStyle}><span style={{ color: 'var(--text-muted)' }}>{d.expected_hours || '0'}h</span></td>
                     

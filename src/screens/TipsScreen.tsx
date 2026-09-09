@@ -478,16 +478,31 @@ export default function TipsScreen() {
                             <td style={tdStyle}><span style={{ fontWeight: 600 }}>{e.first_name} {e.last_name}</span></td>
                             <td style={tdStyle}>{e.branch}</td>
                             <td style={tdStyle}>
-                              <span style={{ 
-                                padding: '2px 8px', 
-                                borderRadius: '4px', 
-                                fontSize: '12px', 
-                                fontWeight: 600,
-                                backgroundColor: (e.department || '').toLowerCase().includes('kitchen') ? '#fef3c7' : '#eff6ff',
-                                color: (e.department || '').toLowerCase().includes('kitchen') ? '#b45309' : '#1d4ed8'
-                              }}>
-                                {e.department || 'Floor'}
-                              </span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                <span style={{ 
+                                  padding: '2px 8px', 
+                                  borderRadius: '4px', 
+                                  fontSize: '12px', 
+                                  fontWeight: 600,
+                                  backgroundColor: (e.department || '').toLowerCase().includes('kitchen') ? '#fef3c7' : '#eff6ff',
+                                  color: (e.department || '').toLowerCase().includes('kitchen') ? '#b45309' : '#1d4ed8'
+                                }}>
+                                  {e.department || 'Floor'}
+                                </span>
+                                {e.sub_department && (
+                                  <span style={{ 
+                                    padding: '2px 8px', 
+                                    borderRadius: '4px', 
+                                    fontSize: '12px', 
+                                    fontWeight: 600,
+                                    backgroundColor: '#f1f5f9',
+                                    color: '#475569',
+                                    border: '1px solid #e2e8f0'
+                                  }}>
+                                    {e.sub_department}
+                                  </span>
+                                )}
+                              </div>
                               <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>{e.position}</div>
                             </td>
                             <td style={tdStyle}>

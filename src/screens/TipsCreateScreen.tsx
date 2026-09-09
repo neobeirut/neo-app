@@ -143,6 +143,7 @@ export default function TipsCreateScreen() {
         employee_id: emp.employee_id,
         employee_name: emp.first_name + ' ' + emp.last_name,
         department: emp.department || 'Floor',
+        sub_department: emp.sub_department || '',
         branch: emp.branch,
         expected_hours: expectedHours.toFixed(1),
         actual_hours_worked: expectedHours.toFixed(1), 

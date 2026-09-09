@@ -438,6 +438,7 @@ export const api = {
       return {
         ...cleanD,
         department: d.department || 'Floor',
+        sub_department: d.sub_department || null,
         tips_collection_id: colData.id,
         ...(rid ? { restaurant_id: rid } : {})
       };
@@ -466,6 +467,7 @@ export const api = {
       return {
         ...cleanD,
         department: d.department || 'Floor',
+        sub_department: d.sub_department || null,
         tips_collection_id: collectionId,
         ...(rid ? { restaurant_id: rid } : {})
       };

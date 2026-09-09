@@ -19,6 +19,7 @@ export default function EmployeeFormScreen({ user }: { user?: any }) {
   const [lastName, setLastName] = useState('');
   const [branch, setBranch] = useState(user?.branch || '');
   const [department, setDepartment] = useState('');
+  const [subDepartment, setSubDepartment] = useState('');
   const [position, setPosition] = useState('');
   const [basicSalary, setBasicSalary] = useState('');
   const [phone, setPhone] = useState('');
@@ -50,7 +51,10 @@ export default function EmployeeFormScreen({ user }: { user?: any }) {
 
   // Reference Data
   const [allDepartments, setAllDepartments] = useState<any[]>([]);
+  const [allSubDepartments, setAllSubDepartments] = useState<any[]>([]);
   const [allBranches, setAllBranches] = useState<any[]>([]);
+  const [isAddingSubDept, setIsAddingSubDept] = useState(false);
+  const [newSubDeptName, setNewSubDeptName] = useState('');
 
   // Upload State
   const [uploadingDoc, setUploadingDoc] = useState<string | null>(null);
@@ -85,12 +89,14 @@ export default function EmployeeFormScreen({ user }: { user?: any }) {
   const fetchInitialData = async () => {
     setLoading(true);
     try {
-      const [deptRes, branchRes] = await Promise.all([
+      const [deptRes, branchRes, subDeptRes] = await Promise.all([
         api.getDepartmentsList(),
-        api.getBranchesList()
+        api.getBranchesList(),
+        api.getSubDepartmentsList()
       ]);
       if (deptRes.success) setAllDepartments(deptRes.data || []);
       if (branchRes.success && branchRes.data) setAllBranches(branchRes.data);
+      if (subDeptRes.success && subDeptRes.data) setAllSubDepartments(subDeptRes.data);
 
       if (isEditing && id) {
         const empRes = await api.getEmployeeById(id);
@@ -100,6 +106,7 @@ export default function EmployeeFormScreen({ user }: { user?: any }) {
           setLastName(emp.last_name || '');
           setBranch(emp.branch || '');
           setDepartment(emp.department || '');
+          setSubDepartment(emp.sub_department || '');
           setPosition(emp.position || '');
           setPaymentMethod(emp.payment_method || 'Cash');
           setActiveStatus(emp.status || 'Active');
@@ -181,6 +188,28 @@ export default function EmployeeFormScreen({ user }: { user?: any }) {
     setLoading(false);
   };
 
+  const handleCreateSubDept = async () => {
+    if (!newSubDeptName.trim() || !department) {
+      alert('Please select a Department first and enter a Sub-Department name.');
+      return;
+    }
+    const res = await api.saveSubDepartment({
+      department_name: department,
+      name: newSubDeptName.trim()
+    });
+    if (res.success) {
+      const updated = await api.getSubDepartmentsList();
+      if (updated.success && updated.data) {
+        setAllSubDepartments(updated.data);
+      }
+      setSubDepartment(newSubDeptName.trim());
+      setNewSubDeptName('');
+      setIsAddingSubDept(false);
+    } else {
+      alert(res.error || 'Failed to create sub-department.');
+    }
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!firstName || !lastName || !branch) {
@@ -255,6 +284,7 @@ export default function EmployeeFormScreen({ user }: { user?: any }) {
       last_name: lastName,
       branch,
       department,
+      sub_department: subDepartment,
       position,
       status: activeStatus,
       payment_method: paymentMethod,
@@ -439,10 +469,72 @@ export default function EmployeeFormScreen({ user }: { user?: any }) {
           
           <div>
             <label style={labelStyle}>Department</label>
-            <select style={inputStyle} value={department} onChange={e => setDepartment(e.target.value)}>
+            <select 
+              style={inputStyle} 
+              value={department} 
+              onChange={e => {
+                setDepartment(e.target.value);
+                setSubDepartment('');
+              }}
+            >
               <option value="">Select Department...</option>
               {allDepartments.map(d => <option key={d.name} value={d.name}>{d.name}</option>)}
             </select>
+          </div>
+
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+              <label style={{ ...labelStyle, marginBottom: 0 }}>Sub-Department</label>
+              {department && !isAddingSubDept && (
+                <button 
+                  type="button" 
+                  onClick={() => setIsAddingSubDept(true)}
+                  style={{ background: 'none', border: 'none', color: 'var(--primary)', fontSize: '12px', fontWeight: 600, cursor: 'pointer', padding: 0 }}
+                >
+                  + Add New
+                </button>
+              )}
+            </div>
+
+            {isAddingSubDept ? (
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <input 
+                  style={{ ...inputStyle, flex: 1, padding: '8px 10px' }} 
+                  value={newSubDeptName} 
+                  onChange={e => setNewSubDeptName(e.target.value)} 
+                  placeholder={`New for ${department}...`} 
+                  autoFocus
+                />
+                <button 
+                  type="button" 
+                  onClick={handleCreateSubDept} 
+                  style={{ padding: '8px 12px', backgroundColor: 'var(--primary)', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 600, fontSize: '12px', cursor: 'pointer' }}
+                >
+                  Save
+                </button>
+                <button 
+                  type="button" 
+                  onClick={() => { setIsAddingSubDept(false); setNewSubDeptName(''); }} 
+                  style={{ padding: '8px 10px', backgroundColor: '#f1f5f9', color: '#64748b', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <select 
+                style={inputStyle} 
+                value={subDepartment} 
+                onChange={e => setSubDepartment(e.target.value)}
+                disabled={!department}
+              >
+                <option value="">{department ? 'Select Sub-Department...' : 'Select Department first...'}</option>
+                {allSubDepartments
+                  .filter((sd: any) => !department || sd.department_name?.toLowerCase() === department?.toLowerCase())
+                  .map((sd: any) => (
+                    <option key={sd.id || sd.name} value={sd.name}>{sd.name}</option>
+                  ))}
+              </select>
+            )}
           </div>
 
           <div>
