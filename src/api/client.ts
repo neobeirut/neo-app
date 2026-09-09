@@ -254,7 +254,7 @@ export const api = {
     return { success: true };
   },
 
-  updateEmployeeCriteria: async (employeeId: string, criteria: { is_payroll_eligible?: boolean; track_attendance?: boolean; shift_management?: boolean }) => {
+  updateEmployeeCriteria: async (employeeId: string, criteria: { is_payroll_eligible?: boolean; track_attendance?: boolean; shift_management?: boolean; is_tips_eligible?: boolean }) => {
     const res = await supabase.from('employees').update({
       ...criteria,
       updated_at: new Date().toISOString()
@@ -407,7 +407,8 @@ export const api = {
     if (rid) query = query.eq('restaurant_id', rid);
     const { data, error } = await query;
     if (error) return { success: false, error: error.message };
-    return { success: true, data };
+    const eligible = (data || []).filter((e: any) => e.is_tips_eligible !== false);
+    return { success: true, data: eligible };
   },
 
   createTipsCollection: async (collection: any, distribution: any[]) => {

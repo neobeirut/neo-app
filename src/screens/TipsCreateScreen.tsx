@@ -59,8 +59,8 @@ export default function TipsCreateScreen() {
       return;
     }
 
-    // EXCLUDE KITCHEN STAFF (they get tips via the Pool later)
-    const floorEmployees = empRes.data.filter((e: any) => e.department !== 'Kitchen' || (e.first_name + ' ' + e.last_name).toLowerCase().includes('pool'));
+    // Filter out employees not eligible for tips, and kitchen staff (who get tips via the Pool)
+    const floorEmployees = empRes.data.filter((e: any) => e.is_tips_eligible !== false && (e.department !== 'Kitchen' || (e.first_name + ' ' + e.last_name).toLowerCase().includes('pool')));
 
     const user = JSON.parse(localStorage.getItem('neo_admin_user') || '{}');
     const timestamp = Date.now().toString().slice(-6);

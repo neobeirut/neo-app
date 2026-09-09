@@ -339,7 +339,7 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
 
   const handleToggleCriteria = async (
     employeeId: string,
-    field: 'is_payroll_eligible' | 'track_attendance' | 'shift_management',
+    field: 'is_payroll_eligible' | 'track_attendance' | 'shift_management' | 'is_tips_eligible',
     currentVal: boolean
   ) => {
     const newVal = !currentVal;
@@ -1183,6 +1183,7 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
                 <th style={{ padding: '16px' }}>Payroll</th>
                 <th style={{ padding: '16px' }}>Attendance</th>
                 <th style={{ padding: '16px' }}>Shift Mgmt</th>
+                <th style={{ padding: '16px' }}>Tips</th>
                 <th style={{ padding: '16px' }}>Pairing Status</th>
                 <th style={{ padding: '16px' }}>Actions</th>
               </tr>
@@ -1190,7 +1191,7 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
             <tbody>
               {employees.length === 0 ? (
                 <tr>
-                  <td colSpan={8} style={{ padding: '32px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                  <td colSpan={9} style={{ padding: '32px', textAlign: 'center', color: 'var(--text-muted)' }}>
                     No employees found.
                   </td>
                 </tr>
@@ -1203,6 +1204,7 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
                   const isPayroll = emp.is_payroll_eligible !== false;
                   const isAttendance = emp.track_attendance !== false;
                   const isShiftMgmt = emp.shift_management !== false;
+                  const isTips = emp.is_tips_eligible !== false;
 
                   return (
                     <tr key={emp.employee_id} style={{ borderBottom: '1px solid var(--border)' }}>
@@ -1302,6 +1304,31 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
                         >
                           <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: isShiftMgmt ? '#a855f7' : '#94a3b8' }} />
                           {isShiftMgmt ? 'Yes' : 'No'}
+                        </button>
+                      </td>
+                      <td style={{ padding: '16px' }}>
+                        <button 
+                          type="button"
+                          onClick={() => canManage && handleToggleCriteria(emp.employee_id, 'is_tips_eligible', isTips)}
+                          disabled={!canManage}
+                          title={isTips ? 'Included in Tips Calculation. Click to exclude.' : 'Excluded from Tips Calculation. Click to include.'}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '5px 12px',
+                            backgroundColor: isTips ? '#ecfdf5' : '#fff1f2',
+                            color: isTips ? '#047857' : '#be123c',
+                            border: `1px solid ${isTips ? '#a7f3d0' : '#fecdd3'}`,
+                            borderRadius: '20px',
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            cursor: canManage ? 'pointer' : 'default',
+                            transition: 'all 0.15s ease'
+                          }}
+                        >
+                          <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: isTips ? '#10b981' : '#f43f5e' }} />
+                          {isTips ? 'Yes' : 'No'}
                         </button>
                       </td>
                       <td style={{ padding: '16px' }}>

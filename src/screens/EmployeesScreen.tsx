@@ -267,7 +267,7 @@ export default function EmployeesScreen({ user }: { user?: any }) {
                           <div>
                             <div style={{ fontWeight: 600 }}>{emp.first_name} {emp.last_name}</div>
                             <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{emp.is_app_user ? 'App Access: Yes' : 'No App Access'}</div>
-                            {(emp.is_payroll_eligible === false || emp.track_attendance === false || emp.shift_management === false) && (
+                            {(emp.is_payroll_eligible === false || emp.track_attendance === false || emp.shift_management === false || emp.is_tips_eligible === false) && (
                               <div style={{ display: 'flex', gap: '4px', marginTop: '4px', flexWrap: 'wrap' }}>
                                 {emp.is_payroll_eligible === false && (
                                   <span style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '4px', backgroundColor: '#fee2e2', color: '#991b1b', fontWeight: 600 }}>No Payroll</span>
@@ -277,6 +277,9 @@ export default function EmployeesScreen({ user }: { user?: any }) {
                                 )}
                                 {emp.shift_management === false && (
                                   <span style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '4px', backgroundColor: '#faf5ff', color: '#7e22ce', border: '1px solid #e9d5ff', fontWeight: 600 }}>No Shifts</span>
+                                )}
+                                {emp.is_tips_eligible === false && (
+                                  <span style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '4px', backgroundColor: '#fff1f2', color: '#be123c', border: '1px solid #fecdd3', fontWeight: 600 }}>No Tips</span>
                                 )}
                               </div>
                             )}

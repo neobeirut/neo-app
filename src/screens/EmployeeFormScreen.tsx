@@ -46,6 +46,7 @@ export default function EmployeeFormScreen({ user }: { user?: any }) {
   const [isPayrollEligible, setIsPayrollEligible] = useState(true);
   const [trackAttendance, setTrackAttendance] = useState(true);
   const [shiftManagement, setShiftManagement] = useState(true);
+  const [isTipsEligible, setIsTipsEligible] = useState(true);
 
   // Reference Data
   const [allDepartments, setAllDepartments] = useState<any[]>([]);
@@ -117,6 +118,7 @@ export default function EmployeeFormScreen({ user }: { user?: any }) {
           setIsPayrollEligible(emp.is_payroll_eligible !== false);
           setTrackAttendance(emp.track_attendance !== false);
           setShiftManagement(emp.shift_management !== false);
+          setIsTipsEligible(emp.is_tips_eligible !== false);
           setAppUserId(emp.app_user_id || null);
 
           if (emp.app_user_id) {
@@ -272,6 +274,7 @@ export default function EmployeeFormScreen({ user }: { user?: any }) {
       is_payroll_eligible: isPayrollEligible,
       track_attendance: trackAttendance,
       shift_management: shiftManagement,
+      is_tips_eligible: isTipsEligible,
       secure_payload: securePayloadText,
       salary: ENCRYPTION_ENABLED ? null : (basicSalary ? Number(basicSalary) : null),
       transportation: ENCRYPTION_ENABLED ? null : (transportation ? Number(transportation) : null),
@@ -495,7 +498,7 @@ export default function EmployeeFormScreen({ user }: { user?: any }) {
 
           <div style={{ gridColumn: '1 / -1', marginTop: '20px', padding: '16px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
             <h3 style={{ fontSize: '16px', fontWeight: 700, marginBottom: '4px', color: 'var(--text-main)' }}>Policy & System Rules</h3>
-            <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: '0 0 16px 0' }}>Configure whether this employee participates in Payroll, Punch Attendance, and Shift Scheduling.</p>
+            <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: '0 0 16px 0' }}>Configure whether this employee participates in Payroll, Punch Attendance, Shift Scheduling, and Tips Calculation.</p>
             
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px' }}>
               <div>
@@ -540,6 +543,21 @@ export default function EmployeeFormScreen({ user }: { user?: any }) {
                 </select>
                 <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
                   If "No", this employee is omitted from the Shift Planning schedule roster.
+                </div>
+              </div>
+
+              <div>
+                <label style={labelStyle}>Tips Calculation</label>
+                <select 
+                  style={inputStyle} 
+                  value={isTipsEligible ? 'yes' : 'no'} 
+                  onChange={e => setIsTipsEligible(e.target.value === 'yes')}
+                >
+                  <option value="yes">Yes - Include in Tips Calculation</option>
+                  <option value="no">No - Exclude from Tips Calculation</option>
+                </select>
+                <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                  If "No", this employee will not appear in tips distribution or tip pools.
                 </div>
               </div>
             </div>

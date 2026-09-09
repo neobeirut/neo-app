@@ -103,6 +103,16 @@ export default function TipsScreen() {
     }
   };
 
+  const toggleEmpTipsEligible = async (employeeId: string, currentVal: boolean) => {
+    const newVal = !currentVal;
+    setEmployees(prev => prev.map(e => e.employee_id === employeeId ? { ...e, is_tips_eligible: newVal } : e));
+    const res = await api.updateEmployeeCriteria(employeeId, { is_tips_eligible: newVal });
+    if (!res.success) {
+      alert(res.error || 'Failed to update tips eligibility');
+      setEmployees(prev => prev.map(e => e.employee_id === employeeId ? { ...e, is_tips_eligible: currentVal } : e));
+    }
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
@@ -257,36 +267,64 @@ export default function TipsScreen() {
                       <th style={thStyle}>Default Daily Hours</th>
                       <th style={thStyle}>Days / Week</th>
                       <th style={thStyle}>Tip Factor (Multiplier)</th>
+                      <th style={thStyle}>Tips Calculation</th>
                       <th style={thStyle}>Action</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {employees.filter(e => selectedBranch === 'All' || e.branch === selectedBranch).map(e => (
-                      <tr key={e.employee_id} style={{ borderBottom: '1px solid var(--border)' }}>
-                        <td style={tdStyle}><span style={{ fontWeight: 600 }}>{e.first_name} {e.last_name}</span></td>
-                        <td style={tdStyle}>{e.branch}</td>
-                        <td style={tdStyle}>{e.position || e.department}</td>
-                        <td style={tdStyle}>
-                          <input type="number" style={{...inputStyle, width: '80px'}} value={e.default_daily_hours || ''} onChange={ev => updateEmpField(e.employee_id, 'default_daily_hours', ev.target.value)} />
-                        </td>
-                        <td style={tdStyle}>
-                          <input type="number" style={{...inputStyle, width: '80px'}} value={e.working_days_per_week || ''} onChange={ev => updateEmpField(e.employee_id, 'working_days_per_week', ev.target.value)} />
-                        </td>
-                        <td style={tdStyle}>
-                          <input type="number" step="0.1" style={{...inputStyle, width: '80px'}} value={e.tip_factor || ''} onChange={ev => updateEmpField(e.employee_id, 'tip_factor', ev.target.value)} />
-                        </td>
-                        <td style={tdStyle}>
-                          <button 
-                            onClick={() => saveEmployeeTipSetup(e.employee_id)}
-                            style={{ padding: '6px 12px', backgroundColor: 'var(--primary)', color: 'white', border: 'none', borderRadius: '4px', fontWeight: 600, cursor: 'pointer', fontSize: '13px' }}
-                          >
-                            Save
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
+                    {employees.filter(e => selectedBranch === 'All' || e.branch === selectedBranch).map(e => {
+                      const isTips = e.is_tips_eligible !== false;
+                      return (
+                        <tr key={e.employee_id} style={{ borderBottom: '1px solid var(--border)' }}>
+                          <td style={tdStyle}><span style={{ fontWeight: 600 }}>{e.first_name} {e.last_name}</span></td>
+                          <td style={tdStyle}>{e.branch}</td>
+                          <td style={tdStyle}>{e.position || e.department}</td>
+                          <td style={tdStyle}>
+                            <input type="number" style={{...inputStyle, width: '80px'}} value={e.default_daily_hours || ''} onChange={ev => updateEmpField(e.employee_id, 'default_daily_hours', ev.target.value)} />
+                          </td>
+                          <td style={tdStyle}>
+                            <input type="number" style={{...inputStyle, width: '80px'}} value={e.working_days_per_week || ''} onChange={ev => updateEmpField(e.employee_id, 'working_days_per_week', ev.target.value)} />
+                          </td>
+                          <td style={tdStyle}>
+                            <input type="number" step="0.1" style={{...inputStyle, width: '80px'}} value={e.tip_factor || ''} onChange={ev => updateEmpField(e.employee_id, 'tip_factor', ev.target.value)} />
+                          </td>
+                          <td style={tdStyle}>
+                            <button
+                              type="button"
+                              onClick={() => toggleEmpTipsEligible(e.employee_id, isTips)}
+                              title={isTips ? 'Included in Tips Calculation. Click to exclude.' : 'Excluded from Tips Calculation. Click to include.'}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                padding: '5px 12px',
+                                backgroundColor: isTips ? '#ecfdf5' : '#fff1f2',
+                                color: isTips ? '#047857' : '#be123c',
+                                border: `1px solid ${isTips ? '#a7f3d0' : '#fecdd3'}`,
+                                borderRadius: '20px',
+                                fontSize: '12px',
+                                fontWeight: 600,
+                                cursor: 'pointer',
+                                transition: 'all 0.15s ease'
+                              }}
+                            >
+                              <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: isTips ? '#10b981' : '#f43f5e' }} />
+                              {isTips ? 'Included' : 'Excluded'}
+                            </button>
+                          </td>
+                          <td style={tdStyle}>
+                            <button 
+                              onClick={() => saveEmployeeTipSetup(e.employee_id)}
+                              style={{ padding: '6px 12px', backgroundColor: 'var(--primary)', color: 'white', border: 'none', borderRadius: '4px', fontWeight: 600, cursor: 'pointer', fontSize: '13px' }}
+                            >
+                              Save
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                     {employees.filter(e => selectedBranch === 'All' || e.branch === selectedBranch).length === 0 && (
-                      <tr><td colSpan={7} style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)' }}>No employees found.</td></tr>
+                      <tr><td colSpan={8} style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)' }}>No employees found.</td></tr>
                     )}
                   </tbody>
                 </table>
