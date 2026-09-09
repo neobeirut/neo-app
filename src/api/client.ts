@@ -285,9 +285,60 @@ export const api = {
     if (!payload.restaurant_id) {
       return { success: false, error: 'Restaurant ID is required' };
     }
-    const { data, error } = await supabase.from('staff_departments').upsert(payload, { onConflict: 'restaurant_id,name' }).select();
-    if (error) return { success: false, error: error.message };
-    return { success: true, data: data && data.length > 0 ? data[0] : null };
+
+    if (payload.id) {
+      const { data: oldDept } = await supabase
+        .from('staff_departments')
+        .select('name')
+        .eq('id', payload.id)
+        .maybeSingle();
+
+      const { id, ...updateData } = payload;
+      updateData.updated_at = new Date().toISOString();
+
+      const { data, error } = await supabase
+        .from('staff_departments')
+        .update(updateData)
+        .eq('id', id)
+        .eq('restaurant_id', payload.restaurant_id)
+        .select();
+
+      if (error) {
+        if (error.code === '23505') {
+          return { success: false, error: `A department named "${payload.name}" already exists.` };
+        }
+        return { success: false, error: error.message };
+      }
+
+      if (oldDept && oldDept.name !== payload.name) {
+        await supabase
+          .from('staff_sections')
+          .update({ department_name: payload.name })
+          .eq('department_id', id)
+          .eq('restaurant_id', payload.restaurant_id);
+
+        await supabase
+          .from('employees')
+          .update({ department: payload.name })
+          .eq('department', oldDept.name)
+          .eq('restaurant_id', payload.restaurant_id);
+      }
+
+      return { success: true, data: data && data.length > 0 ? data[0] : null };
+    } else {
+      const { data, error } = await supabase
+        .from('staff_departments')
+        .insert(payload)
+        .select();
+
+      if (error) {
+        if (error.code === '23505') {
+          return { success: false, error: `A department named "${payload.name}" already exists.` };
+        }
+        return { success: false, error: error.message };
+      }
+      return { success: true, data: data && data.length > 0 ? data[0] : null };
+    }
   },
 
   deleteStaffDepartment: async (id: string) => {
@@ -314,9 +365,58 @@ export const api = {
     if (!payload.restaurant_id) {
       return { success: false, error: 'Restaurant ID is required' };
     }
-    const { data, error } = await supabase.from('staff_sections').upsert(payload, { onConflict: 'restaurant_id,department_name,name' }).select();
-    if (error) return { success: false, error: error.message };
-    return { success: true, data: data && data.length > 0 ? data[0] : null };
+
+    if (payload.id) {
+      const { data: oldSec } = await supabase
+        .from('staff_sections')
+        .select('department_name, name')
+        .eq('id', payload.id)
+        .maybeSingle();
+
+      const { id, ...updateData } = payload;
+      updateData.updated_at = new Date().toISOString();
+
+      const { data, error } = await supabase
+        .from('staff_sections')
+        .update(updateData)
+        .eq('id', id)
+        .eq('restaurant_id', payload.restaurant_id)
+        .select();
+
+      if (error) {
+        if (error.code === '23505') {
+          return { success: false, error: `A section named "${payload.name}" already exists in "${payload.department_name}".` };
+        }
+        return { success: false, error: error.message };
+      }
+
+      if (oldSec && (oldSec.name !== payload.name || oldSec.department_name !== payload.department_name)) {
+        await supabase
+          .from('employees')
+          .update({
+            department: payload.department_name,
+            sub_department: payload.name
+          })
+          .eq('department', oldSec.department_name)
+          .eq('sub_department', oldSec.name)
+          .eq('restaurant_id', payload.restaurant_id);
+      }
+
+      return { success: true, data: data && data.length > 0 ? data[0] : null };
+    } else {
+      const { data, error } = await supabase
+        .from('staff_sections')
+        .insert(payload)
+        .select();
+
+      if (error) {
+        if (error.code === '23505') {
+          return { success: false, error: `A section named "${payload.name}" already exists in "${payload.department_name}".` };
+        }
+        return { success: false, error: error.message };
+      }
+      return { success: true, data: data && data.length > 0 ? data[0] : null };
+    }
   },
 
   deleteStaffSection: async (id: string) => {
