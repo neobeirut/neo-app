@@ -13,5 +13,21 @@
     { "src": "^/admin(/.*)?$", "dest": "/admin/index.html" },
     { "src": "^/login(/.*)?$", "dest": "/admin/index.html" },
     { "src": "^/(.*)$", "dest": "/index.html" }
+  ],
+  "headers": [
+    {
+      "source": "/admin(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+        { "key": "Pragma", "value": "no-cache" },
+        { "key": "Expires", "value": "0" }
+      ]
+    },
+    {
+      "source": "/",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
+      ]
+    }
   ]
 }

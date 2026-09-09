@@ -339,7 +339,7 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
 
   const handleToggleCriteria = async (
     employeeId: string,
-    field: 'is_payroll_eligible' | 'track_attendance',
+    field: 'is_payroll_eligible' | 'track_attendance' | 'shift_management',
     currentVal: boolean
   ) => {
     const newVal = !currentVal;
@@ -1182,6 +1182,7 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
                 <th style={{ padding: '16px' }}>Wage / Salary Details</th>
                 <th style={{ padding: '16px' }}>Payroll</th>
                 <th style={{ padding: '16px' }}>Attendance</th>
+                <th style={{ padding: '16px' }}>Shift Mgmt</th>
                 <th style={{ padding: '16px' }}>Pairing Status</th>
                 <th style={{ padding: '16px' }}>Actions</th>
               </tr>
@@ -1189,7 +1190,7 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
             <tbody>
               {employees.length === 0 ? (
                 <tr>
-                  <td colSpan={7} style={{ padding: '32px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                  <td colSpan={8} style={{ padding: '32px', textAlign: 'center', color: 'var(--text-muted)' }}>
                     No employees found.
                   </td>
                 </tr>
@@ -1201,6 +1202,7 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
                     : (parseFloat(emp.salary) || 0) / ((parseFloat(emp.working_days_per_week) || 6) * 4.333 * (parseFloat(emp.default_daily_hours) || 9));
                   const isPayroll = emp.is_payroll_eligible !== false;
                   const isAttendance = emp.track_attendance !== false;
+                  const isShiftMgmt = emp.shift_management !== false;
 
                   return (
                     <tr key={emp.employee_id} style={{ borderBottom: '1px solid var(--border)' }}>
@@ -1275,6 +1277,31 @@ export default function AttendanceDashboardScreen({ user, permissions }: { user:
                         >
                           <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: isAttendance ? '#0ea5e9' : '#f59e0b' }} />
                           {isAttendance ? 'Yes' : 'No (Fixed)'}
+                        </button>
+                      </td>
+                      <td style={{ padding: '16px' }}>
+                        <button 
+                          type="button"
+                          onClick={() => canManage && handleToggleCriteria(emp.employee_id, 'shift_management', isShiftMgmt)}
+                          disabled={!canManage}
+                          title={isShiftMgmt ? 'Active in Shift Planning & Rosters. Click to exclude.' : 'Excluded from Shift Planning. Click to include.'}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '5px 12px',
+                            backgroundColor: isShiftMgmt ? '#faf5ff' : '#f1f5f9',
+                            color: isShiftMgmt ? '#7e22ce' : '#64748b',
+                            border: `1px solid ${isShiftMgmt ? '#e9d5ff' : '#cbd5e1'}`,
+                            borderRadius: '20px',
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            cursor: canManage ? 'pointer' : 'default',
+                            transition: 'all 0.15s ease'
+                          }}
+                        >
+                          <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: isShiftMgmt ? '#a855f7' : '#94a3b8' }} />
+                          {isShiftMgmt ? 'Yes' : 'No'}
                         </button>
                       </td>
                       <td style={{ padding: '16px' }}>

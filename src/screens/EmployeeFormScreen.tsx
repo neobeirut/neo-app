@@ -45,6 +45,7 @@ export default function EmployeeFormScreen({ user }: { user?: any }) {
   const [role, setRole] = useState('User');
   const [isPayrollEligible, setIsPayrollEligible] = useState(true);
   const [trackAttendance, setTrackAttendance] = useState(true);
+  const [shiftManagement, setShiftManagement] = useState(true);
 
   // Reference Data
   const [allDepartments, setAllDepartments] = useState<any[]>([]);
@@ -115,6 +116,7 @@ export default function EmployeeFormScreen({ user }: { user?: any }) {
           setHourlyRate(emp.hourly_rate?.toString() || '');
           setIsPayrollEligible(emp.is_payroll_eligible !== false);
           setTrackAttendance(emp.track_attendance !== false);
+          setShiftManagement(emp.shift_management !== false);
           setAppUserId(emp.app_user_id || null);
 
           if (emp.app_user_id) {
@@ -269,6 +271,7 @@ export default function EmployeeFormScreen({ user }: { user?: any }) {
       hourly_rate: salaryType === 'Hourly' ? (hourlyRate ? Number(hourlyRate) : 0) : 0,
       is_payroll_eligible: isPayrollEligible,
       track_attendance: trackAttendance,
+      shift_management: shiftManagement,
       secure_payload: securePayloadText,
       salary: ENCRYPTION_ENABLED ? null : (basicSalary ? Number(basicSalary) : null),
       transportation: ENCRYPTION_ENABLED ? null : (transportation ? Number(transportation) : null),
@@ -490,38 +493,55 @@ export default function EmployeeFormScreen({ user }: { user?: any }) {
             </select>
           </div>
 
-          <div style={{ gridColumn: '1 / -1', marginTop: '16px' }}>
-            <h3 style={{ fontSize: '16px', marginBottom: '4px' }}>Payroll & Attendance Rules</h3>
-            <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: 0 }}>Configure whether this employee is included in payroll or requires clock-in/out attendance.</p>
-          </div>
+          <div style={{ gridColumn: '1 / -1', marginTop: '20px', padding: '16px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+            <h3 style={{ fontSize: '16px', fontWeight: 700, marginBottom: '4px', color: 'var(--text-main)' }}>Policy & System Rules</h3>
+            <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: '0 0 16px 0' }}>Configure whether this employee participates in Payroll, Punch Attendance, and Shift Scheduling.</p>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px' }}>
+              <div>
+                <label style={labelStyle}>Payroll Eligible</label>
+                <select 
+                  style={inputStyle} 
+                  value={isPayrollEligible ? 'yes' : 'no'} 
+                  onChange={e => setIsPayrollEligible(e.target.value === 'yes')}
+                >
+                  <option value="yes">Yes - Include in Payroll Validation</option>
+                  <option value="no">No - Exclude completely from Payroll</option>
+                </select>
+                <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                  If "No", this employee will not appear in Payroll Validation or calculation summaries.
+                </div>
+              </div>
 
-          <div>
-            <label style={labelStyle}>Payroll Eligible</label>
-            <select 
-              style={inputStyle} 
-              value={isPayrollEligible ? 'yes' : 'no'} 
-              onChange={e => setIsPayrollEligible(e.target.value === 'yes')}
-            >
-              <option value="yes">Yes - Include in Payroll Validation</option>
-              <option value="no">No - Exclude completely from Payroll</option>
-            </select>
-            <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
-              If "No", this employee will not appear in the Payroll Validation screen.
-            </div>
-          </div>
+              <div>
+                <label style={labelStyle}>Track Attendance (Punch Clock)</label>
+                <select 
+                  style={inputStyle} 
+                  value={trackAttendance ? 'yes' : 'no'} 
+                  onChange={e => setTrackAttendance(e.target.value === 'yes')}
+                >
+                  <option value="yes">Yes - Require Punch In/Out</option>
+                  <option value="no">No - Fixed Salary (No Punch Required)</option>
+                </select>
+                <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                  If "No", employee receives full fixed salary without absence penalties.
+                </div>
+              </div>
 
-          <div>
-            <label style={labelStyle}>Track Attendance (Punch Clock)</label>
-            <select 
-              style={inputStyle} 
-              value={trackAttendance ? 'yes' : 'no'} 
-              onChange={e => setTrackAttendance(e.target.value === 'yes')}
-            >
-              <option value="yes">Yes - Require Punch In/Out</option>
-              <option value="no">No - Fixed Salary (No Punch Required)</option>
-            </select>
-            <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
-              If "No", employee receives full fixed salary without absence deductions and is exempt from punch reports.
+              <div>
+                <label style={labelStyle}>Shift Management (Scheduling)</label>
+                <select 
+                  style={inputStyle} 
+                  value={shiftManagement ? 'yes' : 'no'} 
+                  onChange={e => setShiftManagement(e.target.value === 'yes')}
+                >
+                  <option value="yes">Yes - Include in Shift Planning</option>
+                  <option value="no">No - Exclude from Shift Planning</option>
+                </select>
+                <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                  If "No", this employee is omitted from the Shift Planning schedule roster.
+                </div>
+              </div>
             </div>
           </div>
 

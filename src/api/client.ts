@@ -254,7 +254,7 @@ export const api = {
     return { success: true };
   },
 
-  updateEmployeeCriteria: async (employeeId: string, criteria: { is_payroll_eligible?: boolean; track_attendance?: boolean }) => {
+  updateEmployeeCriteria: async (employeeId: string, criteria: { is_payroll_eligible?: boolean; track_attendance?: boolean; shift_management?: boolean }) => {
     const res = await supabase.from('employees').update({
       ...criteria,
       updated_at: new Date().toISOString()

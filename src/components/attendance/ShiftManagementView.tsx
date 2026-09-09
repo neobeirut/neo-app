@@ -190,6 +190,7 @@ export default function ShiftManagementView({
   const filteredEmployeesList = useMemo(() => {
     return employees.filter((emp) => {
       if (!isEmployeeActive(emp)) return false;
+      if (emp.shift_management === false) return false;
       const name = getEmployeeFullName(emp).toLowerCase();
       const pos = (emp.position || '').toLowerCase();
       const empId = (emp.employee_id || emp.id || '').toLowerCase();
@@ -515,7 +516,7 @@ export default function ShiftManagementView({
                 style={{ ...inputStyle, border: 'none', padding: '7px 0', cursor: 'pointer', fontWeight: 600 }}
               >
                 <option value="All">All Employees</option>
-                {employees.filter(isEmployeeActive).map((e: any) => {
+                {employees.filter(e => isEmployeeActive(e) && e.shift_management !== false).map((e: any) => {
                   const empId = e.employee_id || e.id;
                   const fullName = getEmployeeFullName(e);
                   return (
