@@ -12,6 +12,7 @@ import TipsCreateScreen from './screens/TipsCreateScreen';
 import TipsDistributionScreen from './screens/TipsDistributionScreen';
 import PermissionsScreen from './screens/PermissionsScreen';
 import StaffDepartmentsScreen from './screens/StaffDepartmentsScreen';
+import SalaryPaymentsScreen from './screens/SalaryPaymentsScreen';
 import SOPsScreen from './screens/SOPsScreen';
 import SOPFormScreen from './screens/SOPFormScreen';
 import { LayoutDashboard, ChefHat, Users, LogOut, DollarSign, Shield, BookOpen, TrendingUp, MessageSquare, Newspaper, AlertTriangle, Sparkles, Trash2, History, Coins, Truck, ShoppingBag, Calendar, ClipboardList, Package, CheckSquare, Receipt, Briefcase, Store, ChevronDown, ChevronRight, Clock, Target, Layers } from 'lucide-react';
@@ -117,6 +118,7 @@ import InventoryScreen from './screens/InventoryScreen';
         items: [
           { to: '/employees', label: 'Employees', icon: <Users size={18} />, visible: isAdminOrSuper || !!permissions?.can_manage_hr, key: 'employees' },
           { to: '/departments-sections', label: 'Departments & Sections', icon: <Layers size={18} />, visible: isAdminOrSuper || !!permissions?.can_manage_hr, key: 'departments_sections' },
+          { to: '/salary-payments', label: 'Salary Payments', icon: <DollarSign size={18} />, visible: isAdminOrSuper || !!permissions?.can_manage_hr, key: 'salary_payments' },
           { to: '/assessments', label: 'Employee Assessments', icon: <Target size={18} />, visible: isAdminOrSuper || !!permissions?.can_manage_assessments || !!permissions?.can_evaluate_assessments, key: 'assessments' },
           { to: '/attendance', label: 'Attendance & Timesheets', icon: <Clock size={18} />, visible: isAdminOrSuper || !!permissions?.can_manage_attendance || permissions?.can_punch_clock !== false, key: 'attendance' },
           { to: '/tips', label: 'Tips Config', icon: <DollarSign size={18} />, visible: isAdminOrSuper || !!permissions?.can_manage_tips, key: 'tips' },
@@ -410,6 +412,7 @@ function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () 
             {isSectionEnabled('departments_sections') && (
               <Route path="/departments-sections" element={<StaffDepartmentsScreen user={user} permissions={permissions} />} />
             )}
+            <Route path="/salary-payments" element={<SalaryPaymentsScreen user={user} permissions={permissions} />} />
             {isSectionEnabled('assessments') && (
               <>
                 <Route path="/assessments" element={<AssessmentsScreen user={user} />} />

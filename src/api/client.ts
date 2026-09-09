@@ -5543,6 +5543,186 @@ export const api = {
       return { success: false, error: e.message };
     }
   },
+
+  // ==========================================
+  // SALARY PAYMENTS & LOAN DEDUCTIONS API
+  // ==========================================
+
+  getPayrolls: async (month: number, year: number) => {
+    let query = supabase.from('payrolls')
+      .select('*, employees(employee_id, first_name, last_name, position, branch, department, salary, date_started)')
+      .eq('month', month)
+      .eq('year', year);
+    const rid = getRestaurantId();
+    if (rid) query = query.eq('restaurant_id', rid);
+    const { data, error } = await query;
+    if (error) return { success: false, error: error.message };
+    return { success: true, data: data || [] };
+  },
+
+  savePayroll: async (payroll: any) => {
+    const payload = await injectRestaurantId({ ...payroll });
+    const { data, error } = await supabase.from('payrolls').upsert(payload, { onConflict: 'employee_id, month, year' }).select().single();
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  getSalaryPayments: async (month: number, year: number, employeeId?: string) => {
+    let query = supabase.from('salary_payments')
+      .select('*, employees(employee_id, first_name, last_name, position, branch, department)')
+      .eq('month', month)
+      .eq('year', year)
+      .order('payment_date', { ascending: false });
+    const rid = getRestaurantId();
+    if (rid) query = query.eq('restaurant_id', rid);
+    if (employeeId) query = query.eq('employee_id', employeeId);
+    const { data, error } = await query;
+    if (error) return { success: false, error: error.message };
+    return { success: true, data: data || [] };
+  },
+
+  addSalaryPayment: async (payment: any) => {
+    const payload = await injectRestaurantId({ ...payment });
+    const { data, error } = await supabase.from('salary_payments').insert([payload]).select().single();
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  deleteSalaryPayment: async (id: string) => {
+    const { error } = await supabase.from('salary_payments').delete().eq('id', id);
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  },
+
+  getActiveLoans: async (employeeId?: string) => {
+    let query = supabase.from('loans')
+      .select('*, employees(employee_id, first_name, last_name, branch)')
+      .neq('status', 'Deleted')
+      .gt('balance', 0)
+      .order('date', { ascending: true });
+    const rid = getRestaurantId();
+    if (rid) query = query.eq('restaurant_id', rid);
+    if (employeeId) query = query.eq('employee_id', employeeId);
+    const { data, error } = await query;
+    if (error) return { success: false, error: error.message };
+    return { success: true, data: data || [] };
+  },
+
+  deductFromLoans: async (employeeId: string, deductionAmount: number, _adminName: string) => {
+    if (deductionAmount <= 0) return { success: true };
+    let query = supabase.from('loans')
+      .select('*')
+      .eq('employee_id', employeeId)
+      .neq('status', 'Deleted')
+      .gt('balance', 0)
+      .order('date', { ascending: true });
+    const rid = getRestaurantId();
+    if (rid) query = query.eq('restaurant_id', rid);
+    const { data: loans, error } = await query;
+    if (error) return { success: false, error: error.message };
+
+    let remainingToDeduct = deductionAmount;
+    for (const l of (loans || [])) {
+      if (remainingToDeduct <= 0) break;
+      const deduct = Math.min(remainingToDeduct, Number(l.balance));
+      remainingToDeduct -= deduct;
+      const newRefunded = Number(l.total_refunded || 0) + deduct;
+      const newBalance = Number(l.balance) - deduct;
+      const newStatus = newBalance <= 0 ? 'Completed' : (l.status || 'Active');
+
+      await supabase.from('loans').update({
+        total_refunded: newRefunded,
+        balance: newBalance,
+        status: newStatus
+      }).eq('loan_id', l.loan_id);
+    }
+    return { success: true };
+  },
+
+  getCashoutSalaryCandidates: async (month: number, year: number) => {
+    const monthStr = month.toString().padStart(2, '0');
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const startDate = `${year}-${monthStr}-01`;
+    const endDate = `${year}-${monthStr}-${daysInMonth}`;
+
+    let query = supabase.from('daily_payments')
+      .select('*')
+      .eq('type', 'Cashout Salary')
+      .gte('date', startDate)
+      .lte('date', endDate);
+    const rid = getRestaurantId();
+    if (rid) query = query.eq('restaurant_id', rid);
+
+    const { data: dps, error: dpErr } = await query;
+    if (dpErr) return { success: false, error: dpErr.message };
+
+    const existingRes = await api.getSalaryPayments(month, year);
+    const existingDpIds = new Set((existingRes.data || []).map((sp: any) => sp.daily_payment_id).filter(Boolean));
+
+    const candidates = (dps || []).map((dp: any) => ({
+      ...dp,
+      already_synced: existingDpIds.has(dp.id)
+    }));
+
+    return { success: true, data: candidates };
+  },
+
+  syncCashoutSalaryPayments: async (candidates: any[], adminName: string, employees: any[]) => {
+    const unlinked = candidates.filter((c: any) => !c.already_synced);
+    if (unlinked.length === 0) return { success: true, count: 0 };
+
+    const empMap = new Map<string, any>();
+    employees.forEach((e: any) => {
+      const fullName = `${e.first_name || ''} ${e.last_name || ''}`.trim().toLowerCase();
+      empMap.set(fullName, e);
+      if (e.employee_id) empMap.set(String(e.employee_id).toLowerCase(), e);
+    });
+
+    let insertedCount = 0;
+    for (const dp of unlinked) {
+      const supName = (dp.supplier || '').trim().toLowerCase();
+      const matchedEmp = empMap.get(supName);
+      if (!matchedEmp) continue;
+
+      const pDate = dp.date || new Date().toISOString().split('T')[0];
+      const parts = pDate.split('-');
+      const pYear = parseInt(parts[0], 10);
+      const pMonth = parseInt(parts[1], 10);
+
+      const payload = await injectRestaurantId({
+        employee_id: matchedEmp.employee_id,
+        month: pMonth,
+        year: pYear,
+        payment_date: pDate,
+        amount_usd: Number(dp.amount_usd) || 0,
+        amount_lbp: Number(dp.amount_lbp) || 0,
+        payment_method: 'Cashout Salary',
+        daily_payment_id: dp.id,
+        notes: `Imported from shift ${dp.shift || 'AM/PM'} cash drawer (${dp.branch || ''})`,
+        created_by: adminName || 'Admin'
+      });
+
+      const { error } = await supabase.from('salary_payments').insert([payload]);
+      if (!error) insertedCount++;
+    }
+
+    return { success: true, count: insertedCount };
+  },
+
+  updateSalarySlipStatus: async (employeeId: string, month: number, year: number, status: string, adminName: string) => {
+    const payload = await injectRestaurantId({
+      employee_id: employeeId,
+      month,
+      year,
+      status,
+      paid_at: status === '100% Paid' ? new Date().toISOString() : null,
+      paid_by: status === '100% Paid' ? adminName : null,
+    });
+
+    const { data, error } = await supabase.from('payrolls').upsert(payload, { onConflict: 'employee_id, month, year' }).select().single();
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
 };
 
 

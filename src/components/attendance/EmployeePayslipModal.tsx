@@ -1,6 +1,7 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+import React, { useState, useEffect } from 'react';
 import { X, Printer, DollarSign, ShieldCheck } from 'lucide-react';
 import type { CalculatedPayrollItem } from '../../utils/payrollCalculation';
+import { api } from '../../api/client';
 
 interface EmployeePayslipModalProps {
   isOpen: boolean;
@@ -15,7 +16,45 @@ export default function EmployeePayslipModal({
   item,
   periodName
 }: EmployeePayslipModalProps) {
+  const [payments, setPayments] = useState<any[]>([]);
+  const [activeLoans, setActiveLoans] = useState<any[]>([]);
+  const [payrollRecord, setPayrollRecord] = useState<any | null>(null);
+
+  useEffect(() => {
+    if (isOpen && item?.employee_id) {
+      loadDisbursementData();
+    }
+  }, [isOpen, item?.employee_id, periodName]);
+
+  const loadDisbursementData = async () => {
+    if (!item?.employee_id) return;
+    const now = new Date();
+    const curMonth = now.getMonth() + 1;
+    const curYear = now.getFullYear();
+
+    const [paymentsRes, loansRes, payrollsRes] = await Promise.all([
+      api.getSalaryPayments(curMonth, curYear, item.employee_id),
+      api.getActiveLoans(item.employee_id),
+      api.getPayrolls(curMonth, curYear)
+    ]);
+
+    if (paymentsRes.success) setPayments(paymentsRes.data || []);
+    if (loansRes.success) setActiveLoans(loansRes.data || []);
+    if (payrollsRes.success) {
+      const match = (payrollsRes.data || []).find((p: any) => String(p.employee_id) === String(item.employee_id));
+      setPayrollRecord(match || null);
+    }
+  };
+
   if (!isOpen || !item) return null;
+
+  const totalPaid = payments.reduce((sum, p) => {
+    const rate = Number(p.exchange_rate) || 90000;
+    return sum + (Number(p.amount_usd) || 0) + ((Number(p.amount_lbp) || 0) / rate);
+  }, 0);
+
+  const activeLoansTotal = activeLoans.reduce((sum, l) => sum + (Number(l.balance) || 0), 0);
+  const remainingToPay = Math.round((item.final_payroll - totalPaid - activeLoansTotal) * 100) / 100;
 
   const handlePrint = () => {
     window.print();
@@ -118,6 +157,43 @@ export default function EmployeePayslipModal({
                 </tr>
               </tbody>
             </table>
+          </div>
+
+          {/* Disbursement & Net Remaining Payable */}
+          <div style={{ padding: '14px 16px', backgroundColor: '#f8fafc', border: '1px solid var(--border)', borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: '13px', fontWeight: 700, color: '#0f172a' }}>Salary Disbursement & Net Payable</span>
+              {payrollRecord?.status === '100% Paid' || payrollRecord?.status === 'Paid' ? (
+                <span style={{ padding: '3px 8px', borderRadius: '12px', backgroundColor: '#dcfce7', color: '#15803d', fontSize: '11px', fontWeight: 700 }}>
+                  ✓ 100% Paid (Admin Confirmed)
+                </span>
+              ) : remainingToPay <= 0 && totalPaid > 0 ? (
+                <span style={{ padding: '3px 8px', borderRadius: '12px', backgroundColor: '#eff6ff', color: '#1d4ed8', fontSize: '11px', fontWeight: 700 }}>
+                  Pending Admin Sign-off
+                </span>
+              ) : (
+                <span style={{ padding: '3px 8px', borderRadius: '12px', backgroundColor: '#fef3c7', color: '#b45309', fontSize: '11px', fontWeight: 700 }}>
+                  Remaining Due: ${remainingToPay.toFixed(2)}
+                </span>
+              )}
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', fontSize: '12px', textAlign: 'center' }}>
+              <div style={{ padding: '8px', backgroundColor: '#fff', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                <div style={{ color: 'var(--text-muted)', fontSize: '10px', textTransform: 'uppercase' }}>Advances / Paid</div>
+                <div style={{ fontWeight: 700, color: '#059669', fontSize: '13px', marginTop: '2px' }}>${totalPaid.toFixed(2)}</div>
+              </div>
+              <div style={{ padding: '8px', backgroundColor: '#fff', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                <div style={{ color: 'var(--text-muted)', fontSize: '10px', textTransform: 'uppercase' }}>Active Loans</div>
+                <div style={{ fontWeight: 700, color: '#d97706', fontSize: '13px', marginTop: '2px' }}>-${activeLoansTotal.toFixed(2)}</div>
+              </div>
+              <div style={{ padding: '8px', backgroundColor: '#fff', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                <div style={{ color: 'var(--text-muted)', fontSize: '10px', textTransform: 'uppercase' }}>Net Remaining</div>
+                <div style={{ fontWeight: 800, color: remainingToPay <= 0 ? '#059669' : '#4f46e5', fontSize: '13px', marginTop: '2px' }}>
+                  ${remainingToPay.toFixed(2)}
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Audit Verification Note */}
