@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { Search, Plus, Loader2, Users, ShieldAlert, KeyRound } from 'lucide-react';
@@ -8,6 +8,7 @@ export default function EmployeesScreen({ user }: { user?: any }) {
   const [employees, setEmployees] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'Active' | 'Inactive' | 'All'>('Active');
   const navigate = useNavigate();
 
   // Decryption Key States
@@ -86,10 +87,36 @@ export default function EmployeesScreen({ user }: { user?: any }) {
     setLoading(false);
   };
 
-  const filtered = employees.filter(e => 
-    `${e.first_name} ${e.last_name}`.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    e.department?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const isEmpActive = (emp: any): boolean => {
+    if (!emp) return false;
+    const status = (emp.status || '').toString().trim().toLowerCase();
+    if (status === 'inactive' || status === 'disabled' || status === 'archived' || status === 'terminated') return false;
+    if (emp.is_active === false || emp.is_active === 0 || emp.is_active === 'false') return false;
+    if (emp.active === false || emp.active === 0 || emp.active === 'false') return false;
+    return true;
+  };
+
+  const activeCount = useMemo(() => employees.filter(isEmpActive).length, [employees]);
+  const inactiveCount = useMemo(() => employees.filter(e => !isEmpActive(e)).length, [employees]);
+
+  const filtered = useMemo(() => {
+    return employees.filter(e => {
+      const q = searchQuery.toLowerCase().trim();
+      const matchesSearch = !q ||
+        `${e.first_name || ''} ${e.last_name || ''}`.toLowerCase().includes(q) ||
+        (e.department || '').toLowerCase().includes(q) ||
+        (e.position || '').toLowerCase().includes(q) ||
+        (e.branch || '').toLowerCase().includes(q);
+
+      const active = isEmpActive(e);
+      const matchesStatus =
+        statusFilter === 'All' ? true :
+        statusFilter === 'Active' ? active :
+        !active;
+
+      return matchesSearch && matchesStatus;
+    });
+  }, [employees, searchQuery, statusFilter]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -123,15 +150,74 @@ export default function EmployeesScreen({ user }: { user?: any }) {
         </div>
       </div>
 
-      <div style={{ position: 'relative', marginBottom: '24px' }}>
-        <Search size={20} style={{ position: 'absolute', left: '12px', top: '12px', color: 'var(--text-muted)' }} />
-        <input 
-          type="text" 
-          placeholder="Search by name or department..." 
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          style={{ width: '100%', padding: '12px 12px 12px 40px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', fontSize: '16px' }}
-        />
+      <div style={{ display: 'flex', gap: '12px', marginBottom: '24px', alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ position: 'relative', flex: 1, minWidth: '240px' }}>
+          <Search size={20} style={{ position: 'absolute', left: '12px', top: '12px', color: 'var(--text-muted)' }} />
+          <input 
+            type="text" 
+            placeholder="Search by name, department, position, branch..." 
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={{ width: '100%', padding: '12px 12px 12px 40px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', fontSize: '15px' }}
+          />
+        </div>
+
+        <div style={{ display: 'inline-flex', backgroundColor: '#f1f5f9', padding: '4px', borderRadius: '8px', border: '1px solid var(--border)', gap: '4px' }}>
+          <button
+            type="button"
+            onClick={() => setStatusFilter('Active')}
+            style={{
+              padding: '6px 14px',
+              borderRadius: '6px',
+              border: 'none',
+              fontSize: '13px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              backgroundColor: statusFilter === 'Active' ? 'var(--surface)' : 'transparent',
+              color: statusFilter === 'Active' ? 'var(--primary)' : 'var(--text-muted)',
+              boxShadow: statusFilter === 'Active' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            Active ({activeCount})
+          </button>
+          <button
+            type="button"
+            onClick={() => setStatusFilter('Inactive')}
+            style={{
+              padding: '6px 14px',
+              borderRadius: '6px',
+              border: 'none',
+              fontSize: '13px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              backgroundColor: statusFilter === 'Inactive' ? 'var(--surface)' : 'transparent',
+              color: statusFilter === 'Inactive' ? '#dc2626' : 'var(--text-muted)',
+              boxShadow: statusFilter === 'Inactive' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            Inactive ({inactiveCount})
+          </button>
+          <button
+            type="button"
+            onClick={() => setStatusFilter('All')}
+            style={{
+              padding: '6px 14px',
+              borderRadius: '6px',
+              border: 'none',
+              fontSize: '13px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              backgroundColor: statusFilter === 'All' ? 'var(--surface)' : 'transparent',
+              color: statusFilter === 'All' ? 'var(--text-main)' : 'var(--text-muted)',
+              boxShadow: statusFilter === 'All' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            All ({employees.length})
+          </button>
+        </div>
       </div>
 
       <div style={{ flex: 1, backgroundColor: 'var(--surface)', borderRadius: 'var(--radius)', border: '1px solid var(--border)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
@@ -152,50 +238,64 @@ export default function EmployeesScreen({ user }: { user?: any }) {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map(emp => (
-                  <tr 
-                    key={emp.employee_id} 
-                    onClick={() => navigate(`/employees/edit/${emp.employee_id}`)}
-                    style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer' }} 
-                    onMouseOver={e => e.currentTarget.style.backgroundColor = 'var(--background)'} 
-                    onMouseOut={e => e.currentTarget.style.backgroundColor = 'transparent'}
-                  >
-                    <td style={tdStyle}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <div style={{ width: 40, height: 40, borderRadius: '50%', backgroundColor: '#eef2f5', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', color: 'var(--primary)' }}>
-                          {emp.first_name?.[0]}{emp.last_name?.[0]}
-                        </div>
-                        <div>
-                          <div style={{ fontWeight: 600 }}>{emp.first_name} {emp.last_name}</div>
-                          <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{emp.is_app_user ? 'App Access: Yes' : 'No App Access'}</div>
-                          {(emp.is_payroll_eligible === false || emp.track_attendance === false || emp.shift_management === false) && (
-                            <div style={{ display: 'flex', gap: '4px', marginTop: '4px', flexWrap: 'wrap' }}>
-                              {emp.is_payroll_eligible === false && (
-                                <span style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '4px', backgroundColor: '#fee2e2', color: '#991b1b', fontWeight: 600 }}>No Payroll</span>
-                              )}
-                              {emp.track_attendance === false && (
-                                <span style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '4px', backgroundColor: '#fef3c7', color: '#92400e', fontWeight: 600 }}>Fixed / No Punch</span>
-                              )}
-                              {emp.shift_management === false && (
-                                <span style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '4px', backgroundColor: '#faf5ff', color: '#7e22ce', border: '1px solid #e9d5ff', fontWeight: 600 }}>No Shifts</span>
-                              )}
-                            </div>
-                          )}
-                        </div>
+                {filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} style={{ textAlign: 'center', padding: '48px 16px', color: 'var(--text-muted)' }}>
+                      <Users size={36} style={{ margin: '0 auto 12px auto', opacity: 0.3, display: 'block' }} />
+                      <div style={{ fontWeight: 600, fontSize: '15px', color: '#334155' }}>
+                        No {statusFilter === 'All' ? '' : statusFilter.toLowerCase() + ' '}employees found
+                      </div>
+                      <div style={{ fontSize: '13px', marginTop: '4px' }}>
+                        {searchQuery ? `Try clearing or changing your search query "${searchQuery}"` : 'No employee records match the selected filter.'}
                       </div>
                     </td>
-                    <td style={tdStyle}>{emp.branch || 'N/A'}</td>
-                    <td style={tdStyle}><span style={{ backgroundColor: '#e9ecef', padding: '4px 8px', borderRadius: '12px', fontSize: '12px', fontWeight: 600 }}>{emp.department || 'N/A'}</span></td>
-                    <td style={tdStyle}>{emp.position || 'Staff'}</td>
-                    <td style={tdStyle}>
-                      {emp.status !== 'Inactive' ? (
-                        <span style={{ color: 'var(--success)', fontWeight: 600 }}>Active</span>
-                      ) : (
-                        <span style={{ color: 'var(--danger)', fontWeight: 600 }}>Inactive</span>
-                      )}
-                    </td>
                   </tr>
-                ))}
+                ) : (
+                  filtered.map(emp => (
+                    <tr 
+                      key={emp.employee_id} 
+                      onClick={() => navigate(`/employees/edit/${emp.employee_id}`)}
+                      style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer' }} 
+                      onMouseOver={e => e.currentTarget.style.backgroundColor = 'var(--background)'} 
+                      onMouseOut={e => e.currentTarget.style.backgroundColor = 'transparent'}
+                    >
+                      <td style={tdStyle}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <div style={{ width: 40, height: 40, borderRadius: '50%', backgroundColor: '#eef2f5', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', color: 'var(--primary)' }}>
+                            {emp.first_name?.[0]}{emp.last_name?.[0]}
+                          </div>
+                          <div>
+                            <div style={{ fontWeight: 600 }}>{emp.first_name} {emp.last_name}</div>
+                            <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{emp.is_app_user ? 'App Access: Yes' : 'No App Access'}</div>
+                            {(emp.is_payroll_eligible === false || emp.track_attendance === false || emp.shift_management === false) && (
+                              <div style={{ display: 'flex', gap: '4px', marginTop: '4px', flexWrap: 'wrap' }}>
+                                {emp.is_payroll_eligible === false && (
+                                  <span style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '4px', backgroundColor: '#fee2e2', color: '#991b1b', fontWeight: 600 }}>No Payroll</span>
+                                )}
+                                {emp.track_attendance === false && (
+                                  <span style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '4px', backgroundColor: '#fef3c7', color: '#92400e', fontWeight: 600 }}>Fixed / No Punch</span>
+                                )}
+                                {emp.shift_management === false && (
+                                  <span style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '4px', backgroundColor: '#faf5ff', color: '#7e22ce', border: '1px solid #e9d5ff', fontWeight: 600 }}>No Shifts</span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      <td style={tdStyle}>{emp.branch || 'N/A'}</td>
+                      <td style={tdStyle}><span style={{ backgroundColor: '#e9ecef', padding: '4px 8px', borderRadius: '12px', fontSize: '12px', fontWeight: 600 }}>{emp.department || 'N/A'}</span></td>
+                      <td style={tdStyle}>{emp.position || 'Staff'}</td>
+                      <td style={tdStyle}>
+                        {isEmpActive(emp) ? (
+                          <span style={{ color: 'var(--success)', fontWeight: 600 }}>Active</span>
+                        ) : (
+                          <span style={{ color: 'var(--danger)', fontWeight: 600 }}>Inactive</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
