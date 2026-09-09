@@ -71,9 +71,13 @@ import InventoryScreen from './screens/InventoryScreen';
     };
 
     const isSectionEnabled = (key: string) => {
-      if (isPrivileged || key === 'inventory_reporting' || key === 'inventory' || key === 'attendance' || key === 'assessments') return true;
+      if (user?.role?.toLowerCase() === 'superadmin') return true;
+      if (key === 'permissions') return true;
       const enabledSections = user?.restaurants?.settings?.enabled_sections;
       if (!enabledSections) return true; // Default to enabled if not configured
+      if (key === 'inventory_reporting') {
+        return enabledSections.includes('inventory_reporting') || enabledSections.includes('inventory');
+      }
       return enabledSections.includes(key);
     };
 
@@ -265,9 +269,13 @@ import InventoryScreen from './screens/InventoryScreen';
 
 function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () => void; onUpdateUser: (user: any) => void }) {
   const isSectionEnabled = (key: string) => {
-    if (key === 'inventory_reporting' || key === 'inventory' || key === 'assessments') return true;
+    if (user?.role?.toLowerCase() === 'superadmin') return true;
+    if (key === 'permissions') return true;
     const enabledSections = user?.restaurants?.settings?.enabled_sections;
     if (!enabledSections) return true; // Default to enabled if not configured
+    if (key === 'inventory_reporting') {
+      return enabledSections.includes('inventory_reporting') || enabledSections.includes('inventory');
+    }
     return enabledSections.includes(key);
   };
 

@@ -4,7 +4,8 @@ import {
   Loader2, Shield, Search, User, Users, Check, AlertCircle, 
   ShoppingCart, ClipboardList, ChefHat, DollarSign, Trash2, 
   TrendingUp, Briefcase, GraduationCap, Calendar, Lock, Sliders, CheckCircle2,
-  Sparkles, CheckSquare, Receipt, FolderOpen, Package, Clock
+  Sparkles, CheckSquare, Receipt, FolderOpen, Package, Clock,
+  Eye, EyeOff, LayoutGrid, Square, Building2, Store, Newspaper, BookOpen, Target, History, AlertTriangle
 } from 'lucide-react';
 
 const DEFAULT_PERMISSIONS = {
@@ -189,6 +190,7 @@ const CATEGORIES = [
       { key: 'can_submit_missing_punch', label: 'Submit Missing Punch Requests' },
       { key: 'can_approve_missing_punch', label: 'Approve Missing Punches' },
       { key: 'can_view_attendance_reports', label: 'View Live Attendance Hub & Reports' },
+      { key: 'can_manage_attendance', label: 'Manage Attendance & Clock Settings' },
     ]
   },
   {
@@ -216,6 +218,7 @@ const CATEGORIES = [
       { key: 'can_manage_branches', label: 'Manage Branches & Storage Locations' },
       { key: 'can_manage_wallets', label: 'Manage E-Wallets & Balances' },
       { key: 'can_manage_news', label: 'Manage Restaurant News & Announcements' },
+      { key: 'can_view_signin_logs', label: 'View Staff Sign-in / Access Logs' },
     ]
   },
   {
@@ -351,6 +354,239 @@ const GLOBAL_MODULES = [
   }
 ];
 
+export interface ModuleDefinition {
+  key: string;
+  label: string;
+  group: 'Operations' | 'Inventory' | 'People' | 'Customers' | 'Analytics' | 'Administration';
+  desc: string;
+  route: string;
+  icon: React.ReactNode;
+  isCore?: boolean;
+}
+
+export const MODULE_DEFINITIONS: ModuleDefinition[] = [
+  // Operations
+  {
+    key: 'orders',
+    label: 'Branch Orders',
+    group: 'Operations',
+    desc: 'Internal supply requisitions, branch orders, fulfillment and dispatch logs',
+    route: '/orders',
+    icon: <ChefHat size={18} style={{ color: 'var(--primary)' }} />
+  },
+  {
+    key: 'client_orders',
+    label: 'Client Orders',
+    group: 'Operations',
+    desc: 'B2B client orders, delivery scheduling, wholesale accounts, and sales reports',
+    route: '/client-orders',
+    icon: <Briefcase size={18} style={{ color: '#20c997' }} />
+  },
+  {
+    key: 'reservations',
+    label: 'Table Reservations',
+    group: 'Operations',
+    desc: 'Customer table bookings, guest counts, reservation timeline, and seating logs',
+    route: '/reservations',
+    icon: <Calendar size={18} style={{ color: '#6610f2' }} />
+  },
+  {
+    key: 'checklists',
+    label: 'Daily Checklists',
+    group: 'Operations',
+    desc: 'Opening, shift handover, cleaning, closing forms and compliance history',
+    route: '/checklists',
+    icon: <ClipboardList size={18} style={{ color: '#28a745' }} />
+  },
+  {
+    key: 'tasks',
+    label: 'Task Manager',
+    group: 'Operations',
+    desc: 'Operational task assignments, staff deadlines, and completion tracking',
+    route: '/tasks',
+    icon: <CheckSquare size={18} style={{ color: '#0dcaf0' }} />
+  },
+
+  // Inventory & Purchasing
+  {
+    key: 'catalog',
+    label: 'Item Catalog',
+    group: 'Inventory',
+    desc: 'Master ingredient database, items catalog, and unit definitions',
+    route: '/catalog',
+    icon: <Package size={18} style={{ color: '#0d6efd' }} />
+  },
+  {
+    key: 'purchasing',
+    label: 'Purchasing & Procurement',
+    group: 'Inventory',
+    desc: 'Supplier order creation, invoice uploads, and delivery receiving',
+    route: '/purchasing',
+    icon: <ShoppingCart size={18} style={{ color: '#ffc107' }} />
+  },
+  {
+    key: 'suppliers',
+    label: 'Supplier Management',
+    group: 'Inventory',
+    desc: 'Supplier directory, representative contacts, and delivery schedules',
+    route: '/suppliers',
+    icon: <Store size={18} style={{ color: '#17a2b8' }} />
+  },
+  {
+    key: 'price_intelligence',
+    label: 'Supplier Price Intelligence',
+    group: 'Inventory',
+    desc: 'Comparative supplier pricing, trend graphs, quotes, and price intelligence',
+    route: '/price-intelligence',
+    icon: <TrendingUp size={18} style={{ color: '#6f42c1' }} />
+  },
+  {
+    key: 'waste',
+    label: 'Waste Management',
+    group: 'Inventory',
+    desc: 'Log ingredient spoilage, food waste, prep loss, and financial waste analysis',
+    route: '/waste',
+    icon: <Trash2 size={18} style={{ color: '#dc3545' }} />
+  },
+  {
+    key: 'missing_items',
+    label: '86 Missing Items',
+    group: 'Inventory',
+    desc: 'Live 86 menu items toggle, out-of-stock reporting, and kitchen alerts',
+    route: '/86',
+    icon: <AlertTriangle size={18} style={{ color: '#fd7e14' }} />
+  },
+  {
+    key: 'inventory_reporting',
+    label: 'Inventory Management',
+    group: 'Inventory',
+    desc: 'Physical stock counts, audits, stock adjustments, and storage locations',
+    route: '/inventory-reporting',
+    icon: <ClipboardList size={18} style={{ color: '#10b981' }} />
+  },
+  {
+    key: 'voids',
+    label: 'Void Receipts',
+    group: 'Inventory',
+    desc: 'Audit POS cashier voids, manager authorizations, reasons, and totals',
+    route: '/voids',
+    icon: <Receipt size={18} style={{ color: '#1e5c4f' }} />
+  },
+
+  // People & HR
+  {
+    key: 'employees',
+    label: 'Employees Registry',
+    group: 'People',
+    desc: 'Staff directory, contracts, salaries, and branch assignments',
+    route: '/employees',
+    icon: <Users size={18} style={{ color: '#0d6efd' }} />
+  },
+  {
+    key: 'attendance',
+    label: 'Attendance & Timesheets',
+    group: 'People',
+    desc: 'GPS clock-in/out, live attendance hub, shift planning, and payroll validation',
+    route: '/attendance',
+    icon: <Clock size={18} style={{ color: '#007bff' }} />
+  },
+  {
+    key: 'assessments',
+    label: 'Employee Assessments',
+    group: 'People',
+    desc: 'Performance review templates, scoring criteria, and team evaluations',
+    route: '/assessments',
+    icon: <Target size={18} style={{ color: '#e83e8c' }} />
+  },
+  {
+    key: 'tips',
+    label: 'Tips Config & Distribution',
+    group: 'People',
+    desc: 'Tips pool calculation, point-based distribution shares, and collection logs',
+    route: '/tips',
+    icon: <DollarSign size={18} style={{ color: '#20c997' }} />
+  },
+  {
+    key: 'permissions',
+    label: 'Security & Matrix',
+    group: 'People',
+    desc: 'Role permissions matrix, department access, and user overrides',
+    route: '/permissions',
+    icon: <Shield size={18} style={{ color: '#1e5c4f' }} />,
+    isCore: true
+  },
+  {
+    key: 'signin_logs',
+    label: 'Sign-In Logs',
+    group: 'People',
+    desc: 'Audit employee login history, IP addresses, timestamps, and access locations',
+    route: '/signin-logs',
+    icon: <History size={18} style={{ color: '#6c757d' }} />
+  },
+
+  // Customers & Service
+  {
+    key: 'complaints',
+    label: 'Client Complaints',
+    group: 'Customers',
+    desc: 'Customer complaint tickets, department routing, and resolution logs',
+    route: '/complaints',
+    icon: <AlertCircle size={18} style={{ color: '#dc3545' }} />
+  },
+  {
+    key: 'specials',
+    label: 'Specials & Upsell',
+    group: 'Customers',
+    desc: 'Chef daily specials, high-margin upsell recommendations, and staff tips',
+    route: '/specials',
+    icon: <Sparkles size={18} style={{ color: '#e83e8c' }} />
+  },
+
+  // Analytics & Finance
+  {
+    key: 'finance',
+    label: 'Financial Analytics',
+    group: 'Analytics',
+    desc: 'Financial performance dashboard, daily revenue, payment summaries, and credit',
+    route: '/finance',
+    icon: <TrendingUp size={18} style={{ color: '#198754' }} />
+  },
+
+  // Administration
+  {
+    key: 'branch_management',
+    label: 'Branch Management & Wallets',
+    group: 'Administration',
+    desc: 'Restaurant physical branch settings, storage areas, and manager cash wallets',
+    route: '/branch-management',
+    icon: <Building2 size={18} style={{ color: '#0d6efd' }} />
+  },
+  {
+    key: 'news',
+    label: 'News Management',
+    group: 'Administration',
+    desc: 'Internal company bulletins, team news feeds, and push announcement banners',
+    route: '/news',
+    icon: <Newspaper size={18} style={{ color: '#3b82f6' }} />
+  },
+  {
+    key: 'sops',
+    label: 'SOPs & Training',
+    group: 'Administration',
+    desc: 'Kitchen SOPs, operational standard manuals, and staff onboarding materials',
+    route: '/sops',
+    icon: <BookOpen size={18} style={{ color: '#9333ea' }} />
+  },
+  {
+    key: 'menu',
+    label: 'Menu Manual',
+    group: 'Administration',
+    desc: 'Digital recipes, preparation methods, allergen labels, and dish plating photos',
+    route: '/menu',
+    icon: <ChefHat size={18} style={{ color: '#fd7e14' }} />
+  }
+];
+
 interface UserProfile {
   id: string;
   name?: string;
@@ -373,7 +609,7 @@ export default function PermissionsScreen({ user, onUpdateUser }: { user?: UserP
   const [users, setUsers] = useState<string[]>([]);
   
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'department' | 'user' | 'global_alerts'>('department');
+  const [activeTab, setActiveTab] = useState<'department' | 'user' | 'modules_visibility' | 'global_alerts'>('department');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
   const [savingState, setSavingState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
@@ -381,6 +617,11 @@ export default function PermissionsScreen({ user, onUpdateUser }: { user?: UserP
   const [exchangeRate, setExchangeRate] = useState<number>(90000);
   const [vatRate, setVatRate] = useState<number>(11);
   const [isVatSubscribed, setIsVatSubscribed] = useState<boolean>(true);
+  const [enabledSections, setEnabledSections] = useState<string[]>(
+    user?.restaurants?.settings?.enabled_sections || MODULE_DEFINITIONS.map(m => m.key)
+  );
+  const [moduleFilterGroup, setModuleFilterGroup] = useState<string>('all');
+  const [permFilterQuery, setPermFilterQuery] = useState<string>('');
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -431,6 +672,11 @@ export default function PermissionsScreen({ user, onUpdateUser }: { user?: UserP
         if (restRes.success && restRes.data) {
           const settings = restRes.data.settings || {};
           setIsVatSubscribed(settings.is_vat_subscribed !== false);
+          if (Array.isArray(settings.enabled_sections) && settings.enabled_sections.length > 0) {
+            setEnabledSections(settings.enabled_sections);
+          } else {
+            setEnabledSections(MODULE_DEFINITIONS.map(m => m.key));
+          }
         }
       }
     } catch (err) {
@@ -452,9 +698,10 @@ export default function PermissionsScreen({ user, onUpdateUser }: { user?: UserP
       const restId = user?.restaurant_id;
       if (restId) {
         const restRes = await api.getRestaurantById(restId);
-        const currentSettings = (restRes.success && restRes.data) ? (restRes.data.settings || {}) : (user.restaurants?.settings || {});
+        const currentSettings = (restRes.success && restRes.data) ? (restRes.data.settings || {}) : (user?.restaurants?.settings || {});
         const updatedSettings = {
           ...currentSettings,
+          enabled_sections: enabledSections,
           is_vat_subscribed: isVatSubscribed,
           exchange_rate: exchangeRate,
           vat_rate: vatRate
@@ -502,6 +749,33 @@ export default function PermissionsScreen({ user, onUpdateUser }: { user?: UserP
         }
       ];
     }
+    if (activeTab === 'modules_visibility') {
+      const groups = [
+        { id: 'all', name: 'All Modules' },
+        { id: 'Operations', name: 'Operations' },
+        { id: 'Inventory', name: 'Inventory & Procurement' },
+        { id: 'People', name: 'People & HR' },
+        { id: 'Customers', name: 'Customers & Service' },
+        { id: 'Analytics', name: 'Analytics & Finance' },
+        { id: 'Administration', name: 'Administration' },
+      ];
+      return groups
+        .filter(g => g.name.toLowerCase().includes(searchQuery.toLowerCase()))
+        .map(g => {
+          const total = g.id === 'all'
+            ? MODULE_DEFINITIONS.length
+            : MODULE_DEFINITIONS.filter(m => m.group === g.id).length;
+          const activeCount = g.id === 'all'
+            ? MODULE_DEFINITIONS.filter(m => enabledSections.includes(m.key)).length
+            : MODULE_DEFINITIONS.filter(m => m.group === g.id && enabledSections.includes(m.key)).length;
+          return {
+            id: g.id,
+            name: g.name,
+            hasConfig: activeCount > 0,
+            badgeText: `${activeCount}/${total}`
+          };
+        });
+    }
     const list = activeTab === 'department' ? departments : users;
     return list
       .filter(item => item.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -514,13 +788,17 @@ export default function PermissionsScreen({ user, onUpdateUser }: { user?: UserP
           hasConfig
         };
       });
-  }, [activeTab, departments, users, permissions, searchQuery]);
+  }, [activeTab, departments, users, permissions, searchQuery, enabledSections]);
 
   useEffect(() => {
-    if (!selectedEntityId && sidebarItems.length > 0) {
+    if (activeTab === 'modules_visibility') {
+      setSelectedEntityId(moduleFilterGroup);
+    } else if (activeTab === 'global_alerts') {
+      setSelectedEntityId('global_settings');
+    } else if (!selectedEntityId && sidebarItems.length > 0) {
       setSelectedEntityId(sidebarItems[0].id);
     }
-  }, [sidebarItems, selectedEntityId]);
+  }, [sidebarItems, selectedEntityId, activeTab, moduleFilterGroup]);
 
   const getSelectedPermission = () => {
     if (!selectedEntityId) return null;
@@ -650,6 +928,173 @@ export default function PermissionsScreen({ user, onUpdateUser }: { user?: UserP
     }
   };
 
+  const handleToggleCategory = async (categoryId: string, enableAll: boolean) => {
+    if (!selectedEntityId) return;
+    const current = getSelectedPermission();
+    if (!current) return;
+    const cat = CATEGORIES.find(c => c.id === categoryId);
+    if (!cat) return;
+
+    setSavingState('saving');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const updated: any = { ...current };
+    cat.permissions.forEach(p => {
+      updated[p.key] = enableAll;
+    });
+
+    // Optimistic state update
+    setPermissions(prev => {
+      const exists = prev.some(p => p.id === selectedEntityId);
+      if (exists) {
+        return prev.map(p => p.id === selectedEntityId ? updated : p);
+      } else {
+        return [...prev, updated];
+      }
+    });
+
+    const res = await api.saveAppPermission(updated);
+    if (res.success) {
+      setSavingState('saved');
+      setTimeout(() => setSavingState('idle'), 2000);
+    } else {
+      setSavingState('error');
+      fetchData();
+      alert('Failed to save category permissions: ' + (res.error || 'Unknown error'));
+    }
+  };
+
+  const handleToggleAllPermissions = async (enableAll: boolean) => {
+    if (!selectedEntityId) return;
+    const current = getSelectedPermission();
+    if (!current) return;
+
+    setSavingState('saving');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const updated: any = { ...current };
+    CATEGORIES.forEach(cat => {
+      cat.permissions.forEach(p => {
+        updated[p.key] = enableAll;
+      });
+    });
+
+    // Optimistic state update
+    setPermissions(prev => {
+      const exists = prev.some(p => p.id === selectedEntityId);
+      if (exists) {
+        return prev.map(p => p.id === selectedEntityId ? updated : p);
+      } else {
+        return [...prev, updated];
+      }
+    });
+
+    const res = await api.saveAppPermission(updated);
+    if (res.success) {
+      setSavingState('saved');
+      setTimeout(() => setSavingState('idle'), 2000);
+    } else {
+      setSavingState('error');
+      fetchData();
+      alert('Failed to save permissions: ' + (res.error || 'Unknown error'));
+    }
+  };
+
+  const handleToggleModuleVisibility = async (moduleKey: string, enable: boolean) => {
+    if (moduleKey === 'permissions' && !enable) {
+      alert('Security Matrix cannot be hidden as it is required to manage app permissions.');
+      return;
+    }
+
+    setSavingState('saving');
+    let nextSections: string[];
+    if (enable) {
+      nextSections = Array.from(new Set([...enabledSections, moduleKey]));
+    } else {
+      nextSections = enabledSections.filter(k => k !== moduleKey);
+    }
+
+    setEnabledSections(nextSections);
+
+    const restId = user?.restaurant_id;
+    if (!restId) {
+      setSavingState('error');
+      alert('No restaurant ID found for user.');
+      return;
+    }
+
+    try {
+      const restRes = await api.getRestaurantById(restId);
+      const currentSettings = (restRes.success && restRes.data) ? (restRes.data.settings || {}) : (user?.restaurants?.settings || {});
+      const updatedSettings = {
+        ...currentSettings,
+        enabled_sections: nextSections
+      };
+
+      const res = await api.updateRestaurantSettings(restId, updatedSettings);
+      if (res.success) {
+        setSavingState('saved');
+        if (onUpdateUser && user) {
+          onUpdateUser({
+            ...user,
+            restaurants: {
+              ...(user.restaurants || { id: restId, name: 'Neo Beirut' }),
+              settings: updatedSettings
+            }
+          });
+        }
+        setTimeout(() => setSavingState('idle'), 2000);
+      } else {
+        setSavingState('error');
+        alert('Failed to update module visibility: ' + (res.error || 'Unknown error'));
+        fetchData();
+      }
+    } catch (err) {
+      setSavingState('error');
+      console.error('Error saving module visibility:', err);
+      alert('Error saving module visibility');
+    }
+  };
+
+  const handleSetAllModules = async (enableAll: boolean) => {
+    setSavingState('saving');
+    const allKeys = MODULE_DEFINITIONS.map(m => m.key);
+    const nextSections = enableAll ? allKeys : ['permissions'];
+    setEnabledSections(nextSections);
+
+    const restId = user?.restaurant_id;
+    if (!restId) return;
+
+    try {
+      const restRes = await api.getRestaurantById(restId);
+      const currentSettings = (restRes.success && restRes.data) ? (restRes.data.settings || {}) : (user?.restaurants?.settings || {});
+      const updatedSettings = {
+        ...currentSettings,
+        enabled_sections: nextSections
+      };
+
+      const res = await api.updateRestaurantSettings(restId, updatedSettings);
+      if (res.success) {
+        setSavingState('saved');
+        if (onUpdateUser && user) {
+          onUpdateUser({
+            ...user,
+            restaurants: {
+              ...(user.restaurants || { id: restId, name: 'Neo Beirut' }),
+              settings: updatedSettings
+            }
+          });
+        }
+        setTimeout(() => setSavingState('idle'), 2000);
+      } else {
+        setSavingState('error');
+        alert('Failed to update modules: ' + (res.error || 'Unknown error'));
+        fetchData();
+      }
+    } catch (err) {
+      setSavingState('error');
+      console.error(err);
+    }
+  };
+
   const selectedPermission = getSelectedPermission();
 
   return (
@@ -674,18 +1119,18 @@ export default function PermissionsScreen({ user, onUpdateUser }: { user?: UserP
         }
         
         .tabs-header {
-          display: flex;
+          display: grid;
+          grid-template-columns: 1fr 1fr;
           border-bottom: 1px solid var(--border);
           background-color: #f8f9fa;
         }
         
         .tab-btn {
-          flex: 1;
-          padding: 12px;
+          padding: 10px 6px;
           border: none;
           background: none;
           font-weight: 600;
-          font-size: 13px;
+          font-size: 12px;
           cursor: pointer;
           color: var(--text-muted);
           display: flex;
@@ -693,13 +1138,58 @@ export default function PermissionsScreen({ user, onUpdateUser }: { user?: UserP
           justify-content: center;
           gap: 6px;
           border-bottom: 2px solid transparent;
+          border-right: 1px solid var(--border);
           transition: all 0.2s;
+          white-space: nowrap;
+        }
+
+        .tab-btn:nth-child(2n) {
+          border-right: none;
         }
         
         .tab-btn.active {
           color: var(--primary);
           border-bottom-color: var(--primary);
           background-color: #ffffff;
+        }
+
+        .quick-action-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 12px;
+          font-weight: 600;
+          padding: 6px 12px;
+          border-radius: 6px;
+          border: 1px solid var(--border);
+          background-color: #ffffff;
+          cursor: pointer;
+          transition: all 0.15s;
+        }
+
+        .quick-action-btn:hover {
+          background-color: #f8f9fa;
+          border-color: #adb5bd;
+        }
+
+        .quick-action-btn.grant {
+          color: #15803d;
+          border-color: #bbf7d0;
+          background-color: #f0fdf4;
+        }
+
+        .quick-action-btn.grant:hover {
+          background-color: #dcfce7;
+        }
+
+        .quick-action-btn.revoke {
+          color: #b91c1c;
+          border-color: #fecaca;
+          background-color: #fef2f2;
+        }
+
+        .quick-action-btn.revoke:hover {
+          background-color: #fee2e2;
         }
         
         .search-box {
@@ -1105,7 +1595,7 @@ export default function PermissionsScreen({ user, onUpdateUser }: { user?: UserP
                   setSearchQuery('');
                 }}
               >
-                <Users size={16} />
+                <Users size={15} />
                 Departments
               </button>
               <button 
@@ -1116,8 +1606,19 @@ export default function PermissionsScreen({ user, onUpdateUser }: { user?: UserP
                   setSearchQuery('');
                 }}
               >
-                <User size={16} />
+                <User size={15} />
                 Users
+              </button>
+              <button 
+                className={`tab-btn ${activeTab === 'modules_visibility' ? 'active' : ''}`}
+                onClick={() => {
+                  setActiveTab('modules_visibility');
+                  setSelectedEntityId(moduleFilterGroup);
+                  setSearchQuery('');
+                }}
+              >
+                <Eye size={15} />
+                Modules Visibility
               </button>
               <button 
                 className={`tab-btn ${activeTab === 'global_alerts' ? 'active' : ''}`}
@@ -1127,7 +1628,7 @@ export default function PermissionsScreen({ user, onUpdateUser }: { user?: UserP
                   setSearchQuery('');
                 }}
               >
-                <Sliders size={16} />
+                <Sliders size={15} />
                 Settings
               </button>
             </div>
@@ -1138,7 +1639,11 @@ export default function PermissionsScreen({ user, onUpdateUser }: { user?: UserP
                 <input 
                   type="text" 
                   className="search-input" 
-                  placeholder={`Search ${activeTab}s...`}
+                  placeholder={
+                    activeTab === 'modules_visibility'
+                      ? 'Filter module groups...'
+                      : `Search ${activeTab}s...`
+                  }
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
                 />
@@ -1146,27 +1651,48 @@ export default function PermissionsScreen({ user, onUpdateUser }: { user?: UserP
             )}
 
             <div className="entity-list">
-              {sidebarItems.map(item => (
-                <div 
-                  key={item.id}
-                  className={`entity-item ${selectedEntityId === item.id ? 'active' : ''}`}
-                  onClick={() => setSelectedEntityId(item.id)}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    {activeTab === 'department' ? (
-                      <Shield size={14} color="var(--primary)" />
-                    ) : activeTab === 'user' ? (
-                      <User size={14} color="var(--primary)" />
-                    ) : (
-                      <Sliders size={14} color="var(--primary)" />
-                    )}
-                    <span className="entity-name">{item.name}</span>
+              {sidebarItems.map(item => {
+                const isActive = activeTab === 'modules_visibility'
+                  ? moduleFilterGroup === item.id
+                  : selectedEntityId === item.id;
+
+                return (
+                  <div 
+                    key={item.id}
+                    className={`entity-item ${isActive ? 'active' : ''}`}
+                    onClick={() => {
+                      if (activeTab === 'modules_visibility') {
+                        setModuleFilterGroup(item.id);
+                        setSelectedEntityId(item.id);
+                      } else {
+                        setSelectedEntityId(item.id);
+                      }
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      {activeTab === 'department' ? (
+                        <Shield size={14} color="var(--primary)" />
+                      ) : activeTab === 'user' ? (
+                        <User size={14} color="var(--primary)" />
+                      ) : activeTab === 'modules_visibility' ? (
+                        <LayoutGrid size={14} color="var(--primary)" />
+                      ) : (
+                        <Sliders size={14} color="var(--primary)" />
+                      )}
+                      <span className="entity-name">{item.name}</span>
+                    </div>
+                    <span className={`entity-badge ${item.hasConfig ? 'configured' : 'default'}`}>
+                      {activeTab === 'modules_visibility'
+                        ? (item as any).badgeText
+                        : activeTab === 'global_alerts'
+                          ? 'Active'
+                          : item.hasConfig
+                            ? 'Configured'
+                            : 'Default'}
+                    </span>
                   </div>
-                  <span className={`entity-badge ${item.hasConfig ? 'configured' : 'default'}`}>
-                    {activeTab === 'global_alerts' ? 'Active' : item.hasConfig ? 'Configured' : 'Default'}
-                  </span>
-                </div>
-              ))}
+                );
+              })}
               {sidebarItems.length === 0 && (
                 <div style={{ padding: '16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>
                   No items found.
@@ -1307,6 +1833,206 @@ export default function PermissionsScreen({ user, onUpdateUser }: { user?: UserP
                   </div>
                 </div>
               </>
+            ) : activeTab === 'modules_visibility' ? (
+              <>
+                <div className="details-header">
+                  <div className="details-title-row">
+                    <Eye size={20} color="var(--primary)" />
+                    <span className="details-title">Modules Visibility</span>
+                    <span className="entity-badge configured">
+                      {MODULE_DEFINITIONS.filter(m => enabledSections.includes(m.key)).length} of {MODULE_DEFINITIONS.length} Active
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div className={`saving-badge ${savingState}`}>
+                      {savingState === 'saving' && (
+                        <>
+                          <Loader2 size={12} className="spin" />
+                          <span>Saving Changes...</span>
+                        </>
+                      )}
+                      {savingState === 'saved' && (
+                        <>
+                          <CheckCircle2 size={12} />
+                          <span>Visibility Synced</span>
+                        </>
+                      )}
+                      {savingState === 'error' && (
+                        <>
+                          <AlertCircle size={12} />
+                          <span>Error Saving</span>
+                        </>
+                      )}
+                      {savingState === 'idle' && (
+                        <>
+                          <CheckCircle2 size={12} style={{ opacity: 0.5 }} />
+                          <span>Navigation Synced</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="details-body" style={{ display: 'flex', flexDirection: 'column' }}>
+                  <div className="global-header-card" style={{ background: 'linear-gradient(135deg, #1e5c4f 0%, #11362e 100%)', marginTop: 0, marginBottom: '16px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
+                      <div style={{ flex: 1, minWidth: '280px' }}>
+                        <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <LayoutGrid size={18} /> Restaurant Modules & Navigation Control
+                        </h3>
+                        <p>
+                          Configure which modules are visible across the restaurant. Toggling a module OFF will immediately 
+                          hide it from the sidebar navigation and disable its routes for all restaurant staff members.
+                        </p>
+                      </div>
+                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                        <button 
+                          onClick={() => handleSetAllModules(true)}
+                          className="quick-action-btn grant"
+                          style={{ backgroundColor: 'rgba(255,255,255,0.2)', color: '#fff', borderColor: 'rgba(255,255,255,0.4)', padding: '7px 14px', fontSize: '12px' }}
+                        >
+                          <CheckCircle2 size={14} /> Enable All
+                        </button>
+                        <button 
+                          onClick={() => handleSetAllModules(false)}
+                          className="quick-action-btn revoke"
+                          style={{ backgroundColor: 'rgba(255,255,255,0.1)', color: '#fff', borderColor: 'rgba(255,255,255,0.3)', padding: '7px 14px', fontSize: '12px' }}
+                        >
+                          <EyeOff size={14} /> Hide All (Except Core)
+                        </button>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '6px', marginTop: '16px', flexWrap: 'wrap' }}>
+                      {[
+                        { id: 'all', label: 'All Modules' },
+                        { id: 'Operations', label: 'Operations' },
+                        { id: 'Inventory', label: 'Inventory' },
+                        { id: 'People', label: 'People & HR' },
+                        { id: 'Customers', label: 'Customers' },
+                        { id: 'Analytics', label: 'Analytics' },
+                        { id: 'Administration', label: 'Administration' },
+                      ].map(g => {
+                        const isActive = moduleFilterGroup === g.id;
+                        return (
+                          <button
+                            key={g.id}
+                            onClick={() => setModuleFilterGroup(g.id)}
+                            style={{
+                              padding: '5px 12px',
+                              borderRadius: '20px',
+                              border: isActive ? '1px solid #ffffff' : '1px solid rgba(255,255,255,0.25)',
+                              backgroundColor: isActive ? '#ffffff' : 'rgba(255,255,255,0.1)',
+                              color: isActive ? '#1e5c4f' : '#ffffff',
+                              fontWeight: 600,
+                              fontSize: '12px',
+                              cursor: 'pointer',
+                              transition: 'all 0.15s'
+                            }}
+                          >
+                            {g.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="cards-grid" style={{ paddingTop: '4px' }}>
+                    {MODULE_DEFINITIONS
+                      .filter(m => {
+                        if (moduleFilterGroup !== 'all' && m.group !== moduleFilterGroup) return false;
+                        if (searchQuery.trim() !== '') {
+                          const q = searchQuery.toLowerCase();
+                          return m.label.toLowerCase().includes(q) || m.desc.toLowerCase().includes(q) || m.key.toLowerCase().includes(q);
+                        }
+                        return true;
+                      })
+                      .map(mod => {
+                        const isVisible = enabledSections.includes(mod.key);
+                        const isCore = mod.isCore;
+
+                        return (
+                          <div 
+                            key={mod.key} 
+                            className="category-card"
+                            style={{
+                              border: isVisible ? '1px solid var(--border)' : '1px dashed #ced4da',
+                              backgroundColor: isVisible ? '#ffffff' : '#fdfdfd',
+                              opacity: isVisible ? 1 : 0.8,
+                              transition: 'all 0.2s ease-in-out'
+                            }}
+                          >
+                            <div className="card-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <div style={{
+                                  width: '36px',
+                                  height: '36px',
+                                  borderRadius: '8px',
+                                  backgroundColor: isVisible ? '#e8f2f0' : '#f1f3f5',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center'
+                                }}>
+                                  {mod.icon}
+                                </div>
+                                <div>
+                                  <div className="card-title" style={{ fontSize: '14px', fontWeight: 700 }}>
+                                    {mod.label}
+                                  </div>
+                                  <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                                    Route: <code style={{ backgroundColor: '#f1f3f5', padding: '1px 4px', borderRadius: '4px' }}>{mod.route}</code>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+                                <label className="custom-switch" title={isCore ? "Core security module cannot be hidden" : `Toggle ${mod.label} visibility`}>
+                                  <input 
+                                    type="checkbox" 
+                                    checked={isVisible}
+                                    disabled={isCore}
+                                    onChange={(e) => handleToggleModuleVisibility(mod.key, e.target.checked)}
+                                  />
+                                  <span className="switch-slider" style={isCore ? { cursor: 'not-allowed', opacity: 0.7 } : {}}></span>
+                                </label>
+                              </div>
+                            </div>
+
+                            <p style={{ fontSize: '12px', color: '#495057', lineHeight: 1.4, margin: '6px 0 10px 0', minHeight: '34px' }}>
+                              {mod.desc}
+                            </p>
+
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid #f1f3f5', paddingTop: '10px', marginTop: 'auto' }}>
+                              <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600 }}>
+                                Category: {mod.group}
+                              </span>
+
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span 
+                                  style={{ 
+                                    fontSize: '11px', 
+                                    fontWeight: 700,
+                                    padding: '2px 8px',
+                                    borderRadius: '10px',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    backgroundColor: isVisible ? '#dcfce7' : '#fee2e2',
+                                    color: isVisible ? '#15803d' : '#b91c1c'
+                                  }}
+                                >
+                                  <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: isVisible ? '#22c55e' : '#ef4444' }} />
+                                  {isVisible ? 'VISIBLE' : 'HIDDEN'}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+              </>
             ) : selectedPermission ? (
               <>
                 <div className="details-header">
@@ -1322,59 +2048,153 @@ export default function PermissionsScreen({ user, onUpdateUser }: { user?: UserP
                     </span>
                   </div>
 
-                  <div className={`saving-badge ${savingState}`}>
-                    {savingState === 'saving' && (
-                      <>
-                        <Loader2 size={12} className="spin" />
-                        <span>Saving...</span>
-                      </>
-                    )}
-                    {savingState === 'saved' && (
-                      <>
-                        <CheckCircle2 size={12} />
-                        <span>Changes Saved</span>
-                      </>
-                    )}
-                    {savingState === 'error' && (
-                      <>
-                        <AlertCircle size={12} />
-                        <span>Error Saving</span>
-                      </>
-                    )}
-                    {savingState === 'idle' && (
-                      <>
-                        <CheckCircle2 size={12} style={{ opacity: 0.5 }} />
-                        <span>Autosaved</span>
-                      </>
-                    )}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <button
+                      onClick={() => handleToggleAllPermissions(true)}
+                      className="quick-action-btn grant"
+                      title="Turn ON all permissions for this entity"
+                    >
+                      <CheckSquare size={13} />
+                      Grant All
+                    </button>
+                    <button
+                      onClick={() => handleToggleAllPermissions(false)}
+                      className="quick-action-btn revoke"
+                      title="Turn OFF all permissions for this entity"
+                    >
+                      <Square size={13} />
+                      Revoke All
+                    </button>
+
+                    <div className={`saving-badge ${savingState}`}>
+                      {savingState === 'saving' && (
+                        <>
+                          <Loader2 size={12} className="spin" />
+                          <span>Saving...</span>
+                        </>
+                      )}
+                      {savingState === 'saved' && (
+                        <>
+                          <CheckCircle2 size={12} />
+                          <span>Changes Saved</span>
+                        </>
+                      )}
+                      {savingState === 'error' && (
+                        <>
+                          <AlertCircle size={12} />
+                          <span>Error Saving</span>
+                        </>
+                      )}
+                      {savingState === 'idle' && (
+                        <>
+                          <CheckCircle2 size={12} style={{ opacity: 0.5 }} />
+                          <span>Autosaved</span>
+                        </>
+                      )}
+                    </div>
                   </div>
                 </div>
 
                 <div className="details-body">
+                  <div style={{ padding: '16px 20px 0 20px', display: 'flex', gap: '12px', alignItems: 'center' }}>
+                    <div style={{ position: 'relative', flex: 1 }}>
+                      <Search size={14} style={{ position: 'absolute', left: '12px', top: '11px', color: 'var(--text-muted)' }} />
+                      <input 
+                        type="text"
+                        placeholder="Search permissions or modules (e.g. punch, orders, waste, salary, schedule)..."
+                        value={permFilterQuery}
+                        onChange={(e) => setPermFilterQuery(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '8px 12px 8px 34px',
+                          borderRadius: '8px',
+                          border: '1px solid var(--border)',
+                          fontSize: '13px',
+                          backgroundColor: '#ffffff',
+                          outline: 'none'
+                        }}
+                      />
+                    </div>
+                    {permFilterQuery && (
+                      <button 
+                        onClick={() => setPermFilterQuery('')}
+                        style={{
+                          padding: '8px 12px',
+                          fontSize: '12px',
+                          background: '#e9ecef',
+                          border: 'none',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          fontWeight: 600
+                        }}
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+
                   <div className="cards-grid">
-                    {CATEGORIES.map(cat => (
-                      <div key={cat.id} className="category-card">
-                        <div className="card-header">
-                          {cat.icon}
-                          <span className="card-title">{cat.title}</span>
-                        </div>
-                        <div className="permission-list">
-                          {cat.permissions.map(perm => (
-                            <div className="permission-row" key={perm.key}>
-                              <span className="permission-label">{perm.label}</span>
-                              <label className="custom-switch">
+                    {CATEGORIES.map(cat => {
+                      const q = permFilterQuery.toLowerCase().trim();
+                      const matchingPermissions = q 
+                        ? cat.permissions.filter(p => p.label.toLowerCase().includes(q) || cat.title.toLowerCase().includes(q))
+                        : cat.permissions;
+
+                      if (matchingPermissions.length === 0) return null;
+
+                      const allEnabled = cat.permissions.every(p => !!selectedPermission[p.key]);
+                      const someEnabled = cat.permissions.some(p => !!selectedPermission[p.key]);
+                      const activeCount = cat.permissions.filter(p => !!selectedPermission[p.key]).length;
+
+                      return (
+                        <div key={cat.id} className="category-card">
+                          <div className="card-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                              {cat.icon}
+                              <span className="card-title" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{cat.title}</span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                              <span 
+                                style={{ 
+                                  fontSize: '11px', 
+                                  fontWeight: 700,
+                                  padding: '2px 6px',
+                                  borderRadius: '6px',
+                                  backgroundColor: allEnabled ? '#dcfce7' : someEnabled ? '#fef3c7' : '#f3f4f6',
+                                  color: allEnabled ? '#15803d' : someEnabled ? '#b45309' : '#6b7280'
+                                }}
+                              >
+                                {allEnabled ? 'ALL ON' : someEnabled ? `${activeCount}/${cat.permissions.length}` : 'ALL OFF'}
+                              </span>
+                              <label className="custom-switch" title={`Toggle all ${cat.title} permissions`}>
                                 <input 
                                   type="checkbox" 
-                                  checked={!!selectedPermission[perm.key]} 
-                                  onChange={(e) => handleToggle(perm.key, e.target.checked)}
+                                  checked={allEnabled}
+                                  ref={el => { if (el) el.indeterminate = someEnabled && !allEnabled; }}
+                                  onChange={(e) => handleToggleCategory(cat.id, e.target.checked)}
                                 />
                                 <span className="switch-slider"></span>
                               </label>
                             </div>
-                          ))}
+                          </div>
+                          <div className="permission-list">
+                            {matchingPermissions.map(perm => (
+                              <div className="permission-row" key={perm.key}>
+                                <span className="permission-label">{perm.label}</span>
+                                <label className="custom-switch">
+                                  <input 
+                                    type="checkbox" 
+                                    checked={!!selectedPermission[perm.key]} 
+                                    onChange={(e) => handleToggle(perm.key, e.target.checked)}
+                                  />
+                                  <span className="switch-slider"></span>
+                                </label>
+                              </div>
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
 
                     {/* Allowed Departments override list */}
                     {!selectedPermission.can_order_all_departments && (
