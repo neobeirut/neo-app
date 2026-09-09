@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { api } from '../api/client';
 import { 
   DollarSign, Search, Plus, Trash2, RefreshCw, 
-  Wallet, Eye, Check, RotateCcw
+  Wallet, Eye, Check, RotateCcw, Sparkles, Lock, FileText, Bus
 } from 'lucide-react';
 import EmployeePayslipModal from '../components/attendance/EmployeePayslipModal';
 import type { CalculatedPayrollItem } from '../utils/payrollCalculation';
@@ -34,9 +34,11 @@ export default function SalaryPaymentsScreen({ user }: SalaryPaymentsScreenProps
   const [payments, setPayments] = useState<any[]>([]);
   const [activeLoans, setActiveLoans] = useState<any[]>([]);
   const [cashoutCandidates, setCashoutCandidates] = useState<any[]>([]);
+  const [attendanceLogs, setAttendanceLogs] = useState<any[]>([]);
 
   const [loading, setLoading] = useState<boolean>(true);
   const [syncing, setSyncing] = useState<boolean>(false);
+  const [generatingBatch, setGeneratingBatch] = useState<boolean>(false);
 
   // Payment Modal State
   const [showPaymentModal, setShowPaymentModal] = useState<boolean>(false);
@@ -53,6 +55,7 @@ export default function SalaryPaymentsScreen({ user }: SalaryPaymentsScreenProps
   // Payslip Modal State
   const [showPayslipModal, setShowPayslipModal] = useState<boolean>(false);
   const [selectedPayslipItem, setSelectedPayslipItem] = useState<CalculatedPayrollItem | null>(null);
+  const [selectedEmployeeObj, setSelectedEmployeeObj] = useState<any | null>(null);
 
   useEffect(() => {
     loadBaseData();
@@ -82,17 +85,23 @@ export default function SalaryPaymentsScreen({ user }: SalaryPaymentsScreenProps
 
   const loadPeriodData = async () => {
     setLoading(true);
-    const [payrollsRes, paymentsRes, loansRes, cashoutRes] = await Promise.all([
+    const startDate = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-01T00:00:00Z`;
+    const lastDayNum = new Date(selectedYear, selectedMonth, 0).getDate();
+    const endDate = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-${String(lastDayNum).padStart(2, '0')}T23:59:59Z`;
+
+    const [payrollsRes, paymentsRes, loansRes, cashoutRes, attRes] = await Promise.all([
       api.getPayrolls(selectedMonth, selectedYear),
       api.getSalaryPayments(selectedMonth, selectedYear),
       api.getActiveLoans(),
-      api.getCashoutSalaryCandidates(selectedMonth, selectedYear)
+      api.getCashoutSalaryCandidates(selectedMonth, selectedYear),
+      api.getAttendanceLogs({ startDate, endDate })
     ]);
 
     if (payrollsRes.success) setPayrolls(payrollsRes.data || []);
     if (paymentsRes.success) setPayments(paymentsRes.data || []);
     if (loansRes.success) setActiveLoans(loansRes.data || []);
     if (cashoutRes.success) setCashoutCandidates(cashoutRes.data || []);
+    if (attRes.success) setAttendanceLogs(attRes.data || []);
     setLoading(false);
   };
 
@@ -190,45 +199,72 @@ export default function SalaryPaymentsScreen({ user }: SalaryPaymentsScreenProps
   };
 
   const handleOpenPayslip = (empData: any) => {
+    const baseSalary = Number(empData.salary || empData.base_rate || 0);
+    const pDays = empData.punchedDays ?? 0;
+    const tDaily = empData.transDailyRate ?? (Number(empData.transportation) || 0);
+    const transAllowance = empData.transTotal ?? (Math.round(pDays * tDaily * 100) / 100);
+    const estPayroll = empData.isSaved && empData.slipAmount > 0 
+      ? empData.slipAmount 
+      : Math.round((baseSalary + transAllowance) * 100) / 100;
+
     const payslipItem: CalculatedPayrollItem = {
       employee_id: empData.employee_id,
       employee_name: empData.fullName,
       position: empData.position,
       branch: empData.branch,
       salary_type: empData.salary_type || 'Monthly',
-      base_rate: empData.slipAmount,
+      base_rate: baseSalary,
       scheduled_hours: 0,
       regular_hours: 0,
       actual_hours: 0,
-      worked_days: 0,
+      worked_days: pDays,
       absent_days: 0,
       vacation_days: 0,
       sick_days: 0,
       unpaid_leave_days: 0,
       late_count: 0,
       early_out_count: 0,
-      regular_pay: empData.slipAmount,
+      regular_pay: baseSalary,
       overtime_hours: 0,
       overtime_rate_multiplier: 1.5,
       overtime_pay: 0,
       system_deductions: 0,
-      system_allowances: 0,
-      estimated_payroll: empData.slipAmount,
+      system_allowances: transAllowance,
+      estimated_payroll: estPayroll,
       approved_hours: 0,
       approved_overtime: 0,
       bonus: 0,
       deductions: 0,
-      transportation: 0,
+      transportation_daily_rate: tDaily,
+      transportation: transAllowance,
       commission: 0,
       allowances: 0,
       tips: 0,
-      final_payroll: empData.slipAmount,
+      final_payroll: estPayroll,
       variance_difference: 0,
       manager_notes: ''
     };
     setSelectedPayslipItem(payslipItem);
+    setSelectedEmployeeObj(empData);
     setShowPayslipModal(true);
   };
+
+  // Map employee_id -> count of unique days punched in
+  const empPunchesMap = useMemo(() => {
+    const map = new Map<string, number>();
+    const datesMap = new Map<string, Set<string>>();
+    (attendanceLogs || []).forEach((log: any) => {
+      if (!log.employee_id || !log.punch_in) return;
+      const eid = String(log.employee_id);
+      if (!datesMap.has(eid)) datesMap.set(eid, new Set());
+      const dateStr = log.punch_in.split('T')[0];
+      datesMap.get(eid)!.add(dateStr);
+    });
+    datesMap.forEach((datesSet, eid) => {
+      map.set(eid, datesSet.size);
+    });
+    return map;
+  }, [attendanceLogs]);
 
   const combinedRoster = useMemo(() => {
     const payrollMap = new Map<string, any>();
@@ -267,19 +303,44 @@ export default function SalaryPaymentsScreen({ user }: SalaryPaymentsScreenProps
       const pRecord = payrollMap.get(eid);
       const fullName = `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || 'Unknown';
 
-      const slipAmount = pRecord ? Number(pRecord.net_salary ?? pRecord.final_salary ?? emp.salary ?? 0) : Number(emp.salary || 0);
+      // Saved payslip gatekeeping:
+      // Payslip is only considered saved if pRecord exists in payrolls table
+      const isSaved = Boolean(pRecord && pRecord.payroll_id);
+
+      const punchedDays = empPunchesMap.get(eid) ?? (pRecord?.show_days !== null && pRecord?.show_days !== undefined ? Number(pRecord.show_days) : 0);
+      const transDailyRate = pRecord?.transportation_daily_rate !== null && pRecord?.transportation_daily_rate !== undefined 
+        ? Number(pRecord.transportation_daily_rate) 
+        : (Number(emp.transportation) || 0);
+
+      const transTotal = isSaved && pRecord?.transportation !== null && pRecord?.transportation !== undefined
+        ? Number(pRecord.transportation)
+        : Math.round(punchedDays * transDailyRate * 100) / 100;
+
+      const baseSalary = Number(emp.salary || 0);
+      const estimatedFinalSalary = Math.round((baseSalary + transTotal) * 100) / 100;
+
+      // Final amount to be paid is ONLY defined when saved
+      const slipAmount = isSaved ? Number(pRecord.net_salary ?? pRecord.final_salary ?? 0) : 0;
 
       const payData = empPaymentsMap.get(eid) || { cashoutSalary: 0, manual: 0, total: 0, list: [] };
       const activeLoanTotal = loansMap.get(eid) || 0;
 
-      // Formula: Remaining to Pay = Salary Slip Net - Total Paid - Active Loans
-      const remainingToPay = Math.round((slipAmount - payData.total - activeLoanTotal) * 100) / 100;
+      // Remaining to pay is calculated against the saved slip amount
+      const remainingToPay = isSaved
+        ? Math.round((slipAmount - payData.total - activeLoanTotal) * 100) / 100
+        : null;
 
       const is100PaidByAdmin = pRecord?.status === '100% Paid' || pRecord?.status === 'Paid';
 
       return {
         ...emp,
         fullName,
+        isSaved,
+        pRecord,
+        punchedDays,
+        transDailyRate,
+        transTotal,
+        estimatedFinalSalary,
         slipAmount,
         cashoutSalaryTaken: Math.round(payData.cashoutSalary * 100) / 100,
         manualPaid: Math.round(payData.manual * 100) / 100,
@@ -287,13 +348,62 @@ export default function SalaryPaymentsScreen({ user }: SalaryPaymentsScreenProps
         activeLoanTotal: Math.round(activeLoanTotal * 100) / 100,
         remainingToPay,
         paymentList: payData.list,
-        status: pRecord?.status || 'Draft',
+        status: isSaved ? (pRecord?.status || 'Approved') : 'Needs Payslip',
         is100PaidByAdmin,
         paid_at: pRecord?.paid_at,
         paid_by: pRecord?.paid_by
       };
     });
-  }, [employees, payrolls, payments, activeLoans]);
+  }, [employees, payrolls, payments, activeLoans, empPunchesMap]);
+
+  const handleGenerateAllPayslips = async () => {
+    const unsavedEmps = combinedRoster.filter(e => !e.isSaved);
+    if (unsavedEmps.length === 0) {
+      alert(`All employees already have saved payslips for ${monthName} ${selectedYear}!`);
+      return;
+    }
+
+    if (!confirm(`Generate and save payslips for ${unsavedEmps.length} employee(s) for ${monthName} ${selectedYear}? Transportation will be automatically calculated according to days punched in.`)) {
+      return;
+    }
+
+    setGeneratingBatch(true);
+    const payloads = unsavedEmps.map(e => {
+      const base = Number(e.salary || 0);
+      const pDays = e.punchedDays || 0;
+      const tDaily = e.transDailyRate || 0;
+      const tTotal = Math.round(pDays * tDaily * 100) / 100;
+      const finalNet = Math.round((base + tTotal) * 100) / 100;
+
+      return {
+        employee_id: e.employee_id,
+        month: selectedMonth,
+        year: selectedYear,
+        base_salary: base,
+        working_days: 26,
+        show_days: pDays,
+        transportation_daily_rate: tDaily,
+        transportation: tTotal,
+        bonuses: 0,
+        deductions: 0,
+        salary_deduction: 0,
+        final_salary: finalNet,
+        net_salary: finalNet,
+        status: 'Approved',
+        generated_at: new Date().toISOString()
+      };
+    });
+
+    const res = await api.batchSavePayrolls(payloads);
+    setGeneratingBatch(false);
+
+    if (res.success) {
+      await loadPeriodData();
+      alert(`Successfully generated and saved ${res.count} payslip(s) for ${monthName} ${selectedYear}! Final amounts are now displayed and ready for payment.`);
+    } else {
+      alert(`Failed to batch generate payslips: ${res.error}`);
+    }
+  };
 
   const filteredRoster = useMemo(() => {
     return combinedRoster.filter(item => {
@@ -316,14 +426,18 @@ export default function SalaryPaymentsScreen({ user }: SalaryPaymentsScreenProps
     let totalLoans = 0;
     let totalRemaining = 0;
     let count100Paid = 0;
+    let countSaved = 0;
 
     filteredRoster.forEach(item => {
-      totalSalary += item.slipAmount;
+      if (item.isSaved) {
+        totalSalary += item.slipAmount;
+        if (item.remainingToPay !== null) totalRemaining += item.remainingToPay;
+        countSaved++;
+      }
       totalCashoutSalary += item.cashoutSalaryTaken;
       totalManual += item.manualPaid;
       totalPaid += item.totalPaid;
       totalLoans += item.activeLoanTotal;
-      totalRemaining += item.remainingToPay;
       if (item.is100PaidByAdmin) count100Paid++;
     });
 
@@ -335,6 +449,8 @@ export default function SalaryPaymentsScreen({ user }: SalaryPaymentsScreenProps
       totalLoans: Math.round(totalLoans * 100) / 100,
       totalRemaining: Math.round(totalRemaining * 100) / 100,
       count100Paid,
+      countSaved,
+      countUnsaved: filteredRoster.length - countSaved,
       totalEmployees: filteredRoster.length
     };
   }, [filteredRoster]);
@@ -363,7 +479,7 @@ export default function SalaryPaymentsScreen({ user }: SalaryPaymentsScreenProps
           <div>
             <h1 style={{ fontSize: '24px', fontWeight: 800, color: 'var(--text-main)', margin: 0 }}>Salary Payments</h1>
             <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: '2px 0 0 0' }}>
-              Track salary slips, drawer cashouts, active loans, and record payments with admin confirmation.
+              Finalize payslips with punched days transportation, track advances, and record disbursements.
             </p>
           </div>
         </div>
@@ -407,6 +523,29 @@ export default function SalaryPaymentsScreen({ user }: SalaryPaymentsScreenProps
             style={{ padding: '8px 12px', backgroundColor: '#fff', border: '1px solid var(--border)', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
           >
             <RefreshCw size={15} />
+          </button>
+
+          {/* 1-Click Batch Generate All Payslips Button */}
+          <button
+            onClick={handleGenerateAllPayslips}
+            disabled={generatingBatch || kpiMetrics.countUnsaved === 0}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: kpiMetrics.countUnsaved > 0 ? 'var(--primary)' : '#f1f5f9',
+              color: kpiMetrics.countUnsaved > 0 ? '#fff' : '#64748b',
+              border: 'none',
+              borderRadius: '8px',
+              fontSize: '13px',
+              fontWeight: 700,
+              cursor: (generatingBatch || kpiMetrics.countUnsaved === 0) ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+            title="Automatically compute punched days, transportation, and save all pending payslips"
+          >
+            <Sparkles size={15} className={generatingBatch ? 'animate-spin' : ''} />
+            {generatingBatch ? 'Generating...' : kpiMetrics.countUnsaved > 0 ? `Generate All Payslips (${kpiMetrics.countUnsaved} Pending)` : 'All Payslips Saved'}
           </button>
         </div>
       </div>
@@ -538,9 +677,25 @@ export default function SalaryPaymentsScreen({ user }: SalaryPaymentsScreenProps
                         </div>
                       </td>
 
-                      {/* Salary Slip Net */}
-                      <td style={{ padding: '14px 16px', textAlign: 'right', fontWeight: 700 }}>
-                        ${item.slipAmount.toFixed(2)}
+                      {/* Salary Slip (Final Amount to be Paid) */}
+                      <td style={{ padding: '14px 16px', textAlign: 'right' }}>
+                        {item.isSaved ? (
+                          <div>
+                            <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '14px' }}>${item.slipAmount.toFixed(2)}</div>
+                            <div style={{ fontSize: '11px', color: '#16a34a', marginTop: '2px', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '3px' }}>
+                              <Bus size={11} /> {item.punchedDays}d (+${item.transTotal.toFixed(0)})
+                            </div>
+                          </div>
+                        ) : (
+                          <div>
+                            <span style={{ display: 'inline-block', backgroundColor: '#fef3c7', color: '#b45309', padding: '2px 6px', borderRadius: '4px', fontSize: '11px', fontWeight: 700 }}>
+                              Unsaved
+                            </span>
+                            <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                              Est: ${item.estimatedFinalSalary.toFixed(2)}
+                            </div>
+                          </div>
+                        )}
                       </td>
 
                       {/* Cashout Salary Taken */}
@@ -579,18 +734,28 @@ export default function SalaryPaymentsScreen({ user }: SalaryPaymentsScreenProps
 
                       {/* Net Remaining to Pay */}
                       <td style={{ padding: '14px 16px', textAlign: 'right', fontWeight: 800, fontSize: '14px' }}>
-                        <span style={{ color: item.remainingToPay <= 0 ? '#059669' : '#4f46e5' }}>
-                          ${item.remainingToPay.toFixed(2)}
-                        </span>
+                        {item.isSaved && item.remainingToPay !== null ? (
+                          <span style={{ color: item.remainingToPay <= 0 ? '#059669' : '#4f46e5' }}>
+                            ${item.remainingToPay.toFixed(2)}
+                          </span>
+                        ) : (
+                          <span style={{ color: 'var(--text-muted)', fontSize: '12px', fontWeight: 500 }}>
+                            Pending Payslip
+                          </span>
+                        )}
                       </td>
 
                       {/* Status Badge */}
                       <td style={{ padding: '14px 16px', textAlign: 'center' }}>
-                        {item.is100PaidByAdmin ? (
+                        {!item.isSaved ? (
+                          <span style={{ backgroundColor: '#fef3c7', color: '#b45309', padding: '4px 10px', borderRadius: '12px', fontSize: '11px', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                            Needs Payslip
+                          </span>
+                        ) : item.is100PaidByAdmin ? (
                           <span style={{ backgroundColor: '#dcfce7', color: '#15803d', padding: '4px 10px', borderRadius: '12px', fontSize: '11px', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                             <Check size={12} /> 100% Paid
                           </span>
-                        ) : item.remainingToPay <= 0 && item.totalPaid > 0 ? (
+                        ) : item.remainingToPay !== null && item.remainingToPay <= 0 && item.totalPaid > 0 ? (
                           <span style={{ backgroundColor: '#eff6ff', color: '#1d4ed8', padding: '4px 10px', borderRadius: '12px', fontSize: '11px', fontWeight: 700 }} title="Amount distributed, awaiting admin final confirmation">
                             Pending Admin Sign-off
                           </span>
@@ -599,8 +764,8 @@ export default function SalaryPaymentsScreen({ user }: SalaryPaymentsScreenProps
                             Partially Paid
                           </span>
                         ) : (
-                          <span style={{ backgroundColor: '#fee2e2', color: '#b91c1c', padding: '4px 10px', borderRadius: '12px', fontSize: '11px', fontWeight: 700 }}>
-                            Unpaid
+                          <span style={{ backgroundColor: '#dbeafe', color: '#1e40af', padding: '4px 10px', borderRadius: '12px', fontSize: '11px', fontWeight: 700 }}>
+                            Saved (Ready)
                           </span>
                         )}
                       </td>
@@ -609,45 +774,67 @@ export default function SalaryPaymentsScreen({ user }: SalaryPaymentsScreenProps
                       <td style={{ padding: '14px 16px', textAlign: 'center' }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
                           
-                          <button
-                            onClick={() => handleOpenPaymentModal(item)}
-                            style={{ padding: '6px 10px', backgroundColor: '#eef2ff', color: 'var(--primary)', border: '1px solid #c7d2fe', borderRadius: '6px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
-                            title="Add Payment or View History"
-                          >
-                            <Plus size={13} /> Pay
-                          </button>
+                          {item.isSaved ? (
+                            <>
+                              <button
+                                onClick={() => handleOpenPaymentModal(item)}
+                                style={{ padding: '6px 10px', backgroundColor: '#eef2ff', color: 'var(--primary)', border: '1px solid #c7d2fe', borderRadius: '6px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                title="Add Payment or View History"
+                              >
+                                <Plus size={13} /> Pay
+                              </button>
 
-                          <button
-                            onClick={() => handleToggle100PercentPaid(item.employee_id, item.status, item.fullName)}
-                            style={{ 
-                              padding: '6px 10px', 
-                              backgroundColor: item.is100PaidByAdmin ? '#f1f5f9' : '#10b981', 
-                              color: item.is100PaidByAdmin ? '#475569' : '#ffffff', 
-                              border: item.is100PaidByAdmin ? '1px solid #cbd5e1' : 'none', 
-                              borderRadius: '6px', 
-                              fontSize: '12px', 
-                              fontWeight: 600, 
-                              cursor: 'pointer', 
-                              display: 'flex', 
-                              alignItems: 'center', 
-                              gap: '4px' 
-                            }}
-                            title={item.is100PaidByAdmin ? 'Revert status to Pending' : 'Mark as 100% Paid'}
-                          >
-                            {item.is100PaidByAdmin ? (
-                              <><RotateCcw size={12} /> Reopen</>
-                            ) : (
-                              <><Check size={12} /> Confirm 100%</>
-                            )}
-                          </button>
+                              <button
+                                onClick={() => handleToggle100PercentPaid(item.employee_id, item.status, item.fullName)}
+                                style={{ 
+                                  padding: '6px 10px', 
+                                  backgroundColor: item.is100PaidByAdmin ? '#f1f5f9' : '#10b981', 
+                                  color: item.is100PaidByAdmin ? '#475569' : '#ffffff', 
+                                  border: item.is100PaidByAdmin ? '1px solid #cbd5e1' : 'none', 
+                                  borderRadius: '6px', 
+                                  fontSize: '12px', 
+                                  fontWeight: 600, 
+                                  cursor: 'pointer', 
+                                  display: 'flex', 
+                                  alignItems: 'center', 
+                                  gap: '4px' 
+                                }}
+                                title={item.is100PaidByAdmin ? 'Revert status to Pending' : 'Mark as 100% Paid'}
+                              >
+                                {item.is100PaidByAdmin ? (
+                                  <><RotateCcw size={12} /> Reopen</>
+                                ) : (
+                                  <><Check size={12} /> Confirm 100%</>
+                                )}
+                              </button>
 
-                          <button
-                            onClick={() => handleOpenPayslip(item)}
-                            style={{ padding: '6px 8px', backgroundColor: '#fff', border: '1px solid var(--border)', borderRadius: '6px', color: 'var(--text-muted)', cursor: 'pointer' }}
-                            title="View Official Salary Slip"
-                          >
-                            <Eye size={13} />
-                          </button>
+                              <button
+                                onClick={() => handleOpenPayslip(item)}
+                                style={{ padding: '6px 8px', backgroundColor: '#fff', border: '1px solid var(--border)', borderRadius: '6px', color: 'var(--text-muted)', cursor: 'pointer' }}
+                                title="View Official Salary Slip"
+                              >
+                                <Eye size={13} />
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                onClick={() => handleOpenPayslip(item)}
+                                style={{ padding: '6px 12px', backgroundColor: 'var(--primary)', color: '#ffffff', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}
+                                title="Calculate punched days, transportation, and save payslip"
+                              >
+                                <FileText size={13} /> Generate Payslip
+                              </button>
+
+                              <button
+                                disabled
+                                style={{ padding: '6px 10px', backgroundColor: '#f1f5f9', color: '#94a3b8', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '12px', fontWeight: 600, cursor: 'not-allowed', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                title="Payslip must be saved before recording salary payments"
+                              >
+                                <Lock size={12} /> Pay
+                              </button>
+                            </>
+                          )}
                         </div>
                       </td>
 
@@ -863,9 +1050,21 @@ export default function SalaryPaymentsScreen({ user }: SalaryPaymentsScreenProps
       {/* Employee Payslip Modal */}
       <EmployeePayslipModal
         isOpen={showPayslipModal}
-        onClose={() => setShowPayslipModal(false)}
+        onClose={() => {
+          setShowPayslipModal(false);
+          setSelectedEmployeeObj(null);
+        }}
         item={selectedPayslipItem}
         periodName={`${monthName} ${selectedYear}`}
+        month={selectedMonth}
+        year={selectedYear}
+        punchedDays={selectedEmployeeObj?.punchedDays}
+        transDailyRate={selectedEmployeeObj?.transDailyRate}
+        onSaved={async () => {
+          await loadPeriodData();
+        }}
+        adminName={user?.name || 'Admin'}
+        allowSave={true}
       />
 
     </div>

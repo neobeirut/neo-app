@@ -993,6 +993,7 @@ export default function PayrollValidationScreen({
         onClose={() => setShowPayslipModal(false)}
         item={selectedPayslipItem}
         periodName={periodName}
+        onSaved={loadValidationData}
       />
 
     </div>

@@ -35,6 +35,7 @@ export interface CalculatedPayrollItem {
   approved_overtime: number;
   bonus: number;
   deductions: number;
+  transportation_daily_rate?: number;
   transportation: number;
   commission: number;
   allowances: number;
@@ -150,7 +151,9 @@ export function computePayrollFromAnalysis({
     let regularPay = 0;
     let overtimePay = 0;
     let systemDeductions = 0;
-    const systemAllowances = 0;
+    const transDailyRate = parseFloat(empObj.transportation) || 0;
+    const transportationPay = Math.round(workedDays * transDailyRate * 100) / 100;
+    const systemAllowances = transportationPay;
 
     if (salaryType === 'Hourly') {
       regularPay = Math.round((totalRegHours * baseRate) * 100) / 100;
@@ -201,9 +204,10 @@ export function computePayrollFromAnalysis({
       approved_overtime: totalOtHours,
       bonus: 0,
       deductions: systemDeductions,
-      transportation: 0,
+      transportation_daily_rate: transDailyRate,
+      transportation: transportationPay,
       commission: 0,
-      allowances: systemAllowances,
+      allowances: 0,
       tips: 0,
       final_payroll: estimatedPayroll,
       variance_difference: 0,

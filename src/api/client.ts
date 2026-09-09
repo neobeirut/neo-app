@@ -5567,6 +5567,14 @@ export const api = {
     return { success: true, data };
   },
 
+  batchSavePayrolls: async (payrolls: any[]) => {
+    if (!payrolls || payrolls.length === 0) return { success: true, count: 0 };
+    const payloads = await Promise.all(payrolls.map(p => injectRestaurantId({ ...p })));
+    const { data, error } = await supabase.from('payrolls').upsert(payloads, { onConflict: 'employee_id, month, year' }).select();
+    if (error) return { success: false, error: error.message };
+    return { success: true, data, count: data?.length || 0 };
+  },
+
   getSalaryPayments: async (month: number, year: number, employeeId?: string) => {
     let query = supabase.from('salary_payments')
       .select('*, employees(employee_id, first_name, last_name, position, branch, department)')
