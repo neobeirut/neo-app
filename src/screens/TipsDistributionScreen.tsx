@@ -10,7 +10,9 @@ import {
   Layers, 
   Users, 
   SlidersHorizontal,
-  Percent
+  Percent,
+  Lock,
+  Edit3
 } from 'lucide-react';
 import { 
   calculateTipsDistribution, 
@@ -31,6 +33,7 @@ export default function TipsDistributionScreen() {
   
   const [collection, setCollection] = useState<any>(null);
   const [distribution, setDistribution] = useState<TipsDistributionItem[]>([]);
+  const [totalTipsInput, setTotalTipsInput] = useState<string>('');
   const [mode, setMode] = useState<TipsCalculationMode>('by_department');
   const [deptFactors, setDeptFactors] = useState<DepartmentFactorMap>(DEFAULT_DEPARTMENT_FACTORS);
   const [deptSummaries, setDeptSummaries] = useState<DepartmentSummary[]>([]);
@@ -50,6 +53,8 @@ export default function TipsDistributionScreen() {
     
     if (col) {
       setCollection(col);
+      const initialTotal = col.total_tips != null ? String(col.total_tips) : '0';
+      setTotalTipsInput(initialTotal);
       
       const savedMode: TipsCalculationMode = col.calculation_mode === 'by_employee' ? 'by_employee' : 'by_department';
       setMode(savedMode);
@@ -90,7 +95,7 @@ export default function TipsDistributionScreen() {
             };
           });
 
-        const result = calculateTipsDistribution(eligibleDist, col.total_tips, savedMode, savedFactors);
+        const result = calculateTipsDistribution(eligibleDist, initialTotal, savedMode, savedFactors);
         setDistribution(result.items);
         setDeptSummaries(result.departmentSummaries);
         setTotalPoints(result.totalPoints);
@@ -100,10 +105,21 @@ export default function TipsDistributionScreen() {
     setLoading(false);
   };
 
+  const handleTotalTipsChange = (val: string) => {
+    setTotalTipsInput(val);
+    const num = Math.max(0, parseFloat(val) || 0);
+    setCollection((prev: any) => (prev ? { ...prev, total_tips: num } : prev));
+    const res = calculateTipsDistribution(distribution, num, mode, deptFactors);
+    setDistribution(res.items);
+    setDeptSummaries(res.departmentSummaries);
+    setTotalPoints(res.totalPoints);
+  };
+
   const handleModeChange = (newMode: TipsCalculationMode) => {
     setMode(newMode);
     if (!collection) return;
-    const res = calculateTipsDistribution(distribution, collection.total_tips, newMode, deptFactors);
+    const curTotal = Math.max(0, parseFloat(totalTipsInput) || 0);
+    const res = calculateTipsDistribution(distribution, curTotal, newMode, deptFactors);
     setDistribution(res.items);
     setDeptSummaries(res.departmentSummaries);
     setTotalPoints(res.totalPoints);
@@ -114,7 +130,8 @@ export default function TipsDistributionScreen() {
     const updatedFactors = { ...deptFactors, [dept]: num };
     setDeptFactors(updatedFactors);
     if (!collection) return;
-    const res = calculateTipsDistribution(distribution, collection.total_tips, mode, updatedFactors);
+    const curTotal = Math.max(0, parseFloat(totalTipsInput) || 0);
+    const res = calculateTipsDistribution(distribution, curTotal, mode, updatedFactors);
     setDistribution(res.items);
     setDeptSummaries(res.departmentSummaries);
     setTotalPoints(res.totalPoints);
@@ -124,7 +141,8 @@ export default function TipsDistributionScreen() {
     const updated = [...distribution];
     updated[index].actual_hours_worked = val;
     if (!collection) return;
-    const res = calculateTipsDistribution(updated, collection.total_tips, mode, deptFactors);
+    const curTotal = Math.max(0, parseFloat(totalTipsInput) || 0);
+    const res = calculateTipsDistribution(updated, curTotal, mode, deptFactors);
     setDistribution(res.items);
     setDeptSummaries(res.departmentSummaries);
     setTotalPoints(res.totalPoints);
@@ -134,7 +152,8 @@ export default function TipsDistributionScreen() {
     const updated = [...distribution];
     updated[index].calculated_factor = val;
     if (!collection) return;
-    const res = calculateTipsDistribution(updated, collection.total_tips, mode, deptFactors);
+    const curTotal = Math.max(0, parseFloat(totalTipsInput) || 0);
+    const res = calculateTipsDistribution(updated, curTotal, mode, deptFactors);
     setDistribution(res.items);
     setDeptSummaries(res.departmentSummaries);
     setTotalPoints(res.totalPoints);
@@ -144,8 +163,10 @@ export default function TipsDistributionScreen() {
     if (!id || !collection) return;
     setSaving(true);
     
+    const finalTotal = Math.max(0, parseFloat(totalTipsInput) || 0);
     const updates = { 
       ...collection, 
+      total_tips: finalTotal,
       status,
       calculation_mode: mode,
       department_factors: deptFactors
@@ -176,7 +197,7 @@ export default function TipsDistributionScreen() {
   if (!collection) return <div style={{ padding: '60px', textAlign: 'center', color: 'var(--text-muted)' }}>Collection not found.</div>;
 
   const isApproved = collection.status === 'Approved';
-  const totalTipsNum = parseFloat(collection.total_tips) || 0;
+  const totalTipsNum = Math.max(0, parseFloat(totalTipsInput) || 0);
 
   // Group items by department
   const departmentsList = Array.from(new Set(distribution.map(d => d.department || 'Floor')));
@@ -225,11 +246,75 @@ export default function TipsDistributionScreen() {
         </div>
         
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{ padding: '8px 16px', backgroundColor: '#e9f5e9', color: '#166534', borderRadius: '8px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px', fontSize: '16px', border: '1px solid #bbf7d0' }}>
-            <DollarSign size={20} /> Total Pool: ${totalTipsNum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </div>
+          {!isApproved ? (
+            <div style={{
+              padding: '6px 14px',
+              backgroundColor: '#f0fdf4',
+              color: '#166534',
+              borderRadius: '10px',
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              border: '1.5px solid #86efac',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
+            }}>
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px', color: '#15803d', fontWeight: 800 }}>
+                    Total Tip Pool
+                  </span>
+                  <span style={{ fontSize: '10px', backgroundColor: '#dcfce7', color: '#166534', padding: '1px 6px', borderRadius: '4px', border: '1px solid #bbf7d0', fontWeight: 700 }}>
+                    Editable
+                  </span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+                  <span style={{ fontSize: '18px', fontWeight: 800, color: '#15803d' }}>$</span>
+                  <input
+                    type="number"
+                    step="any"
+                    min="0"
+                    value={totalTipsInput}
+                    onChange={e => handleTotalTipsChange(e.target.value)}
+                    placeholder="0.00"
+                    style={{
+                      fontSize: '18px',
+                      fontWeight: 800,
+                      color: '#14532d',
+                      width: '130px',
+                      backgroundColor: '#ffffff',
+                      border: '1px solid #86efac',
+                      borderRadius: '6px',
+                      padding: '3px 8px',
+                      outline: 'none'
+                    }}
+                    title="Edit total tip pool amount (recalculates distribution in real-time)"
+                  />
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div style={{
+              padding: '8px 16px',
+              backgroundColor: '#e9f5e9',
+              color: '#166534',
+              borderRadius: '8px',
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              fontSize: '16px',
+              border: '1px solid #bbf7d0'
+            }}>
+              <Lock size={18} />
+              <span>Total Pool: ${totalTipsNum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              <span style={{ fontSize: '11px', backgroundColor: '#dcfce7', color: '#15803d', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
+                Locked
+              </span>
+            </div>
+          )}
           
-          {!isApproved && (
+          {!isApproved ? (
             <>
               <button 
                 onClick={() => handleSave('Draft')} 
@@ -246,6 +331,10 @@ export default function TipsDistributionScreen() {
                 {saving ? <Loader2 size={16} className="spin" /> : <CheckCircle size={18} />} Approve & Lock
               </button>
             </>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', backgroundColor: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '13px', fontWeight: 600, color: '#64748b' }}>
+              <CheckCircle size={16} color="#059669" /> Approved & Locked
+            </div>
           )}
         </div>
       </div>
