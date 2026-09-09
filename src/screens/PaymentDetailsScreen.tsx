@@ -8,6 +8,8 @@ import {
 } from 'lucide-react';
 
 
+const isCashOut = (t: string) => t === 'CashOut' || t === 'Cashout Loan' || t === 'Cashout Bank' || t === 'Cashout Salary';
+
 export default function PaymentDetailsScreen({ user }: { user: any }) {
   const [payments, setPayments] = useState<any[]>([]);
   const [branches, setBranches] = useState<string[]>([]);
@@ -202,6 +204,9 @@ export default function PaymentDetailsScreen({ user }: { user: any }) {
         let displayType = p.type;
         if (p.type === 'CashIn') displayType = 'Cash In';
         else if (p.type === 'CashOut') displayType = 'Cash Out';
+        else if (p.type === 'Cashout Loan') displayType = 'Cashout Loan';
+        else if (p.type === 'Cashout Bank') displayType = 'Cashout Bank';
+        else if (p.type === 'Cashout Salary') displayType = 'Cashout Salary';
         else if (p.type === 'Supplier') displayType = 'Supplier Expense';
         else if (p.type === 'Delivery') displayType = 'Delivery Expense';
 
@@ -268,7 +273,11 @@ export default function PaymentDetailsScreen({ user }: { user: any }) {
   const filteredPayments = useMemo(() => {
     return payments.filter(p => {
       // Type Filter
-      if (typeFilter !== 'All' && p.type !== typeFilter) return false;
+      if (typeFilter === 'ALL_CASHOUT') {
+        if (!isCashOut(p.type)) return false;
+      } else if (typeFilter !== 'All' && p.type !== typeFilter) {
+        return false;
+      }
       // Status Filter
       if (statusFilter !== 'All' && p.status !== statusFilter) return false;
       // Supplier / Recipient Filter
@@ -308,7 +317,7 @@ export default function PaymentDetailsScreen({ user }: { user: any }) {
       if (p.type === 'CashIn') {
         cashInUsd += u;
         cashInLbp += l;
-      } else if (p.type === 'CashOut') {
+      } else if (isCashOut(p.type)) {
         cashOutUsd += u;
         cashOutLbp += l;
       } else if (p.type === 'Supplier') {
@@ -441,7 +450,10 @@ export default function PaymentDetailsScreen({ user }: { user: any }) {
               <option value="All">All Types</option>
               <option value="Supplier">Supplier Expense</option>
               <option value="Delivery">Delivery Expense</option>
-              <option value="CashOut">Cash Out</option>
+              <option value="ALL_CASHOUT">All Cash Out</option>
+              <option value="Cashout Loan">Cashout Loan</option>
+              <option value="Cashout Bank">Cashout Bank</option>
+              <option value="Cashout Salary">Cashout Salary</option>
               <option value="CashIn">Cash In</option>
             </select>
           </div>
@@ -700,7 +712,9 @@ export default function PaymentDetailsScreen({ user }: { user: any }) {
                 {paginatedPayments.map((p) => {
                   let typeColor = '#f3f4f6'; let typeTextColor = '#374151';
                   if (p.type === 'CashIn') { typeColor = '#d1fae5'; typeTextColor = '#065f46'; }
-                  else if (p.type === 'CashOut') { typeColor = '#ffedd5'; typeTextColor = '#9a3412'; }
+                  else if (p.type === 'CashOut' || p.type === 'Cashout Bank') { typeColor = '#ffedd5'; typeTextColor = '#9a3412'; }
+                  else if (p.type === 'Cashout Loan') { typeColor = '#fef3c7'; typeTextColor = '#b45309'; }
+                  else if (p.type === 'Cashout Salary') { typeColor = '#e0e7ff'; typeTextColor = '#3730a3'; }
                   else if (p.type === 'Supplier') { typeColor = '#f3e8ff'; typeTextColor = '#6b21a8'; }
                   else if (p.type === 'Delivery') { typeColor = '#dbeafe'; typeTextColor = '#1e40af'; }
 
@@ -865,7 +879,10 @@ export default function PaymentDetailsScreen({ user }: { user: any }) {
                   <select value={formType} onChange={e => setFormType(e.target.value)} style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '14px', outline: 'none', background: '#fff' }}>
                     <option value="Supplier">Supplier Expense</option>
                     <option value="Delivery">Delivery Expense</option>
-                    <option value="CashOut">Cash Out</option>
+                    <option value="Cashout Loan">Cashout Loan</option>
+                    <option value="Cashout Bank">Cashout Bank</option>
+                    <option value="Cashout Salary">Cashout Salary</option>
+                    {formType === 'CashOut' && <option value="CashOut">Cash Out (Legacy)</option>}
                     <option value="CashIn">Cash In</option>
                   </select>
                 </div>
