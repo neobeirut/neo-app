@@ -79,3 +79,62 @@ export async function resolveCommerceBranchLink(
     return { link: null, flowBranch: null, error: err.message || 'Error resolving branch link' };
   }
 }
+
+export interface BranchCapabilities {
+  branchId: string;
+  branchName: string;
+  dine_in: boolean;
+  table_service: boolean;
+}
+
+/**
+ * Queries branch capabilities by explicit FLOW branch UUID (or name fallback).
+ * Authoritatively determines whether table_service and dine_in are active for the terminal.
+ */
+export async function getBranchCapabilities(
+  branchIdentifier?: string
+): Promise<{ success: boolean; capabilities: BranchCapabilities | null; error?: string }> {
+  try {
+    if (!branchIdentifier) {
+      return { success: false, capabilities: null, error: 'No branch identifier provided' };
+    }
+
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(branchIdentifier);
+    let query = supabase.from('branches').select('id, name, dine_in, table_service, total_tables');
+
+    if (isUuid) {
+      query = query.eq('id', branchIdentifier);
+    } else {
+      query = query.ilike('name', branchIdentifier);
+    }
+
+    const { data, error } = await query.limit(1);
+    if (error || !data || data.length === 0) {
+      if (String(branchIdentifier).toLowerCase().includes('cloud kitchen')) {
+        return {
+          success: true,
+          capabilities: {
+            branchId: 'b6657434-9c49-43f6-8d8d-aeec69a261db',
+            branchName: 'Cloud Kitchen',
+            dine_in: false,
+            table_service: false
+          }
+        };
+      }
+      return { success: false, capabilities: null, error: error?.message || 'Branch not found' };
+    }
+
+    const b = data[0];
+    return {
+      success: true,
+      capabilities: {
+        branchId: b.id,
+        branchName: b.name,
+        dine_in: Boolean(b.dine_in),
+        table_service: Boolean(b.table_service)
+      }
+    };
+  } catch (err: any) {
+    return { success: false, capabilities: null, error: err.message };
+  }
+}

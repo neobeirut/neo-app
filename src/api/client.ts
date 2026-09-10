@@ -2605,8 +2605,11 @@ export const api = {
         .single();
       if (!error && data?.settings) {
         const settings = data.settings as any;
-        if (settings.exchange_rate !== undefined) {
-          return { success: true, rate: parseFloat(settings.exchange_rate) };
+        if (settings.exchange_rate !== undefined && settings.exchange_rate !== null) {
+          const parsed = parseFloat(settings.exchange_rate);
+          if (!isNaN(parsed) && parsed > 0) {
+            return { success: true, rate: parsed };
+          }
         }
       }
     }
@@ -2615,8 +2618,14 @@ export const api = {
       .select('setting_value')
       .eq('setting_key', 'exchange_rate')
       .maybeSingle();
-    if (error) return { success: false, error: error.message };
-    return { success: true, rate: data ? parseFloat(data.setting_value) : 90000 };
+    if (error) return { success: false, rate: null, error: error.message };
+    if (data && data.setting_value) {
+      const parsed = parseFloat(data.setting_value);
+      if (!isNaN(parsed) && parsed > 0) {
+        return { success: true, rate: parsed };
+      }
+    }
+    return { success: false, rate: null, error: 'Exchange rate not configured' };
   },
 
   updateExchangeRate: async (rate: number) => {

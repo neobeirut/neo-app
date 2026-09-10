@@ -11,6 +11,7 @@ export async function GET(request, { params }) {
              COALESCE(amount_paid, 0)::float as amount_paid,
              COALESCE(amount_refunded, 0)::float as amount_refunded,
              COALESCE(version, 1) as version,
+             service_type, table_label, guest_count, waiter_reference,
              created_at
       FROM orders 
       WHERE id = ${orderId} 
@@ -22,7 +23,7 @@ export async function GET(request, { params }) {
     }
 
     const payments = await sql`
-      SELECT id, operation_id, order_id, payment_method, payment_category, currency,
+      SELECT id, operation_id, order_id, check_id, payment_method, payment_category, currency,
              exchange_rate_used::float as exchange_rate_used,
              amount_in_currency::float as amount_in_currency,
              amount_usd::float as amount_usd,
@@ -61,7 +62,11 @@ export async function GET(request, { params }) {
         amountRemaining,
         paymentStatus: order.payment_status,
         fulfillmentStatus: order.status,
-        version: order.version
+        version: order.version,
+        serviceType: order.service_type,
+        tableLabel: order.table_label,
+        guestCount: order.guest_count,
+        waiterReference: order.waiter_reference
       },
       payments: payments || [],
       refunds: refunds || []
@@ -80,6 +85,7 @@ export async function POST(request, { params }) {
 
     const {
       operation_id,
+      check_id = null,
       payment_method = 'Cash USD',
       payment_category = 'direct',
       currency = 'USD',
@@ -95,6 +101,16 @@ export async function POST(request, { params }) {
 
     if (!operation_id) {
       return Response.json({ error: "Missing operation_id UUID" }, { status: 400 });
+    }
+
+    // STRICT NO-FALLBACK: Cash LBP requires an explicit exchange rate
+    if (currency === 'LBP') {
+      const parsedRate = parseFloat(exchange_rate_used);
+      if (isNaN(parsedRate) || parsedRate <= 0) {
+        return Response.json({
+          error: "LBP Payment Unavailable — Exchange Rate Not Configured. Every LBP tender must store the actual exchange_rate_used."
+        }, { status: 400 });
+      }
     }
 
     const appliedUsd = parseFloat(amount_usd);
@@ -118,7 +134,22 @@ export async function POST(request, { params }) {
       return Response.json({ error: "Order not found" }, { status: 404 });
     }
 
-    // 2. Idempotency Check: if operation_id already exists in order_payments
+    // Validate check_id if provided
+    let checkIdInt = null;
+    if (check_id !== null && check_id !== undefined) {
+      checkIdInt = parseInt(check_id, 10);
+      const [chk] = await sql`
+        SELECT id, total::float as total, amount_paid::float as amount_paid, status
+        FROM order_checks
+        WHERE id = ${checkIdInt} AND order_id = ${orderId}
+        LIMIT 1;
+      `;
+      if (!chk) {
+        return Response.json({ error: `Check #${check_id} does not belong to order #${orderId}` }, { status: 400 });
+      }
+    }
+
+    // 2. Idempotency Check
     const [existingPayment] = await sql`
       SELECT * FROM order_payments WHERE operation_id = ${operation_id}::uuid LIMIT 1;
     `;
@@ -136,6 +167,7 @@ export async function POST(request, { params }) {
       INSERT INTO order_payments (
         operation_id,
         order_id,
+        check_id,
         payment_method,
         payment_category,
         currency,
@@ -152,6 +184,7 @@ export async function POST(request, { params }) {
       ) VALUES (
         ${operation_id}::uuid,
         ${orderId},
+        ${checkIdInt},
         ${payment_method},
         ${payment_category},
         ${currency},
@@ -169,7 +202,28 @@ export async function POST(request, { params }) {
       RETURNING *;
     `;
 
-    // 4. Recalculate cumulative payments
+    // 4. Update check status & amount_paid if check_id is linked
+    if (checkIdInt !== null) {
+      const [checkPaySum] = await sql`
+        SELECT COALESCE(SUM(amount_usd), 0)::float as paid
+        FROM order_payments
+        WHERE check_id = ${checkIdInt} AND status = 'completed';
+      `;
+      const checkPaid = parseFloat(checkPaySum?.paid || 0);
+      const [targetCheck] = await sql`SELECT total::float as total FROM order_checks WHERE id = ${checkIdInt} LIMIT 1;`;
+      const checkTot = parseFloat(targetCheck?.total || 0);
+      const isCheckPaid = checkPaid >= checkTot;
+
+      await sql`
+        UPDATE order_checks
+        SET amount_paid = ${checkPaid},
+            status = ${isCheckPaid ? 'paid' : 'partially_paid'},
+            closed_at = ${isCheckPaid ? sql`NOW()` : null}
+        WHERE id = ${checkIdInt};
+      `;
+    }
+
+    // 5. Recalculate cumulative payments across the entire order
     const [paySum] = await sql`
       SELECT COALESCE(SUM(amount_usd), 0)::float as total_paid
       FROM order_payments
@@ -180,13 +234,13 @@ export async function POST(request, { params }) {
     const currentRefunded = parseFloat(existingOrder.amount_refunded || 0);
 
     let newPaymentStatus = 'PARTIALLY_PAID';
-    if (newTotalPaid >= orderTotal) {
+    if (newTotalPaid >= orderTotal && orderTotal > 0) {
       newPaymentStatus = 'PAID';
     } else if (newTotalPaid <= 0) {
       newPaymentStatus = 'UNPAID';
     }
 
-    // 5. Update orders table summary
+    // 6. Update orders table summary
     await sql`
       UPDATE orders 
       SET 

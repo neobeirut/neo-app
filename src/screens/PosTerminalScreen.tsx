@@ -1,8 +1,11 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { api } from "../api/client";
-import { resolveCommerceBranchLink } from "../pos/services/branchMapping";
+import { resolveCommerceBranchLink, getBranchCapabilities } from "../pos/services/branchMapping";
 import type { CommerceBranchLink } from "../pos/types/commerce";
+import type { BranchCapabilities } from "../pos/services/branchMapping";
+import { TablesScreen } from "../pos/tables";
+import type { PosTable } from "../pos/tables";
 import { BranchMappingAlert } from "../pos/components/BranchMappingAlert";
 import { usePos86 } from "../pos/hooks/usePos86";
 import { usePosUpsell } from "../pos/hooks/usePosUpsell";
@@ -126,8 +129,13 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   const [branchMappingError, setBranchMappingError] = useState<string | null>(null);
   const [isResolvingBranch, setIsResolvingBranch] = useState(true);
 
-  // Main POS Navigation: SELL vs ORDERS
-  const [posActiveView, setPosActiveView] = useState<'sell' | 'orders'>('sell');
+  // Main POS Navigation: SELL vs TABLES vs ORDERS
+  const [posActiveView, setPosActiveView] = useState<'sell' | 'tables' | 'orders'>('sell');
+  const [branchCapabilities, setBranchCapabilities] = useState<BranchCapabilities | null>(null);
+  const [activeTableContext, setActiveTableContext] = useState<{
+    orderId: number;
+    tableCode: string;
+  } | null>(null);
 
   // Cashier PIN Lock & Fast Switch States
   const [activeCashier, setActiveCashier] = useState<any>(user || null);
@@ -149,6 +157,19 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       setCommerceBranchLink(null);
       setBranchMappingError(error || `Branch "${branchToResolve}" has no mapped commerce branch.`);
     }
+
+    // Query authoritative branch capabilities (dine_in, table_service)
+    const branchIdentifier = link?.flow_branch_id || user?.branch_id || branchToResolve;
+    const { success: capSuccess, capabilities } = await getBranchCapabilities(branchIdentifier);
+    if (capSuccess && capabilities) {
+      setBranchCapabilities(capabilities);
+      if (!capabilities.table_service && posActiveView === 'tables') {
+        setPosActiveView('sell');
+      }
+    } else {
+      setBranchCapabilities(null);
+    }
+
     setIsResolvingBranch(false);
   };
 
@@ -1254,6 +1275,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   const handleResetCart = () => {
     releaseCurrentOrderLock();
     resetClientOrderToken();
+    setActiveTableContext(null);
     setTicketItems([]);
     setEditingOrderId(null);
     setEditingOrderVersion(null);
@@ -1304,6 +1326,43 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     if (discountType === "custom") return discountIsPercent ? `${discountValInput}%` : `$${discountValInput}`;
     return "Discount";
   })();
+
+  const handlePrintPreCheckDoc = async (table: PosTable) => {
+    if (!table.commerce_order_id) return;
+    try {
+      const res = await fetch(`${COMMERCE_API_BASE}/api/pos/orders?type=all`);
+      const data = await res.json();
+      const orders = data.orders || [];
+      const ord = orders.find((o: any) => o.id === table.commerce_order_id);
+      if (!ord) return;
+
+      const preCheckPayload = {
+        isPreCheck: true,
+        title: "PRE-CHECK / BILL — NOT PAID",
+        id: ord.id,
+        table_code: table.table_code,
+        guest_count: table.guest_count || 1,
+        waiter_name: table.assigned_waiter || activeCashier?.name || "Staff",
+        order_source: "Dine In",
+        order_type: "dine_in",
+        items: (ord.items || []).map((it: any) => ({
+          name: it.product_name || it.name,
+          qty: it.quantity,
+          unit_price: parseFloat(it.unit_price || 0),
+          total_price: parseFloat(it.total_price || 0),
+          note: it.comment || it.note || ""
+        })),
+        subtotal_amount: parseFloat(ord.subtotal_amount || 0),
+        discount_amount: parseFloat(ord.discount_amount || 0),
+        total_amount: parseFloat(ord.total_amount || 0),
+        created_at: ord.created_at || new Date().toISOString()
+      };
+
+      await handlePrint(preCheckPayload);
+    } catch (err) {
+      console.error("Error printing pre-check:", err);
+    }
+  };
 
   const handlePrint = async (orderData) => {
     const ip = printServerIP || "192.168.18.195";
@@ -1563,6 +1622,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
 
         handlePrint(completedOrderData);
         setLastCompletedOrder(completedOrderData);
+        setActiveTableContext(null);
         setTicketItems([]);
         setCustomerName("");
         setCustomerPhone("");
@@ -1796,7 +1856,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
 
           {/* Right Header: Active Branch, 86 Badge, Shift Badge, Active Cashier, Switch PIN, and Exit to FLOW */}
           <div className="flex items-center gap-2">
-            {/* SELL / ORDERS View Switcher */}
+            {/* SELL / TABLES / ORDERS View Switcher */}
             <div className="flex items-center bg-[#10131A] p-1 rounded-xl border border-[#262D3D] mr-1">
               <button
                 type="button"
@@ -1810,6 +1870,20 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                 <span>🛒</span>
                 <span>SELL</span>
               </button>
+              {Boolean(branchCapabilities?.table_service) && (
+                <button
+                  type="button"
+                  onClick={() => setPosActiveView('tables')}
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-black tracking-wider transition-all flex items-center gap-1.5 ${
+                    posActiveView === 'tables'
+                      ? 'bg-[#eb660c] text-white shadow-md shadow-[#eb660c]/20'
+                      : 'text-gray-400 hover:text-white hover:bg-[#1a202c]'
+                  }`}
+                >
+                  <span>🪑</span>
+                  <span>TABLES</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setPosActiveView('orders')}
@@ -1894,6 +1968,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
               activeCashierName={activeCashier?.name || user?.name || "Cashier"}
               onOpenOrderToTicket={(order) => {
                 loadOrderToTicket(order.rawOrder, order.channel);
+                setActiveTableContext(null);
                 setPosActiveView('sell');
               }}
               onReprint={(order) => {
@@ -1902,6 +1977,31 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
               onRequestVoid={(order) => {
                 handleDirectVoidOrder(order);
               }}
+            />
+          </div>
+        ) : posActiveView === 'tables' && branchCapabilities?.table_service ? (
+          <div className="flex-1 overflow-hidden">
+            <TablesScreen
+              branchId={commerceBranchLink?.flow_branch_id || branchCapabilities?.branchId || "9c214659-9cc7-4f33-b115-cbbb8a823a94"}
+              branchName={commerceBranchLink?.flow_branch_name || branchCapabilities?.branchName || "Badaro"}
+              restaurantId={commerceBranchLink?.restaurant_id || "79256f11-a9f8-4fec-901d-69baf929762d"}
+              externalBranchId={String(commerceBranchLink?.external_branch_id || "1")}
+              cashierName={activeCashier?.name || user?.name || "Cashier"}
+              onOpenOrderInCart={async (orderId, tableCode) => {
+                try {
+                  const res = await fetch(`${COMMERCE_API_BASE}/api/pos/orders?type=all`);
+                  const data = await res.json();
+                  const ord = (data.orders || []).find((o: any) => o.id === orderId);
+                  if (ord) {
+                    loadOrderToTicket(ord, "POS");
+                    setActiveTableContext({ orderId, tableCode });
+                    setPosActiveView('sell');
+                  }
+                } catch (e) {
+                  console.error("Failed to load table order into ticket:", e);
+                }
+              }}
+              onPrintPreCheckDoc={handlePrintPreCheckDoc}
             />
           </div>
         ) : (
@@ -2015,8 +2115,24 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         <div className="w-[35%] flex flex-col h-full bg-[#14171F] overflow-hidden flex-shrink-0">
           {/* TICKET HEADER & UNIFIED SMART CHANNEL BAR */}
           <div className="p-3 border-b border-[#262D3D] space-y-2 bg-[#181C24] flex-shrink-0">
-            {/* Active Editing Order Banner */}
-            {editingOrderId && (
+            {/* Active Table Context or Editing Order Banner */}
+            {activeTableContext ? (
+              <div className="bg-amber-950/80 border border-amber-500/60 px-3 py-2 rounded-xl flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="text-amber-400 font-black">🪑 Table {activeTableContext.tableCode}</span>
+                  <span className="text-slate-500">•</span>
+                  <span className="text-amber-200 font-bold">Order #{activeTableContext.orderId}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPosActiveView('tables')}
+                  className="text-[10px] font-black text-amber-300 hover:text-white bg-amber-900/60 hover:bg-amber-800 px-2.5 py-1 rounded-lg border border-amber-500/50 flex items-center gap-1 transition"
+                >
+                  <span>Floor Plan</span>
+                  <span>➔</span>
+                </button>
+              </div>
+            ) : editingOrderId ? (
               <div className="bg-blue-950/60 border border-blue-500/40 px-3 py-1.5 rounded-xl flex items-center justify-between text-xs">
                 <div className="flex items-center gap-1.5">
                   <span className="animate-pulse">✏️</span>
@@ -2030,7 +2146,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                   Cancel Edit
                 </button>
               </div>
-            )}
+            ) : null}
 
             {/* TICKET ACTIONS & STATUS HEADER BAR */}
             <div className="flex items-center justify-between">

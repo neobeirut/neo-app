@@ -350,7 +350,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
             ) : (
               <div className="flex items-center gap-1 px-3 py-1 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-semibold">
                 <AlertTriangle className="w-3.5 h-3.5" />
-                <span>LBP Rate Not Configured</span>
+                <span>LBP Payment Unavailable — Exchange Rate Not Configured</span>
               </div>
             )}
 

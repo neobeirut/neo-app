@@ -39,7 +39,12 @@ export async function PATCH(request, { params }) {
         claimed_terminal, 
         claimed_at,
         payment_operation_id,
-        void_operation_id
+        void_operation_id,
+        total_amount,
+        payment_method,
+        order_source,
+        payment_status,
+        amount_paid
       FROM orders 
       WHERE id = ${id} 
       LIMIT 1
@@ -225,8 +230,37 @@ export async function PATCH(request, { params }) {
         if (existingPayments.length === 0) {
           const legacyOpId = crypto.randomUUID();
           const orderTotal = parseFloat(total !== undefined && total !== null ? total : (existingOrder.total_amount || 0));
-          const method = existingOrder.payment_method || 'Cash USD';
-          const isAggregator = ['toters', 'noknok'].includes(method.toLowerCase());
+          const rawSource = String(existingOrder.order_source || orderSource || '').toLowerCase();
+          const rawMethod = String(existingOrder.payment_method || '').toLowerCase();
+
+          let method = existingOrder.payment_method;
+          let category = 'direct';
+          let extRef = 'Auto-recorded on status completion';
+
+          if (rawSource.includes('toter') || rawMethod.includes('toter')) {
+            method = 'Toters';
+            category = 'aggregator';
+            extRef = 'Toters Settlement';
+          } else if (rawSource.includes('noknok') || rawMethod.includes('noknok')) {
+            method = 'NokNok';
+            category = 'aggregator';
+            extRef = 'NokNok Settlement';
+          } else if (rawSource.includes('app') || rawMethod.includes('app')) {
+            method = existingOrder.payment_method || 'App Prepaid';
+            category = 'external';
+            extRef = 'Customer Mobile App';
+          } else if (rawMethod.includes('card')) {
+            method = 'Card';
+            category = 'direct';
+            extRef = 'Card Settlement';
+          } else if (rawMethod.includes('whish')) {
+            method = 'Whish';
+            category = 'direct';
+            extRef = 'Whish Settlement';
+          } else {
+            method = existingOrder.payment_method || 'Cash USD';
+            category = 'direct';
+          }
 
           await sql`
             INSERT INTO order_payments (
@@ -234,9 +268,9 @@ export async function PATCH(request, { params }) {
               currency, amount_in_currency, amount_usd,
               terminal_id, cashier_reference, external_reference, status, created_at
             ) VALUES (
-              ${legacyOpId}::uuid, ${id}, ${method}, ${isAggregator ? 'aggregator' : 'direct'},
+              ${legacyOpId}::uuid, ${id}, ${method}, ${category},
               'USD', ${orderTotal}, ${orderTotal},
-              'legacy-pos', 'Legacy POS', 'Auto-recorded on status completion', 'completed', NOW()
+              'legacy-pos', 'Legacy POS', ${extRef}, 'completed', NOW()
             ) ON CONFLICT (operation_id) DO NOTHING;
           `;
 
