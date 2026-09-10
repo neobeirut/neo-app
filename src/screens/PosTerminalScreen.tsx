@@ -1590,6 +1590,10 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     }
 
     // Silent Background API Send (<0.3s) - 0 Tabs, 0 Popups!
+    const dispatchOperationId = (typeof crypto !== "undefined" && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : "disp-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7);
+
     setDispatchStatusMsg(`Sending driver request (${timeText})... ⏳`);
     try {
       const res = await fetch(`${COMMERCE_API_BASE}/api/pos/dispatch-driver`, {
@@ -1598,7 +1602,8 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         body: JSON.stringify({
           orderId: lastCompletedOrder.id,
           etaMinutes: etaMinutes || "15",
-          phone: cleanPhone
+          phone: cleanPhone,
+          dispatch_operation_id: dispatchOperationId
         })
       });
       const data = await res.json();
