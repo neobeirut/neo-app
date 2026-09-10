@@ -13,6 +13,7 @@ import { ShiftStatusBadge } from "../pos/components/ShiftStatusBadge";
 import { executeVoidTransaction } from "../pos/services/voidBridge";
 import type { CanceledItemDetail } from "../pos/services/voidBridge";
 import { VoidItemModal } from "../pos/components/VoidItemModal";
+import { OrdersHubScreen } from "../pos/orders/OrdersHubScreen";
 
 interface PosTerminalScreenProps {
   user?: any;
@@ -123,6 +124,9 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   const [commerceBranchLink, setCommerceBranchLink] = useState<CommerceBranchLink | null>(null);
   const [branchMappingError, setBranchMappingError] = useState<string | null>(null);
   const [isResolvingBranch, setIsResolvingBranch] = useState(true);
+
+  // Main POS Navigation: SELL vs ORDERS
+  const [posActiveView, setPosActiveView] = useState<'sell' | 'orders'>('sell');
 
   // Cashier PIN Lock & Fast Switch States
   const [activeCashier, setActiveCashier] = useState<any>(user || null);
@@ -1703,10 +1707,8 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   const realtimeStatus = getRealtimeBranchStatusInfo(branchStatus, posOperationalStatus, posClosureReason);
 
   return (
-    <div className="h-screen max-h-screen flex bg-[#0F1115] text-white font-sans overflow-hidden select-none">
-      {/* LEFT AREA (65% Width): Header + Category Bar + Product Grid */}
-      <div className="w-[65%] flex flex-col h-full overflow-hidden border-r border-[#262D3D]">
-        {/* HEADER FOR LEFT AREA */}
+    <div className="h-screen max-h-screen flex flex-col bg-[#0F1115] text-white font-sans overflow-hidden select-none">
+        {/* FULL-WIDTH TERMINAL HEADER */}
         <header className="h-14 bg-[#181C24] border-b border-[#262D3D] px-4 flex items-center justify-between shadow-md print:hidden flex-shrink-0 z-10">
           {/* Brand + All Action Buttons on Left */}
           <div className="flex items-center gap-3">
@@ -1770,6 +1772,39 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
 
           {/* Right Header: Active Branch, 86 Badge, Shift Badge, Active Cashier, Switch PIN, and Exit to FLOW */}
           <div className="flex items-center gap-2">
+            {/* SELL / ORDERS View Switcher */}
+            <div className="flex items-center bg-[#10131A] p-1 rounded-xl border border-[#262D3D] mr-1">
+              <button
+                type="button"
+                onClick={() => setPosActiveView('sell')}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-black tracking-wider transition-all flex items-center gap-1.5 ${
+                  posActiveView === 'sell'
+                    ? 'bg-[#eb660c] text-white shadow-md shadow-[#eb660c]/20'
+                    : 'text-gray-400 hover:text-white hover:bg-[#1a202c]'
+                }`}
+              >
+                <span>🛒</span>
+                <span>SELL</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPosActiveView('orders')}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-black tracking-wider transition-all flex items-center gap-1.5 ${
+                  posActiveView === 'orders'
+                    ? 'bg-[#eb660c] text-white shadow-md shadow-[#eb660c]/20'
+                    : 'text-gray-400 hover:text-white hover:bg-[#1a202c]'
+                }`}
+              >
+                <span>📋</span>
+                <span>ORDERS</span>
+                {pendingOrders && pendingOrders.length > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full bg-rose-500 text-white text-[10px] font-black animate-pulse">
+                    {pendingOrders.length}
+                  </span>
+                )}
+              </button>
+            </div>
+
             {/* Active Branch Badge */}
             <div className="flex items-center gap-1.5 text-xs bg-[#222734] px-2.5 py-1.5 rounded-xl border border-[#2D3548]">
               <span className="text-emerald-400 font-black">📍</span>
@@ -1826,14 +1861,29 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
             )}
           </div>
         </header>
-          {/* FLOW UPSELL RECOMMENDATIONS */}
-          <UpsellRecommendationBar
-            upsells={activeUpsells}
-            onSelectProduct={handleQuickAddProduct}
-            isProduct86d={isProduct86d}
-          />
 
-          {/* CATEGORIES BAR */}
+        {posActiveView === 'orders' ? (
+          <div className="flex-1 overflow-hidden">
+            <OrdersHubScreen
+              branchName={commerceBranchLink?.flow_branch_name || user?.branch || "Cloud Kitchen"}
+              onOpenOrderToTicket={(order) => {
+                loadOrderToTicket(order.rawOrder, order.channel);
+                setPosActiveView('sell');
+              }}
+            />
+          </div>
+        ) : (
+          <div className="flex-1 flex overflow-hidden min-h-0">
+            {/* LEFT AREA (65% Width): Categories Bar + Product Grid */}
+            <div className="w-[65%] flex flex-col h-full overflow-hidden border-r border-[#262D3D]">
+              {/* FLOW UPSELL RECOMMENDATIONS */}
+              <UpsellRecommendationBar
+                upsells={activeUpsells}
+                onSelectProduct={handleQuickAddProduct}
+                isProduct86d={isProduct86d}
+              />
+
+              {/* CATEGORIES BAR */}
           <div className="px-4 py-2.5 bg-[#14171F] border-b border-[#262D3D] flex items-center gap-2 overflow-x-auto no-scrollbar flex-shrink-0">
             {availableCategoryList.map((cat) => {
               const isSelected = selectedCategory === cat;
@@ -2427,6 +2477,8 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
           </div>
         </div>
       </div>
+          </div>
+        )}
 
       {/* DISCOUNT MODAL */}
       {showDiscountModal && (
