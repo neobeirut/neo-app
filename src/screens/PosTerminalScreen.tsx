@@ -312,6 +312,10 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
 
   const [ticketItems, setTicketItems] = useState([]);
   const [editingOrderId, setEditingOrderId] = useState(null);
+  const [clientOrderToken, setClientOrderToken] = useState(() => (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : "tok-" + Date.now()));
+  const resetClientOrderToken = () => {
+    setClientOrderToken(typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : "tok-" + Date.now());
+  };
 
   // Queue & Modal States
   const [heldOrders, setHeldOrders] = useState([]);
@@ -1137,6 +1141,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   };
 
   const handleResetCart = () => {
+    resetClientOrderToken();
     setTicketItems([]);
     setEditingOrderId(null);
     setCustomerName("");
@@ -1259,6 +1264,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          client_order_token: clientOrderToken,
           orderType,
           orderSource: selectedChannel || "POS",
           paymentMethod: selectedPaymentMethod,
@@ -1281,6 +1287,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       });
       const data = await res.json();
       if (data.success) {
+        resetClientOrderToken();
         setTicketItems([]);
         setCustomerName("");
         setCustomerPhone("");
@@ -1352,6 +1359,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             branch_id: parseInt(commerceBranchLink?.external_branch_id || "1", 10),
+            client_order_token: clientOrderToken,
             orderType,
             orderSource: effectiveChannel,
             paymentMethod: actualPaymentMethod,
@@ -1378,6 +1386,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       }
 
       if (data && data.success) {
+        resetClientOrderToken();
         const normalizedItems = ticketItems.map((item) => {
           const rawCusts = item.selectedCustomizations || [];
           const { addons, removals } = partitionCustomizations(rawCusts);

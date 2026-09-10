@@ -50,6 +50,11 @@ export async function GET(request) {
         o.special_instructions,
         o.void_reason,
         o.created_at,
+        COALESCE(o.version, 1) as version,
+        o.client_order_token,
+        o.claimed_by,
+        o.claimed_terminal,
+        o.claimed_at,
         COALESCE(
           (SELECT json_agg(json_build_object(
             'id', oi.id,
@@ -90,8 +95,10 @@ export async function GET(request) {
 }
 
 export async function POST(request) {
+  let client_order_token = null;
   try {
     const body = await request.json();
+    client_order_token = body.client_order_token || null;
     const {
       branchId = 1,
       orderType = "pickup",
@@ -117,7 +124,27 @@ export async function POST(request) {
       return Response.json({ error: "Customer name is required to save the order" }, { status: 400 });
     }
 
-    // Insert order
+    // 1. Idempotency Check: if client_order_token is provided, verify whether order already exists
+    if (client_order_token) {
+      const existingOrders = await sql`
+        SELECT id, order_source, payment_method, total_amount, status, created_at, client_order_token, COALESCE(version, 1) as version
+        FROM orders 
+        WHERE client_order_token = ${client_order_token}
+        LIMIT 1;
+      `;
+      if (existingOrders && existingOrders.length > 0) {
+        const existing = existingOrders[0];
+        return Response.json({
+          success: true,
+          orderId: existing.id,
+          order: existing,
+          isDuplicate: true,
+          message: "Idempotent response: order already created with this client_order_token"
+        });
+      }
+    }
+
+    // Insert order with client_order_token and initial version = 1
     const orderResult = await sql`
       INSERT INTO orders (
         branch_id,
@@ -133,6 +160,8 @@ export async function POST(request) {
         delivery_fee,
         discount_amount,
         total_amount,
+        client_order_token,
+        version,
         created_at
       ) VALUES (
         ${branchId},
@@ -148,9 +177,11 @@ export async function POST(request) {
         ${deliveryFee},
         ${discountAmount},
         ${total},
+        ${client_order_token},
+        1,
         NOW()
       )
-      RETURNING id, created_at;
+      RETURNING id, created_at, version, client_order_token;
     `;
 
     const newOrder = orderResult[0];
@@ -196,10 +227,34 @@ export async function POST(request) {
         payment_method: paymentMethod,
         total_amount: total,
         status,
+        version: newOrder.version || 1,
+        client_order_token: newOrder.client_order_token,
         created_at: newOrder.created_at
       }
     });
   } catch (error) {
+    // 2. Race condition catch: handle concurrent duplicate submission catching unique constraint
+    if (client_order_token && (error.code === '23505' || String(error.message).includes('client_order_token'))) {
+      try {
+        const [existing] = await sql`
+          SELECT id, order_source, payment_method, total_amount, status, created_at, client_order_token, COALESCE(version, 1) as version
+          FROM orders 
+          WHERE client_order_token = ${client_order_token}
+          LIMIT 1;
+        `;
+        if (existing) {
+          return Response.json({
+            success: true,
+            orderId: existing.id,
+            order: existing,
+            isDuplicate: true,
+            message: "Concurrent idempotent response: order already created"
+          });
+        }
+      } catch (innerErr) {
+        console.error("Error retrieving existing order during duplicate catch:", innerErr);
+      }
+    }
     console.error("Error in POST /api/pos/orders:", error);
     return Response.json(
       { error: "Failed to create order: " + error.message },
