@@ -14,6 +14,7 @@ import { executeVoidTransaction } from "../pos/services/voidBridge";
 import type { CanceledItemDetail } from "../pos/services/voidBridge";
 import { VoidItemModal } from "../pos/components/VoidItemModal";
 import { OrdersHubScreen } from "../pos/orders/OrdersHubScreen";
+import { PaymentModal, RefundModal } from "../pos/payments";
 
 interface PosTerminalScreenProps {
   user?: any;
@@ -342,7 +343,11 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   const [confirmingRejectId, setConfirmingRejectId] = useState(null);
   const [confirmingDeleteHeldId, setConfirmingDeleteHeldId] = useState(null);
   const [deletingHeldOrderId, setDeletingHeldOrderId] = useState(null);
-  const [activeTabModal, setActiveTabModal] = useState(null); // 'held', 'incoming', 'payment', 'customization', 'void_item', 'receipt', 'settings'
+  const [activeTabModal, setActiveTabModal] = useState(null);
+  const [printError, setPrintError] = useState<string | null>(null);
+  const [lastPrintedOrder, setLastPrintedOrder] = useState<any | null>(null);
+  const [isTerminalPaymentModalOpen, setIsTerminalPaymentModalOpen] = useState(false);
+  const [activeOrderForTerminalPayment, setActiveOrderForTerminalPayment] = useState<any | null>(null); // 'held', 'incoming', 'payment', 'customization', 'void_item', 'receipt', 'settings'
 
   // Notification tracking refs
   const knownOrderIdsRef = useRef(null);

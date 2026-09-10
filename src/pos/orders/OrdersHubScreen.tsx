@@ -3,6 +3,7 @@ import { useOrders } from './useOrders';
 import { OrderFilters } from './OrderFilters';
 import { OrderCard } from './OrderCard';
 import { OrderDetailsModal } from './OrderDetailsModal';
+import { PaymentModal, RefundModal } from '../payments';
 import { adaptOvrloadOrder } from './orderAdapter';
 import type { FlowPosOrder } from './orderAdapter';
 
@@ -50,6 +51,9 @@ export const OrdersHubScreen: React.FC<OrdersHubScreenProps> = ({
 
   const [selectedOrderId, setSelectedOrderId] = useState<string | number | null>(null);
   const [activeDetailOrder, setActiveDetailOrder] = useState<FlowPosOrder | null>(null);
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [isRefundModalOpen, setIsRefundModalOpen] = useState(false);
+  const [orderForPaymentAction, setOrderForPaymentAction] = useState<FlowPosOrder | null>(null);
 
   const handleCardClick = (order: FlowPosOrder) => {
     setSelectedOrderId(order.id);
@@ -250,6 +254,50 @@ export const OrdersHubScreen: React.FC<OrdersHubScreenProps> = ({
         currentTerminalId={currentTerminalId}
         activeCashierName={activeCashierName}
       />
+      {/* POS Payment Modal */}
+      {isPaymentModalOpen && orderForPaymentAction && (
+        <PaymentModal
+          isOpen={isPaymentModalOpen}
+          orderId={Number(orderForPaymentAction.id)}
+          orderNumber={orderForPaymentAction.orderNumber}
+          orderTotal={orderForPaymentAction.totalAmount}
+          baseOrder={orderForPaymentAction.rawOrder}
+          cashierName={activeCashierName}
+          terminalId={currentTerminalId}
+          onClose={() => {
+            setIsPaymentModalOpen(false);
+            setOrderForPaymentAction(null);
+          }}
+          onPaymentComplete={async () => {
+            await refreshOrders();
+            setIsPaymentModalOpen(false);
+            setOrderForPaymentAction(null);
+          }}
+        />
+      )}
+
+      {/* POS Refund Modal */}
+      {isRefundModalOpen && orderForPaymentAction && (
+        <RefundModal
+          isOpen={isRefundModalOpen}
+          orderId={Number(orderForPaymentAction.id)}
+          orderNumber={orderForPaymentAction.orderNumber}
+          maxRefundableAmount={orderForPaymentAction.netPaid || orderForPaymentAction.totalAmount}
+          currentPaid={orderForPaymentAction.amountPaid || orderForPaymentAction.totalAmount}
+          cashierName={activeCashierName}
+          branchName={branchName}
+          terminalId={currentTerminalId}
+          onClose={() => {
+            setIsRefundModalOpen(false);
+            setOrderForPaymentAction(null);
+          }}
+          onRefundComplete={async () => {
+            await refreshOrders();
+            setIsRefundModalOpen(false);
+            setOrderForPaymentAction(null);
+          }}
+        />
+      )}
     </div>
   );
 };

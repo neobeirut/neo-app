@@ -1,4 +1,5 @@
 import sql from "../../../../utils/sql";
+import crypto from "crypto";
 
 export async function PATCH(request, { params }) {
   try {
@@ -215,6 +216,40 @@ export async function PATCH(request, { params }) {
         error: "This order was updated on another terminal. The latest version has been loaded.",
         currentOrder: currentOrder || existingOrder
       }, { status: 409 });
+    }
+
+    // Auto-record legacy payment in order_payments if order is completed/delivered without existing payments
+    if (status === 'completed' || status === 'delivered') {
+      try {
+        const existingPayments = await sql`SELECT id FROM order_payments WHERE order_id = ${id} LIMIT 1`;
+        if (existingPayments.length === 0) {
+          const legacyOpId = crypto.randomUUID();
+          const orderTotal = parseFloat(total !== undefined && total !== null ? total : (existingOrder.total_amount || 0));
+          const method = existingOrder.payment_method || 'Cash USD';
+          const isAggregator = ['toters', 'noknok'].includes(method.toLowerCase());
+
+          await sql`
+            INSERT INTO order_payments (
+              operation_id, order_id, payment_method, payment_category,
+              currency, amount_in_currency, amount_usd,
+              terminal_id, cashier_reference, external_reference, status, created_at
+            ) VALUES (
+              ${legacyOpId}::uuid, ${id}, ${method}, ${isAggregator ? 'aggregator' : 'direct'},
+              'USD', ${orderTotal}, ${orderTotal},
+              'legacy-pos', 'Legacy POS', 'Auto-recorded on status completion', 'completed', NOW()
+            ) ON CONFLICT (operation_id) DO NOTHING;
+          `;
+
+          await sql`
+            UPDATE orders
+            SET payment_status = 'PAID',
+                amount_paid = ${orderTotal}
+            WHERE id = ${id} AND (payment_status IS NULL OR payment_status = 'UNPAID');
+          `;
+        }
+      } catch (payErr) {
+        console.error("Error auto-recording legacy payment on status completion:", payErr);
+      }
     }
 
       // Update order items if provided

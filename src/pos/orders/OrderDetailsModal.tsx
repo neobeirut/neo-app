@@ -12,6 +12,8 @@ export interface OrderDetailsModalProps {
   onReprint?: (order: FlowPosOrder) => void;
   onClaimOrder?: (order: FlowPosOrder, forceOverride?: boolean) => Promise<boolean | void>;
   onReleaseOrder?: (order: FlowPosOrder) => Promise<boolean | void>;
+  onTakePayment?: (order: FlowPosOrder) => void;
+  onRefund?: (order: FlowPosOrder) => void;
   currentTerminalId?: string;
   activeCashierName?: string;
 }
@@ -27,6 +29,8 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
   onReprint,
   onClaimOrder,
   onReleaseOrder,
+  onTakePayment,
+  onRefund,
   currentTerminalId = 'pos-term-default',
   activeCashierName = 'Cashier'
 }) => {
@@ -349,16 +353,52 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
                 <span>-${order.discountAmount.toFixed(2)}</span>
               </div>
             )}
-            <div className="pt-2 border-t border-[#262D3D] flex justify-between items-center">
-              <div>
-                <span className="font-black text-sm uppercase text-white tracking-wider">Total</span>
-                <span className="ml-2 text-[11px] font-bold text-gray-400">
-                  via {order.paymentMethod} ({order.paymentStatus})
+            <div className="pt-3 border-t border-[#262D3D] space-y-2">
+              <div className="flex justify-between items-center">
+                <div>
+                  <span className="font-black text-sm uppercase text-white tracking-wider">Total</span>
+                  <span className="ml-2 text-[11px] font-bold text-gray-400">
+                    via {order.paymentMethod}
+                  </span>
+                </div>
+                <span className="font-black text-2xl text-[#eb660c]">
+                  ${order.totalAmount.toFixed(2)}
                 </span>
               </div>
-              <span className="font-black text-2xl text-[#eb660c]">
-                ${order.totalAmount.toFixed(2)}
-              </span>
+
+              {/* Enhanced Financial Ledger Breakdown */}
+              <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[#262D3D]/60 text-xs">
+                <div className="bg-[#181d28] p-2 rounded-lg border border-[#262D3D]">
+                  <span className="text-gray-400 text-[10px] uppercase font-bold block">Paid</span>
+                  <span className="font-bold text-emerald-400">
+                    ${(order.amountPaid || (order.paymentStatus === 'paid_legacy' ? order.totalAmount : 0)).toFixed(2)}
+                  </span>
+                </div>
+
+                <div className="bg-[#181d28] p-2 rounded-lg border border-[#262D3D]">
+                  <span className="text-gray-400 text-[10px] uppercase font-bold block">Remaining</span>
+                  <span className="font-bold text-amber-400">
+                    ${(order.amountRemaining !== undefined ? order.amountRemaining : (order.paymentStatus === 'paid_legacy' || order.paymentStatus === 'paid' ? 0 : order.totalAmount)).toFixed(2)}
+                  </span>
+                </div>
+
+                <div className="bg-[#181d28] p-2 rounded-lg border border-[#262D3D] flex flex-col justify-between">
+                  <span className="text-gray-400 text-[10px] uppercase font-bold block">Status</span>
+                  <span className={'px-1.5 py-0.5 rounded text-[10px] font-extrabold uppercase text-center ' + (
+                    order.paymentStatus === 'paid' ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-500/30' :
+                    order.paymentStatus === 'paid_legacy' ? 'bg-indigo-950/60 text-indigo-300 border border-indigo-500/30' :
+                    order.paymentStatus === 'partially_paid' ? 'bg-amber-950/60 text-amber-400 border border-amber-500/30' :
+                    order.paymentStatus === 'refunded' ? 'bg-purple-950/60 text-purple-400 border border-purple-500/30' :
+                    order.paymentStatus === 'partially_refunded' ? 'bg-purple-950/60 text-purple-300 border border-purple-500/30' :
+                    'bg-rose-950/60 text-rose-400 border border-rose-500/30'
+                  )}>
+                    {order.paymentStatus === 'paid_legacy' ? 'PAID — LEGACY' :
+                     order.paymentStatus === 'partially_paid' ? 'PARTIAL' :
+                     order.paymentStatus === 'partially_refunded' ? 'PART. REFUND' :
+                     order.paymentStatus.toUpperCase()}
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -504,6 +544,35 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
               >
                 <span>🔓</span>
                 <span>{isUpdating ? 'Claiming...' : 'Claim & Open'}</span>
+              </button>
+            )}
+
+            {/* POS Payment & Refund Actions */}
+            {onTakePayment && order.paymentStatus !== 'paid' && order.paymentStatus !== 'paid_legacy' && order.statusGroup !== 'CANCELLED' && (
+              <button
+                type="button"
+                onClick={() => {
+                  onTakePayment(order);
+                  onClose();
+                }}
+                className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl text-xs transition shadow-lg shadow-amber-500/20 flex items-center gap-1.5"
+              >
+                <span>💵</span>
+                <span>Take Payment</span>
+              </button>
+            )}
+
+            {onRefund && order.statusGroup === 'COMPLETED' && (order.paymentStatus === 'paid' || order.paymentStatus === 'paid_legacy' || order.paymentStatus === 'partially_paid' || order.paymentStatus === 'partially_refunded') && (
+              <button
+                type="button"
+                onClick={() => {
+                  onRefund(order);
+                  onClose();
+                }}
+                className="px-3.5 py-2.5 bg-purple-950/80 hover:bg-purple-900 text-purple-300 border border-purple-500/40 rounded-xl text-xs font-extrabold transition flex items-center gap-1.5"
+              >
+                <span>↩️</span>
+                <span>Refund</span>
               </button>
             )}
 

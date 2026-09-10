@@ -119,10 +119,18 @@ export const OrderCard: React.FC<OrderCardProps> = ({
           <span className="text-sm font-black text-white">
             {'$' + order.totalAmount.toFixed(2)}
           </span>
-          <span className={'ml-2 text-[10px] font-bold uppercase ' + (
-            order.paymentStatus === 'paid' ? 'text-emerald-400' : 'text-amber-400'
+          <span className={'ml-2 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border ' + (
+            order.paymentStatus === 'paid' ? 'bg-emerald-950/60 text-emerald-400 border-emerald-500/30' :
+            order.paymentStatus === 'paid_legacy' ? 'bg-indigo-950/60 text-indigo-300 border-indigo-500/30' :
+            order.paymentStatus === 'partially_paid' ? 'bg-amber-950/60 text-amber-400 border-amber-500/30' :
+            order.paymentStatus === 'refunded' ? 'bg-purple-950/60 text-purple-400 border-purple-500/30' :
+            order.paymentStatus === 'partially_refunded' ? 'bg-purple-950/60 text-purple-300 border-purple-500/30' :
+            'bg-rose-950/60 text-rose-400 border-rose-500/30'
           )}>
-            • {order.paymentStatus}
+            {order.paymentStatus === 'paid_legacy' ? 'PAID — LEGACY' :
+             order.paymentStatus === 'partially_paid' ? 'PARTIAL' :
+             order.paymentStatus === 'partially_refunded' ? 'PART. REFUND' :
+             order.paymentStatus.toUpperCase()}
           </span>
         </div>
         <span className={'px-2.5 py-1 rounded-lg border text-[11px] font-black tracking-wide ' + getStatusBadge(order.statusGroup)}>

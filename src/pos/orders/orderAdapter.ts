@@ -49,7 +49,11 @@ export interface FlowPosOrder {
   discountAmount: number;
   totalAmount: number;
   paymentMethod: string;
-  paymentStatus: 'paid' | 'unpaid';
+  paymentStatus: 'paid' | 'unpaid' | 'partially_paid' | 'refunded' | 'partially_refunded' | 'paid_legacy' | string;
+  amountPaid: number;
+  amountRefunded: number;
+  netPaid: number;
+  amountRemaining: number;
   specialInstructions: string;
   voidReason: string | null;
   createdAt: Date;
@@ -151,7 +155,30 @@ export function adaptOvrloadOrder(raw: any, slaConfig: SlaConfig = DEFAULT_SLA_C
     rawOrderType === 'dine_in' || rawOrderType === 'dinein' ? 'dine_in' : 'pickup';
 
   const isCompleted = statusGroup === 'COMPLETED';
-  const isPaid = isCompleted || ['Toters', 'NokNok'].includes(channel);
+  const rawPayStatus = String(raw.payment_status || '').toUpperCase();
+  const amtPaid = Number(raw.amount_paid || 0);
+  const amtRefunded = Number(raw.amount_refunded || 0);
+  const totAmt = Number(raw.total_amount || 0);
+  const netPaid = Math.max(0, amtPaid - amtRefunded);
+  const amtRemaining = Math.max(0, totAmt - amtPaid);
+
+  let pStatus = 'unpaid';
+  if (rawPayStatus === 'REFUNDED') {
+    pStatus = 'refunded';
+  } else if (rawPayStatus === 'PARTIALLY_REFUNDED') {
+    pStatus = 'partially_refunded';
+  } else if (rawPayStatus === 'PARTIALLY_PAID') {
+    pStatus = 'partially_paid';
+  } else if (rawPayStatus === 'PAID') {
+    pStatus = 'paid';
+  } else if (isCompleted || ['Toters', 'NokNok'].includes(channel)) {
+    // Legacy completed orders without explicit new ledger rows
+    pStatus = (amtPaid > 0 && amtPaid >= totAmt) ? 'paid' : 'paid_legacy';
+  } else if (amtPaid >= totAmt && totAmt > 0) {
+    pStatus = 'paid';
+  } else if (amtPaid > 0) {
+    pStatus = 'partially_paid';
+  }
 
   const hours = createdDate.getHours().toString().padStart(2, '0');
   const minutes = createdDate.getMinutes().toString().padStart(2, '0');
@@ -174,7 +201,11 @@ export function adaptOvrloadOrder(raw: any, slaConfig: SlaConfig = DEFAULT_SLA_C
     discountAmount: Number(raw.discount_amount || 0),
     totalAmount: Number(raw.total_amount || 0),
     paymentMethod: raw.payment_method || (channel === 'Toters' ? 'Toters' : channel === 'NokNok' ? 'NokNok' : 'Cash'),
-    paymentStatus: isPaid ? 'paid' : 'unpaid',
+    paymentStatus: pStatus,
+    amountPaid: amtPaid,
+    amountRefunded: amtRefunded,
+    netPaid: netPaid,
+    amountRemaining: amtRemaining,
     specialInstructions: raw.special_instructions || '',
     voidReason: raw.void_reason || null,
     createdAt: createdDate,
