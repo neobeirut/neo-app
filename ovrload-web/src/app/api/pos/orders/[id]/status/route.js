@@ -7,6 +7,9 @@ export async function PATCH(request, { params }) {
     const {
       status,
       expected_version,
+      payment_operation_id,
+      void_operation_id,
+      is_manager_override,
       voidReason,
       subtotal,
       deliveryFee,
@@ -25,12 +28,68 @@ export async function PATCH(request, { params }) {
     }
 
     const [existingOrder] = await sql`
-      SELECT id, status, customer_phone, COALESCE(version, 1) as version, client_order_token, claimed_by, claimed_terminal, claimed_at FROM orders WHERE id = ${id} LIMIT 1
+      SELECT 
+        id, 
+        status, 
+        customer_phone, 
+        COALESCE(version, 1) as version, 
+        client_order_token, 
+        claimed_by, 
+        claimed_terminal, 
+        claimed_at,
+        payment_operation_id,
+        void_operation_id
+      FROM orders 
+      WHERE id = ${id} 
+      LIMIT 1
     `;
     if (!existingOrder) {
       return Response.json({ error: "Order not found" }, { status: 404 });
     }
 
+    // 1. PAYMENT IDEMPOTENCY CHECK
+    if (payment_operation_id) {
+      if (existingOrder.payment_operation_id === payment_operation_id) {
+        return Response.json({
+          success: true,
+          orderId: id,
+          status: existingOrder.status,
+          version: existingOrder.version,
+          isDuplicate: true,
+          message: "Idempotent response: payment operation already finalized"
+        });
+      }
+      if ((existingOrder.status === "completed" || existingOrder.status === "delivered") && existingOrder.payment_operation_id) {
+        return Response.json({
+          conflict: true,
+          error: "Order has already been paid and completed under another transaction.",
+          currentOrder: existingOrder
+        }, { status: 409 });
+      }
+    }
+
+    // 2. VOID / CANCEL IDEMPOTENCY CHECK
+    if (void_operation_id) {
+      if (existingOrder.void_operation_id === void_operation_id) {
+        return Response.json({
+          success: true,
+          orderId: id,
+          status: existingOrder.status,
+          version: existingOrder.version,
+          isDuplicate: true,
+          message: "Idempotent response: void operation already processed"
+        });
+      }
+      if (existingOrder.status === "cancelled" && existingOrder.void_operation_id) {
+        return Response.json({
+          conflict: true,
+          error: "Order has already been cancelled under another void transaction.",
+          currentOrder: existingOrder
+        }, { status: 409 });
+      }
+    }
+
+    // 3. OPTIMISTIC CONCURRENCY CHECK
     const expectedVersion = (expected_version !== undefined && expected_version !== null)
       ? parseInt(expected_version, 10)
       : null;
@@ -66,7 +125,44 @@ export async function PATCH(request, { params }) {
       }, { status: 409 });
     }
 
+    // 4. STATUS TRANSITIONS & TERMINAL STATES GUARD
     const prevStatus = existingOrder.status;
+    const ALLOWED_TRANSITIONS = {
+      pending: ["confirmed", "accepted", "preparing", "cancelled"],
+      accepted: ["preparing", "cancelled"],
+      confirmed: ["preparing", "cancelled"],
+      held: ["pending", "confirmed", "preparing", "cancelled"],
+      preparing: ["ready", "out_for_delivery", "completed", "delivered", "cancelled"],
+      ready: ["out_for_delivery", "completed", "delivered", "cancelled"],
+      out_for_delivery: ["completed", "delivered", "cancelled"],
+      completed: [],
+      delivered: [],
+      cancelled: []
+    };
+
+    if (status !== prevStatus) {
+      const isTerminal = prevStatus === "completed" || prevStatus === "delivered" || prevStatus === "cancelled";
+      if (isTerminal) {
+        const isAuthorizedManagerVoid = (status === "cancelled" && (voidReason || void_operation_id || is_manager_override));
+        if (!isAuthorizedManagerVoid) {
+          return Response.json({
+            conflict: true,
+            error: `Cannot change status of order in terminal state '${prevStatus}' without authorized manager void.`,
+            currentStatus: prevStatus
+          }, { status: 409 });
+        }
+      } else {
+        const validTargets = ALLOWED_TRANSITIONS[prevStatus];
+        if (validTargets && !validTargets.includes(status) && !is_manager_override) {
+          return Response.json({
+            conflict: true,
+            error: `Invalid status transition from '${prevStatus}' to '${status}'.`,
+            currentStatus: prevStatus
+          }, { status: 409 });
+        }
+      }
+    }
+
     const phoneToNotify = customerPhone || existingOrder.customer_phone;
 
     let updateResult;
@@ -77,6 +173,7 @@ export async function PATCH(request, { params }) {
         SET 
           status = ${status}, 
           void_reason = ${voidReason},
+          void_operation_id = COALESCE(${void_operation_id || null}, void_operation_id),
           claimed_by = NULL,
           claimed_terminal = NULL,
           claimed_at = NULL,
@@ -96,6 +193,7 @@ export async function PATCH(request, { params }) {
           claimed_by = NULL,
           claimed_terminal = NULL,
           claimed_at = NULL,
+          payment_operation_id = COALESCE(${payment_operation_id || null}, payment_operation_id),
           subtotal_amount = COALESCE(${subtotal !== undefined && subtotal !== null ? subtotal : null}, subtotal_amount),
           delivery_fee = COALESCE(${deliveryFee !== undefined && deliveryFee !== null ? deliveryFee : null}, delivery_fee),
           discount_amount = COALESCE(${discountAmount !== undefined && discountAmount !== null ? discountAmount : null}, discount_amount),

@@ -196,13 +196,15 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       cashierName: activeCashier?.name || user?.name || "Cashier",
       authorizedBy,
       orderType: "POS",
-      executeCommerceMutation: async () => {
+      executeCommerceMutation: async (opId?: string) => {
         const res = await fetch(`${COMMERCE_API_BASE}/api/pos/orders/${orderId}/status`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             status: "cancelled",
-            voidReason: reason
+            voidReason: reason,
+            void_operation_id: opId,
+            is_manager_override: true
           })
         });
         const data = await res.json();
@@ -1403,6 +1405,10 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     const effectiveChannel = selectedChannel || "POS";
     if (!selectedChannel && !editingOrderId) setSelectedChannel("POS");
 
+    const paymentOperationId = (typeof crypto !== "undefined" && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : "pay-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7);
+
     setIsSubmitting(true);
     try {
       let data;
@@ -1413,6 +1419,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
           body: JSON.stringify({
             status: "preparing",
             expected_version: editingOrderVersion,
+            payment_operation_id: paymentOperationId,
             subtotal,
             deliveryFee: orderType === "delivery" ? (parseFloat(deliveryFee) || 0) : 0,
             discountAmount,
@@ -1453,6 +1460,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
           body: JSON.stringify({
             branch_id: parseInt(commerceBranchLink?.external_branch_id || "1", 10),
             client_order_token: clientOrderToken,
+            payment_operation_id: paymentOperationId,
             orderType,
             orderSource: effectiveChannel,
             paymentMethod: actualPaymentMethod,

@@ -1234,6 +1234,10 @@ export default function TabletPOSPage() {
     const effectiveChannel = selectedChannel || "POS";
     if (!selectedChannel && !editingOrderId) setSelectedChannel("POS");
 
+    const paymentOperationId = (typeof crypto !== "undefined" && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : "pay-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7);
+
     setIsSubmitting(true);
     try {
       let data;
@@ -1244,6 +1248,7 @@ export default function TabletPOSPage() {
           body: JSON.stringify({
             status: "preparing",
             expected_version: editingOrderVersion,
+            payment_operation_id: paymentOperationId,
             subtotal,
             deliveryFee: orderType === "delivery" ? (parseFloat(deliveryFee) || 0) : 0,
             discountAmount,
@@ -1283,6 +1288,7 @@ export default function TabletPOSPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             client_order_token: clientOrderToken,
+            payment_operation_id: paymentOperationId,
             orderType,
             orderSource: effectiveChannel,
             paymentMethod: actualPaymentMethod,

@@ -19,7 +19,7 @@ export interface VoidTransactionParams {
   authorizedBy?: string;
   orderType?: string;
   restaurantId?: string;
-  executeCommerceMutation: () => Promise<{ success: boolean; error?: string }>;
+  executeCommerceMutation: (operationId?: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 export interface VoidTransactionResult {
@@ -84,7 +84,7 @@ export async function executeVoidTransaction(
   // PHASE 2: Execute Downstream Commerce Mutation
   let mutationResult: { success: boolean; error?: string };
   try {
-    mutationResult = await params.executeCommerceMutation();
+    mutationResult = await params.executeCommerceMutation(operationId);
   } catch (mutationErr: any) {
     mutationResult = {
       success: false,

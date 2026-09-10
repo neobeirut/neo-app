@@ -99,6 +99,7 @@ export async function POST(request) {
   try {
     const body = await request.json();
     client_order_token = body.client_order_token || null;
+    const payment_operation_id = body.payment_operation_id || null;
     const {
       branchId = 1,
       orderType = "pickup",
@@ -127,7 +128,7 @@ export async function POST(request) {
     // 1. Idempotency Check: if client_order_token is provided, verify whether order already exists
     if (client_order_token) {
       const existingOrders = await sql`
-        SELECT id, order_source, payment_method, total_amount, status, created_at, client_order_token, COALESCE(version, 1) as version
+        SELECT id, order_source, payment_method, total_amount, status, created_at, client_order_token, COALESCE(version, 1) as version, payment_operation_id
         FROM orders 
         WHERE client_order_token = ${client_order_token}
         LIMIT 1;
@@ -161,6 +162,7 @@ export async function POST(request) {
         discount_amount,
         total_amount,
         client_order_token,
+        payment_operation_id,
         version,
         created_at
       ) VALUES (
@@ -178,10 +180,11 @@ export async function POST(request) {
         ${discountAmount},
         ${total},
         ${client_order_token},
+        ${payment_operation_id},
         1,
         NOW()
       )
-      RETURNING id, created_at, version, client_order_token;
+      RETURNING id, created_at, version, client_order_token, payment_operation_id;
     `;
 
     const newOrder = orderResult[0];
