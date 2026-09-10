@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
-import { ArrowLeft, Save, Loader2, Users, Trash2, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Save, Loader2, Users, Trash2, AlertTriangle, Eye, EyeOff } from 'lucide-react';
 import { encryptAES, decryptAES, getStoredDecryptionKey, ENCRYPTION_ENABLED } from '../utils/cryptoHelper';
 export default function EmployeeFormScreen({ user }: { user?: any }) {
   const { id } = useParams();
@@ -43,6 +43,8 @@ export default function EmployeeFormScreen({ user }: { user?: any }) {
   const [appUserId, setAppUserId] = useState<string | null>(null);
   const [pin, setPin] = useState('');
   const [email, setEmail] = useState('');
+  const [webPassword, setWebPassword] = useState('');
+  const [showWebPassword, setShowWebPassword] = useState(false);
   const [role, setRole] = useState('User');
   const [isPayrollEligible, setIsPayrollEligible] = useState(true);
   const [trackAttendance, setTrackAttendance] = useState(true);
@@ -227,6 +229,21 @@ export default function EmployeeFormScreen({ user }: { user?: any }) {
       return;
     }
 
+    if (isAppUser && (role === 'Admin' || role === 'Manager')) {
+      if (!email.trim()) {
+        alert('Login Email is required for Admin and Manager Web Portal access.');
+        return;
+      }
+      if (!isEditing && (!webPassword || webPassword.trim().length < 6)) {
+        alert('Web Portal Password must be at least 6 characters for new Admin/Manager accounts.');
+        return;
+      }
+      if (webPassword && webPassword.trim().length < 6) {
+        alert('Web Portal Password must be at least 6 characters.');
+        return;
+      }
+    }
+
     const savedKey = getStoredDecryptionKey(user);
     setSaving(true);
 
@@ -263,6 +280,18 @@ export default function EmployeeFormScreen({ user }: { user?: any }) {
 
       if (userRes.data?.id) {
         resolvedAppUserId = userRes.data.id;
+      }
+
+      // Sync Web Portal password to Supabase Auth if provided
+      if ((role === 'Admin' || role === 'Manager') && webPassword.trim() && resolvedAppUserId && email.trim()) {
+        const passRes = await api.setUserPortalCredentials(
+          resolvedAppUserId,
+          email.trim().toLowerCase(),
+          webPassword.trim()
+        );
+        if (!passRes.success) {
+          console.warn('Warning: Web portal password update failed:', passRes.error);
+        }
       }
     } else {
       if (resolvedAppUserId) {
@@ -412,10 +441,10 @@ export default function EmployeeFormScreen({ user }: { user?: any }) {
         </div>
 
         {isAppUser && (
-          <div style={{ backgroundColor: '#f8fafc', padding: '20px', borderRadius: 'var(--radius)', border: '1px solid #e2e8f0', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px' }}>
+          <div style={{ backgroundColor: '#f8fafc', padding: '20px', borderRadius: 'var(--radius)', border: '1px solid #e2e8f0', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
             <div style={{ gridColumn: '1 / -1', borderBottom: '1px solid #e2e8f0', paddingBottom: '8px', marginBottom: '4px' }}>
               <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#334155', margin: 0 }}>App Login Credentials</h3>
-              <p style={{ color: 'var(--text-muted)', fontSize: '12px', margin: '4px 0 0 0' }}>Provide user login credentials. The user will be created/updated in the security database.</p>
+              <p style={{ color: 'var(--text-muted)', fontSize: '12px', margin: '4px 0 0 0' }}>Provide user login credentials for Mobile App (PIN) and Web Admin Portal (Email & Password).</p>
             </div>
             <div>
               <label style={labelStyle}>Mobile Login PIN *</label>
@@ -432,21 +461,57 @@ export default function EmployeeFormScreen({ user }: { user?: any }) {
             <div>
               <label style={labelStyle}>User Role *</label>
               <select style={inputStyle} value={role} onChange={e => setRole(e.target.value)} required>
-                <option value="User">User</option>
-                <option value="Manager">Manager</option>
-                <option value="Admin">Admin</option>
+                <option value="User">User (Mobile App Only)</option>
+                <option value="Manager">Manager (Web Admin & Mobile)</option>
+                <option value="Admin">Admin (Full Web Admin & Mobile)</option>
               </select>
             </div>
             <div>
-              <label style={labelStyle}>Login Email (Optional)</label>
+              <label style={labelStyle}>
+                Login Email {(role === 'Admin' || role === 'Manager') ? '*' : '(Optional)'}
+              </label>
               <input 
                 type="email" 
                 placeholder="email@example.com" 
                 style={inputStyle} 
                 value={email} 
                 onChange={e => setEmail(e.target.value)} 
+                required={role === 'Admin' || role === 'Manager'}
               />
             </div>
+            {(role === 'Admin' || role === 'Manager') && (
+              <div>
+                <label style={labelStyle}>
+                  Web Portal Password {isEditing ? '(Leave blank to keep unchanged)' : '*'}
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <input 
+                    type={showWebPassword ? 'text' : 'password'} 
+                    minLength={6}
+                    placeholder={isEditing ? '••••••••' : 'Min. 6 characters'} 
+                    style={{ ...inputStyle, paddingRight: '36px' }} 
+                    value={webPassword} 
+                    onChange={e => setWebPassword(e.target.value)} 
+                    required={!isEditing}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowWebPassword(!showWebPassword)}
+                    style={{
+                      position: 'absolute',
+                      right: '10px',
+                      top: '9px',
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      color: 'var(--text-muted)'
+                    }}
+                  >
+                    {showWebPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

@@ -823,6 +823,20 @@ export const api = {
     }
   },
 
+  setUserPortalCredentials: async (userId: string, email: string, password: string) => {
+    try {
+      const { data, error } = await supabase.rpc('admin_set_user_credentials', {
+        p_user_id: userId,
+        p_email: email.trim().toLowerCase(),
+        p_password: password
+      });
+      if (error) return { success: false, error: error.message };
+      return { success: true, data };
+    } catch (e: any) {
+      return { success: false, error: e.message || 'Failed to update portal credentials' };
+    }
+  },
+
   // --------------------------------------------------------------------------
   // SOPs & Training API
   // --------------------------------------------------------------------------

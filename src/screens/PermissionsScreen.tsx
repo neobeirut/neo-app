@@ -6,7 +6,7 @@ import {
   TrendingUp, Briefcase, GraduationCap, Calendar, Lock, Sliders, CheckCircle2,
   Sparkles, CheckSquare, Receipt, FolderOpen, Package, Clock,
   Eye, EyeOff, LayoutGrid, Square, Building2, Store, Newspaper, BookOpen, Target, History, AlertTriangle, Layers,
-  ShieldCheck, ArrowRight
+  ShieldCheck, ArrowRight, Key
 } from 'lucide-react';
 
 const DEFAULT_PERMISSIONS = {
@@ -677,6 +677,14 @@ export default function PermissionsScreen({ user, onUpdateUser }: { user?: UserP
   const [moduleFilterGroup, setModuleFilterGroup] = useState<string>('all');
   const [permFilterQuery, setPermFilterQuery] = useState<string>('');
 
+  // Password modal state for Admin Users
+  const [passwordModalUser, setPasswordModalUser] = useState<AdminUser | null>(null);
+  const [passwordModalEmail, setPasswordModalEmail] = useState('');
+  const [passwordModalPass, setPasswordModalPass] = useState('');
+  const [showPasswordText, setShowPasswordText] = useState(false);
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [passwordMsg, setPasswordMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
@@ -1331,6 +1339,46 @@ export default function PermissionsScreen({ user, onUpdateUser }: { user?: UserP
       setSavingState('error');
       fetchData();
       alert('Failed to update category: ' + (res.error || 'Unknown error'));
+    }
+  };
+
+  const handleOpenPasswordModal = (target: AdminUser) => {
+    setPasswordModalUser(target);
+    setPasswordModalEmail(target.email || '');
+    setPasswordModalPass('');
+    setShowPasswordText(false);
+    setPasswordMsg(null);
+  };
+
+  const handleSavePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!passwordModalUser) return;
+    if (!passwordModalEmail.trim()) {
+      setPasswordMsg({ type: 'error', text: 'Email is required for Web Portal login.' });
+      return;
+    }
+    if (passwordModalPass.length < 6) {
+      setPasswordMsg({ type: 'error', text: 'Password must be at least 6 characters.' });
+      return;
+    }
+
+    setPasswordSaving(true);
+    setPasswordMsg(null);
+    const res = await api.setUserPortalCredentials(
+      passwordModalUser.id,
+      passwordModalEmail.trim().toLowerCase(),
+      passwordModalPass
+    );
+    setPasswordSaving(false);
+
+    if (res.success) {
+      setPasswordMsg({ type: 'success', text: 'Web Portal login credentials updated successfully!' });
+      setAdminUsers(prev => prev.map(u => u.id === passwordModalUser.id ? { ...u, email: passwordModalEmail.trim().toLowerCase() } : u));
+      setTimeout(() => {
+        setPasswordModalUser(null);
+      }, 1400);
+    } else {
+      setPasswordMsg({ type: 'error', text: res.error || 'Failed to update credentials' });
     }
   };
 
@@ -2340,6 +2388,23 @@ export default function PermissionsScreen({ user, onUpdateUser }: { user?: UserP
                         </div>
 
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          <button
+                            onClick={() => handleOpenPasswordModal(selectedAdminUser)}
+                            className="quick-action-btn"
+                            style={{
+                              backgroundColor: '#eff6ff',
+                              borderColor: '#bfdbfe',
+                              color: '#1d4ed8',
+                              fontWeight: 600,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px'
+                            }}
+                            title="Set or reset Web Portal login password"
+                          >
+                            <Key size={13} />
+                            Set / Change Password
+                          </button>
                           {!isSuperAdmin && (
                             <>
                               <button
@@ -2938,6 +3003,170 @@ export default function PermissionsScreen({ user, onUpdateUser }: { user?: UserP
                 </p>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {passwordModalUser && (
+        <div 
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            padding: '16px'
+          }}
+          onClick={() => setPasswordModalUser(null)}
+        >
+          <div 
+            style={{
+              backgroundColor: '#ffffff',
+              borderRadius: '12px',
+              padding: '24px',
+              maxWidth: '440px',
+              width: '100%',
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+              border: '1px solid var(--border)'
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+              <div style={{ width: '36px', height: '36px', borderRadius: '10px', backgroundColor: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#2563eb' }}>
+                <Key size={20} />
+              </div>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 700, color: 'var(--text-main)' }}>
+                  Web Portal Password
+                </h3>
+                <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                  For {passwordModalUser.name} ({passwordModalUser.role})
+                </div>
+              </div>
+            </div>
+
+            <form onSubmit={handleSavePassword}>
+              <div style={{ marginBottom: '14px' }}>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#374151', marginBottom: '6px' }}>
+                  Login Email *
+                </label>
+                <input
+                  type="email"
+                  required
+                  placeholder="admin@example.com"
+                  value={passwordModalEmail}
+                  onChange={e => setPasswordModalEmail(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '9px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border)',
+                    fontSize: '14px',
+                    outline: 'none'
+                  }}
+                />
+              </div>
+
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#374151', marginBottom: '6px' }}>
+                  New Web Portal Password *
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type={showPasswordText ? 'text' : 'password'}
+                    required
+                    minLength={6}
+                    placeholder="Min. 6 characters"
+                    value={passwordModalPass}
+                    onChange={e => setPasswordModalPass(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '9px 38px 9px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid var(--border)',
+                      fontSize: '14px',
+                      outline: 'none'
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPasswordText(!showPasswordText)}
+                    style={{
+                      position: 'absolute',
+                      right: '10px',
+                      top: '9px',
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      color: 'var(--text-muted)'
+                    }}
+                  >
+                    {showPasswordText ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                  This password allows signing in to the Web Admin Portal with the email above.
+                </div>
+              </div>
+
+              {passwordMsg && (
+                <div 
+                  style={{
+                    padding: '10px 12px',
+                    borderRadius: '8px',
+                    fontSize: '13px',
+                    marginBottom: '16px',
+                    backgroundColor: passwordMsg.type === 'success' ? '#dcfce7' : '#fee2e2',
+                    color: passwordMsg.type === 'success' ? '#15803d' : '#b91c1c',
+                    fontWeight: 500
+                  }}
+                >
+                  {passwordMsg.text}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
+                <button
+                  type="button"
+                  onClick={() => setPasswordModalUser(null)}
+                  disabled={passwordSaving}
+                  style={{
+                    padding: '9px 16px',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border)',
+                    backgroundColor: '#ffffff',
+                    color: 'var(--text-main)',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    cursor: 'pointer'
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={passwordSaving}
+                  style={{
+                    padding: '9px 18px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    backgroundColor: 'var(--primary)',
+                    color: '#ffffff',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  {passwordSaving && <Loader2 size={14} className="spin" />}
+                  {passwordSaving ? 'Saving...' : 'Save Password'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
