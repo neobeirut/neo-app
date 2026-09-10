@@ -809,6 +809,25 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     });
   };
 
+  const handleDirectVoidOrder = (order: any) => {
+    const raw = order.rawOrder || order;
+    const items: CanceledItemDetail[] = (order.items || raw.items || []).map((i: any) => ({
+      name: i.name || i.product_name || 'Item',
+      qty: i.quantity || i.qty || 1,
+      price: i.unitPrice || i.unit_price || 0
+    }));
+
+    setVoidModalState({
+      isOpen: true,
+      orderId: order.id,
+      items,
+      voidType: (order.statusGroup === 'COMPLETED' || raw.status === 'completed') ? 'refund' : 'order_cancellation',
+      onSuccess: () => {
+        fetchOrdersQueue();
+      }
+    });
+  };
+
   const releaseCurrentOrderLock = async () => {
     if (editingOrderId) {
       try {
@@ -1866,9 +1885,17 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
           <div className="flex-1 overflow-hidden">
             <OrdersHubScreen
               branchName={commerceBranchLink?.flow_branch_name || user?.branch || "Cloud Kitchen"}
+              currentTerminalId={posTerminalId}
+              activeCashierName={activeCashier?.name || user?.name || "Cashier"}
               onOpenOrderToTicket={(order) => {
                 loadOrderToTicket(order.rawOrder, order.channel);
                 setPosActiveView('sell');
+              }}
+              onReprint={(order) => {
+                handleReprintOrder(order.rawOrder);
+              }}
+              onRequestVoid={(order) => {
+                handleDirectVoidOrder(order);
               }}
             />
           </div>

@@ -2,18 +2,34 @@ import React, { useState } from 'react';
 import { useOrders } from './useOrders';
 import { OrderFilters } from './OrderFilters';
 import { OrderCard } from './OrderCard';
+import { OrderDetailsModal } from './OrderDetailsModal';
+import { adaptOvrloadOrder } from './orderAdapter';
 import type { FlowPosOrder } from './orderAdapter';
+
+const COMMERCE_API_BASE = (
+  (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_OVRLOAD_API_URL)
+    ? import.meta.env.VITE_OVRLOAD_API_URL
+    : 'https://ovrload-backend-production.up.railway.app'
+).replace(/\/+$/, '');
 
 interface OrdersHubScreenProps {
   branchName?: string;
   onSelectOrder?: (order: FlowPosOrder) => void;
   onOpenOrderToTicket?: (order: FlowPosOrder) => void;
+  onRequestVoid?: (order: FlowPosOrder) => void;
+  onReprint?: (order: FlowPosOrder) => void;
+  currentTerminalId?: string;
+  activeCashierName?: string;
 }
 
 export const OrdersHubScreen: React.FC<OrdersHubScreenProps> = ({
   branchName = 'Cloud Kitchen',
   onSelectOrder,
-  onOpenOrderToTicket
+  onOpenOrderToTicket,
+  onRequestVoid,
+  onReprint,
+  currentTerminalId = 'pos-term-flow',
+  activeCashierName = 'Cashier'
 }) => {
   const {
     filteredOrders,
@@ -33,16 +49,104 @@ export const OrdersHubScreen: React.FC<OrdersHubScreenProps> = ({
   } = useOrders();
 
   const [selectedOrderId, setSelectedOrderId] = useState<string | number | null>(null);
+  const [activeDetailOrder, setActiveDetailOrder] = useState<FlowPosOrder | null>(null);
 
   const handleCardClick = (order: FlowPosOrder) => {
     setSelectedOrderId(order.id);
+    setActiveDetailOrder(order);
     if (onSelectOrder) {
       onSelectOrder(order);
     }
   };
 
+  const handleStatusUpdate = async (orderId: string | number, newStatus: string, expectedVersion: number) => {
+    const res = await fetch(`${COMMERCE_API_BASE}/api/pos/orders/${orderId}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        status: newStatus,
+        expected_version: expectedVersion
+      })
+    });
+    const data = await res.json();
+    if (res.status === 409) {
+      await refreshOrders();
+      throw new Error(data.error || 'Concurrency Conflict: Order was modified by another terminal. Reloaded latest state.');
+    }
+    if (!res.ok || !data.success) {
+      throw new Error(data.error || 'Failed to update order status');
+    }
+    await refreshOrders();
+    if (data.order) {
+      setActiveDetailOrder(adaptOvrloadOrder(data.order));
+    }
+  };
+
+  const handleDispatchDriver = async (order: FlowPosOrder, etaMinutes: string) => {
+    const dispatchOpId = (typeof crypto !== 'undefined' && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : 'disp-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7);
+    const res = await fetch(`${COMMERCE_API_BASE}/api/pos/dispatch-driver`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        orderId: order.id,
+        etaMinutes: etaMinutes || '15',
+        phone: '9613826136',
+        dispatch_operation_id: dispatchOpId
+      })
+    });
+    const data = await res.json();
+    if (!res.ok && !data.success) {
+      throw new Error(data.error || 'Failed to dispatch driver');
+    }
+  };
+
+  const handleClaimOrder = async (order: FlowPosOrder, forceOverride = false) => {
+    const res = await fetch(`${COMMERCE_API_BASE}/api/pos/orders/${order.id}/claim`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        posTerminalId: currentTerminalId,
+        cashierName: activeCashierName,
+        forceOverride
+      })
+    });
+    const data = await res.json();
+    if (res.status === 409) {
+      await refreshOrders();
+      throw new Error(data.error || 'Claim Conflict: Order is locked by another terminal.');
+    }
+    if (!res.ok || !data.success) {
+      throw new Error(data.error || 'Failed to claim order');
+    }
+    await refreshOrders();
+    if (data.order) {
+      setActiveDetailOrder(adaptOvrloadOrder(data.order));
+    }
+  };
+
+  const handleReleaseOrder = async (order: FlowPosOrder) => {
+    const res = await fetch(`${COMMERCE_API_BASE}/api/pos/orders/${order.id}/release`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        posTerminalId: currentTerminalId
+      })
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.error || 'Failed to release order');
+    }
+    await refreshOrders();
+    if (data.order) {
+      setActiveDetailOrder(adaptOvrloadOrder(data.order));
+    }
+  };
+
   return (
-    <div className="h-full flex flex-col bg-[#0B0D12] text-white select-none">
+    <div className="h-full flex flex-col bg-[#0B0D12] text-white select-none relative">
+      {/* Subheader Toolbar */}
       <div className="px-6 py-3 bg-[#11141B] border-b border-[#262D3D] flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
@@ -87,6 +191,7 @@ export const OrdersHubScreen: React.FC<OrdersHubScreenProps> = ({
         </div>
       </div>
 
+      {/* Filter Tabs & Search Bar */}
       <div className="px-6 py-4 bg-[#0F1218] border-b border-[#262D3D]">
         <OrderFilters
           activeStatusTab={activeStatusTab}
@@ -99,6 +204,7 @@ export const OrdersHubScreen: React.FC<OrdersHubScreenProps> = ({
         />
       </div>
 
+      {/* Orders Grid / Cards Area */}
       <div className="flex-1 p-6 overflow-y-auto">
         {error && (
           <div className="mb-4 p-3 bg-rose-950/80 border border-rose-500/60 rounded-xl text-rose-300 text-xs font-bold flex items-center gap-2">
@@ -128,6 +234,22 @@ export const OrdersHubScreen: React.FC<OrdersHubScreenProps> = ({
           </div>
         )}
       </div>
+
+      {/* Order Details & Contextual Workflow Modal */}
+      <OrderDetailsModal
+        order={activeDetailOrder}
+        isOpen={!!activeDetailOrder}
+        onClose={() => setActiveDetailOrder(null)}
+        onOpenInTicket={onOpenOrderToTicket}
+        onStatusUpdate={handleStatusUpdate}
+        onRequestVoid={onRequestVoid}
+        onRequestDispatch={handleDispatchDriver}
+        onReprint={onReprint}
+        onClaimOrder={handleClaimOrder}
+        onReleaseOrder={handleReleaseOrder}
+        currentTerminalId={currentTerminalId}
+        activeCashierName={activeCashierName}
+      />
     </div>
   );
 };
