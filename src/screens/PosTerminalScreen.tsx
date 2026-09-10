@@ -12,6 +12,13 @@ import { usePosUpsell } from "../pos/hooks/usePosUpsell";
 import { UpsellRecommendationBar } from "../pos/components/UpsellRecommendationBar";
 import { usePosShift } from "../pos/hooks/usePosShift";
 import { OpenShiftModal } from "../pos/components/OpenShiftModal";
+import { CloseShiftModal } from "../pos/components/CloseShiftModal";
+import { ShiftReportModal } from "../pos/components/ShiftReportModal";
+import { DailyBranchControlScreen } from "../pos/components/DailyBranchControlScreen";
+import { PilotIncidentLog } from "../pos/components/PilotIncidentLog";
+import type { PilotIncident } from "../pos/components/PilotIncidentLog";
+import type { ShiftReconciliationSummary } from "../pos/services/shiftReconciliationService";
+import { calculateShiftReconciliation } from "../pos/services/shiftReconciliationService";
 import { ShiftStatusBadge } from "../pos/components/ShiftStatusBadge";
 import { executeVoidTransaction } from "../pos/services/voidBridge";
 import type { CanceledItemDetail } from "../pos/services/voidBridge";
@@ -189,12 +196,44 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     isShiftOpen,
     isOpenShiftModalOpen,
     setIsOpenShiftModalOpen,
+    isCloseShiftModalOpen,
+    setIsCloseShiftModalOpen,
+    isShiftReportModalOpen,
+    setIsShiftReportModalOpen,
+    reportModalMode,
+    setReportModalMode,
+    openXReport,
     handleOpenShift,
     handleCloseShift
   } = usePosShift(
     commerceBranchLink?.flow_branch_name || user?.branch || "Cloud Kitchen",
-    activeCashier?.name || user?.name || "Cashier"
+    activeCashier?.name || user?.name || "Cashier",
+    "TERM-1",
+    commerceBranchLink?.flow_branch_id
   );
+
+  // Phase 6 Shift Closing & Reporting States
+  const [lastClosedShift, setLastClosedShift] = useState<any>(null);
+  const [shiftReportData, setShiftReportData] = useState<ShiftReconciliationSummary | null>(null);
+  const [isDailyControlOpen, setIsDailyControlOpen] = useState(false);
+  const [pilotIncidents, setPilotIncidents] = useState<PilotIncident[]>([]);
+
+  const recordIncident = (
+    category: 'PRINTER' | 'KDS' | 'COMMERCE_SYNC' | 'PAYMENT' | 'OCC_CONFLICT' | 'TABLE_SYNC',
+    severity: 'WARNING' | 'CRITICAL',
+    message: string,
+    details?: any
+  ) => {
+    const incident: PilotIncident = {
+      id: 'inc-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
+      timestamp: new Date().toISOString(),
+      category,
+      severity,
+      message,
+      details
+    };
+    setPilotIncidents(prev => [incident, ...prev.slice(0, 19)]);
+  };
 
   // FLOW Void Management State
   const [voidModalState, setVoidModalState] = useState<{
@@ -2007,7 +2046,37 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
             <ShiftStatusBadge
               shift={activeShift}
               onOpenShiftClick={() => setIsOpenShiftModalOpen(true)}
+              onCloseShiftClick={() => setIsCloseShiftModalOpen(true)}
+              onXReportClick={async () => {
+                if (activeShift) {
+                  const res = await calculateShiftReconciliation({
+                    locationKey: commerceBranchLink?.location_key || 'cloud-kitchen',
+                    startTime: activeShift.created_at,
+                    terminalId: activeShift.terminal_id || "TERM-1",
+                    openingUsd: Number(activeShift.opening_usd || 0),
+                    openingLbp: Number(activeShift.opening_lbp || 0)
+                  });
+                  if (res.success && res.summary) {
+                    setShiftReportData(res.summary);
+                    setReportModalMode('X');
+                    setIsShiftReportModalOpen(true);
+                  } else {
+                    alert(res.error || 'Failed to generate X Report snapshot');
+                  }
+                }
+              }}
             />
+
+            {/* Daily Store Control Button */}
+            <button
+              type="button"
+              onClick={() => setIsDailyControlOpen(true)}
+              className="flex items-center gap-1.5 bg-[#222734] hover:bg-[#2c3344] border border-[#2D3548] text-gray-300 hover:text-white px-2.5 py-1.5 rounded-xl text-xs font-bold transition"
+              title="Daily Branch Store Control Dashboard"
+            >
+              <span>🏪</span>
+              <span className="hidden xl:inline">Store Control</span>
+            </button>
 
             {/* Cashier Indicator & Lock/Switch */}
             <button
@@ -3536,6 +3605,64 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         branchName={commerceBranchLink?.flow_branch_name || user?.branch || "Cloud Kitchen"}
         cashierName={activeCashier?.name || user?.name || "Cashier"}
         onConfirm={handleOpenShift}
+      />
+
+      {/* PHASE 6 CLOSE SHIFT CASH MODAL */}
+      <CloseShiftModal
+        isOpen={isCloseShiftModalOpen}
+        onClose={() => setIsCloseShiftModalOpen(false)}
+        shift={activeShift}
+        branchName={commerceBranchLink?.flow_branch_name || user?.branch || "Cloud Kitchen"}
+        branchId={commerceBranchLink?.flow_branch_id}
+        locationKey={commerceBranchLink?.location_key || "cloud-kitchen"}
+        terminalId={activeShift?.terminal_id || "TERM-1"}
+        cashierName={activeCashier?.name || user?.name || "Cashier"}
+        onShiftClosed={(closedShift, recon) => {
+          setLastClosedShift(closedShift);
+          setShiftReportData(recon);
+          setReportModalMode('CLOSE');
+          setIsShiftReportModalOpen(true);
+        }}
+      />
+
+      {/* PHASE 6 SHIFT REPORT MODAL (X Report & Shift Close Report) */}
+      <ShiftReportModal
+        isOpen={isShiftReportModalOpen}
+        onClose={() => setIsShiftReportModalOpen(false)}
+        shift={reportModalMode === 'X' ? activeShift : (lastClosedShift || activeShift)}
+        reconciliation={shiftReportData}
+        isXReport={reportModalMode === 'X'}
+      />
+
+      {/* PHASE 6 DAILY BRANCH STORE CONTROL DASHBOARD */}
+      {isDailyControlOpen && (
+        <DailyBranchControlScreen
+          branchIdentifier={commerceBranchLink?.flow_branch_id || commerceBranchLink?.flow_branch_name || user?.branch || "Cloud Kitchen"}
+          branchName={commerceBranchLink?.flow_branch_name || user?.branch || "Cloud Kitchen"}
+          onClose={() => setIsDailyControlOpen(false)}
+          onSelectShiftReport={async (selectedShift) => {
+            const res = await calculateShiftReconciliation({
+              locationKey: commerceBranchLink?.location_key || 'cloud-kitchen',
+              startTime: selectedShift.created_at,
+              endTime: selectedShift.closed_at || undefined,
+              terminalId: selectedShift.terminal_id || "TERM-1",
+              openingUsd: Number(selectedShift.opening_usd || 0),
+              openingLbp: Number(selectedShift.opening_lbp || 0)
+            });
+            if (res.success && res.summary) {
+              setLastClosedShift(selectedShift);
+              setShiftReportData(res.summary);
+              setReportModalMode('CLOSE');
+              setIsShiftReportModalOpen(true);
+            }
+          }}
+        />
+      )}
+
+      {/* PHASE 6 PILOT OPERATIONAL INCIDENT LOG */}
+      <PilotIncidentLog
+        incidents={pilotIncidents}
+        onClearIncidents={() => setPilotIncidents([])}
       />
 
       {/* FLOW VOID TRANSACTION MODAL */}
