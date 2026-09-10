@@ -7,6 +7,9 @@ import { BranchMappingAlert } from "../pos/components/BranchMappingAlert";
 import { usePos86 } from "../pos/hooks/usePos86";
 import { usePosUpsell } from "../pos/hooks/usePosUpsell";
 import { UpsellRecommendationBar } from "../pos/components/UpsellRecommendationBar";
+import { usePosShift } from "../pos/hooks/usePosShift";
+import { OpenShiftModal } from "../pos/components/OpenShiftModal";
+import { ShiftStatusBadge } from "../pos/components/ShiftStatusBadge";
 
 interface PosTerminalScreenProps {
   user?: any;
@@ -148,6 +151,19 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   // FLOW 86 Dynamic Availability Hook
   const { isProduct86d, unavailableProductIds, refetch86 } = usePos86(
     commerceBranchLink?.flow_branch_name || user?.branch || "Cloud Kitchen"
+  );
+
+  // FLOW Shift Cash Management Hook
+  const {
+    activeShift,
+    isShiftOpen,
+    isOpenShiftModalOpen,
+    setIsOpenShiftModalOpen,
+    handleOpenShift,
+    handleCloseShift
+  } = usePosShift(
+    commerceBranchLink?.flow_branch_name || user?.branch || "Cloud Kitchen",
+    activeCashier?.name || user?.name || "Cashier"
   );
 
   const handleCashierPinSubmit = async (pinToSubmit?: string) => {
@@ -1184,6 +1200,11 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   const handleHoldOrder = async () => {
     if (ticketItems.length === 0) return;
     if (!validateOrder()) return;
+    if (!isShiftOpen) {
+      alert("⚠️ A FLOW shift cash session must be open before holding orders or accepting payments.");
+      setIsOpenShiftModalOpen(true);
+      return;
+    }
 
     setIsSubmitting(true);
     try {
@@ -1236,6 +1257,11 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   const handleFinalizePayment = async () => {
     if (ticketItems.length === 0) return;
     if (!validateOrder()) return;
+    if (!isShiftOpen) {
+      alert("⚠️ A FLOW shift cash session must be open before processing payments or submitting orders.");
+      setIsOpenShiftModalOpen(true);
+      return;
+    }
     const effectiveChannel = selectedChannel || "POS";
     if (!selectedChannel && !editingOrderId) setSelectedChannel("POS");
 
@@ -1579,7 +1605,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
             </div>
           </div>
 
-          {/* Right Header: Active Branch, 86 Badge, Active Cashier, Switch PIN, and Exit to FLOW */}
+          {/* Right Header: Active Branch, 86 Badge, Shift Badge, Active Cashier, Switch PIN, and Exit to FLOW */}
           <div className="flex items-center gap-2">
             {/* Active Branch Badge */}
             <div className="flex items-center gap-1.5 text-xs bg-[#222734] px-2.5 py-1.5 rounded-xl border border-[#2D3548]">
@@ -1600,6 +1626,12 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                 <span>${unavailableProductIds.size} 86'd</span>
               </div>
             )}
+
+            {/* Shift Status Badge */}
+            <ShiftStatusBadge
+              shift={activeShift}
+              onOpenShiftClick={() => setIsOpenShiftModalOpen(true)}
+            />
 
             {/* Cashier Indicator & Lock/Switch */}
             <button
@@ -2204,19 +2236,30 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                 </div>
               )}
 
-              {/* RIGHT SIDE: PAY & PRINT BUTTON */}
-              <button
-                type="button"
-                onClick={handleFinalizePayment}
-                disabled={ticketItems.length === 0 || isSubmitting}
-                className={`flex-1 py-3 rounded-xl text-xs font-black tracking-wider flex items-center justify-center gap-1 transition-all shadow-lg ${
-                  ticketItems.length === 0 || isSubmitting
-                    ? "bg-gray-700 text-gray-500 cursor-not-allowed border border-gray-600"
-                    : "bg-[#eb660c] hover:bg-[#d55909] text-white active:scale-98 shadow-[#eb660c]/20 border border-[#eb660c]"
-                }`}
-              >
-                {isSubmitting ? "PROCESSING..." : `PAY & PRINT — $${total.toFixed(2)}`}
-              </button>
+              {/* RIGHT SIDE: PAY & PRINT BUTTON WITH SHIFT GUARD */}
+              {!isShiftOpen ? (
+                <button
+                  type="button"
+                  onClick={() => setIsOpenShiftModalOpen(true)}
+                  className="flex-1 py-3 px-2 rounded-xl text-xs font-black tracking-wider flex items-center justify-center gap-1.5 transition-all shadow-lg bg-amber-600 hover:bg-amber-500 text-white border border-amber-400 active:scale-98 animate-pulse"
+                  title="Shift is closed. Click to enter opening float and open shift."
+                >
+                  <span>🔒 No Open Shift — Tap to Open</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleFinalizePayment}
+                  disabled={ticketItems.length === 0 || isSubmitting}
+                  className={`flex-1 py-3 rounded-xl text-xs font-black tracking-wider flex items-center justify-center gap-1 transition-all shadow-lg ${
+                    ticketItems.length === 0 || isSubmitting
+                      ? "bg-gray-700 text-gray-500 cursor-not-allowed border border-gray-600"
+                      : "bg-[#eb660c] hover:bg-[#d55909] text-white active:scale-98 shadow-[#eb660c]/20 border border-[#eb660c]"
+                  }`}
+                >
+                  {isSubmitting ? "PROCESSING..." : `PAY & PRINT — ${total.toFixed(2)}`}
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -2996,6 +3039,15 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
           onExit={onExit}
         />
       )}
+
+      {/* OPEN SHIFT CASH MODAL */}
+      <OpenShiftModal
+        isOpen={isOpenShiftModalOpen}
+        onClose={() => setIsOpenShiftModalOpen(false)}
+        branchName={commerceBranchLink?.flow_branch_name || user?.branch || "Cloud Kitchen"}
+        cashierName={activeCashier?.name || user?.name || "Cashier"}
+        onConfirm={handleOpenShift}
+      />
 
       {/* CASHIER PIN LOCK & SWITCH MODAL */}
       {isCashierModalOpen && (
