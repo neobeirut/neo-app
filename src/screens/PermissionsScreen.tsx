@@ -368,6 +368,14 @@ export interface ModuleDefinition {
 export const MODULE_DEFINITIONS: ModuleDefinition[] = [
   // Operations
   {
+    key: 'pos',
+    label: 'Point of Sale (POS)',
+    group: 'Operations',
+    desc: 'Live cashier terminal, product ordering, customizations, WhatsApp orders, and thermal printing',
+    route: '/pos',
+    icon: <Store size={18} style={{ color: '#0d6efd' }} />
+  },
+  {
     key: 'orders',
     label: 'Branch Orders',
     group: 'Operations',

@@ -64,7 +64,7 @@ export const DEFAULT_ADMIN_MODULE_PERMISSIONS: Record<string, boolean> = {
   departments_sections: true, salary_payments: true, assessments: true, attendance: true,
   tips: true, permissions: true, signin_logs: true, complaints: true, specials: true,
   finance: true, payment_details: true, reel_credit: true, branch_management: true,
-  wallets: true, news: true, sops: true, menu: true
+  wallets: true, news: true, sops: true, menu: true, pos: true
 };
 
 export const DEFAULT_MANAGER_ADMIN_PERMISSIONS: Record<string, boolean> = {
@@ -74,7 +74,7 @@ export const DEFAULT_MANAGER_ADMIN_PERMISSIONS: Record<string, boolean> = {
   departments_sections: false, salary_payments: false, assessments: true, attendance: true,
   tips: true, permissions: false, signin_logs: false, complaints: true, specials: true,
   finance: false, payment_details: false, reel_credit: false, branch_management: false,
-  wallets: false, news: true, sops: true, menu: true
+  wallets: false, news: true, sops: true, menu: true, pos: true
 };
 
 export const hasAdminAccess = (
@@ -181,6 +181,27 @@ export const api = {
       return { success: true, data };
     }
   },
+
+  // Fast Cashier PIN Switch / Verification for FLOW POS Terminal
+  verifyCashierPin: async (pin: string) => {
+    const cleanPin = (pin || '').trim();
+    if (!cleanPin) return { success: false, error: 'PIN required' };
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('id, name, role, branch, departments, restaurant_id, admin_permissions')
+        .eq('pin', cleanPin)
+        .single();
+
+      if (error || !data) {
+        return { success: false, error: 'Invalid Cashier PIN' };
+      }
+      return { success: true, data };
+    } catch (e: any) {
+      return { success: false, error: e?.message || 'Error validating PIN' };
+    }
+  },
+
 
   // Menu Manual
   getMenuSections: async () => {

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { HashRouter, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
+import { HashRouter, Routes, Route, Navigate, Link, useLocation, useNavigate } from 'react-router-dom';
 import LoginScreen from './screens/LoginScreen';
+import PosTerminalScreen from './screens/PosTerminalScreen';
 
 import MenuManualScreen from './screens/MenuManualScreen';
 import MenuRecipeFormScreen from './screens/MenuRecipeFormScreen';
@@ -105,6 +106,7 @@ import InventoryScreen from './screens/InventoryScreen';
       {
         name: 'Operations',
         items: [
+          { to: '/pos', label: 'Point of Sale (POS)', icon: <Store size={18} />, visible: canAccess('pos', true), key: 'pos' },
           { to: '/orders', label: 'Branch Orders', icon: <ShoppingBag size={18} />, visible: canAccess('orders', permissions?.can_create_orders !== false || permissions?.can_receive_orders !== false), key: 'orders' },
           { to: '/client-orders', label: 'Client Orders', icon: <Briefcase size={18} />, visible: canAccess('client_orders', !!permissions?.can_view_client_orders), key: 'client_orders' },
           { to: '/reservations', label: 'Table Reservations', icon: <Calendar size={18} />, visible: canAccess('reservations', !!permissions?.can_manage_reservations), key: 'reservations' },
@@ -361,6 +363,18 @@ function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () 
     return hasAdminAccess(user, permissions, moduleKey, staffFallback);
   };
 
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // Fullscreen POS Terminal Mode (Zero sidebar, zero top-bar)
+  if (location.pathname === '/pos') {
+    return (
+      <div style={{ width: '100vw', height: '100vh', overflow: 'hidden', backgroundColor: '#0F1115' }}>
+        <PosTerminalScreen user={user} onExit={() => navigate('/')} />
+      </div>
+    );
+  }
+
   return (
     <div className="app-layout">
       <Sidebar 
@@ -407,6 +421,7 @@ function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () 
                 />
               } 
             />
+            <Route path="/pos" element={<PosTerminalScreen user={user} onExit={() => navigate('/')} />} />
             {isSectionEnabled('orders') && canAccess('orders', permissions?.can_create_orders !== false || permissions?.can_receive_orders !== false) && (
               <Route path="/orders" element={<OrdersScreen user={user} />} />
             )}
