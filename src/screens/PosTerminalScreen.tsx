@@ -5,6 +5,8 @@ import { resolveCommerceBranchLink } from "../pos/services/branchMapping";
 import type { CommerceBranchLink } from "../pos/types/commerce";
 import { BranchMappingAlert } from "../pos/components/BranchMappingAlert";
 import { usePos86 } from "../pos/hooks/usePos86";
+import { usePosUpsell } from "../pos/hooks/usePosUpsell";
+import { UpsellRecommendationBar } from "../pos/components/UpsellRecommendationBar";
 
 interface PosTerminalScreenProps {
   user?: any;
@@ -178,6 +180,12 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   // Data States
   const [categories, setCategories] = useState([]);
   const [products, setProducts] = useState([]);
+
+  // FLOW Upsell Recommendations Hook
+  const { activeUpsells } = usePosUpsell(
+    commerceBranchLink?.flow_branch_name || user?.branch || "Cloud Kitchen",
+    products
+  );
   const [selectedCategory, setSelectedCategory] = useState("⭐ Favorites");
 
   // Favorites persistence state (localStorage)
@@ -1623,6 +1631,13 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
             )}
           </div>
         </header>
+          {/* FLOW UPSELL RECOMMENDATIONS */}
+          <UpsellRecommendationBar
+            upsells={activeUpsells}
+            onSelectProduct={handleQuickAddProduct}
+            isProduct86d={isProduct86d}
+          />
+
           {/* CATEGORIES BAR */}
           <div className="px-4 py-2.5 bg-[#14171F] border-b border-[#262D3D] flex items-center gap-2 overflow-x-auto no-scrollbar flex-shrink-0">
             {availableCategoryList.map((cat) => {
