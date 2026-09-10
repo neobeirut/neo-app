@@ -46,6 +46,7 @@ export interface PosTable {
   elapsed_minutes?: number | null;
   is_primary?: boolean;
   merged_table_codes?: string[];
+  kitchen_readiness?: string | null;
 }
 
 export interface TableSessionTableLink {
@@ -72,6 +73,10 @@ export interface TableSession {
   bill_requested_at?: string | null;
   closed_at?: string | null;
   version: number;
+  opening_operation_id?: string | null;
+  commerce_client_order_token?: string | null;
+  sync_status?: 'synced' | 'requires_retry' | 'failed';
+  last_sync_error?: string | null;
   tables?: TableSessionTableLink[];
 }
 
@@ -120,6 +125,7 @@ export interface TransferTableParams {
   toTableId: string;
   toTableCode: string;
   operatorName: string;
+  expectedVersion?: number;
 }
 
 export interface MergeTableParams {
@@ -129,4 +135,5 @@ export interface MergeTableParams {
   secondaryTableId: string;
   secondaryTableCode: string;
   operatorName: string;
+  expectedVersion?: number;
 }

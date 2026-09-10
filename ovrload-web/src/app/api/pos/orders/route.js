@@ -1,4 +1,5 @@
 import sql from "../../utils/sql";
+import { broadcastKdsEvent } from "../kds/broadcaster";
 
 export async function DELETE(request) {
   try {
@@ -55,6 +56,21 @@ export async function GET(request) {
         o.claimed_by,
         o.claimed_terminal,
         o.claimed_at,
+        (
+          SELECT 
+            CASE 
+              WHEN COUNT(kfi.id) = 0 THEN NULL
+              ELSE CONCAT(
+                COUNT(CASE WHEN kfi.status IN ('ready', 'bumped') THEN 1 END),
+                '/',
+                COUNT(kfi.id),
+                ' READY'
+              )
+            END
+          FROM kitchen_fires kf
+          JOIN kitchen_fire_items kfi ON kfi.fire_id = kf.id
+          WHERE kf.order_id = o.id AND kfi.status != 'voided'
+        ) as kitchen_readiness,
         COALESCE(
           (SELECT json_agg(json_build_object(
             'id', oi.id,
@@ -219,6 +235,60 @@ export async function POST(request) {
           ${commentText}
         )
       `;
+    }
+
+    // Rule 4: Legacy OVRLOAD POS orders automatically participate in KDS
+    try {
+      if (status !== 'held') {
+        const existingLegacyFire = await sql`
+          SELECT id FROM kitchen_fires WHERE order_id = ${orderId} LIMIT 1;
+        `;
+        if (existingLegacyFire.length === 0) {
+          const locationKey = branchId === 1 ? 'cloud-kitchen' : 'badaro';
+          const [f] = await sql`
+            INSERT INTO kitchen_fires (
+              operation_id, order_id, fire_number, location_key, service_type,
+              table_label_snapshot, guest_count_snapshot, waiter_reference_snapshot,
+              fired_by_reference, terminal_id, status, fired_at, created_at
+            ) VALUES (
+              gen_random_uuid(), ${orderId}, 1, ${locationKey}, ${orderType},
+              ${body.table_label || null}, ${body.guest_count || 1}, ${body.waiter_reference || customerName || 'POS Staff'},
+              'Legacy POS', 'LEGACY-POS', 'active', NOW(), NOW()
+            ) RETURNING id;
+          `;
+
+          for (const item of items) {
+            const qty = parseInt(item.quantity || item.qty || 1, 10);
+            const pName = item.product_name || item.name || 'Menu Item';
+            const stationKey = (pName.toLowerCase().includes('drink') || pName.toLowerCase().includes('pepsi') || pName.toLowerCase().includes('coffee') || pName.toLowerCase().includes('water'))
+              ? 'BAR'
+              : 'KITCHEN';
+
+            await sql`
+              INSERT INTO kitchen_fire_items (
+                fire_id, order_item_id, quantity, station_key, status,
+                product_name_snapshot, modifiers_snapshot, notes_snapshot, created_at
+              ) VALUES (
+                ${f.id},
+                (SELECT id FROM order_items WHERE order_id = ${orderId} AND product_id = ${item.product_id || item.id} LIMIT 1),
+                ${qty}, ${stationKey}, 'queued', ${pName}, '[]'::jsonb, ${item.comment || null}, NOW()
+              );
+            `;
+          }
+          try {
+            broadcastKdsEvent(locationKey, 'kds_new_fire', {
+              fire_id: f.id,
+              order_id: orderId,
+              fire_number: 1,
+              source: 'legacy_pos'
+            });
+          } catch (bErr) {
+            // non-fatal
+          }
+        }
+      }
+    } catch (kdsErr) {
+      console.warn('Legacy KDS auto-fire notice:', kdsErr.message);
     }
 
     return Response.json({

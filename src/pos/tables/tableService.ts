@@ -15,6 +15,97 @@ const COMMERCE_API_BASE = (
 ).replace(/\/+$/, '');
 
 /**
+ * RECONCILE PENDING TABLE SYNCS (Phase 4.1 Hardening):
+ * Survives browser refresh. Reconciles sessions where sync_status = 'requires_retry'
+ * or status = 'opening' with commerce_client_order_token.
+ */
+export async function reconcilePendingTableSyncs(branchId: string): Promise<void> {
+  try {
+    const { data: pendingSessions, error } = await supabase
+      .from('pos_table_sessions')
+      .select(`
+        id, branch_id, commerce_order_id, commerce_client_order_token,
+        status, sync_status, guest_count, version,
+        tables:pos_table_session_tables(table:pos_tables(table_code), is_primary)
+      `)
+      .eq('branch_id', branchId)
+      .or('sync_status.eq.requires_retry,and(status.eq.opening,commerce_client_order_token.not.is.null)');
+
+    if (error || !pendingSessions || pendingSessions.length === 0) return;
+
+    for (const session of pendingSessions) {
+      try {
+        // Case 1: Session in 'opening' with client order token -> check if commerce order exists
+        if (session.status === 'opening' && session.commerce_client_order_token) {
+          const res = await fetch(`${COMMERCE_API_BASE}/api/pos/orders?client_order_token=${encodeURIComponent(session.commerce_client_order_token)}`);
+          if (res.ok) {
+            const data = await res.json();
+            const existingOrder = data.order || (data.orders && data.orders[0]);
+            if (existingOrder && existingOrder.id) {
+              await supabase
+                .from('pos_table_sessions')
+                .update({
+                  commerce_order_id: existingOrder.id,
+                  status: 'occupied',
+                  sync_status: 'synced',
+                  last_sync_error: null
+                })
+                .eq('id', session.id);
+            }
+          }
+        }
+
+        // Case 2: Session with sync_status = 'requires_retry' and commerce_order_id
+        if (session.sync_status === 'requires_retry' && session.commerce_order_id) {
+          const links = session.tables || [];
+          const primaryTable = links.find((t: any) => t.is_primary)?.table?.table_code;
+          const mergedTables = links.filter((t: any) => !t.is_primary).map((t: any) => t.table?.table_code).filter(Boolean);
+          const label = primaryTable 
+            ? (mergedTables && mergedTables.length > 0 ? `${primaryTable} + ${mergedTables.join(' + ')}` : primaryTable)
+            : undefined;
+
+          const patchBody: any = {};
+          if (label) patchBody.table_label = label;
+          if (session.guest_count) patchBody.guest_count = session.guest_count;
+
+          const res = await fetch(`${COMMERCE_API_BASE}/api/pos/orders/${session.commerce_order_id}/status`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(patchBody)
+          });
+
+          if (res.ok) {
+            await supabase
+              .from('pos_table_sessions')
+              .update({
+                sync_status: 'synced',
+                last_sync_error: null
+              })
+              .eq('id', session.id);
+          }
+        }
+      } catch (sessErr) {
+        console.warn(`Could not reconcile session ${session.id}:`, sessErr);
+      }
+    }
+  } catch (err) {
+    console.warn('Error in reconcilePendingTableSyncs:', err);
+  }
+}
+
+// Auto-register network reconnect trigger
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => {
+    try {
+      const savedBranchId = localStorage.getItem('flow_active_branch_id');
+      if (savedBranchId) {
+        reconcilePendingTableSyncs(savedBranchId);
+      }
+    } catch {}
+  });
+}
+
+/**
  * Loads floor areas and tables for a given branch, reconciles active sessions from FLOW,
  * and fetches live order financial totals from OVRLOAD.
  */
@@ -25,6 +116,13 @@ export async function loadFloorState(branchId: string): Promise<{
   error?: string;
 }> {
   try {
+    // 0. Automatic reconciliation on floor load
+    try {
+      await reconcilePendingTableSyncs(branchId);
+    } catch (recErr) {
+      console.warn('Pre-load reconciliation notice:', recErr);
+    }
+
     // 1. Fetch floor areas
     const { data: areasData, error: areasErr } = await supabase
       .from('pos_floor_areas')
@@ -53,6 +151,7 @@ export async function loadFloorState(branchId: string): Promise<{
         opened_by_user_id, opened_by_name_snapshot,
         assigned_waiter_user_id, assigned_waiter_name_snapshot,
         guest_count, status, opened_at, bill_requested_at, version,
+        opening_operation_id, commerce_client_order_token, sync_status, last_sync_error,
         tables:pos_table_session_tables(id, session_id, table_id, is_primary, joined_at)
       `)
       .eq('branch_id', branchId)
@@ -133,6 +232,7 @@ export async function loadFloorState(branchId: string): Promise<{
                 table.current_bill = total;
                 table.amount_paid = paid;
                 table.amount_remaining = Math.max(0, total - paid);
+                table.kitchen_readiness = liveOrder.kitchen_readiness || null;
               }
             }
           });
@@ -154,12 +254,12 @@ export async function loadFloorState(branchId: string): Promise<{
 }
 
 /**
- * RECOVERABLE TWO-SYSTEM TABLE OPENING:
+ * RECOVERABLE TWO-SYSTEM TABLE OPENING (Phase 4.1):
  * 1. Atomically reserves FLOW table session (status: 'opening', commerce_order_id: null).
  * 2. Links table into pos_table_session_tables. Database occupancy trigger ensures absolute active uniqueness.
  * 3. Creates OVRLOAD dine-in order with stable client_order_token.
  * 4. Links commerce_order_id to FLOW session and transitions status to 'occupied'.
- * 5. On failure, cleans up session safely to avoid orphan records.
+ * 5. On failure, if OVRLOAD order was created, handles retry with same token safely without duplicating.
  */
 export async function openTableSession(
   params: OpenTableParams
@@ -169,52 +269,82 @@ export async function openTableSession(
   orderId?: number;
   error?: string;
 }> {
+  const openingOperationId = (typeof crypto !== 'undefined' && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : 'op-' + Date.now() + '-' + Math.random().toString(36).substring(2, 8);
+
   const clientOrderToken = (typeof crypto !== 'undefined' && crypto.randomUUID)
     ? crypto.randomUUID()
     : 'tok-' + Date.now() + '-' + Math.random().toString(36).substring(2, 8);
 
   let sessionId: string | null = null;
+  let orderCreatedInCommerce = false;
+  let orderId: number | null = null;
 
   try {
-    // Step A & B: Reserve FLOW session and establish table occupancy
-    const { data: sessData, error: sessErr } = await supabase
-      .from('pos_table_sessions')
-      .insert([{
-        branch_id: params.branchId,
-        restaurant_id: params.restaurantId,
-        commerce_order_id: null,
-        opened_by_user_id: params.operatorUserId || null,
-        opened_by_name_snapshot: params.operatorName,
-        assigned_waiter_user_id: params.waiterUserId || null,
-        assigned_waiter_name_snapshot: params.waiterName,
-        guest_count: params.guestCount,
-        status: 'opening'
-      }])
-      .select('id')
-      .single();
-
-    if (sessErr || !sessData) {
-      throw new Error('Failed to create FLOW table session: ' + sessErr?.message);
-    }
-
-    sessionId = sessData.id;
-
-    // Link physical table
-    const { error: linkErr } = await supabase
+    // Check for existing pending session for this table
+    const { data: existingLinks } = await supabase
       .from('pos_table_session_tables')
-      .insert([{
-        session_id: sessionId,
-        table_id: params.tableId,
-        is_primary: true
-      }]);
+      .select('session_id, session:pos_table_sessions(id, status, commerce_order_id, commerce_client_order_token)')
+      .eq('table_id', params.tableId);
 
-    if (linkErr) {
-      // Trigger blocked occupancy or conflict
-      await supabase.from('pos_table_sessions').delete().eq('id', sessionId);
-      throw new Error(`Table ${params.tableCode} is already occupied or locked by another session.`);
+    if (existingLinks && existingLinks.length > 0) {
+      for (const link of existingLinks) {
+        const s: any = link.session;
+        if (s && s.status === 'opening' && s.commerce_client_order_token) {
+          sessionId = s.id;
+          break;
+        } else if (s && ['occupied', 'bill_requested', 'closing'].includes(s.status)) {
+          throw new Error(`Table ${params.tableCode} is already occupied or locked by another session.`);
+        }
+      }
     }
 
-    // Step C: Create dine-in order in OVRLOAD commerce
+    if (!sessionId) {
+      // Step A & B: Reserve FLOW session and establish table occupancy
+      const { data: sessData, error: sessErr } = await supabase
+        .from('pos_table_sessions')
+        .insert([{
+          branch_id: params.branchId,
+          restaurant_id: params.restaurantId,
+          commerce_order_id: null,
+          opening_operation_id: openingOperationId,
+          commerce_client_order_token: clientOrderToken,
+          sync_status: 'synced',
+          opened_by_user_id: params.operatorUserId || null,
+          opened_by_name_snapshot: params.operatorName,
+          assigned_waiter_user_id: params.waiterUserId || null,
+          assigned_waiter_name_snapshot: params.waiterName,
+          guest_count: params.guestCount,
+          status: 'opening',
+          version: 1
+        }])
+        .select('id')
+        .single();
+
+      if (sessErr || !sessData) {
+        throw new Error('Failed to create FLOW table session: ' + sessErr?.message);
+      }
+
+      sessionId = sessData.id;
+
+      // Link physical table
+      const { error: linkErr } = await supabase
+        .from('pos_table_session_tables')
+        .insert([{
+          session_id: sessionId,
+          table_id: params.tableId,
+          is_primary: true
+        }]);
+
+      if (linkErr) {
+        // Trigger blocked occupancy or conflict
+        await supabase.from('pos_table_sessions').delete().eq('id', sessionId);
+        throw new Error(`Table ${params.tableCode} is already occupied or locked by another session.`);
+      }
+    }
+
+    // Step C: Create dine-in order in OVRLOAD commerce (Idempotent via client_order_token)
     const orderPayload = {
       branch_id: parseInt(params.externalBranchId || '1', 10),
       client_order_token: clientOrderToken,
@@ -243,13 +373,14 @@ export async function openTableSession(
 
     const oData = await res.json();
     if (!res.ok || !oData.success) {
-      // Commerce creation failed: roll back FLOW session
-      await supabase.from('pos_table_sessions').update({ status: 'failed' }).eq('id', sessionId);
+      // Commerce creation failed: roll back FLOW session ONLY because no order exists in commerce
+      await supabase.from('pos_table_sessions').update({ status: 'failed', sync_status: 'failed', last_sync_error: oData.error || 'Failed to create commerce order' }).eq('id', sessionId);
       await supabase.from('pos_table_session_tables').delete().eq('session_id', sessionId);
       throw new Error(oData.error || 'Failed to create commerce dine-in order in OVRLOAD');
     }
 
-    const orderId = oData.order?.id || oData.orderId;
+    orderId = oData.order?.id || oData.orderId;
+    orderCreatedInCommerce = true;
 
     // Step D & E: Finalize FLOW session with commerce_order_id and status: 'occupied'
     const { error: finalizeErr } = await supabase
@@ -257,12 +388,24 @@ export async function openTableSession(
       .update({
         commerce_order_id: orderId,
         status: 'occupied',
+        sync_status: 'synced',
+        last_sync_error: null,
         version: 1
       })
       .eq('id', sessionId);
 
     if (finalizeErr) {
       console.warn('FLOW session finalization warning, order #', orderId, finalizeErr);
+      // Commerce order exists! Do NOT delete session. Keep table occupied and mark sync_status = 'requires_retry'
+      await supabase
+        .from('pos_table_sessions')
+        .update({
+          commerce_order_id: orderId,
+          status: 'occupied',
+          sync_status: 'requires_retry',
+          last_sync_error: 'Finalization warning: ' + finalizeErr.message
+        })
+        .eq('id', sessionId);
     }
 
     return {
@@ -271,9 +414,9 @@ export async function openTableSession(
       orderId
     };
   } catch (err: any) {
-    if (sessionId) {
+    if (sessionId && !orderCreatedInCommerce) {
       try {
-        await supabase.from('pos_table_sessions').update({ status: 'failed' }).eq('id', sessionId);
+        await supabase.from('pos_table_sessions').update({ status: 'failed', sync_status: 'failed' }).eq('id', sessionId);
         await supabase.from('pos_table_session_tables').delete().eq('session_id', sessionId);
       } catch {}
     }
@@ -284,13 +427,25 @@ export async function openTableSession(
 /**
  * ATOMIC TABLE TRANSFER (MOVE TABLE: T4 -> T8):
  * Verifies T8 is available, updates session table links, updates OVRLOAD table_label snapshot.
+ * Disconnects occupancy from commerce availability (marks sync_status = 'requires_retry' if commerce fails).
  */
 export async function transferTable(
   params: TransferTableParams
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; warning?: string; error?: string }> {
   try {
+    // Concurrency Check
+    if (params.expectedVersion !== undefined) {
+      const { data: curr } = await supabase
+        .from('pos_table_sessions')
+        .select('version')
+        .eq('id', params.sessionId)
+        .single();
+      if (curr && curr.version !== params.expectedVersion) {
+        throw new Error('Table session version mismatch: Another terminal modified this session. Please reload the floor.');
+      }
+    }
+
     // 1. Move session link in FLOW
-    // First insert link to new table (trigger checks if toTableId is available)
     const { error: insertErr } = await supabase
       .from('pos_table_session_tables')
       .insert([{
@@ -310,17 +465,33 @@ export async function transferTable(
       .eq('session_id', params.sessionId)
       .eq('table_id', params.fromTableId);
 
+    // Update session version
+    const newVersion = (params.expectedVersion || 1) + 1;
+    await supabase
+      .from('pos_table_sessions')
+      .update({ version: newVersion })
+      .eq('id', params.sessionId);
+
     // 2. Update OVRLOAD table_label snapshot
     try {
-      await fetch(`${COMMERCE_API_BASE}/api/pos/orders/${params.commerceOrderId}/status`, {
+      const res = await fetch(`${COMMERCE_API_BASE}/api/pos/orders/${params.commerceOrderId}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           table_label: params.toTableCode
         })
       });
-    } catch (snapErr) {
-      console.warn('Could not update commerce table_label snapshot (FLOW move succeeded):', snapErr);
+      if (!res.ok) throw new Error('Commerce HTTP ' + res.status);
+    } catch (snapErr: any) {
+      console.warn('Could not update commerce table_label snapshot; marking sync_status = requires_retry:', snapErr);
+      await supabase
+        .from('pos_table_sessions')
+        .update({
+          sync_status: 'requires_retry',
+          last_sync_error: 'Transfer sync deferred: ' + snapErr.message
+        })
+        .eq('id', params.sessionId);
+      return { success: true, warning: 'Table moved in FLOW; commerce sync queued for retry.' };
     }
 
     return { success: true };
@@ -332,11 +503,24 @@ export async function transferTable(
 /**
  * TABLE MERGE (T8 + T9):
  * Adds secondary table to active session without creating another order.
+ * Disconnects occupancy from commerce availability (marks sync_status = 'requires_retry' if commerce fails).
  */
 export async function mergeTables(
   params: MergeTableParams
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; warning?: string; error?: string }> {
   try {
+    // Concurrency Check
+    if (params.expectedVersion !== undefined) {
+      const { data: curr } = await supabase
+        .from('pos_table_sessions')
+        .select('version')
+        .eq('id', params.sessionId)
+        .single();
+      if (curr && curr.version !== params.expectedVersion) {
+        throw new Error('Table session version mismatch: Another terminal modified this session. Please reload the floor.');
+      }
+    }
+
     // Insert secondary table link
     const { error: linkErr } = await supabase
       .from('pos_table_session_tables')
@@ -350,17 +534,35 @@ export async function mergeTables(
       throw new Error(`Table ${params.secondaryTableCode} is already occupied and cannot be merged.`);
     }
 
+    // Update session version
+    const newVersion = (params.expectedVersion || 1) + 1;
+    await supabase
+      .from('pos_table_sessions')
+      .update({ version: newVersion })
+      .eq('id', params.sessionId);
+
     // Update OVRLOAD table_label snapshot to reflect merge
     const mergedLabel = `${params.primaryTableCode} + ${params.secondaryTableCode}`;
     try {
-      await fetch(`${COMMERCE_API_BASE}/api/pos/orders/${params.commerceOrderId}/status`, {
+      const res = await fetch(`${COMMERCE_API_BASE}/api/pos/orders/${params.commerceOrderId}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           table_label: mergedLabel
         })
       });
-    } catch {}
+      if (!res.ok) throw new Error('Commerce HTTP ' + res.status);
+    } catch (err: any) {
+      console.warn('Could not update commerce table_label on merge; marking sync_status = requires_retry:', err);
+      await supabase
+        .from('pos_table_sessions')
+        .update({
+          sync_status: 'requires_retry',
+          last_sync_error: 'Merge sync deferred: ' + err.message
+        })
+        .eq('id', params.sessionId);
+      return { success: true, warning: 'Table merged in FLOW; commerce sync queued for retry.' };
+    }
 
     return { success: true };
   } catch (err: any) {
@@ -370,23 +572,54 @@ export async function mergeTables(
 
 /**
  * Changes guest count on FLOW session and updates OVRLOAD order snapshot.
+ * Disconnects occupancy from commerce availability (marks sync_status = 'requires_retry' if commerce fails).
  */
 export async function changeGuestCount(
   sessionId: string,
   commerceOrderId: number,
-  newCount: number
-): Promise<{ success: boolean; error?: string }> {
+  newCount: number,
+  expectedVersion?: number
+): Promise<{ success: boolean; warning?: string; error?: string }> {
   try {
+    // Concurrency Check
+    if (expectedVersion !== undefined) {
+      const { data: curr } = await supabase
+        .from('pos_table_sessions')
+        .select('version')
+        .eq('id', sessionId)
+        .single();
+      if (curr && curr.version !== expectedVersion) {
+        throw new Error('Table session version mismatch: Another terminal modified this session. Please reload the floor.');
+      }
+    }
+
+    const newVersion = (expectedVersion || 1) + 1;
     await supabase
       .from('pos_table_sessions')
-      .update({ guest_count: newCount })
+      .update({
+        guest_count: newCount,
+        version: newVersion
+      })
       .eq('id', sessionId);
 
-    await fetch(`${COMMERCE_API_BASE}/api/pos/orders/${commerceOrderId}/status`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ guest_count: newCount })
-    });
+    try {
+      const res = await fetch(`${COMMERCE_API_BASE}/api/pos/orders/${commerceOrderId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ guest_count: newCount })
+      });
+      if (!res.ok) throw new Error('Commerce HTTP ' + res.status);
+    } catch (err: any) {
+      console.warn('Could not update commerce guest count; marking sync_status = requires_retry:', err);
+      await supabase
+        .from('pos_table_sessions')
+        .update({
+          sync_status: 'requires_retry',
+          last_sync_error: 'Guest count sync deferred: ' + err.message
+        })
+        .eq('id', sessionId);
+      return { success: true, warning: 'Guest count updated in FLOW; commerce sync queued for retry.' };
+    }
 
     return { success: true };
   } catch (err: any) {
@@ -398,14 +631,27 @@ export async function changeGuestCount(
  * Requests bill for table (status: 'bill_requested').
  */
 export async function requestBill(
-  sessionId: string
+  sessionId: string,
+  expectedVersion?: number
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    if (expectedVersion !== undefined) {
+      const { data: curr } = await supabase
+        .from('pos_table_sessions')
+        .select('version')
+        .eq('id', sessionId)
+        .single();
+      if (curr && curr.version !== expectedVersion) {
+        throw new Error('Table session version mismatch: Another terminal modified this session. Please reload the floor.');
+      }
+    }
+
     const { error } = await supabase
       .from('pos_table_sessions')
       .update({
         status: 'bill_requested',
-        bill_requested_at: new Date().toISOString()
+        bill_requested_at: new Date().toISOString(),
+        version: (expectedVersion || 1) + 1
       })
       .eq('id', sessionId);
 
@@ -421,9 +667,21 @@ export async function requestBill(
  */
 export async function closeTableSession(
   sessionId: string,
-  commerceOrderId: number
+  commerceOrderId: number,
+  expectedVersion?: number
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    if (expectedVersion !== undefined) {
+      const { data: curr } = await supabase
+        .from('pos_table_sessions')
+        .select('version')
+        .eq('id', sessionId)
+        .single();
+      if (curr && curr.version !== expectedVersion) {
+        throw new Error('Table session version mismatch: Another terminal modified this session. Please reload the floor.');
+      }
+    }
+
     // Verify commerce order balance is resolved
     const res = await fetch(`${COMMERCE_API_BASE}/api/pos/orders/${commerceOrderId}/payments`);
     if (res.ok) {
@@ -442,14 +700,13 @@ export async function closeTableSession(
       .from('pos_table_sessions')
       .update({
         status: 'closed',
-        closed_at: new Date().toISOString()
+        closed_at: new Date().toISOString(),
+        version: (expectedVersion || 1) + 1
       })
       .eq('id', sessionId);
 
     if (error) throw error;
 
-    // Note: Historical links in pos_table_session_tables are preserved for reporting & audit.
-    // The check_table_occupancy_guard trigger only blocks active sessions ('opening', 'occupied', 'bill_requested', 'closing').
     return { success: true };
   } catch (err: any) {
     return { success: false, error: err.message };

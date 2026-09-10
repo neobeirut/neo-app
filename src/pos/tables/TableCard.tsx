@@ -69,6 +69,11 @@ export const TableCard: React.FC<TableCardProps> = ({ table, onClick }) => {
             <div className="text-[10px] text-slate-400 truncate max-w-full">
               {table.assigned_waiter || 'Staff'}
             </div>
+            {table.kitchen_readiness && (
+              <div className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-emerald-950/80 text-emerald-300 border border-emerald-500/50 inline-block mt-0.5">
+                🍳 {table.kitchen_readiness}
+              </div>
+            )}
           </div>
         )}
       </div>

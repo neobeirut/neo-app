@@ -18,6 +18,7 @@ import type { CanceledItemDetail } from "../pos/services/voidBridge";
 import { VoidItemModal } from "../pos/components/VoidItemModal";
 import { OrdersHubScreen } from "../pos/orders/OrdersHubScreen";
 import { PaymentModal, RefundModal } from "../pos/payments";
+import { fireOrderRound, getBranchLocationKey } from "../pos/kds";
 
 interface PosTerminalScreenProps {
   user?: any;
@@ -1481,6 +1482,85 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     }
   };
 
+  const handleFireToKitchen = async () => {
+    if (ticketItems.length === 0) {
+      alert("No items in cart to fire.");
+      return;
+    }
+    const targetOrderId = activeTableContext?.orderId || editingOrderId;
+    if (!targetOrderId) {
+      alert("Please hold or open an order before firing a round to the kitchen.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const locKey = commerceBranchLink?.location_key || 'badaro';
+      const updateRes = await fetch(`${COMMERCE_API_BASE}/api/pos/orders/${targetOrderId}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          subtotal,
+          total,
+          items: ticketItems.map((item) => ({
+            product_id: item.product_id,
+            quantity: item.qty,
+            unit_price: item.unit_price,
+            customizations: (item.selectedCustomizations || []).map((c: any) =>
+              typeof c === "string" ? c : (c.ingredient || c.name || "")
+            ).filter(Boolean),
+            comment: item.note || ""
+          }))
+        })
+      });
+
+      const updateData = await updateRes.json();
+      const rawItems = updateData.order?.items || [];
+
+      const fireItems = ticketItems.map((item) => {
+        const matched = rawItems.find((ri: any) => ri.product_id === item.product_id);
+        const pName = item.name || item.product_name || "Item";
+        const stationKey = (pName.toLowerCase().includes('drink') || pName.toLowerCase().includes('pepsi') || pName.toLowerCase().includes('coffee') || pName.toLowerCase().includes('water'))
+          ? 'BAR'
+          : 'HOT_KITCHEN';
+
+        return {
+          order_item_id: matched?.id || 1,
+          product_name: pName,
+          quantity: item.qty || 1,
+          station_key: stationKey,
+          modifiers: (item.selectedCustomizations || []).map((c: any) => ({
+            name: typeof c === 'string' ? c : (c.ingredient || c.name || '')
+          })),
+          notes: item.note || null
+        };
+      });
+
+      const fireRes = await fireOrderRound({
+        orderId: targetOrderId,
+        locationKey: locKey,
+        items: fireItems,
+        serviceType: orderType,
+        tableLabel: activeTableContext?.tableCode || customerName || 'Dine-In',
+        guestCount: 2,
+        waiterReference: user?.name || 'Cashier',
+        firedBy: user?.name || 'POS Staff'
+      });
+
+      if (!fireRes.success) {
+        throw new Error(fireRes.error || "Failed to fire kitchen round");
+      }
+
+      alert(`🔥 Sent Round #${fireRes.fireNumber || 1} to Kitchen successfully!`);
+      setTicketItems([]);
+      fetchOrdersQueue();
+    } catch (err: any) {
+      alert("Error firing round to kitchen: " + err.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleFinalizePayment = async () => {
     if (ticketItems.length === 0) return;
     if (!validateOrder()) return;
@@ -2170,6 +2250,17 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                     className="px-2.5 py-1 bg-amber-950/50 hover:bg-amber-900/60 text-amber-300 border border-amber-500/40 rounded-lg text-[10px] font-bold transition-all active:scale-95 flex items-center gap-1"
                   >
                     ⏸️ Hold
+                  </button>
+                )}
+
+                {ticketItems.length > 0 && (activeTableContext || editingOrderId) && (
+                  <button
+                    type="button"
+                    onClick={handleFireToKitchen}
+                    disabled={isSubmitting}
+                    className="px-2.5 py-1 bg-emerald-950/70 hover:bg-emerald-900/80 text-emerald-300 border border-emerald-500/50 rounded-lg text-[10px] font-black transition-all active:scale-95 flex items-center gap-1 shadow-sm"
+                  >
+                    🔥 Fire Round
                   </button>
                 )}
 

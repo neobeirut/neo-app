@@ -78,6 +78,11 @@ export const OrderCard: React.FC<OrderCardProps> = ({
             <span className={'px-2 py-0.5 rounded-md border text-[10px] font-extrabold ' + getChannelBadge(order.channel)}>
               {order.channel}
             </span>
+            {order.rawOrder?.kitchen_readiness && (
+              <span className="px-2 py-0.5 rounded-md border text-[10px] font-black bg-emerald-950/80 text-emerald-300 border-emerald-500/50 flex items-center gap-1">
+                <span>🍳</span> {order.rawOrder.kitchen_readiness}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <span className="text-gray-400 text-xs font-semibold">{order.createdTimeFormatted}</span>
