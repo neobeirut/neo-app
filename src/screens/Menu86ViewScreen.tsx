@@ -6,6 +6,8 @@ interface Menu86Item {
   name: string;
   type: 'menu' | 'ingredient';
   department?: string;
+  recipe_id?: string;
+  commerce_product_id?: string;
 }
 
 interface Menu86Record {
@@ -68,10 +70,12 @@ export default function Menu86ViewScreen() {
       alert('Please enter an item name.');
       return;
     }
+    const matchedRecipe = menuRecipes.find(r => r.item_name?.toLowerCase() === newItemName.trim().toLowerCase());
     const item: Menu86Item = {
       name: newItemName.trim(),
       type: newItemType,
-      department: newItemDept
+      department: newItemDept,
+      recipe_id: matchedRecipe ? String(matchedRecipe.id) : undefined,
     };
     setFormItems([...formItems, item]);
     setNewItemName('');

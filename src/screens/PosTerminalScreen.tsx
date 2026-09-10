@@ -4,6 +4,7 @@ import { api } from "../api/client";
 import { resolveCommerceBranchLink } from "../pos/services/branchMapping";
 import type { CommerceBranchLink } from "../pos/types/commerce";
 import { BranchMappingAlert } from "../pos/components/BranchMappingAlert";
+import { usePos86 } from "../pos/hooks/usePos86";
 
 interface PosTerminalScreenProps {
   user?: any;
@@ -141,6 +142,11 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   useEffect(() => {
     resolveActiveBranch();
   }, [user?.branch, activeCashier?.branch]);
+
+  // FLOW 86 Dynamic Availability Hook
+  const { isProduct86d, unavailableProductIds, refetch86 } = usePos86(
+    commerceBranchLink?.flow_branch_name || user?.branch || "Cloud Kitchen"
+  );
 
   const handleCashierPinSubmit = async (pinToSubmit?: string) => {
     const code = pinToSubmit || pinInput;
@@ -904,6 +910,10 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   });
 
   const handleQuickAddProduct = (product) => {
+    if (isProduct86d(product.id)) {
+      alert(`⚠️ "${product.name}" is currently 86'd (unavailable) by the kitchen.`);
+      return;
+    }
     if (product.customizations && product.customizations.length > 0) {
       handleOpenCustomization(product);
       return;
@@ -933,6 +943,10 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   };
 
   const handleOpenCustomization = (product, itemIndex = null) => {
+    if (isProduct86d(product.id)) {
+      alert(`⚠️ "${product.name}" is currently 86'd (unavailable) by the kitchen.`);
+      return;
+    }
     setCurrentProduct(product);
     setEditingItemIndex(itemIndex);
     setCustomizationError("");
@@ -1557,7 +1571,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
             </div>
           </div>
 
-          {/* Right Header: Active Branch, Active Cashier, Switch PIN, and Exit to FLOW */}
+          {/* Right Header: Active Branch, 86 Badge, Active Cashier, Switch PIN, and Exit to FLOW */}
           <div className="flex items-center gap-2">
             {/* Active Branch Badge */}
             <div className="flex items-center gap-1.5 text-xs bg-[#222734] px-2.5 py-1.5 rounded-xl border border-[#2D3548]">
@@ -1567,6 +1581,17 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                 {commerceBranchLink ? `${commerceBranchLink.flow_branch_name} (#${commerceBranchLink.external_branch_id})` : (user?.branch || "Unmapped")}
               </span>
             </div>
+
+            {/* 86 Indicator Badge */}
+            {unavailableProductIds.size > 0 && (
+              <div 
+                className="flex items-center gap-1 text-xs bg-rose-950/60 border border-rose-500/50 text-rose-300 px-2 py-1.5 rounded-xl font-bold"
+                title={`${unavailableProductIds.size} menu items currently marked 86 in FLOW`}
+              >
+                <span>🚫</span>
+                <span>${unavailableProductIds.size} 86'd</span>
+              </div>
+            )}
 
             {/* Cashier Indicator & Lock/Switch */}
             <button
@@ -1631,17 +1656,29 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                   ? new Set(p.customizations.map((c) => c.option_group_name || c.name)).size || p.customizations.length
                   : 0;
 
+                const is86 = isProduct86d(p.id);
                 return (
                   <div
                     key={p.id}
-                    onClick={() => handleQuickAddProduct(p)}
-                    className="bg-[#181C24] hover:bg-[#1f2532] border border-[#262D3D] hover:border-[#eb660c]/50 rounded-xl p-3 flex flex-col justify-between transition-all cursor-pointer group shadow-sm min-h-[105px] h-auto relative overflow-hidden"
+                    onClick={() => !is86 && handleQuickAddProduct(p)}
+                    className={`bg-[#181C24] border rounded-xl p-3 flex flex-col justify-between transition-all relative overflow-hidden min-h-[105px] h-auto ${
+                      is86
+                        ? "opacity-45 grayscale border-rose-950/80 cursor-not-allowed"
+                        : "hover:bg-[#1f2532] border-[#262D3D] hover:border-[#eb660c]/50 cursor-pointer group shadow-sm"
+                    }`}
                   >
                     <div>
                       <div className="flex items-start justify-between gap-1">
-                        <h4 className="font-extrabold text-xs text-white group-hover:text-[#eb660c] transition-colors leading-tight">
-                          {p.name}
-                        </h4>
+                        <div className="flex flex-col gap-0.5">
+                          {is86 && (
+                            <span className="inline-block text-[9px] font-black px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-400 border border-rose-500/40 w-fit">
+                              🚫 86'D (Unavailable)
+                            </span>
+                          )}
+                          <h4 className={`font-extrabold text-xs transition-colors leading-tight ${is86 ? "text-gray-400 line-through" : "text-white group-hover:text-[#eb660c]"}`}>
+                            {p.name}
+                          </h4>
+                        </div>
                         <button
                           type="button"
                           onClick={(e) => toggleFavoriteProduct(p.id, e)}
