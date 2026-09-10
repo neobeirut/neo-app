@@ -57,6 +57,58 @@ export function getRestaurantId(): string | null {
   return cachedRestaurantId;
 }
 
+export const DEFAULT_ADMIN_MODULE_PERMISSIONS: Record<string, boolean> = {
+  orders: true, client_orders: true, reservations: true, checklists: true, tasks: true,
+  catalog: true, purchasing: true, suppliers: true, price_intelligence: true, waste: true,
+  missing_items: true, inventory_reporting: true, voids: true, employees: true,
+  departments_sections: true, salary_payments: true, assessments: true, attendance: true,
+  tips: true, permissions: true, signin_logs: true, complaints: true, specials: true,
+  finance: true, payment_details: true, reel_credit: true, branch_management: true,
+  wallets: true, news: true, sops: true, menu: true
+};
+
+export const DEFAULT_MANAGER_ADMIN_PERMISSIONS: Record<string, boolean> = {
+  orders: true, client_orders: true, reservations: true, checklists: true, tasks: true,
+  catalog: true, purchasing: true, suppliers: true, price_intelligence: false, waste: true,
+  missing_items: true, inventory_reporting: true, voids: false, employees: false,
+  departments_sections: false, salary_payments: false, assessments: true, attendance: true,
+  tips: true, permissions: false, signin_logs: false, complaints: true, specials: true,
+  finance: false, payment_details: false, reel_credit: false, branch_management: false,
+  wallets: false, news: true, sops: true, menu: true
+};
+
+export const hasAdminAccess = (
+  user: any,
+  permissions: any,
+  moduleKey: string,
+  staffFallback: boolean = false
+): boolean => {
+  const roleLower = (user?.role || '').toString().toLowerCase().trim();
+  // SuperAdmin has unrestricted root authorization
+  if (roleLower === 'superadmin') return true;
+  // Dashboard is accessible to all authenticated users
+  if (!moduleKey || moduleKey === 'dashboard') return true;
+
+  // 1. Check custom configured admin_permissions from permissions object or user object
+  const adminPerms = permissions?.admin_permissions || user?.admin_permissions;
+  if (adminPerms && adminPerms[moduleKey] !== undefined) {
+    return !!adminPerms[moduleKey];
+  }
+
+  // 2. Unconfigured fallback for Admin
+  if (roleLower === 'admin' || roleLower.includes('admin') || roleLower === 'owner') {
+    return true;
+  }
+
+  // 3. Unconfigured fallback for Manager
+  if (roleLower === 'manager') {
+    return !!DEFAULT_MANAGER_ADMIN_PERMISSIONS[moduleKey];
+  }
+
+  // 4. Staff / other roles fallback
+  return !!staffFallback;
+};
+
 export const api = {
   // Authentication
   login: async (emailOrPin: string, password?: string) => {
@@ -89,6 +141,12 @@ export const api = {
         return { success: false, error: 'Access denied. Only Admins and Managers can access the web dashboard.' };
       }
 
+      if (!data.admin_permissions || Object.keys(data.admin_permissions).length === 0) {
+        data.admin_permissions = (data.role === 'Admin' || data.role === 'SuperAdmin')
+          ? { ...DEFAULT_ADMIN_MODULE_PERMISSIONS }
+          : { ...DEFAULT_MANAGER_ADMIN_PERMISSIONS };
+      }
+
       return { success: true, data };
     } else {
       let { data, error } = await supabase
@@ -112,6 +170,12 @@ export const api = {
       
       if (data.role !== 'Admin' && data.role !== 'Manager' && data.role !== 'SuperAdmin') {
         return { success: false, error: 'Access denied. Only Admins and Managers can access the web dashboard.' };
+      }
+
+      if (!data.admin_permissions || Object.keys(data.admin_permissions).length === 0) {
+        data.admin_permissions = (data.role === 'Admin' || data.role === 'SuperAdmin')
+          ? { ...DEFAULT_ADMIN_MODULE_PERMISSIONS }
+          : { ...DEFAULT_MANAGER_ADMIN_PERMISSIONS };
       }
       
       return { success: true, data };
@@ -682,6 +746,83 @@ export const api = {
     return { success: true };
   },
 
+  getAdminUsers: async () => {
+    const rid = getRestaurantId();
+    let query = supabase
+      .from('users')
+      .select('id, name, role, email, branch, departments, restaurant_id, admin_permissions')
+      .in('role', ['Admin', 'Manager', 'SuperAdmin', 'admin', 'manager', 'superadmin'])
+      .order('name');
+    if (rid) query = query.eq('restaurant_id', rid);
+    const { data, error } = await query;
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  saveAdminUserPermissions: async (
+    userId: string,
+    adminPermissions: Record<string, boolean>,
+    userName?: string,
+    userRole?: string,
+    standardPerms?: any
+  ) => {
+    try {
+      const rid = getRestaurantId();
+
+      // 1. Update users.admin_permissions
+      const { error: userError } = await supabase
+        .from('users')
+        .update({ admin_permissions: adminPermissions })
+        .eq('id', userId);
+
+      if (userError) {
+        console.warn('Notice: updating users.admin_permissions:', userError.message);
+      }
+
+      // 2. Upsert into app_permissions
+      const payload: any = {
+        id: `admin_user:${userId}`,
+        type: 'admin_user',
+        name: userName || userId,
+        admin_permissions: adminPermissions,
+        ...(standardPerms || {})
+      };
+      if (rid) payload.restaurant_id = rid;
+
+      // Sync module keys to boolean columns if applicable
+      if (adminPermissions.orders !== undefined) {
+        payload.can_create_orders = adminPermissions.orders;
+        payload.can_receive_orders = adminPermissions.orders;
+      }
+      if (adminPermissions.purchasing !== undefined) {
+        payload.can_create_purchasing = adminPermissions.purchasing;
+        payload.can_receive_purchasing = adminPermissions.purchasing;
+      }
+      if (adminPermissions.catalog !== undefined) {
+        payload.can_view_catalog = adminPermissions.catalog;
+        payload.can_manage_catalog = adminPermissions.catalog;
+      }
+      if (adminPermissions.finance !== undefined) {
+        payload.can_view_finance_dashboard = adminPermissions.finance;
+      }
+      if (adminPermissions.employees !== undefined || adminPermissions.salary_payments !== undefined) {
+        payload.can_manage_hr = !!(adminPermissions.employees || adminPermissions.salary_payments);
+      }
+      if (adminPermissions.attendance !== undefined) {
+        payload.can_manage_attendance = adminPermissions.attendance;
+        payload.can_view_attendance_reports = adminPermissions.attendance;
+      }
+      if (adminPermissions.permissions !== undefined) {
+        payload.can_access_settings = adminPermissions.permissions;
+      }
+
+      const res = await api.saveAppPermission(payload);
+      return res;
+    } catch (e: any) {
+      return { success: false, error: e.message || 'Failed to save admin user permissions' };
+    }
+  },
+
   // --------------------------------------------------------------------------
   // SOPs & Training API
   // --------------------------------------------------------------------------
@@ -807,7 +948,7 @@ export const api = {
   // --------------------------------------------------------------------------
   // APP PERMISSIONS (per-user)
   // --------------------------------------------------------------------------
-  getAppPermissions: async (userName: string, departments: string, userRole: string) => {
+  getAppPermissions: async (userName: string, departments: string, userRole: string, userId?: string) => {
     const DEFAULT_PERMISSIONS = {
       can_create_orders: false,
       can_send_orders: false,
@@ -871,12 +1012,134 @@ export const api = {
       allowed_departments: ''
     };
 
-    if (userRole === 'Admin' || userRole === 'SuperAdmin') {
+    const roleLower = (userRole || '').toLowerCase().trim();
+
+    // 0. SuperAdmin has unrestricted root access to everything
+    if (roleLower === 'superadmin') {
       const adminPerms = Object.keys(DEFAULT_PERMISSIONS).reduce((acc: any, key) => {
         acc[key] = key !== 'allowed_departments' ? true : '';
         return acc;
       }, {});
+      adminPerms.admin_permissions = {
+        orders: true, client_orders: true, reservations: true, checklists: true, tasks: true,
+        catalog: true, purchasing: true, suppliers: true, price_intelligence: true, waste: true,
+        missing_items: true, inventory_reporting: true, voids: true, employees: true,
+        departments_sections: true, salary_payments: true, assessments: true, attendance: true,
+        tips: true, permissions: true, signin_logs: true, complaints: true, specials: true,
+        finance: true, payment_details: true, reel_credit: true, branch_management: true,
+        wallets: true, news: true, sops: true, menu: true
+      };
       return { success: true, data: adminPerms };
+    }
+
+    // 1. Admin or Manager role permission resolution
+    if (roleLower === 'admin' || roleLower === 'manager' || roleLower.includes('admin')) {
+      let customAdminPerms: Record<string, boolean> | null = null;
+      let userRowData: any = null;
+
+      // Try fetching user record from users table
+      if (userId) {
+        const { data: u } = await supabase.from('users').select('admin_permissions').eq('id', userId).single();
+        if (u?.admin_permissions && Object.keys(u.admin_permissions).length > 0) {
+          customAdminPerms = u.admin_permissions;
+        }
+        if (!customAdminPerms) {
+          const { data: ap } = await supabase.from('app_permissions').select('*').eq('id', `admin_user:${userId}`).single();
+          if (ap?.admin_permissions && Object.keys(ap.admin_permissions).length > 0) {
+            customAdminPerms = ap.admin_permissions;
+            userRowData = ap;
+          }
+        }
+      }
+
+      if (!customAdminPerms && userName) {
+        const { data: uByName } = await supabase.from('users').select('admin_permissions').eq('name', userName).single();
+        if (uByName?.admin_permissions && Object.keys(uByName.admin_permissions).length > 0) {
+          customAdminPerms = uByName.admin_permissions;
+        }
+        if (!customAdminPerms) {
+          const { data: apByName } = await supabase.from('app_permissions').select('*').eq('id', `user:${userName}`).single();
+          if (apByName?.admin_permissions && Object.keys(apByName.admin_permissions).length > 0) {
+            customAdminPerms = apByName.admin_permissions;
+            userRowData = apByName;
+          }
+        }
+      }
+
+      const defaultAdminPerms: Record<string, boolean> = {
+        orders: true, client_orders: true, reservations: true, checklists: true, tasks: true,
+        catalog: true, purchasing: true, suppliers: true, price_intelligence: true, waste: true,
+        missing_items: true, inventory_reporting: true, voids: true, employees: true,
+        departments_sections: true, salary_payments: true, assessments: true, attendance: true,
+        tips: true, permissions: true, signin_logs: true, complaints: true, specials: true,
+        finance: true, payment_details: true, reel_credit: true, branch_management: true,
+        wallets: true, news: true, sops: true, menu: true
+      };
+
+      const defaultManagerPerms: Record<string, boolean> = {
+        orders: true, client_orders: true, reservations: true, checklists: true, tasks: true,
+        catalog: true, purchasing: true, suppliers: true, price_intelligence: false, waste: true,
+        missing_items: true, inventory_reporting: true, voids: false, employees: false,
+        departments_sections: false, salary_payments: false, assessments: true, attendance: true,
+        tips: true, permissions: false, signin_logs: false, complaints: true, specials: true,
+        finance: false, payment_details: false, reel_credit: false, branch_management: false,
+        wallets: false, news: true, sops: true, menu: true
+      };
+
+      const roleDefaults = roleLower === 'admin' ? defaultAdminPerms : defaultManagerPerms;
+      const resolvedAdminPerms = customAdminPerms ? { ...roleDefaults, ...customAdminPerms } : roleDefaults;
+
+      const basePerms: any = Object.keys(DEFAULT_PERMISSIONS).reduce((acc: any, key) => {
+        acc[key] = roleLower === 'admin' ? (key !== 'allowed_departments') : false;
+        return acc;
+      }, {});
+
+      // Synchronize module keys to standard capability flags
+      basePerms.can_create_orders = resolvedAdminPerms.orders !== false;
+      basePerms.can_receive_orders = resolvedAdminPerms.orders !== false;
+      basePerms.can_view_catalog = resolvedAdminPerms.catalog !== false;
+      basePerms.can_manage_catalog = resolvedAdminPerms.catalog !== false;
+      basePerms.can_view_suppliers = resolvedAdminPerms.suppliers !== false;
+      basePerms.can_manage_suppliers = resolvedAdminPerms.suppliers !== false;
+      basePerms.can_view_price_intelligence = resolvedAdminPerms.price_intelligence !== false;
+      basePerms.can_create_purchasing = resolvedAdminPerms.purchasing !== false;
+      basePerms.can_receive_purchasing = resolvedAdminPerms.purchasing !== false;
+      basePerms.can_view_waste_report = resolvedAdminPerms.waste !== false;
+      basePerms.can_log_waste = resolvedAdminPerms.waste !== false;
+      basePerms.can_view_86 = resolvedAdminPerms.missing_items !== false;
+      basePerms.can_manage_86 = resolvedAdminPerms.missing_items !== false;
+      basePerms.can_view_inventory = resolvedAdminPerms.inventory_reporting !== false;
+      basePerms.can_manage_inventory = resolvedAdminPerms.inventory_reporting !== false;
+      basePerms.can_view_voids = resolvedAdminPerms.voids !== false;
+      basePerms.can_manage_hr = resolvedAdminPerms.employees !== false || resolvedAdminPerms.salary_payments !== false;
+      basePerms.can_manage_attendance = resolvedAdminPerms.attendance !== false;
+      basePerms.can_view_attendance_reports = resolvedAdminPerms.attendance !== false;
+      basePerms.can_manage_tips = resolvedAdminPerms.tips !== false;
+      basePerms.can_access_settings = resolvedAdminPerms.permissions !== false;
+      basePerms.can_view_complaints = resolvedAdminPerms.complaints !== false;
+      basePerms.can_manage_complaints = resolvedAdminPerms.complaints !== false;
+      basePerms.can_view_upsell = resolvedAdminPerms.specials !== false;
+      basePerms.can_view_finance_dashboard = resolvedAdminPerms.finance !== false;
+      basePerms.can_manage_branches = resolvedAdminPerms.branch_management !== false;
+      basePerms.can_manage_wallets = resolvedAdminPerms.wallets !== false;
+      basePerms.can_manage_news = resolvedAdminPerms.news !== false;
+      basePerms.can_manage_training = resolvedAdminPerms.sops !== false;
+      basePerms.can_view_menu_manual = resolvedAdminPerms.menu !== false;
+      basePerms.can_manage_menu_manual = resolvedAdminPerms.menu !== false;
+      basePerms.can_view_signin_logs = resolvedAdminPerms.signin_logs !== false;
+      basePerms.can_manage_tasks = resolvedAdminPerms.tasks !== false;
+      basePerms.can_manage_reservations = resolvedAdminPerms.reservations !== false;
+      basePerms.can_manage_checklists = resolvedAdminPerms.checklists !== false;
+      basePerms.can_view_client_orders = resolvedAdminPerms.client_orders !== false;
+      basePerms.can_manage_client_orders = resolvedAdminPerms.client_orders !== false;
+      basePerms.can_manage_assessments = resolvedAdminPerms.assessments !== false;
+
+      if (userRowData) {
+        Object.assign(basePerms, userRowData);
+      }
+
+      basePerms.admin_permissions = resolvedAdminPerms;
+      return { success: true, data: basePerms };
     }
 
     // 1. Try user-specific permissions

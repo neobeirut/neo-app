@@ -16,7 +16,7 @@ import SalaryPaymentsScreen from './screens/SalaryPaymentsScreen';
 import SOPsScreen from './screens/SOPsScreen';
 import SOPFormScreen from './screens/SOPFormScreen';
 import { LayoutDashboard, ChefHat, Users, LogOut, DollarSign, Shield, BookOpen, TrendingUp, MessageSquare, Newspaper, AlertTriangle, Sparkles, Trash2, History, Coins, Truck, ShoppingBag, Calendar, ClipboardList, Package, CheckSquare, Receipt, Briefcase, Store, ChevronDown, ChevronRight, Clock, Target, Layers } from 'lucide-react';
-import { api } from './api/client';
+import { api, hasAdminAccess } from './api/client';
 import AssessmentsScreen from './screens/AssessmentsScreen';
 import AssessmentConductWebScreen from './screens/AssessmentConductWebScreen';
 import FinanceDashboardScreen from './screens/FinanceDashboardScreen';
@@ -52,9 +52,6 @@ import InventoryScreen from './screens/InventoryScreen';
 
   function Sidebar({ onLogout, permissions, user }: { onLogout: () => void; permissions: any; user: any }) {
     const location = useLocation();
-    const roleLower = (user?.role || '').toString().toLowerCase().trim();
-    const isPrivileged = roleLower === 'admin' || roleLower === 'manager' || roleLower === 'superadmin' || roleLower.includes('admin') || roleLower === 'owner';
-    const isAdminOrSuper = roleLower === 'admin' || roleLower === 'superadmin' || roleLower.includes('admin');
 
     const [collapsedGroups, setCollapsedGroups] = useState<{ [key: string]: boolean }>({
       Operations: false,
@@ -80,7 +77,20 @@ import InventoryScreen from './screens/InventoryScreen';
       if (key === 'inventory_reporting') {
         return enabledSections.includes('inventory_reporting') || enabledSections.includes('inventory');
       }
+      if (key === 'payment_details' || key === 'reel_credit') {
+        return enabledSections.includes(key) || enabledSections.includes('finance');
+      }
+      if (key === 'wallets') {
+        return enabledSections.includes(key) || enabledSections.includes('branch_management');
+      }
+      if (key === 'departments_sections' || key === 'salary_payments') {
+        return enabledSections.includes(key) || enabledSections.includes('employees');
+      }
       return enabledSections.includes(key);
+    };
+
+    const canAccess = (moduleKey: string, staffFallback: boolean = false) => {
+      return hasAdminAccess(user, permissions, moduleKey, staffFallback);
     };
 
     const menuGroups: any[] = [
@@ -93,63 +103,63 @@ import InventoryScreen from './screens/InventoryScreen';
       {
         name: 'Operations',
         items: [
-          { to: '/orders', label: 'Branch Orders', icon: <ShoppingBag size={18} />, visible: isAdminOrSuper || permissions?.can_create_orders !== false || permissions?.can_receive_orders !== false, key: 'orders' },
-          { to: '/client-orders', label: 'Client Orders', icon: <Briefcase size={18} />, visible: isAdminOrSuper || !!permissions?.can_view_client_orders, key: 'client_orders' },
-          { to: '/reservations', label: 'Table Reservations', icon: <Calendar size={18} />, visible: isAdminOrSuper || !!permissions?.can_manage_reservations, key: 'reservations' },
-          { to: '/checklists', label: 'Daily Checklists', icon: <ClipboardList size={18} />, visible: isAdminOrSuper || permissions?.can_manage_checklists !== false || permissions?.can_fill_checklists !== false, key: 'checklists' },
-          { to: '/tasks', label: 'Task Manager', icon: <CheckSquare size={18} />, visible: isAdminOrSuper || !!permissions?.can_manage_tasks, key: 'tasks' }
+          { to: '/orders', label: 'Branch Orders', icon: <ShoppingBag size={18} />, visible: canAccess('orders', permissions?.can_create_orders !== false || permissions?.can_receive_orders !== false), key: 'orders' },
+          { to: '/client-orders', label: 'Client Orders', icon: <Briefcase size={18} />, visible: canAccess('client_orders', !!permissions?.can_view_client_orders), key: 'client_orders' },
+          { to: '/reservations', label: 'Table Reservations', icon: <Calendar size={18} />, visible: canAccess('reservations', !!permissions?.can_manage_reservations), key: 'reservations' },
+          { to: '/checklists', label: 'Daily Checklists', icon: <ClipboardList size={18} />, visible: canAccess('checklists', permissions?.can_manage_checklists !== false || permissions?.can_fill_checklists !== false), key: 'checklists' },
+          { to: '/tasks', label: 'Task Manager', icon: <CheckSquare size={18} />, visible: canAccess('tasks', !!permissions?.can_manage_tasks), key: 'tasks' }
         ]
       },
       {
         name: 'Inventory',
         items: [
-          { to: '/catalog', label: 'Item Catalog', icon: <Package size={18} />, visible: isAdminOrSuper || permissions?.can_view_catalog !== false, key: 'catalog' },
-          { to: '/purchasing', label: 'Purchasing & Procurement', icon: <Truck size={18} />, visible: isAdminOrSuper || permissions?.can_create_purchasing !== false || permissions?.can_receive_purchasing !== false, key: 'purchasing' },
-          { to: '/suppliers', label: 'Supplier Management', icon: <Store size={18} />, visible: isAdminOrSuper || permissions?.can_view_suppliers !== false, key: 'suppliers' },
-          { to: '/price-intelligence', label: 'Supplier Price Intelligence', icon: <TrendingUp size={18} />, visible: isAdminOrSuper || permissions?.can_view_price_intelligence !== false, key: 'price_intelligence' },
-          { to: '/waste', label: 'Waste Management', icon: <Trash2 size={18} />, visible: isAdminOrSuper || permissions?.can_view_waste_report !== false || permissions?.can_log_waste !== false, key: 'waste' },
-          { to: '/86', label: '86 Missing Items', icon: <AlertTriangle size={18} />, visible: isAdminOrSuper || permissions?.can_view_86 !== false || permissions?.can_manage_86 !== false, key: 'missing_items' },
-          { to: '/inventory-reporting', label: 'Inventory Management', icon: <ClipboardList size={18} />, visible: isAdminOrSuper || !!permissions?.can_view_inventory || !!permissions?.can_manage_inventory, key: 'inventory_reporting' },
-          { to: '/voids', label: 'Void Receipts', icon: <Receipt size={18} />, visible: isAdminOrSuper || !!permissions?.can_view_voids, key: 'voids' }
+          { to: '/catalog', label: 'Item Catalog', icon: <Package size={18} />, visible: canAccess('catalog', permissions?.can_view_catalog !== false), key: 'catalog' },
+          { to: '/purchasing', label: 'Purchasing & Procurement', icon: <Truck size={18} />, visible: canAccess('purchasing', permissions?.can_create_purchasing !== false || permissions?.can_receive_purchasing !== false), key: 'purchasing' },
+          { to: '/suppliers', label: 'Supplier Management', icon: <Store size={18} />, visible: canAccess('suppliers', permissions?.can_view_suppliers !== false), key: 'suppliers' },
+          { to: '/price-intelligence', label: 'Supplier Price Intelligence', icon: <TrendingUp size={18} />, visible: canAccess('price_intelligence', permissions?.can_view_price_intelligence !== false), key: 'price_intelligence' },
+          { to: '/waste', label: 'Waste Management', icon: <Trash2 size={18} />, visible: canAccess('waste', permissions?.can_view_waste_report !== false || permissions?.can_log_waste !== false), key: 'waste' },
+          { to: '/86', label: '86 Missing Items', icon: <AlertTriangle size={18} />, visible: canAccess('missing_items', permissions?.can_view_86 !== false || permissions?.can_manage_86 !== false), key: 'missing_items' },
+          { to: '/inventory-reporting', label: 'Inventory Management', icon: <ClipboardList size={18} />, visible: canAccess('inventory_reporting', !!permissions?.can_view_inventory || !!permissions?.can_manage_inventory), key: 'inventory_reporting' },
+          { to: '/voids', label: 'Void Receipts', icon: <Receipt size={18} />, visible: canAccess('voids', !!permissions?.can_view_voids), key: 'voids' }
         ]
       },
       {
         name: 'People',
         items: [
-          { to: '/employees', label: 'Employees', icon: <Users size={18} />, visible: isAdminOrSuper || !!permissions?.can_manage_hr, key: 'employees' },
-          { to: '/departments-sections', label: 'Departments & Sections', icon: <Layers size={18} />, visible: isAdminOrSuper || !!permissions?.can_manage_hr, key: 'departments_sections' },
-          { to: '/salary-payments', label: 'Salary Payments', icon: <DollarSign size={18} />, visible: isAdminOrSuper || !!permissions?.can_manage_hr, key: 'salary_payments' },
-          { to: '/assessments', label: 'Employee Assessments', icon: <Target size={18} />, visible: isAdminOrSuper || !!permissions?.can_manage_assessments || !!permissions?.can_evaluate_assessments, key: 'assessments' },
-          { to: '/attendance', label: 'Attendance & Timesheets', icon: <Clock size={18} />, visible: isAdminOrSuper || !!permissions?.can_manage_attendance || permissions?.can_punch_clock !== false, key: 'attendance' },
-          { to: '/tips', label: 'Tips Config', icon: <DollarSign size={18} />, visible: isAdminOrSuper || !!permissions?.can_manage_tips, key: 'tips' },
-          { to: '/permissions', label: 'Security & Matrix', icon: <Shield size={18} />, visible: isAdminOrSuper, key: 'permissions' },
-          { to: '/signin-logs', label: 'Sign-In Logs', icon: <History size={18} />, visible: isAdminOrSuper || !!permissions?.can_view_signin_logs, key: 'signin_logs' }
+          { to: '/employees', label: 'Employees', icon: <Users size={18} />, visible: canAccess('employees', !!permissions?.can_manage_hr), key: 'employees' },
+          { to: '/departments-sections', label: 'Departments & Sections', icon: <Layers size={18} />, visible: canAccess('departments_sections', !!permissions?.can_manage_hr), key: 'departments_sections' },
+          { to: '/salary-payments', label: 'Salary Payments', icon: <DollarSign size={18} />, visible: canAccess('salary_payments', false), key: 'salary_payments' },
+          { to: '/assessments', label: 'Employee Assessments', icon: <Target size={18} />, visible: canAccess('assessments', !!permissions?.can_manage_assessments || !!permissions?.can_evaluate_assessments), key: 'assessments' },
+          { to: '/attendance', label: 'Attendance & Timesheets', icon: <Clock size={18} />, visible: canAccess('attendance', !!permissions?.can_manage_attendance || permissions?.can_punch_clock !== false), key: 'attendance' },
+          { to: '/tips', label: 'Tips Config', icon: <DollarSign size={18} />, visible: canAccess('tips', !!permissions?.can_manage_tips), key: 'tips' },
+          { to: '/permissions', label: 'Security & Matrix', icon: <Shield size={18} />, visible: canAccess('permissions', false), key: 'permissions' },
+          { to: '/signin-logs', label: 'Sign-In Logs', icon: <History size={18} />, visible: canAccess('signin_logs', !!permissions?.can_view_signin_logs), key: 'signin_logs' }
         ]
       },
       {
         name: 'Customers',
         items: [
-          { to: '/complaints', label: 'Client Complaints', icon: <MessageSquare size={18} />, visible: isAdminOrSuper || !!permissions?.can_view_complaints, key: 'complaints' },
-          { to: '/specials', label: 'Specials & Upsell', icon: <Sparkles size={18} />, visible: isAdminOrSuper || !!permissions?.can_view_upsell, key: 'specials' }
+          { to: '/complaints', label: 'Client Complaints', icon: <MessageSquare size={18} />, visible: canAccess('complaints', !!permissions?.can_view_complaints), key: 'complaints' },
+          { to: '/specials', label: 'Specials & Upsell', icon: <Sparkles size={18} />, visible: canAccess('specials', !!permissions?.can_view_upsell), key: 'specials' }
         ]
       },
       {
         name: 'Analytics',
         items: [
-          { to: '/finance', label: 'Financial Analytics', icon: <TrendingUp size={18} />, visible: isAdminOrSuper || !!permissions?.can_view_finance_dashboard, key: 'finance' },
-          { to: '/finance/payments', label: 'Payment Details', icon: <Coins size={18} />, visible: isAdminOrSuper || !!permissions?.can_view_finance_dashboard, key: 'finance' },
-          { to: '/reel-credit', label: 'Reel Credit', icon: <Receipt size={18} />, visible: isAdminOrSuper || !!permissions?.can_view_finance_dashboard, key: 'finance' }
+          { to: '/finance', label: 'Financial Analytics', icon: <TrendingUp size={18} />, visible: canAccess('finance', !!permissions?.can_view_finance_dashboard), key: 'finance' },
+          { to: '/finance/payments', label: 'Payment Details', icon: <Coins size={18} />, visible: canAccess('payment_details', !!permissions?.can_view_finance_dashboard), key: 'payment_details' },
+          { to: '/reel-credit', label: 'Reel Credit', icon: <Receipt size={18} />, visible: canAccess('reel_credit', !!permissions?.can_view_finance_dashboard), key: 'reel_credit' }
         ]
       },
       {
         name: 'Administration',
         items: [
-          { to: '/super-admin', label: 'Super Admin', icon: <Shield size={18} />, visible: user.role?.toLowerCase() === 'superadmin' },
-          { to: '/branch-management', label: 'Branch Management', icon: <Store size={18} />, visible: isAdminOrSuper || !!permissions?.can_manage_branches, key: 'branch_management' },
-          { to: '/wallets', label: 'Manage E-Wallets', icon: <Coins size={18} />, visible: isAdminOrSuper || !!permissions?.can_manage_wallets, key: 'branch_management' },
-          { to: '/news', label: 'News Management', icon: <Newspaper size={18} />, visible: isAdminOrSuper || !!permissions?.can_manage_news, key: 'news' },
-          { to: '/sops', label: 'SOPs & Training', icon: <BookOpen size={18} />, visible: isAdminOrSuper || !!permissions?.can_manage_training, key: 'sops' },
-          { to: '/menu', label: 'Menu Manual', icon: <ChefHat size={18} />, visible: isAdminOrSuper || permissions?.can_view_menu_manual !== false, key: 'menu' }
+          { to: '/super-admin', label: 'Super Admin', icon: <Shield size={18} />, visible: user?.role?.toLowerCase() === 'superadmin' },
+          { to: '/branch-management', label: 'Branch Management', icon: <Store size={18} />, visible: canAccess('branch_management', !!permissions?.can_manage_branches), key: 'branch_management' },
+          { to: '/wallets', label: 'Manage E-Wallets', icon: <Coins size={18} />, visible: canAccess('wallets', !!permissions?.can_manage_wallets), key: 'wallets' },
+          { to: '/news', label: 'News Management', icon: <Newspaper size={18} />, visible: canAccess('news', !!permissions?.can_manage_news), key: 'news' },
+          { to: '/sops', label: 'SOPs & Training', icon: <BookOpen size={18} />, visible: canAccess('sops', !!permissions?.can_manage_training), key: 'sops' },
+          { to: '/menu', label: 'Menu Manual', icon: <ChefHat size={18} />, visible: canAccess('menu', permissions?.can_view_menu_manual !== false), key: 'menu' }
         ]
       }
     ];
@@ -280,31 +290,21 @@ function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () 
     if (key === 'inventory_reporting') {
       return enabledSections.includes('inventory_reporting') || enabledSections.includes('inventory');
     }
+    if (key === 'payment_details' || key === 'reel_credit') {
+      return enabledSections.includes(key) || enabledSections.includes('finance');
+    }
+    if (key === 'wallets') {
+      return enabledSections.includes(key) || enabledSections.includes('branch_management');
+    }
+    if (key === 'departments_sections' || key === 'salary_payments') {
+      return enabledSections.includes(key) || enabledSections.includes('employees');
+    }
     return enabledSections.includes(key);
   };
 
   const roleLower = user.role?.toLowerCase();
   const isPrivileged = roleLower === 'admin' || roleLower === 'manager' || roleLower === 'superadmin';
-  const isAdminOrSuper = roleLower === 'admin' || roleLower === 'superadmin';
-  const [permissions, setPermissions] = useState<any>({
-    can_view_finance_dashboard: isPrivileged,
-    can_view_complaints: isPrivileged,
-    can_manage_complaints: isPrivileged,
-    can_view_upsell: isPrivileged,
-    can_manage_upsell: isPrivileged,
-    can_view_signin_logs: isPrivileged,
-    can_view_voids: isPrivileged,
-    can_manage_tasks: isPrivileged,
-    can_view_catalog: isPrivileged,
-    can_manage_catalog: isPrivileged,
-    can_view_suppliers: isPrivileged,
-    can_manage_suppliers: isPrivileged,
-    can_view_price_intelligence: isPrivileged,
-    can_manage_price_intelligence: isPrivileged,
-    can_manage_assessments: isPrivileged,
-    can_evaluate_assessments: isPrivileged,
-    can_view_own_assessment: isPrivileged,
-  });
+  const [permissions, setPermissions] = useState<any>(user?.admin_permissions ? { admin_permissions: user.admin_permissions } : null);
   const [branchesList, setBranchesList] = useState<string[]>([]);
 
   useEffect(() => {
@@ -316,12 +316,16 @@ function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () 
   }, [user]);
 
   useEffect(() => {
-    api.getAppPermissions(user.name, user.departments || '', user.role).then(res => {
+    api.getAppPermissions(user.name, user.departments || '', user.role, user.id).then(res => {
       if (res.success && res.data) {
         setPermissions(res.data);
       }
     });
   }, [user]);
+
+  const canAccess = (moduleKey: string, staffFallback: boolean = false) => {
+    return hasAdminAccess(user, permissions, moduleKey, staffFallback);
+  };
 
   return (
     <div className="app-layout">
@@ -369,85 +373,89 @@ function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () 
                 />
               } 
             />
-            {isSectionEnabled('orders') && <Route path="/orders" element={<OrdersScreen user={user} />} />}
-            {isSectionEnabled('purchasing') && <Route path="/purchasing" element={<PurchasingScreen user={user} />} />}
-            {isSectionEnabled('catalog') && (
+            {isSectionEnabled('orders') && canAccess('orders', permissions?.can_create_orders !== false || permissions?.can_receive_orders !== false) && (
+              <Route path="/orders" element={<OrdersScreen user={user} />} />
+            )}
+            {isSectionEnabled('purchasing') && canAccess('purchasing', permissions?.can_create_purchasing !== false || permissions?.can_receive_purchasing !== false) && (
+              <Route path="/purchasing" element={<PurchasingScreen user={user} />} />
+            )}
+            {isSectionEnabled('catalog') && canAccess('catalog', permissions?.can_view_catalog !== false) && (
               <Route 
                 path="/catalog" 
-                element={
-                  isAdminOrSuper || permissions?.can_view_catalog !== false 
-                    ? <ItemCatalogScreen user={user} permissions={permissions} />
-                    : <Navigate to="/" replace />
-                } 
+                element={<ItemCatalogScreen user={user} permissions={permissions} />} 
               />
             )}
-            {isSectionEnabled('waste') && <Route path="/waste" element={<WasteScreen user={user} />} />}
-            {isSectionEnabled('reservations') && <Route path="/reservations" element={<ReservationsScreen user={user} />} />}
-            {isSectionEnabled('voids') && (
+            {isSectionEnabled('waste') && canAccess('waste', permissions?.can_view_waste_report !== false || permissions?.can_log_waste !== false) && (
+              <Route path="/waste" element={<WasteScreen user={user} />} />
+            )}
+            {isSectionEnabled('reservations') && canAccess('reservations', !!permissions?.can_manage_reservations) && (
+              <Route path="/reservations" element={<ReservationsScreen user={user} />} />
+            )}
+            {isSectionEnabled('voids') && canAccess('voids', !!permissions?.can_view_voids) && (
               <Route 
                 path="/voids" 
-                element={
-                  permissions?.can_view_voids !== false 
-                    ? <VoidReceiptsScreen user={user} />
-                    : <Navigate to="/" replace />
-                } 
+                element={<VoidReceiptsScreen user={user} />} 
               />
             )}
-            {isSectionEnabled('checklists') && <Route path="/checklists" element={<ChecklistsScreen user={user} />} />}
-            {isSectionEnabled('menu') && (
+            {isSectionEnabled('checklists') && canAccess('checklists', permissions?.can_manage_checklists !== false || permissions?.can_fill_checklists !== false) && (
+              <Route path="/checklists" element={<ChecklistsScreen user={user} />} />
+            )}
+            {isSectionEnabled('menu') && canAccess('menu', permissions?.can_view_menu_manual !== false) && (
               <>
                 <Route path="/menu" element={<MenuManualScreen />} />
                 <Route path="/menu/new" element={<MenuRecipeFormScreen />} />
                 <Route path="/menu/edit/:id" element={<MenuRecipeFormScreen />} />
               </>
             )}
-            {isSectionEnabled('missing_items') && <Route path="/86" element={<Menu86ViewScreen />} />}
-            {isSectionEnabled('employees') && (
+            {isSectionEnabled('missing_items') && canAccess('missing_items', permissions?.can_view_86 !== false || permissions?.can_manage_86 !== false) && (
+              <Route path="/86" element={<Menu86ViewScreen />} />
+            )}
+            {isSectionEnabled('employees') && canAccess('employees', !!permissions?.can_manage_hr) && (
               <>
                 <Route path="/employees" element={<EmployeesScreen user={user} />} />
                 <Route path="/employees/new" element={<EmployeeFormScreen user={user} />} />
                 <Route path="/employees/edit/:id" element={<EmployeeFormScreen user={user} />} />
               </>
             )}
-            {isSectionEnabled('departments_sections') && (
+            {isSectionEnabled('departments_sections') && canAccess('departments_sections', !!permissions?.can_manage_hr) && (
               <Route path="/departments-sections" element={<StaffDepartmentsScreen user={user} permissions={permissions} />} />
             )}
-            <Route path="/salary-payments" element={<SalaryPaymentsScreen user={user} permissions={permissions} />} />
-            {isSectionEnabled('assessments') && (
+            {isSectionEnabled('salary_payments') && canAccess('salary_payments', false) && (
+              <Route path="/salary-payments" element={<SalaryPaymentsScreen user={user} permissions={permissions} />} />
+            )}
+            {isSectionEnabled('assessments') && canAccess('assessments', !!permissions?.can_manage_assessments || !!permissions?.can_evaluate_assessments) && (
               <>
                 <Route path="/assessments" element={<AssessmentsScreen user={user} />} />
                 <Route path="/assessments/conduct/:id" element={<AssessmentConductWebScreen user={user} />} />
               </>
             )}
-            {isSectionEnabled('attendance') && (
+            {isSectionEnabled('attendance') && canAccess('attendance', !!permissions?.can_manage_attendance || permissions?.can_punch_clock !== false) && (
               <Route path="/attendance" element={<AttendanceDashboardScreen user={user} permissions={permissions} />} />
             )}
-            {isSectionEnabled('tips') && (
+            {isSectionEnabled('tips') && canAccess('tips', !!permissions?.can_manage_tips) && (
               <>
                 <Route path="/tips" element={<TipsScreen />} />
                 <Route path="/tips/new" element={<TipsCreateScreen />} />
                 <Route path="/tips/distribution/:id" element={<TipsDistributionScreen />} />
               </>
             )}
-            {isSectionEnabled('permissions') && <Route path="/permissions" element={<PermissionsScreen user={user} onUpdateUser={onUpdateUser} />} />}
-            {isSectionEnabled('signin_logs') && (
+            {isSectionEnabled('permissions') && canAccess('permissions', false) && (
+              <Route path="/permissions" element={<PermissionsScreen user={user} onUpdateUser={onUpdateUser} />} />
+            )}
+            {isSectionEnabled('signin_logs') && canAccess('signin_logs', !!permissions?.can_view_signin_logs) && (
               <Route 
                 path="/signin-logs" 
-                element={
-                  permissions?.can_view_signin_logs !== false 
-                    ? <SignInLogsScreen user={user} />
-                    : <Navigate to="/" replace />
-                } 
+                element={<SignInLogsScreen user={user} />} 
               />
             )}
-            {isSectionEnabled('sops') && (
+            {isSectionEnabled('sops') && canAccess('sops', !!permissions?.can_manage_training) && (
               <>
                 <Route path="/sops" element={<SOPsScreen />} />
                 <Route path="/sops/new" element={<SOPFormScreen />} />
                 <Route path="/sops/edit/:id" element={<SOPFormScreen />} />
               </>
             )}
-            {isSectionEnabled('complaints') && (
+            {isSectionEnabled('complaints') && canAccess('complaints', !!permissions?.can_view_complaints) && (
               <>
                 <Route path="/complaints" element={<ComplaintsDashboardScreen permissions={permissions} user={user} />} />
                 <Route path="/complaints/new" element={<ComplaintFormScreen permissions={permissions} user={user} />} />
@@ -455,32 +463,32 @@ function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () 
                 <Route path="/complaints/analytics" element={<ComplaintsAnalyticsScreen permissions={permissions} user={user} />} />
               </>
             )}
-            {isSectionEnabled('news') && (
+            {isSectionEnabled('news') && canAccess('news', !!permissions?.can_manage_news) && (
               <>
                 <Route path="/news" element={<NewsManagementScreen />} />
                 <Route path="/news/new" element={<NewsFormScreen />} />
                 <Route path="/news/edit/:id" element={<NewsFormScreen />} />
               </>
             )}
-            {isSectionEnabled('finance') && (
-              <>
-                <Route path="/finance" element={<FinanceDashboardScreen user={user} permissions={permissions} />} />
-                <Route path="/finance/payments" element={<PaymentDetailsScreen user={user} />} />
-                <Route path="/reel-credit" element={<ReelCreditScreen user={user} />} />
-              </>
+            {isSectionEnabled('finance') && canAccess('finance', !!permissions?.can_view_finance_dashboard) && (
+              <Route path="/finance" element={<FinanceDashboardScreen user={user} permissions={permissions} />} />
             )}
-            {isSectionEnabled('specials') && <Route path="/specials" element={<ChefSpecialsScreen permissions={permissions} user={user} />} />}
-            {isSectionEnabled('tasks') && (
+            {isSectionEnabled('payment_details') && canAccess('payment_details', !!permissions?.can_view_finance_dashboard) && (
+              <Route path="/finance/payments" element={<PaymentDetailsScreen user={user} />} />
+            )}
+            {isSectionEnabled('reel_credit') && canAccess('reel_credit', !!permissions?.can_view_finance_dashboard) && (
+              <Route path="/reel-credit" element={<ReelCreditScreen user={user} />} />
+            )}
+            {isSectionEnabled('specials') && canAccess('specials', !!permissions?.can_view_upsell) && (
+              <Route path="/specials" element={<ChefSpecialsScreen permissions={permissions} user={user} />} />
+            )}
+            {isSectionEnabled('tasks') && canAccess('tasks', !!permissions?.can_manage_tasks) && (
               <Route 
                 path="/tasks" 
-                element={
-                  permissions?.can_manage_tasks !== false 
-                    ? <TasksScreen user={user} />
-                    : <Navigate to="/" replace />
-                } 
+                element={<TasksScreen user={user} />} 
               />
             )}
-            {isSectionEnabled('client_orders') && (
+            {isSectionEnabled('client_orders') && canAccess('client_orders', !!permissions?.can_view_client_orders) && (
               <>
                 <Route path="/client-orders" element={<ClientOrdersScreen user={user} permissions={permissions} onUpdateUser={onUpdateUser} />} />
                 <Route path="/client-orders/new" element={<ClientOrderFormScreen user={user} permissions={permissions} onUpdateUser={onUpdateUser} />} />
@@ -488,28 +496,22 @@ function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () 
                 <Route path="/client-orders/reports" element={<ClientOrdersReportsScreen user={user} permissions={permissions} />} />
               </>
             )}
-            {isSectionEnabled('suppliers') && (
+            {isSectionEnabled('suppliers') && canAccess('suppliers', permissions?.can_view_suppliers !== false) && (
               <Route 
                 path="/suppliers" 
-                element={
-                  isAdminOrSuper || permissions?.can_view_suppliers !== false 
-                    ? <SuppliersScreen user={user} permissions={permissions} />
-                    : <Navigate to="/" replace />
-                } 
+                element={<SuppliersScreen user={user} permissions={permissions} />} 
               />
             )}
-            {isSectionEnabled('branch_management') && <Route path="/wallets" element={<WalletsScreen user={user} />} />}
-            {isSectionEnabled('price_intelligence') && (
+            {isSectionEnabled('wallets') && canAccess('wallets', !!permissions?.can_manage_wallets) && (
+              <Route path="/wallets" element={<WalletsScreen user={user} />} />
+            )}
+            {isSectionEnabled('price_intelligence') && canAccess('price_intelligence', permissions?.can_view_price_intelligence !== false) && (
               <Route 
                 path="/price-intelligence" 
-                element={
-                  isAdminOrSuper || permissions?.can_view_price_intelligence !== false 
-                    ? <SupplierPriceIntelligenceScreen user={user} permissions={permissions} />
-                    : <Navigate to="/" replace />
-                } 
+                element={<SupplierPriceIntelligenceScreen user={user} permissions={permissions} />} 
               />
             )}
-            {isSectionEnabled('inventory_reporting') && (
+            {isSectionEnabled('inventory_reporting') && canAccess('inventory_reporting', !!permissions?.can_view_inventory || !!permissions?.can_manage_inventory) && (
               <Route 
                 path="/inventory-reporting" 
                 element={<InventoryScreen user={user} permissions={permissions} />} 
@@ -518,7 +520,9 @@ function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () 
             {user.role?.toLowerCase() === 'superadmin' && (
               <Route path="/super-admin" element={<SuperAdminScreen />} />
             )}
-            {isSectionEnabled('branch_management') && <Route path="/branch-management" element={<BranchManagementScreen />} />}
+            {isSectionEnabled('branch_management') && canAccess('branch_management', !!permissions?.can_manage_branches) && (
+              <Route path="/branch-management" element={<BranchManagementScreen />} />
+            )}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>

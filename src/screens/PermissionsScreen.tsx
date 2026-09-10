@@ -1,11 +1,12 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { api } from '../api/client';
+import { api, DEFAULT_ADMIN_MODULE_PERMISSIONS, DEFAULT_MANAGER_ADMIN_PERMISSIONS } from '../api/client';
 import { 
   Loader2, Shield, Search, User, Users, Check, AlertCircle, 
   ShoppingCart, ClipboardList, ChefHat, DollarSign, Trash2, 
   TrendingUp, Briefcase, GraduationCap, Calendar, Lock, Sliders, CheckCircle2,
   Sparkles, CheckSquare, Receipt, FolderOpen, Package, Clock,
-  Eye, EyeOff, LayoutGrid, Square, Building2, Store, Newspaper, BookOpen, Target, History, AlertTriangle, Layers
+  Eye, EyeOff, LayoutGrid, Square, Building2, Store, Newspaper, BookOpen, Target, History, AlertTriangle, Layers,
+  ShieldCheck, ArrowRight
 } from 'lucide-react';
 
 const DEFAULT_PERMISSIONS = {
@@ -491,6 +492,14 @@ export const MODULE_DEFINITIONS: ModuleDefinition[] = [
     icon: <Layers size={18} style={{ color: '#6366f1' }} />
   },
   {
+    key: 'salary_payments',
+    label: 'Salary Payments & Payroll',
+    group: 'People',
+    desc: 'Employee salary slips, cashouts, advance loans deduction, and monthly payroll validation',
+    route: '/salary-payments',
+    icon: <DollarSign size={18} style={{ color: '#16a34a' }} />
+  },
+  {
     key: 'attendance',
     label: 'Attendance & Timesheets',
     group: 'People',
@@ -559,15 +568,39 @@ export const MODULE_DEFINITIONS: ModuleDefinition[] = [
     route: '/finance',
     icon: <TrendingUp size={18} style={{ color: '#198754' }} />
   },
+  {
+    key: 'payment_details',
+    label: 'Payment Details',
+    group: 'Analytics',
+    desc: 'POS cashier daily payment method settlements and transaction breakdown',
+    route: '/finance/payments',
+    icon: <Receipt size={18} style={{ color: '#0d6efd' }} />
+  },
+  {
+    key: 'reel_credit',
+    label: 'Reel Credit',
+    group: 'Analytics',
+    desc: 'B2B client credit accounts, payment terms, and outstanding balances',
+    route: '/reel-credit',
+    icon: <Briefcase size={18} style={{ color: '#6f42c1' }} />
+  },
 
   // Administration
   {
     key: 'branch_management',
-    label: 'Branch Management & Wallets',
+    label: 'Branch Management',
     group: 'Administration',
-    desc: 'Restaurant physical branch settings, storage areas, and manager cash wallets',
+    desc: 'Restaurant physical branch settings and storage areas',
     route: '/branch-management',
     icon: <Building2 size={18} style={{ color: '#0d6efd' }} />
+  },
+  {
+    key: 'wallets',
+    label: 'Manage E-Wallets',
+    group: 'Administration',
+    desc: 'Branch manager digital cash wallets, cash floats, and balance replenishment',
+    route: '/wallets',
+    icon: <DollarSign size={18} style={{ color: '#fd7e14' }} />
   },
   {
     key: 'news',
@@ -600,6 +633,7 @@ interface UserProfile {
   name?: string;
   role?: string;
   restaurant_id?: string;
+  admin_permissions?: Record<string, boolean>;
   restaurants?: {
     id: string;
     name: string;
@@ -610,14 +644,26 @@ interface UserProfile {
   };
 }
 
+export interface AdminUser {
+  id: string;
+  name: string;
+  role: string;
+  email?: string;
+  branch?: string;
+  departments?: string;
+  restaurant_id?: string;
+  admin_permissions?: Record<string, boolean>;
+}
+
 export default function PermissionsScreen({ user, onUpdateUser }: { user?: UserProfile; onUpdateUser?: (u: UserProfile) => void }) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [permissions, setPermissions] = useState<any[]>([]);
   const [departments, setDepartments] = useState<string[]>([]);
   const [users, setUsers] = useState<string[]>([]);
+  const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
   
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'department' | 'user' | 'modules_visibility' | 'global_alerts'>('department');
+  const [activeTab, setActiveTab] = useState<'admin_user' | 'department' | 'user' | 'modules_visibility' | 'global_alerts'>('admin_user');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
   const [savingState, setSavingState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
@@ -634,17 +680,22 @@ export default function PermissionsScreen({ user, onUpdateUser }: { user?: UserP
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [permRes, deptsRes, usersRes, globalRes, exRateRes, vatRateRes] = await Promise.all([
+      const [permRes, deptsRes, usersRes, globalRes, exRateRes, vatRateRes, adminUsersRes] = await Promise.all([
         api.getAllAppPermissions(),
         api.getDepartmentsList(),
         api.getAllUsers(),
         api.getGlobalNotificationSettings(),
         api.getExchangeRate(user?.restaurant_id),
-        api.getVatRate(user?.restaurant_id)
+        api.getVatRate(user?.restaurant_id),
+        api.getAdminUsers()
       ]);
       
       if (permRes.success && permRes.data) {
         setPermissions(permRes.data);
+      }
+      
+      if (adminUsersRes.success && adminUsersRes.data) {
+        setAdminUsers(adminUsersRes.data);
       }
       
       if (deptsRes.success && deptsRes.data) {
@@ -757,6 +808,26 @@ export default function PermissionsScreen({ user, onUpdateUser }: { user?: UserP
         }
       ];
     }
+    if (activeTab === 'admin_user') {
+      const q = searchQuery.toLowerCase().trim();
+      return adminUsers
+        .filter(u => {
+          if (!q) return true;
+          return (u.name || '').toLowerCase().includes(q) ||
+                 (u.email || '').toLowerCase().includes(q) ||
+                 (u.role || '').toLowerCase().includes(q) ||
+                 (u.branch || '').toLowerCase().includes(q);
+        })
+        .map(u => ({
+          id: u.id,
+          name: u.name || u.email || 'Unnamed Admin',
+          role: u.role,
+          email: u.email,
+          branch: u.branch,
+          hasConfig: !!(u.admin_permissions && Object.keys(u.admin_permissions).length > 0),
+          badgeText: u.role === 'SuperAdmin' ? 'SuperAdmin' : u.role
+        }));
+    }
     if (activeTab === 'modules_visibility') {
       const groups = [
         { id: 'all', name: 'All Modules' },
@@ -796,14 +867,14 @@ export default function PermissionsScreen({ user, onUpdateUser }: { user?: UserP
           hasConfig
         };
       });
-  }, [activeTab, departments, users, permissions, searchQuery, enabledSections]);
+  }, [activeTab, adminUsers, departments, users, permissions, searchQuery, enabledSections]);
 
   useEffect(() => {
     if (activeTab === 'modules_visibility') {
       setSelectedEntityId(moduleFilterGroup);
     } else if (activeTab === 'global_alerts') {
       setSelectedEntityId('global_settings');
-    } else if (!selectedEntityId && sidebarItems.length > 0) {
+    } else if (sidebarItems.length > 0 && (!selectedEntityId || !sidebarItems.some(item => item.id === selectedEntityId))) {
       setSelectedEntityId(sidebarItems[0].id);
     }
   }, [sidebarItems, selectedEntityId, activeTab, moduleFilterGroup]);
@@ -1100,6 +1171,166 @@ export default function PermissionsScreen({ user, onUpdateUser }: { user?: UserP
     } catch (err) {
       setSavingState('error');
       console.error(err);
+    }
+  };
+
+  const selectedAdminUser = useMemo(() => {
+    if (activeTab !== 'admin_user') return null;
+    return adminUsers.find(u => u.id === selectedEntityId) || adminUsers[0] || null;
+  }, [activeTab, adminUsers, selectedEntityId]);
+
+  const handleAdminPermToggle = async (userId: string, moduleOrActionKey: string, value: boolean) => {
+    const targetUser = adminUsers.find(u => u.id === userId);
+    if (!targetUser) return;
+    if (targetUser.role?.toLowerCase() === 'superadmin') {
+      alert('SuperAdmin accounts have root system access and cannot be restricted.');
+      return;
+    }
+
+    setSavingState('saving');
+    const roleLower = (targetUser.role || '').toLowerCase();
+    const defaults = roleLower === 'admin'
+      ? { ...DEFAULT_ADMIN_MODULE_PERMISSIONS }
+      : { ...DEFAULT_MANAGER_ADMIN_PERMISSIONS };
+
+    const current = (targetUser.admin_permissions && Object.keys(targetUser.admin_permissions).length > 0)
+      ? { ...targetUser.admin_permissions }
+      : { ...defaults };
+
+    const updated = {
+      ...current,
+      [moduleOrActionKey]: value
+    };
+
+    setAdminUsers(prev => prev.map(u => u.id === userId ? { ...u, admin_permissions: updated } : u));
+
+    const res = await api.saveAdminUserPermissions(
+      userId,
+      updated,
+      targetUser.name,
+      targetUser.role
+    );
+
+    if (res.success) {
+      setSavingState('saved');
+      if (user && (user.id === userId || user.name === targetUser.name) && onUpdateUser) {
+        onUpdateUser({
+          ...user,
+          admin_permissions: updated
+        });
+      }
+      setTimeout(() => setSavingState('idle'), 2000);
+    } else {
+      setSavingState('error');
+      fetchData();
+      alert('Failed to save admin user permissions: ' + (res.error || 'Unknown error'));
+    }
+  };
+
+  const handleApplyAdminPreset = async (userId: string, preset: 'all_on' | 'all_off' | 'operations' | 'hr' | 'inventory' | 'finance') => {
+    const targetUser = adminUsers.find(u => u.id === userId);
+    if (!targetUser) return;
+    if (targetUser.role?.toLowerCase() === 'superadmin') {
+      alert('SuperAdmin permissions cannot be modified.');
+      return;
+    }
+
+    setSavingState('saving');
+    let newPerms: Record<string, boolean> = {};
+
+    if (preset === 'all_on') {
+      MODULE_DEFINITIONS.forEach(m => { newPerms[m.key] = true; });
+    } else if (preset === 'all_off') {
+      MODULE_DEFINITIONS.forEach(m => { newPerms[m.key] = false; });
+    } else if (preset === 'operations') {
+      newPerms = { ...DEFAULT_MANAGER_ADMIN_PERMISSIONS };
+      ['orders', 'client_orders', 'reservations', 'checklists', 'tasks', 'voids', 'missing_items', 'sops'].forEach(k => {
+        newPerms[k] = true;
+      });
+      ['salary_payments', 'finance', 'payment_details', 'reel_credit', 'permissions', 'employees'].forEach(k => {
+        newPerms[k] = false;
+      });
+    } else if (preset === 'hr') {
+      MODULE_DEFINITIONS.forEach(m => { newPerms[m.key] = false; });
+      ['employees', 'departments_sections', 'salary_payments', 'assessments', 'attendance', 'tips', 'signin_logs'].forEach(k => {
+        newPerms[k] = true;
+      });
+    } else if (preset === 'inventory') {
+      MODULE_DEFINITIONS.forEach(m => { newPerms[m.key] = false; });
+      ['catalog', 'purchasing', 'suppliers', 'price_intelligence', 'waste', 'missing_items', 'inventory_reporting'].forEach(k => {
+        newPerms[k] = true;
+      });
+    } else if (preset === 'finance') {
+      MODULE_DEFINITIONS.forEach(m => { newPerms[m.key] = false; });
+      ['finance', 'payment_details', 'reel_credit'].forEach(k => {
+        newPerms[k] = true;
+      });
+    }
+
+    setAdminUsers(prev => prev.map(u => u.id === userId ? { ...u, admin_permissions: newPerms } : u));
+
+    const res = await api.saveAdminUserPermissions(
+      userId,
+      newPerms,
+      targetUser.name,
+      targetUser.role
+    );
+
+    if (res.success) {
+      setSavingState('saved');
+      if (user && (user.id === userId || user.name === targetUser.name) && onUpdateUser) {
+        onUpdateUser({ ...user, admin_permissions: newPerms });
+      }
+      setTimeout(() => setSavingState('idle'), 2000);
+    } else {
+      setSavingState('error');
+      fetchData();
+      alert('Failed to save preset: ' + (res.error || 'Unknown error'));
+    }
+  };
+
+  const handleToggleAdminCategory = async (userId: string, categoryGroup: string, enableAll: boolean) => {
+    const targetUser = adminUsers.find(u => u.id === userId);
+    if (!targetUser) return;
+    if (targetUser.role?.toLowerCase() === 'superadmin') {
+      alert('SuperAdmin permissions cannot be modified.');
+      return;
+    }
+
+    setSavingState('saving');
+    const roleLower = (targetUser.role || '').toLowerCase();
+    const defaults = roleLower === 'admin'
+      ? { ...DEFAULT_ADMIN_MODULE_PERMISSIONS }
+      : { ...DEFAULT_MANAGER_ADMIN_PERMISSIONS };
+
+    const current = (targetUser.admin_permissions && Object.keys(targetUser.admin_permissions).length > 0)
+      ? { ...targetUser.admin_permissions }
+      : { ...defaults };
+
+    const updated = { ...current };
+    MODULE_DEFINITIONS.filter(m => m.group === categoryGroup).forEach(m => {
+      updated[m.key] = enableAll;
+    });
+
+    setAdminUsers(prev => prev.map(u => u.id === userId ? { ...u, admin_permissions: updated } : u));
+
+    const res = await api.saveAdminUserPermissions(
+      userId,
+      updated,
+      targetUser.name,
+      targetUser.role
+    );
+
+    if (res.success) {
+      setSavingState('saved');
+      if (user && (user.id === userId || user.name === targetUser.name) && onUpdateUser) {
+        onUpdateUser({ ...user, admin_permissions: updated });
+      }
+      setTimeout(() => setSavingState('idle'), 2000);
+    } else {
+      setSavingState('error');
+      fetchData();
+      alert('Failed to update category: ' + (res.error || 'Unknown error'));
     }
   };
 
@@ -1596,6 +1827,17 @@ export default function PermissionsScreen({ user, onUpdateUser }: { user?: UserP
           <div className="entity-sidebar">
             <div className="tabs-header">
               <button 
+                className={`tab-btn ${activeTab === 'admin_user' ? 'active' : ''}`}
+                onClick={() => {
+                  setActiveTab('admin_user');
+                  setSelectedEntityId(null);
+                  setSearchQuery('');
+                }}
+              >
+                <ShieldCheck size={14} />
+                Admin Users
+              </button>
+              <button 
                 className={`tab-btn ${activeTab === 'department' ? 'active' : ''}`}
                 onClick={() => {
                   setActiveTab('department');
@@ -1603,7 +1845,7 @@ export default function PermissionsScreen({ user, onUpdateUser }: { user?: UserP
                   setSearchQuery('');
                 }}
               >
-                <Users size={15} />
+                <Users size={14} />
                 Departments
               </button>
               <button 
@@ -1614,8 +1856,8 @@ export default function PermissionsScreen({ user, onUpdateUser }: { user?: UserP
                   setSearchQuery('');
                 }}
               >
-                <User size={15} />
-                Users
+                <User size={14} />
+                Staff Users
               </button>
               <button 
                 className={`tab-btn ${activeTab === 'modules_visibility' ? 'active' : ''}`}
@@ -1625,8 +1867,8 @@ export default function PermissionsScreen({ user, onUpdateUser }: { user?: UserP
                   setSearchQuery('');
                 }}
               >
-                <Eye size={15} />
-                Modules Visibility
+                <Eye size={14} />
+                Visibility
               </button>
               <button 
                 className={`tab-btn ${activeTab === 'global_alerts' ? 'active' : ''}`}
@@ -1636,7 +1878,7 @@ export default function PermissionsScreen({ user, onUpdateUser }: { user?: UserP
                   setSearchQuery('');
                 }}
               >
-                <Sliders size={15} />
+                <Sliders size={14} />
                 Settings
               </button>
             </div>
@@ -1648,9 +1890,11 @@ export default function PermissionsScreen({ user, onUpdateUser }: { user?: UserP
                   type="text" 
                   className="search-input" 
                   placeholder={
-                    activeTab === 'modules_visibility'
-                      ? 'Filter module groups...'
-                      : `Search ${activeTab}s...`
+                    activeTab === 'admin_user'
+                      ? 'Search admin users...'
+                      : activeTab === 'modules_visibility'
+                        ? 'Filter module groups...'
+                        : `Search ${activeTab}s...`
                   }
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
@@ -1678,7 +1922,9 @@ export default function PermissionsScreen({ user, onUpdateUser }: { user?: UserP
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      {activeTab === 'department' ? (
+                      {activeTab === 'admin_user' ? (
+                        <ShieldCheck size={14} color="var(--primary)" />
+                      ) : activeTab === 'department' ? (
                         <Shield size={14} color="var(--primary)" />
                       ) : activeTab === 'user' ? (
                         <User size={14} color="var(--primary)" />
@@ -1690,13 +1936,15 @@ export default function PermissionsScreen({ user, onUpdateUser }: { user?: UserP
                       <span className="entity-name">{item.name}</span>
                     </div>
                     <span className={`entity-badge ${item.hasConfig ? 'configured' : 'default'}`}>
-                      {activeTab === 'modules_visibility'
+                      {activeTab === 'admin_user'
                         ? (item as any).badgeText
-                        : activeTab === 'global_alerts'
-                          ? 'Active'
-                          : item.hasConfig
-                            ? 'Configured'
-                            : 'Default'}
+                        : activeTab === 'modules_visibility'
+                          ? (item as any).badgeText
+                          : activeTab === 'global_alerts'
+                            ? 'Active'
+                            : item.hasConfig
+                              ? 'Configured'
+                              : 'Default'}
                     </span>
                   </div>
                 );
@@ -2041,6 +2289,447 @@ export default function PermissionsScreen({ user, onUpdateUser }: { user?: UserP
                   </div>
                 </div>
               </>
+            ) : activeTab === 'admin_user' ? (
+              selectedAdminUser ? (
+                (() => {
+                  const isSuperAdmin = selectedAdminUser.role?.toLowerCase() === 'superadmin';
+                  const roleLower = (selectedAdminUser.role || '').toLowerCase();
+                  const defaults = roleLower === 'admin'
+                    ? DEFAULT_ADMIN_MODULE_PERMISSIONS
+                    : DEFAULT_MANAGER_ADMIN_PERMISSIONS;
+                  const currentAdminPerms: Record<string, boolean> = isSuperAdmin
+                    ? DEFAULT_ADMIN_MODULE_PERMISSIONS
+                    : ((selectedAdminUser.admin_permissions && Object.keys(selectedAdminUser.admin_permissions).length > 0)
+                      ? selectedAdminUser.admin_permissions
+                      : defaults);
+
+                  const ADMIN_GROUPS = ['Operations', 'Inventory', 'People', 'Customers', 'Analytics', 'Administration'] as const;
+
+                  return (
+                    <>
+                      <div className="details-header">
+                        <div className="details-title-row">
+                          <ShieldCheck size={24} color="var(--primary)" />
+                          <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span className="details-title">{selectedAdminUser.name}</span>
+                              <span 
+                                style={{
+                                  fontSize: '11px',
+                                  fontWeight: 700,
+                                  padding: '2px 8px',
+                                  borderRadius: '12px',
+                                  backgroundColor: isSuperAdmin ? '#fef3c7' : '#e0e7ff',
+                                  color: isSuperAdmin ? '#b45309' : '#3730a3'
+                                }}
+                              >
+                                {selectedAdminUser.role}
+                              </span>
+                              {selectedAdminUser.branch && (
+                                <span style={{ fontSize: '11px', color: 'var(--text-muted)', background: '#f1f3f5', padding: '2px 8px', borderRadius: '12px' }}>
+                                  Branch: {selectedAdminUser.branch}
+                                </span>
+                              )}
+                            </div>
+                            {selectedAdminUser.email && (
+                              <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                                {selectedAdminUser.email}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          {!isSuperAdmin && (
+                            <>
+                              <button
+                                onClick={() => handleApplyAdminPreset(selectedAdminUser.id, 'all_on')}
+                                className="quick-action-btn grant"
+                                title="Enable all admin modules"
+                              >
+                                <CheckSquare size={13} />
+                                Grant All
+                              </button>
+                              <button
+                                onClick={() => handleApplyAdminPreset(selectedAdminUser.id, 'all_off')}
+                                className="quick-action-btn revoke"
+                                title="Disable all non-dashboard admin modules"
+                              >
+                                <Square size={13} />
+                                Revoke All
+                              </button>
+                              <button
+                                onClick={() => handleApplyAdminPreset(selectedAdminUser.id, 'operations')}
+                                className="quick-action-btn"
+                                title="Apply operations manager access"
+                              >
+                                Ops Preset
+                              </button>
+                              <button
+                                onClick={() => handleApplyAdminPreset(selectedAdminUser.id, 'hr')}
+                                className="quick-action-btn"
+                                title="Apply HR & Payroll access"
+                              >
+                                HR Preset
+                              </button>
+                              <button
+                                onClick={() => handleApplyAdminPreset(selectedAdminUser.id, 'inventory')}
+                                className="quick-action-btn"
+                                title="Apply inventory & purchasing access"
+                              >
+                                Inventory
+                              </button>
+                              <button
+                                onClick={() => handleApplyAdminPreset(selectedAdminUser.id, 'finance')}
+                                className="quick-action-btn"
+                                title="Apply financial analytics access"
+                              >
+                                Finance
+                              </button>
+                            </>
+                          )}
+
+                          <div className={`saving-badge ${savingState}`}>
+                            {savingState === 'saving' && (
+                              <>
+                                <Loader2 size={12} className="spin" />
+                                <span>Saving Permissions...</span>
+                              </>
+                            )}
+                            {savingState === 'saved' && (
+                              <>
+                                <CheckCircle2 size={12} />
+                                <span>Changes Saved</span>
+                              </>
+                            )}
+                            {savingState === 'error' && (
+                              <>
+                                <AlertCircle size={12} />
+                                <span>Error Saving</span>
+                              </>
+                            )}
+                            {savingState === 'idle' && (
+                              <>
+                                <CheckCircle2 size={12} style={{ opacity: 0.5 }} />
+                                <span>Access Synced</span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="details-body">
+                        {isSuperAdmin ? (
+                          <div className="global-header-card" style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', margin: '20px 20px 0 20px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                              <Shield size={28} style={{ color: '#38bdf8' }} />
+                              <div>
+                                <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: '#ffffff' }}>Root SuperAdmin Account</h3>
+                                <p style={{ margin: '4px 0 0 0', fontSize: '13px', opacity: 0.9 }}>
+                                  SuperAdmin accounts have permanent root authorization across the entire platform. Every web admin section, employee record, payroll, and configuration is unconditionally accessible.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="global-header-card" style={{ background: 'linear-gradient(135deg, #1e5c4f 0%, #11362e 100%)', margin: '20px 20px 0 20px' }}>
+                            <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <ShieldCheck size={18} /> Web Admin User Permissions Matrix
+                            </h3>
+                            <p>
+                              Select which administrative modules and screens this user can view and manage in the web admin portal. 
+                              Any module toggled OFF will be immediately hidden from their sidebar navigation and blocked from direct URL navigation.
+                            </p>
+                          </div>
+                        )}
+
+                        <div style={{ padding: '16px 20px 0 20px', display: 'flex', gap: '12px', alignItems: 'center' }}>
+                          <div style={{ position: 'relative', flex: 1 }}>
+                            <Search size={14} style={{ position: 'absolute', left: '12px', top: '11px', color: 'var(--text-muted)' }} />
+                            <input 
+                              type="text"
+                              placeholder="Search admin modules or permissions (e.g. salary, orders, catalog, attendance, finance)..."
+                              value={permFilterQuery}
+                              onChange={(e) => setPermFilterQuery(e.target.value)}
+                              style={{
+                                width: '100%',
+                                padding: '8px 12px 8px 34px',
+                                borderRadius: '8px',
+                                border: '1px solid var(--border)',
+                                fontSize: '13px',
+                                backgroundColor: '#ffffff',
+                                outline: 'none'
+                              }}
+                            />
+                          </div>
+                          {permFilterQuery && (
+                            <button 
+                              onClick={() => setPermFilterQuery('')}
+                              style={{
+                                padding: '8px 12px',
+                                fontSize: '12px',
+                                background: '#e9ecef',
+                                border: 'none',
+                                borderRadius: '6px',
+                                cursor: 'pointer',
+                                fontWeight: 600
+                              }}
+                            >
+                              Clear
+                            </button>
+                          )}
+                        </div>
+
+                        <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                          {ADMIN_GROUPS.map(group => {
+                            const q = permFilterQuery.toLowerCase().trim();
+                            const groupModules = MODULE_DEFINITIONS.filter(m => m.group === group).filter(m => {
+                              if (!q) return true;
+                              return m.label.toLowerCase().includes(q) || m.desc.toLowerCase().includes(q) || m.key.toLowerCase().includes(q);
+                            });
+
+                            if (groupModules.length === 0) return null;
+
+                            const activeCount = groupModules.filter(m => isSuperAdmin || currentAdminPerms[m.key] !== false).length;
+                            const allGroupActive = activeCount === groupModules.length;
+
+                            return (
+                              <div key={group} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid var(--border)', paddingBottom: '8px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                    <span style={{ fontSize: '16px', fontWeight: 800, color: '#111827' }}>{group}</span>
+                                    <span style={{ fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '12px', backgroundColor: '#e5e7eb', color: '#374151' }}>
+                                      {activeCount} of {groupModules.length} Active
+                                    </span>
+                                  </div>
+                                  {!isSuperAdmin && (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                      <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)' }}>Group Access:</span>
+                                      <label className="custom-switch" title={`Toggle all ${group} modules`}>
+                                        <input 
+                                          type="checkbox" 
+                                          checked={allGroupActive}
+                                          onChange={(e) => handleToggleAdminCategory(selectedAdminUser.id, group, e.target.checked)}
+                                        />
+                                        <span className="switch-slider"></span>
+                                      </label>
+                                    </div>
+                                  )}
+                                </div>
+
+                                <div className="cards-grid" style={{ padding: 0 }}>
+                                  {groupModules.map(mod => {
+                                    const isPermitted = isSuperAdmin || currentAdminPerms[mod.key] !== false;
+
+                                    return (
+                                      <div 
+                                        key={mod.key} 
+                                        className="category-card"
+                                        style={{
+                                          border: isPermitted ? '1px solid var(--border)' : '1px dashed #d1d5db',
+                                          backgroundColor: isPermitted ? '#ffffff' : '#f9fafb',
+                                          opacity: isPermitted ? 1 : 0.75,
+                                          transition: 'all 0.15s ease'
+                                        }}
+                                      >
+                                        <div className="card-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                                            <div style={{
+                                              width: '32px',
+                                              height: '32px',
+                                              borderRadius: '8px',
+                                              backgroundColor: isPermitted ? '#e8f2f0' : '#f3f4f6',
+                                              display: 'flex',
+                                              alignItems: 'center',
+                                              justifyContent: 'center',
+                                              flexShrink: 0
+                                            }}>
+                                              {mod.icon}
+                                            </div>
+                                            <div style={{ minWidth: 0 }}>
+                                              <div className="card-title" style={{ fontSize: '13.5px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                {mod.label}
+                                              </div>
+                                              <div style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>
+                                                Route: <code>{mod.route}</code>
+                                              </div>
+                                            </div>
+                                          </div>
+
+                                          <label className="custom-switch">
+                                            <input 
+                                              type="checkbox" 
+                                              checked={isPermitted}
+                                              disabled={isSuperAdmin}
+                                              onChange={(e) => handleAdminPermToggle(selectedAdminUser.id, mod.key, e.target.checked)}
+                                            />
+                                            <span className="switch-slider" style={isSuperAdmin ? { cursor: 'not-allowed', opacity: 0.7 } : {}}></span>
+                                          </label>
+                                        </div>
+
+                                        <p style={{ fontSize: '12px', color: '#4b5563', lineHeight: 1.4, margin: '4px 0 8px 0', minHeight: '32px' }}>
+                                          {mod.desc}
+                                        </p>
+
+                                        {/* Module-specific granular actions */}
+                                        {mod.key === 'salary_payments' && (
+                                          <div className="permission-list" style={{ marginTop: 'auto', borderTop: '1px solid #f1f3f5', paddingTop: '8px' }}>
+                                            <div className="permission-row">
+                                              <span className="permission-label" style={{ fontSize: '11.5px' }}>Record & Disburse Payments</span>
+                                              <label className="custom-switch">
+                                                <input 
+                                                  type="checkbox" 
+                                                  checked={isSuperAdmin || (currentAdminPerms.can_record_payments !== false && isPermitted)}
+                                                  disabled={isSuperAdmin || !isPermitted}
+                                                  onChange={(e) => handleAdminPermToggle(selectedAdminUser.id, 'can_record_payments', e.target.checked)}
+                                                />
+                                                <span className="switch-slider"></span>
+                                              </label>
+                                            </div>
+                                            <div className="permission-row">
+                                              <span className="permission-label" style={{ fontSize: '11.5px' }}>Review & Approve Payroll</span>
+                                              <label className="custom-switch">
+                                                <input 
+                                                  type="checkbox" 
+                                                  checked={isSuperAdmin || (currentAdminPerms.can_approve_payroll !== false && isPermitted)}
+                                                  disabled={isSuperAdmin || !isPermitted}
+                                                  onChange={(e) => handleAdminPermToggle(selectedAdminUser.id, 'can_approve_payroll', e.target.checked)}
+                                                />
+                                                <span className="switch-slider"></span>
+                                              </label>
+                                            </div>
+                                            <div className="permission-row">
+                                              <span className="permission-label" style={{ fontSize: '11.5px' }}>Delete Payment Records</span>
+                                              <label className="custom-switch">
+                                                <input 
+                                                  type="checkbox" 
+                                                  checked={isSuperAdmin || (currentAdminPerms.can_delete_salary_payments !== false && isPermitted)}
+                                                  disabled={isSuperAdmin || !isPermitted}
+                                                  onChange={(e) => handleAdminPermToggle(selectedAdminUser.id, 'can_delete_salary_payments', e.target.checked)}
+                                                />
+                                                <span className="switch-slider"></span>
+                                              </label>
+                                            </div>
+                                          </div>
+                                        )}
+
+                                        {mod.key === 'employees' && (
+                                          <div className="permission-list" style={{ marginTop: 'auto', borderTop: '1px solid #f1f3f5', paddingTop: '8px' }}>
+                                            <div className="permission-row">
+                                              <span className="permission-label" style={{ fontSize: '11.5px' }}>Create & Edit Staff Contracts</span>
+                                              <label className="custom-switch">
+                                                <input 
+                                                  type="checkbox" 
+                                                  checked={isSuperAdmin || (currentAdminPerms.can_manage_employees !== false && isPermitted)}
+                                                  disabled={isSuperAdmin || !isPermitted}
+                                                  onChange={(e) => handleAdminPermToggle(selectedAdminUser.id, 'can_manage_employees', e.target.checked)}
+                                                />
+                                                <span className="switch-slider"></span>
+                                              </label>
+                                            </div>
+                                          </div>
+                                        )}
+
+                                        {mod.key === 'purchasing' && (
+                                          <div className="permission-list" style={{ marginTop: 'auto', borderTop: '1px solid #f1f3f5', paddingTop: '8px' }}>
+                                            <div className="permission-row">
+                                              <span className="permission-label" style={{ fontSize: '11.5px' }}>Create Purchasing Orders</span>
+                                              <label className="custom-switch">
+                                                <input 
+                                                  type="checkbox" 
+                                                  checked={isSuperAdmin || (currentAdminPerms.can_create_purchasing !== false && isPermitted)}
+                                                  disabled={isSuperAdmin || !isPermitted}
+                                                  onChange={(e) => handleAdminPermToggle(selectedAdminUser.id, 'can_create_purchasing', e.target.checked)}
+                                                />
+                                                <span className="switch-slider"></span>
+                                              </label>
+                                            </div>
+                                            <div className="permission-row">
+                                              <span className="permission-label" style={{ fontSize: '11.5px' }}>Receive Deliveries & Invoices</span>
+                                              <label className="custom-switch">
+                                                <input 
+                                                  type="checkbox" 
+                                                  checked={isSuperAdmin || (currentAdminPerms.can_receive_purchasing !== false && isPermitted)}
+                                                  disabled={isSuperAdmin || !isPermitted}
+                                                  onChange={(e) => handleAdminPermToggle(selectedAdminUser.id, 'can_receive_purchasing', e.target.checked)}
+                                                />
+                                                <span className="switch-slider"></span>
+                                              </label>
+                                            </div>
+                                          </div>
+                                        )}
+
+                                        {mod.key === 'attendance' && (
+                                          <div className="permission-list" style={{ marginTop: 'auto', borderTop: '1px solid #f1f3f5', paddingTop: '8px' }}>
+                                            <div className="permission-row">
+                                              <span className="permission-label" style={{ fontSize: '11.5px' }}>Shift Schedule Builder</span>
+                                              <label className="custom-switch">
+                                                <input 
+                                                  type="checkbox" 
+                                                  checked={isSuperAdmin || (currentAdminPerms.can_manage_schedules !== false && isPermitted)}
+                                                  disabled={isSuperAdmin || !isPermitted}
+                                                  onChange={(e) => handleAdminPermToggle(selectedAdminUser.id, 'can_manage_schedules', e.target.checked)}
+                                                />
+                                                <span className="switch-slider"></span>
+                                              </label>
+                                            </div>
+                                            <div className="permission-row">
+                                              <span className="permission-label" style={{ fontSize: '11.5px' }}>Approve Leave & Swaps</span>
+                                              <label className="custom-switch">
+                                                <input 
+                                                  type="checkbox" 
+                                                  checked={isSuperAdmin || (currentAdminPerms.can_approve_leave !== false && isPermitted)}
+                                                  disabled={isSuperAdmin || !isPermitted}
+                                                  onChange={(e) => handleAdminPermToggle(selectedAdminUser.id, 'can_approve_leave', e.target.checked)}
+                                                />
+                                                <span className="switch-slider"></span>
+                                              </label>
+                                            </div>
+                                          </div>
+                                        )}
+
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid #f1f3f5', paddingTop: '8px', marginTop: 'auto' }}>
+                                          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Status:</span>
+                                          <span 
+                                            style={{ 
+                                              fontSize: '11px', 
+                                              fontWeight: 700, 
+                                              padding: '2px 8px', 
+                                              borderRadius: '10px',
+                                              display: 'inline-flex',
+                                              alignItems: 'center',
+                                              gap: '4px',
+                                              backgroundColor: isPermitted ? '#dcfce7' : '#fee2e2',
+                                              color: isPermitted ? '#15803d' : '#b91c1c'
+                                            }}
+                                          >
+                                            <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: isPermitted ? '#22c55e' : '#ef4444' }} />
+                                            {isPermitted ? 'PERMITTED' : 'RESTRICTED'}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </>
+                  );
+                })()
+              ) : (
+                <div className="empty-state">
+                  <ShieldCheck size={48} style={{ color: '#ced4da', marginBottom: '16px' }} />
+                  <h3 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-main)', marginBottom: '8px' }}>
+                    Select an Admin User
+                  </h3>
+                  <p style={{ fontSize: '14px', maxWidth: '300px' }}>
+                    Choose an administrator or manager from the left sidebar to configure their Web Admin Portal permissions.
+                  </p>
+                </div>
+              )
             ) : selectedPermission ? (
               <>
                 <div className="details-header">
