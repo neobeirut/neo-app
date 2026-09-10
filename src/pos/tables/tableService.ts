@@ -93,6 +93,136 @@ export async function reconcilePendingTableSyncs(branchId: string): Promise<void
   }
 }
 
+export interface PendingTableSync {
+  sessionId: string;
+  tableCode: string;
+  status: string;
+  syncStatus: string;
+  lastSyncError?: string | null;
+  guestCount: number;
+  commerceOrderId?: number | null;
+  clientOrderToken?: string | null;
+  createdAt: string;
+}
+
+/**
+ * Loads pending table sessions that failed or are pending synchronization with OVRLOAD.
+ * Implements Rule 11: Table Reconciliation Manager Visibility.
+ */
+export async function loadPendingTableSyncs(branchId: string): Promise<PendingTableSync[]> {
+  try {
+    const { data, error } = await supabase
+      .from('pos_table_sessions')
+      .select(`
+        id, branch_id, commerce_order_id, commerce_client_order_token,
+        status, sync_status, last_sync_error, guest_count, created_at,
+        tables:pos_table_session_tables(table:pos_tables(table_code), is_primary)
+      `)
+      .eq('branch_id', branchId)
+      .or('sync_status.eq.requires_retry,status.eq.opening,status.eq.sync_failed');
+
+    if (error || !data) return [];
+
+    return data.map((s: any) => {
+      const primaryTable = (s.tables || []).find((t: any) => t.is_primary)?.table?.table_code || 'Unknown';
+      return {
+        sessionId: s.id,
+        tableCode: primaryTable,
+        status: s.status,
+        syncStatus: s.sync_status || 'unknown',
+        lastSyncError: s.last_sync_error,
+        guestCount: s.guest_count || 1,
+        commerceOrderId: s.commerce_order_id,
+        clientOrderToken: s.commerce_client_order_token,
+        createdAt: s.created_at
+      };
+    });
+  } catch (err) {
+    console.warn('Error loading pending table syncs:', err);
+    return [];
+  }
+}
+
+/**
+ * Manually retries reconciliation for a specific table session.
+ * Implements Rule 11: Table Reconciliation Manager Visibility.
+ */
+export async function retrySessionSync(sessionId: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { data: session, error } = await supabase
+      .from('pos_table_sessions')
+      .select(`
+        id, branch_id, commerce_order_id, commerce_client_order_token,
+        status, sync_status, guest_count,
+        tables:pos_table_session_tables(table:pos_tables(table_code), is_primary)
+      `)
+      .eq('id', sessionId)
+      .single();
+
+    if (error || !session) return { success: false, error: 'Session not found' };
+
+    // Case 1: Session in opening or no commerce_order_id -> retrieve via client_order_token
+    if (session.commerce_client_order_token && !session.commerce_order_id) {
+      const res = await fetch(`${COMMERCE_API_BASE}/api/pos/orders?client_order_token=${encodeURIComponent(session.commerce_client_order_token)}`);
+      if (res.ok) {
+        const data = await res.json();
+        const existingOrder = data.order || (data.orders && data.orders[0]);
+        if (existingOrder && existingOrder.id) {
+          await supabase
+            .from('pos_table_sessions')
+            .update({
+              commerce_order_id: existingOrder.id,
+              status: 'occupied',
+              sync_status: 'synced',
+              last_sync_error: null
+            })
+            .eq('id', session.id);
+          return { success: true };
+        }
+      }
+    }
+
+    // Case 2: Session with commerce_order_id needing sync retry
+    if (session.commerce_order_id) {
+      const links = session.tables || [];
+      const primaryTable = links.find((t: any) => t.is_primary)?.table?.table_code;
+      const mergedTables = links.filter((t: any) => !t.is_primary).map((t: any) => t.table?.table_code).filter(Boolean);
+      const label = primaryTable 
+        ? (mergedTables && mergedTables.length > 0 ? `${primaryTable} + ${mergedTables.join(' + ')}` : primaryTable)
+        : undefined;
+
+      const patchBody: any = {};
+      if (label) patchBody.table_label = label;
+      if (session.guest_count) patchBody.guest_count = session.guest_count;
+
+      const res = await fetch(`${COMMERCE_API_BASE}/api/pos/orders/${session.commerce_order_id}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patchBody)
+      });
+
+      if (res.ok) {
+        await supabase
+          .from('pos_table_sessions')
+          .update({
+            status: session.status === 'opening' ? 'occupied' : session.status,
+            sync_status: 'synced',
+            last_sync_error: null
+          })
+          .eq('id', session.id);
+        return { success: true };
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        return { success: false, error: errData.error || `HTTP ${res.status}` };
+      }
+    }
+
+    return { success: false, error: 'No actionable sync strategy found for session' };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
 // Auto-register network reconnect trigger
 if (typeof window !== 'undefined') {
   window.addEventListener('online', () => {

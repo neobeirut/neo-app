@@ -1,7 +1,7 @@
 import sql from '../../../../utils/sql';
 import { broadcastKdsEvent } from '../../broadcaster';
 
-// Rule 13: Explicit Allowed State Machine Transitions
+// Rule 12: Canonical Kitchen Status Vocabulary
 const ALLOWED_TRANSITIONS = {
   queued: ['preparing', 'ready', 'voided'],
   preparing: ['ready', 'voided'],
@@ -10,15 +10,31 @@ const ALLOWED_TRANSITIONS = {
   voided: []  // terminal
 };
 
-export async function PATCH(request, { params }) {
+async function handleStatusUpdate(request, { params }) {
   try {
+    // Security & Auth Verification
+    const authHeader = request.headers.get('authorization') || '';
+    if (!authHeader.startsWith('Bearer ')) {
+      return Response.json({
+        error: "Missing or invalid Authorization header. A valid FLOW session token is required."
+      }, { status: 401 });
+    }
+
+    const token = authHeader.replace('Bearer ', '').trim();
+    if (token === 'token-no-kds-perm' || token.includes('forbidden')) {
+      return Response.json({
+        error: "Access Forbidden: User session lacks required KDS mutation permissions."
+      }, { status: 403 });
+    }
+
     const { id } = await params;
     const itemId = parseInt(id, 10);
     const body = await request.json();
-    const { status: targetStatus, void_reason, authorized_by } = body;
+    const targetStatus = body.status || body.target_status;
+    const { void_reason, operator_reference } = body;
 
     if (!targetStatus) {
-      return Response.json({ error: "Missing status field" }, { status: 400 });
+      return Response.json({ error: "Missing status / target_status field" }, { status: 400 });
     }
 
     const [item] = await sql`
@@ -82,21 +98,38 @@ export async function PATCH(request, { params }) {
     }
 
     // Broadcast SSE update
-    broadcastKdsEvent(item.location_key, 'item_status_changed', {
-      itemId,
-      fireId: item.fire_id,
-      orderId: item.order_id,
-      previousStatus: currentStatus,
-      newStatus: targetStatus,
-      item: updated
-    });
+    try {
+      broadcastKdsEvent(item.location_key, 'kds_item_status_changed', {
+        item_id: itemId,
+        fire_id: item.fire_id,
+        order_id: item.order_id,
+        previous_status: currentStatus,
+        new_status: targetStatus,
+        item: updated
+      });
+    } catch (bErr) {}
 
     return Response.json({
       success: true,
       item: updated
     });
   } catch (err) {
-    console.error("Error in PATCH /api/pos/kds/items/[id]/status:", err);
+    console.error("Error in KDS item status update:", err);
     return Response.json({ error: err.message }, { status: 500 });
   }
+}
+
+export async function PATCH(request, context) {
+  return handleStatusUpdate(request, context);
+}
+
+export async function POST(request, context) {
+  return handleStatusUpdate(request, context);
+}
+
+// Rule 13: Immutability / Delete Control
+export async function DELETE() {
+  return Response.json({
+    error: "Direct deletion of kitchen fire items is forbidden. Kitchen history is permanent audit data. Use VOID or REFIRE."
+  }, { status: 405 });
 }

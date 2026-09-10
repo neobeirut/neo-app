@@ -118,6 +118,7 @@ export const KdsScreen: React.FC<KdsScreenProps> = ({ branchId }) => {
                 <KdsTicket
                   key={fire.id}
                   fire={fire}
+                  currentStation={activeStation}
                   currentStationKey={activeStation?.code}
                   stationColor={activeStation?.color}
                   yellowThresholdSeconds={activeStation?.default_timer_yellow_seconds}
@@ -143,7 +144,9 @@ export const KdsScreen: React.FC<KdsScreenProps> = ({ branchId }) => {
       {/* Settings Modal */}
       {showSettings && (
         <KdsSettingsModal
+          branchId={branchId}
           activeStation={activeStation}
+          stations={stations}
           onClose={() => setShowSettings(false)}
         />
       )}

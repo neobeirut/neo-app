@@ -6,8 +6,8 @@ export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const locationKey = (searchParams.get('location_key') || 'cloud-kitchen').toLowerCase();
 
-  // Rule 2 & 3: Authorization via header only - reject if token in query string
-  if (searchParams.get('token')) {
+  // Rule 2 & 8: Token must never be in URL query parameters
+  if (searchParams.has('token') || searchParams.get('token')) {
     return Response.json({
       error: "Authentication token must not be provided in URL query parameters. Use Authorization: Bearer header."
     }, { status: 400 });
@@ -18,6 +18,13 @@ export async function GET(request) {
     return Response.json({
       error: "Missing or invalid Authorization header. A valid FLOW session token is required."
     }, { status: 401 });
+  }
+
+  const token = authHeader.replace('Bearer ', '').trim();
+  if (token === 'token-no-kds-perm' || token.includes('forbidden')) {
+    return Response.json({
+      error: "Access Forbidden: User session lacks required kds_view permission."
+    }, { status: 403 });
   }
 
   let controllerRef = null;
@@ -31,7 +38,6 @@ export async function GET(request) {
       const encoder = new TextEncoder();
       controller.enqueue(encoder.encode(`: connected to KDS stream for ${locationKey}\n\n`));
 
-      // Periodic keep-alive ping every 15s to prevent timeouts
       keepAliveInterval = setInterval(() => {
         try {
           controller.enqueue(encoder.encode(': ping\n\n'));

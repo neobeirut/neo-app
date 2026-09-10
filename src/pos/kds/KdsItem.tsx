@@ -17,7 +17,7 @@ export const KdsItem: React.FC<KdsItemProps> = ({ item, stationType, onItemUpdat
   const getStatusColor = (status: KdsFireItemStatus) => {
     switch (status) {
       case 'queued': return 'bg-gray-800 text-gray-300 border-gray-700';
-      case 'in_progress': return 'bg-amber-950/40 text-amber-300 border-amber-500/50';
+      case 'preparing': return 'bg-amber-950/40 text-amber-300 border-amber-500/50';
       case 'ready': return 'bg-emerald-950/50 text-emerald-300 border-emerald-500';
       case 'bumped': return 'bg-slate-900 text-slate-500 border-slate-800 line-through';
       case 'voided': return 'bg-rose-950/40 text-rose-400 border-rose-800 line-through';
@@ -28,9 +28,9 @@ export const KdsItem: React.FC<KdsItemProps> = ({ item, stationType, onItemUpdat
   const advanceStatus = async () => {
     if (loading || item.status === 'bumped' || item.status === 'voided') return;
     setLoading(true);
-    let nextStatus: KdsFireItemStatus = 'in_progress';
-    if (item.status === 'queued') nextStatus = 'in_progress';
-    else if (item.status === 'in_progress') nextStatus = 'ready';
+    let nextStatus: KdsFireItemStatus = 'preparing';
+    if (item.status === 'queued') nextStatus = 'preparing';
+    else if (item.status === 'preparing') nextStatus = 'ready';
     else if (item.status === 'ready') nextStatus = 'bumped';
 
     await updateFireItemStatus(item.id, nextStatus);

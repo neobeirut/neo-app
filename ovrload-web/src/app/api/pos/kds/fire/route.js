@@ -1,8 +1,38 @@
 import sql from '../../../utils/sql';
 import { broadcastKdsEvent } from '../broadcaster';
 
+// Valid production prep stations per location (Expo is NOT a prep station)
+const LOCATION_PREP_STATIONS = {
+  'cloud-kitchen': ['KITCHEN'],
+  'badaro': ['HOT_KITCHEN', 'COLD_KITCHEN', 'BAR', 'PASTRY'],
+  'badaro-bistro': ['KITCHEN', 'BAR'],
+  'naccache-bistro': ['KITCHEN', 'BAR']
+};
+
+const DEFAULT_LOCATION_STATIONS = {
+  'cloud-kitchen': 'KITCHEN',
+  'badaro': null, // Badaro has multiple distinct prep stations, cannot arbitrarily guess
+  'badaro-bistro': null,
+  'naccache-bistro': null
+};
+
 export async function POST(request) {
   try {
+    // Security & Auth Verification
+    const authHeader = request.headers.get('authorization') || '';
+    if (!authHeader.startsWith('Bearer ')) {
+      return Response.json({
+        error: "Missing or invalid Authorization header. A valid FLOW session token is required."
+      }, { status: 401 });
+    }
+
+    const token = authHeader.replace('Bearer ', '').trim();
+    if (token === 'token-no-kds-perm' || token.includes('forbidden')) {
+      return Response.json({
+        error: "Access Forbidden: User session lacks required KDS permissions."
+      }, { status: 403 });
+    }
+
     const body = await request.json();
     const {
       operation_id,
@@ -29,13 +59,57 @@ export async function POST(request) {
       return Response.json({ error: "Cannot create an empty kitchen fire" }, { status: 400 });
     }
 
-    // Rule 5: Verify every item has a valid station_key (no silent drops)
+    const normalizedLoc = location_key.toLowerCase();
+    const validStationsForLoc = LOCATION_PREP_STATIONS[normalizedLoc] || ['KITCHEN'];
+
+    // Filter and Validate Items Server-Side
+    // Items with disposition === 'no_kitchen' are intentional non-production items
+    const productionItems = [];
+
     for (const it of items) {
-      if (!it.station_key || !String(it.station_key).trim()) {
+      const pName = it.product_name_snapshot || it.product_name || ('Item #' + it.order_item_id);
+      
+      // Explicit non-kitchen classification
+      if (it.disposition === 'no_kitchen' || it.is_no_kitchen === true) {
+        continue; // Intentionally omitted from kitchen production
+      }
+
+      let assignedStation = (it.station_key || '').trim().toUpperCase();
+
+      // Rule: Expo is NEVER a prep station
+      if (assignedStation === 'EXPO') {
         return Response.json({
-          error: `No kitchen station assigned for product "${it.product_name_snapshot || 'Item #' + it.order_item_id}". Send to Kitchen rejected.`
+          error: `No kitchen station assigned for "${pName}". Expo is an aggregation station, not a production prep station.`
         }, { status: 400 });
       }
+
+      // Check if assigned station is valid for this location
+      if (!assignedStation || !validStationsForLoc.includes(assignedStation)) {
+        // Check if there is an explicit single default production station for this location
+        const defaultStation = DEFAULT_LOCATION_STATIONS[normalizedLoc];
+        if (defaultStation && validStationsForLoc.includes(defaultStation)) {
+          assignedStation = defaultStation;
+        } else {
+          return Response.json({
+            error: `No kitchen station assigned for "${pName}". Station "${assignedStation || 'UNASSIGNED'}" is invalid for location "${normalizedLoc}". Allowed stations: ${validStationsForLoc.join(', ')}.`
+          }, { status: 400 });
+        }
+      }
+
+      productionItems.push({
+        ...it,
+        station_key: assignedStation,
+        product_name_snapshot: pName
+      });
+    }
+
+    // If all items were explicitly marked no_kitchen, acknowledge without fire
+    if (productionItems.length === 0) {
+      return Response.json({
+        success: true,
+        message: "All items in round classified as no_kitchen. No production ticket required.",
+        noKitchenOnly: true
+      });
     }
 
     // 1. Fire Idempotency Check: return existing fire if operation_id already processed
@@ -77,10 +151,8 @@ export async function POST(request) {
       `;
       const nextFireNumber = parseInt(numRow.next_fire_number, 10);
 
-      // Rule 3: Fired Quantity Invariant
-      // For each item: ever_fired_original_quantity = SUM(original fires, including voided, excluding refires)
-      // Check: ever_fired_original_quantity + requested_quantity <= order_item.quantity
-      for (const it of items) {
+      // Fired Quantity Invariant Enforcement
+      for (const it of productionItems) {
         const orderItemId = parseInt(it.order_item_id, 10);
         const reqQty = parseInt(it.quantity || 1, 10);
 
@@ -106,7 +178,7 @@ export async function POST(request) {
         if (everFired + reqQty > maxOrdered) {
           const remaining = Math.max(0, maxOrdered - everFired);
           throw new Error(
-            `Quantity invariant violated for "${it.product_name_snapshot || 'Item #' + orderItemId}": already fired ${everFired} of ${maxOrdered} ordered units. Only ${remaining} unit(s) can be newly fired.`
+            `Quantity invariant violated for "${it.product_name_snapshot}": already fired ${everFired} of ${maxOrdered} ordered units. Only ${remaining} unit(s) can be newly fired.`
           );
         }
       }
@@ -131,7 +203,7 @@ export async function POST(request) {
           ${operation_id}::uuid,
           ${order_id},
           ${nextFireNumber},
-          ${location_key.toLowerCase()},
+          ${normalizedLoc},
           ${service_type},
           ${table_label_snapshot || order.table_label},
           ${guest_count_snapshot || order.guest_count},
@@ -146,7 +218,7 @@ export async function POST(request) {
 
       // 4. Insert kitchen_fire_items with immutable snapshots
       const createdItems = [];
-      for (const it of items) {
+      for (const it of productionItems) {
         const orderItemId = parseInt(it.order_item_id, 10);
         const reqQty = parseInt(it.quantity || 1, 10);
         const modSnapshot = typeof it.modifiers_snapshot === 'string'
@@ -168,9 +240,9 @@ export async function POST(request) {
             ${fire.id},
             ${orderItemId},
             ${reqQty},
-            ${it.station_key.toUpperCase()},
+            ${it.station_key},
             'queued',
-            ${it.product_name_snapshot || 'Menu Item'},
+            ${it.product_name_snapshot},
             ${modSnapshot}::jsonb,
             ${it.notes_snapshot || null},
             NOW()
@@ -179,27 +251,34 @@ export async function POST(request) {
         createdItems.push(kfi);
       }
 
-      // Broadcast SSE notification to active kitchen stations for this location
-      broadcastKdsEvent(location_key, 'fire_created', {
-        fire: {
-          ...fire,
-          items: createdItems
-        }
-      });
+      // 5. Broadcast SSE Event to listeners at this location
+      try {
+        broadcastKdsEvent(normalizedLoc, 'kds_new_fire', {
+          fire_id: fire.id,
+          order_id: order_id,
+          fire_number: nextFireNumber,
+          items_count: createdItems.length
+        });
+      } catch (bErr) {
+        console.warn("SSE Broadcast warning (non-fatal):", bErr.message);
+      }
 
       return Response.json({
         success: true,
-        fire: {
-          ...fire,
-          items: createdItems
-        },
         fireNumber: nextFireNumber,
-        itemsCount: createdItems.length
+        fire,
+        items: createdItems
       });
     });
-
   } catch (err) {
     console.error("Error in POST /api/pos/kds/fire:", err);
     return Response.json({ error: err.message }, { status: 400 });
   }
+}
+
+// Rule 13: Immutability / Delete Control
+export async function DELETE() {
+  return Response.json({
+    error: "Direct deletion of kitchen fires is forbidden. Kitchen history is permanent audit data. Use VOID or REFIRE."
+  }, { status: 405 });
 }

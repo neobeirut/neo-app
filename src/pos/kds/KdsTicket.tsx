@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import type { KdsFire, KdsFireItem } from './types';
+import type { KdsFire, KdsFireItem, KdsStation } from './types';
 import { KdsItem } from './KdsItem';
-import { updateFireItemStatus, printStationChit } from './kdsService';
+import { updateFireItemStatus, retryPrintChit } from './kdsService';
 import { kdsAudio } from './kdsAudio';
 
 interface KdsTicketProps {
   fire: KdsFire;
+  currentStation?: KdsStation | null;
   currentStationKey?: string;
   stationColor?: string;
   yellowThresholdSeconds?: number;
@@ -15,6 +16,7 @@ interface KdsTicketProps {
 
 export const KdsTicket: React.FC<KdsTicketProps> = ({
   fire,
+  currentStation,
   currentStationKey,
   stationColor,
   yellowThresholdSeconds = 600, // 10m
@@ -23,6 +25,7 @@ export const KdsTicket: React.FC<KdsTicketProps> = ({
 }) => {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [hasAlerted, setHasAlerted] = useState(false);
+  const [reprintLabel, setReprintLabel] = useState<string>('🖨️ Re-Print');
 
   useEffect(() => {
     const firedDate = new Date(fire.fired_at || fire.created_at);
@@ -53,9 +56,11 @@ export const KdsTicket: React.FC<KdsTicketProps> = ({
     return 'bg-emerald-700 text-white';
   };
 
+  const activeStationKey = currentStation?.code || currentStationKey;
+
   // Filter items for current station if stationKey provided and not EXPO
-  const stationItems = (currentStationKey && currentStationKey !== 'EXPO')
-    ? (fire.items || []).filter(i => i.station_key === currentStationKey)
+  const stationItems = (activeStationKey && activeStationKey !== 'EXPO')
+    ? (fire.items || []).filter(i => i.station_key === activeStationKey)
     : (fire.items || []);
 
   const activeItems = stationItems.filter(i => i.status !== 'bumped' && i.status !== 'voided');
@@ -67,6 +72,29 @@ export const KdsTicket: React.FC<KdsTicketProps> = ({
       await updateFireItemStatus(item.id, nextStatus);
     }
     onTicketUpdated();
+  };
+
+  const handleRetryPrint = async () => {
+    setReprintLabel('Printing...');
+    const station = currentStation || {
+      id: 'active-station',
+      branch_id: '',
+      code: activeStationKey || 'KITCHEN',
+      name: activeStationKey || 'Kitchen Station',
+      station_type: 'prep' as const,
+      color: stationColor || '#f59e0b',
+      sort_order: 1,
+      active: true,
+      display_mode: 'grid' as const,
+      allow_bump_all: true,
+      sound_enabled: true,
+      default_timer_yellow_seconds: yellowThresholdSeconds,
+      default_timer_red_seconds: redThresholdSeconds,
+      printer_destination_key: 'kitchen-printer'
+    };
+    const res = await retryPrintChit({ fire, station, items: stationItems });
+    setReprintLabel(res.success ? '✓ Printed' : 'Failed');
+    setTimeout(() => setReprintLabel('🖨️ Re-Print'), 2500);
   };
 
   if (stationItems.length === 0) return null;
@@ -115,7 +143,7 @@ export const KdsTicket: React.FC<KdsTicketProps> = ({
           <KdsItem
             key={item.id}
             item={item}
-            stationType={currentStationKey}
+            stationType={activeStationKey}
             onItemUpdated={onTicketUpdated}
           />
         ))}
@@ -123,14 +151,23 @@ export const KdsTicket: React.FC<KdsTicketProps> = ({
 
       {/* Footer */}
       <div className="p-3 bg-gray-850 border-t border-gray-800 flex items-center justify-between gap-2">
-        <div className="text-xs text-gray-400">
-          {activeItems.length} active items
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-400">
+            {activeItems.length} active
+          </span>
+          <button
+            onClick={handleRetryPrint}
+            className="text-[11px] px-2 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700 font-semibold transition-all"
+            title="Retry / Re-Print Chit to Station Printer"
+          >
+            {reprintLabel}
+          </button>
         </div>
 
         {activeItems.length > 0 && (
           <button
             onClick={handleBumpAll}
-            className={`px-4 py-2 rounded-lg font-bold text-sm transition-all ${
+            className={`px-3 py-1.5 rounded-lg font-bold text-xs transition-all ${
               allReady
                 ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/30'
                 : 'bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700'

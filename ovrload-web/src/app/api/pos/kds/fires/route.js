@@ -77,24 +77,30 @@ export async function GET(request) {
       return {
         ...f,
         items: fItems,
-        item_count: fItems.length,
-        ready_count: readyCount,
-        total_active_items: nonVoided.length,
+        total_items_count: fItems.length,
+        ready_items_count: readyCount,
         all_ready: allReady,
-        all_bumped: allBumped,
-        expo_status: allBumped ? 'served' : allReady ? 'ready_to_serve' : 'in_prep'
+        all_bumped: allBumped
       };
-    }).filter(f => isExpo ? true : f.items.length > 0);
+    }).filter(f => isExpo || !stationKey || f.items.length > 0);
 
     return Response.json({
       success: true,
       location_key: locationKey,
-      station_key: stationKey || 'ALL',
+      station_key: stationKey || null,
       is_expo: isExpo,
+      count: resultFires.length,
       fires: resultFires
     });
   } catch (err) {
     console.error("Error in GET /api/pos/kds/fires:", err);
     return Response.json({ error: err.message }, { status: 500 });
   }
+}
+
+// Rule 13: Immutability / Delete Control
+export async function DELETE() {
+  return Response.json({
+    error: "Direct deletion of kitchen fires is forbidden. Kitchen history is permanent audit data. Use VOID or REFIRE."
+  }, { status: 405 });
 }

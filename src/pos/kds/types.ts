@@ -1,8 +1,10 @@
 export type KdsStationType = 'prep' | 'expo' | 'bar';
 
-export type KdsFireItemStatus = 'queued' | 'in_progress' | 'ready' | 'bumped' | 'voided';
+export type KdsFireItemStatus = 'queued' | 'preparing' | 'ready' | 'bumped' | 'voided';
 
 export type KdsFireStatus = 'active' | 'completed' | 'cancelled';
+
+export type KdsRoutingDisposition = 'production' | 'no_kitchen';
 
 export interface KdsStation {
   id: string;
@@ -18,6 +20,7 @@ export interface KdsStation {
   sound_enabled: boolean;
   default_timer_yellow_seconds: number;
   default_timer_red_seconds: number;
+  printer_destination_key?: string | null;
   default_printer_ip?: string | null;
   default_printer_port?: number | null;
 }
@@ -71,12 +74,22 @@ export interface KdsProductRouting {
   id: string;
   branch_id: string;
   commerce_product_link_id: string;
-  station_id: string;
+  station_id?: string | null;
   fallback_station_id?: string | null;
+  disposition: KdsRoutingDisposition;
   active: boolean;
   product_name?: string;
+  category_name?: string;
   station_code?: string;
   station_name?: string;
+}
+
+export interface KdsRoutingCoverageSummary {
+  totalProducts: number;
+  routedCount: number;
+  unroutedCount: number;
+  noKitchenCount: number;
+  routings: KdsProductRouting[];
 }
 
 export interface KdsEventPayload {

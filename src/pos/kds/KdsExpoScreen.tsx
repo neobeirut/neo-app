@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type { KdsFire, KdsFireItem } from './types';
-import { updateFireItemStatus } from './kdsService';
+import { updateFireItemStatus, retryPrintChit } from './kdsService';
 
 interface KdsExpoScreenProps {
   fires: KdsFire[];
@@ -8,6 +8,7 @@ interface KdsExpoScreenProps {
 }
 
 export const KdsExpoScreen: React.FC<KdsExpoScreenProps> = ({ fires, onTicketUpdated }) => {
+  const [printStatus, setPrintStatus] = useState<Record<number, string>>({});
   const activeFires = fires.filter(f => f.status === 'active');
 
   const handleBumpEntireOrder = async (fire: KdsFire) => {
@@ -17,6 +18,35 @@ export const KdsExpoScreen: React.FC<KdsExpoScreenProps> = ({ fires, onTicketUpd
       }
     }
     onTicketUpdated();
+  };
+
+  const handleRetryPrint = async (fire: KdsFire) => {
+    setPrintStatus(prev => ({ ...prev, [fire.id]: 'Printing...' }));
+    const expoStation = {
+      id: 'expo',
+      branch_id: '',
+      code: 'EXPO',
+      name: 'Expo Station',
+      station_type: 'expo' as const,
+      color: '#10b981',
+      sort_order: 99,
+      active: true,
+      display_mode: 'grid' as const,
+      allow_bump_all: true,
+      sound_enabled: true,
+      default_timer_yellow_seconds: 600,
+      default_timer_red_seconds: 900,
+      printer_destination_key: 'kitchen-printer'
+    };
+    const res = await retryPrintChit({ fire, station: expoStation });
+    setPrintStatus(prev => ({ ...prev, [fire.id]: res.success ? '✓ Printed' : 'Failed' }));
+    setTimeout(() => {
+      setPrintStatus(prev => {
+        const next = { ...prev };
+        delete next[fire.id];
+        return next;
+      });
+    }, 2500);
   };
 
   return (
@@ -85,7 +115,7 @@ export const KdsExpoScreen: React.FC<KdsExpoScreenProps> = ({ fires, onTicketUpd
                     className={`p-2.5 rounded-lg border text-sm flex items-center justify-between ${
                       item.status === 'ready'
                         ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-200'
-                        : item.status === 'in_progress'
+                        : item.status === 'preparing'
                         ? 'bg-amber-950/30 border-amber-500/30 text-amber-200'
                         : 'bg-gray-800/60 border-gray-700 text-gray-300'
                     }`}
@@ -109,11 +139,20 @@ export const KdsExpoScreen: React.FC<KdsExpoScreenProps> = ({ fires, onTicketUpd
               </div>
 
               {/* Expo Action Footer */}
-              <div className="p-4 bg-gray-850 border-t border-gray-800 flex items-center justify-between">
-                <span className="text-xs text-gray-400">Order #{fire.order_id}</span>
+              <div className="p-4 bg-gray-850 border-t border-gray-800 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-400">#{fire.order_id}</span>
+                  <button
+                    onClick={() => handleRetryPrint(fire)}
+                    className="text-xs px-2.5 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700 font-semibold transition-all"
+                    title="Retry / Re-Print Chit to Kitchen Printer"
+                  >
+                    {printStatus[fire.id] || '🖨️ Re-Print'}
+                  </button>
+                </div>
                 <button
                   onClick={() => handleBumpEntireOrder(fire)}
-                  className={`px-5 py-2.5 rounded-lg font-black text-sm uppercase tracking-wider transition-all ${
+                  className={`px-4 py-2 rounded-lg font-black text-xs uppercase tracking-wider transition-all ${
                     isFullyReady
                       ? 'bg-emerald-500 hover:bg-emerald-400 text-gray-950 shadow-lg shadow-emerald-500/30 scale-105'
                       : 'bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700'

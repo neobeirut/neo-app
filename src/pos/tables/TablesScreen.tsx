@@ -7,7 +7,10 @@ import {
   mergeTables, 
   changeGuestCount, 
   requestBill, 
-  closeTableSession 
+  closeTableSession,
+  loadPendingTableSyncs,
+  retrySessionSync,
+  type PendingTableSync
 } from './tableService';
 import { FloorPlan } from './FloorPlan';
 import { FloorPlanEditor } from './FloorPlanEditor';
@@ -61,6 +64,11 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
   const [tableForSplit, setTableForSplit] = useState<PosTable | null>(null);
   const [activePaymentOrder, setActivePaymentOrder] = useState<any | null>(null);
 
+  // Table Reconciliation State (Rule 11)
+  const [pendingSyncs, setPendingSyncs] = useState<PendingTableSync[]>([]);
+  const [showSyncModal, setShowSyncModal] = useState(false);
+  const [retryingSessionId, setRetryingSessionId] = useState<string | null>(null);
+
   const fetchState = async () => {
     setLoading(true);
     setErrorMsg(null);
@@ -74,6 +82,13 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
     } else {
       setErrorMsg(res.error || 'Failed to load floor layout');
     }
+
+    // Load out-of-sync table sessions
+    try {
+      const syncs = await loadPendingTableSyncs(branchId);
+      setPendingSyncs(syncs);
+    } catch {}
+
     setLoading(false);
   };
 
@@ -211,6 +226,19 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
               <MapIcon className="w-3.5 h-3.5" />
             </button>
           </div>
+
+          {/* Manager Table Sync Reconciliation Alert (Rule 11) */}
+          {pendingSyncs.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowSyncModal(true)}
+              className="px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-black transition flex items-center gap-1.5 animate-pulse"
+              title="Review and reconcile out-of-sync table sessions"
+            >
+              <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
+              <span>⚠️ {pendingSyncs.length} TABLE SYNCS PENDING</span>
+            </button>
+          )}
 
           {/* Manager Floor Plan Editor Toggle */}
           <button
@@ -382,6 +410,103 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
           onRefresh={fetchState}
           onClose={() => setIsEditorOpen(false)}
         />
+      )}
+
+      {/* Table Reconciliation Manager Modal (Rule 11) */}
+      {showSyncModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-2xl w-full p-6 shadow-2xl flex flex-col">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+              <div>
+                <h3 className="text-lg font-black text-white flex items-center gap-2">
+                  <AlertCircle className="w-5 h-5 text-amber-400" />
+                  Table Session Reconciliation Manager
+                </h3>
+                <p className="text-xs text-slate-400 mt-1">
+                  Active tables requiring synchronization between FLOW operations and OVRLOAD commerce.
+                </p>
+              </div>
+              <button
+                onClick={() => setShowSyncModal(false)}
+                className="text-slate-400 hover:text-white p-2 rounded-lg"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="py-4 space-y-3 max-h-[60vh] overflow-y-auto">
+              {pendingSyncs.length === 0 ? (
+                <div className="text-center py-8 text-emerald-400 font-bold text-sm">
+                  ✓ All table sessions are fully synchronized.
+                </div>
+              ) : (
+                pendingSyncs.map((sync) => {
+                  const isRetrying = retryingSessionId === sync.sessionId;
+                  return (
+                    <div
+                      key={sync.sessionId}
+                      className="p-4 rounded-xl bg-slate-800/80 border border-slate-700 flex items-center justify-between gap-4"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-black text-white text-base">
+                            Table {sync.tableCode}
+                          </span>
+                          <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 font-bold uppercase">
+                            {sync.syncStatus}
+                          </span>
+                          <span className="text-xs text-slate-400">
+                            ({sync.guestCount} guests)
+                          </span>
+                        </div>
+                        <div className="text-xs text-slate-400 mt-1 truncate">
+                          Session: <code className="text-slate-300 font-mono text-[11px]">{sync.sessionId}</code>
+                        </div>
+                        {sync.commerceOrderId && (
+                          <div className="text-xs text-slate-400">
+                            Commerce Order: <span className="text-amber-300 font-bold">#{sync.commerceOrderId}</span>
+                          </div>
+                        )}
+                        {sync.lastSyncError && (
+                          <div className="text-xs text-rose-400 mt-1 font-mono">
+                            Error: {sync.lastSyncError}
+                          </div>
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        disabled={isRetrying}
+                        onClick={async () => {
+                          setRetryingSessionId(sync.sessionId);
+                          await retrySessionSync(sync.sessionId);
+                          await fetchState();
+                          setRetryingSessionId(null);
+                        }}
+                        className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs uppercase tracking-wider transition-all disabled:opacity-50"
+                      >
+                        {isRetrying ? 'Retrying...' : '[ RETRY ]'}
+                      </button>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            <div className="pt-4 border-t border-slate-800 flex items-center justify-between">
+              <span className="text-xs text-slate-500">
+                Auto-reconciliation runs on reconnect and floor load.
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowSyncModal(false)}
+                className="px-5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
