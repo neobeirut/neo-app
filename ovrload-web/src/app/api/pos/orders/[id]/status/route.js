@@ -6,6 +6,7 @@ export async function PATCH(request, { params }) {
     const body = await request.json();
     const {
       status,
+      expected_version,
       voidReason,
       subtotal,
       deliveryFee,
@@ -24,28 +25,71 @@ export async function PATCH(request, { params }) {
     }
 
     const [existingOrder] = await sql`
-      SELECT id, status, customer_phone FROM orders WHERE id = ${id} LIMIT 1
+      SELECT id, status, customer_phone, COALESCE(version, 1) as version, client_order_token, claimed_by, claimed_terminal, claimed_at FROM orders WHERE id = ${id} LIMIT 1
     `;
     if (!existingOrder) {
       return Response.json({ error: "Order not found" }, { status: 404 });
     }
+
+    const expectedVersion = (expected_version !== undefined && expected_version !== null)
+      ? parseInt(expected_version, 10)
+      : null;
+
+    if (expectedVersion !== null && !isNaN(expectedVersion) && existingOrder.version !== expectedVersion) {
+      const [currentOrder] = await sql`
+        SELECT o.*,
+          COALESCE(
+            json_agg(
+              json_build_object(
+                'id', oi.id,
+                'order_id', oi.order_id,
+                'product_id', oi.product_id,
+                'product_name', p.name,
+                'quantity', oi.quantity,
+                'unit_price', oi.unit_price,
+                'total_price', oi.total_price,
+                'customizations', oi.customizations,
+                'comment', oi.comment
+              )
+            ) FILTER (WHERE oi.id IS NOT NULL), '[]'
+          ) as items
+        FROM orders o
+        LEFT JOIN order_items oi ON o.id = oi.order_id
+        LEFT JOIN products p ON oi.product_id = p.id
+        WHERE o.id = ${id}
+        GROUP BY o.id
+      `;
+      return Response.json({
+        conflict: true,
+        error: "This order was updated on another terminal. The latest version has been loaded.",
+        currentOrder: currentOrder || existingOrder
+      }, { status: 409 });
+    }
+
     const prevStatus = existingOrder.status;
     const phoneToNotify = customerPhone || existingOrder.customer_phone;
 
+    let updateResult;
+
     if (voidReason) {
-      await sql`
+      updateResult = await sql`
         UPDATE orders 
-        SET status = ${status}, void_reason = ${voidReason}
-        WHERE id = ${id}
+        SET 
+          status = ${status}, 
+          void_reason = ${voidReason},
+          version = COALESCE(version, 1) + 1
+        WHERE id = ${id} ${expectedVersion !== null && !isNaN(expectedVersion) ? sql`AND version = ${expectedVersion}` : sql``}
+        RETURNING id, status, version
       `;
     } else {
       if (customerName !== undefined && (!customerName || !String(customerName).trim())) {
         return Response.json({ error: "Customer name is required to save the order" }, { status: 400 });
       }
-      await sql`
+      updateResult = await sql`
         UPDATE orders 
         SET 
           status = ${status},
+          version = COALESCE(version, 1) + 1,
           subtotal_amount = COALESCE(${subtotal !== undefined && subtotal !== null ? subtotal : null}, subtotal_amount),
           delivery_fee = COALESCE(${deliveryFee !== undefined && deliveryFee !== null ? deliveryFee : null}, delivery_fee),
           discount_amount = COALESCE(${discountAmount !== undefined && discountAmount !== null ? discountAmount : null}, discount_amount),
@@ -55,8 +99,19 @@ export async function PATCH(request, { params }) {
           delivery_address = COALESCE(${deliveryAddress || null}, delivery_address),
           order_type = COALESCE(${orderType || null}, order_type),
           order_source = COALESCE(${orderSource || null}, order_source)
-        WHERE id = ${id}
+        WHERE id = ${id} ${expectedVersion !== null && !isNaN(expectedVersion) ? sql`AND version = ${expectedVersion}` : sql``}
+        RETURNING id, status, version
       `;
+    }
+
+    if (!updateResult || updateResult.length === 0) {
+      const [currentOrder] = await sql`SELECT * FROM orders WHERE id = ${id} LIMIT 1`;
+      return Response.json({
+        conflict: true,
+        error: "This order was updated on another terminal. The latest version has been loaded.",
+        currentOrder: currentOrder || existingOrder
+      }, { status: 409 });
+    }
 
       // Update order items if provided
       if (items && Array.isArray(items) && items.length > 0) {
@@ -208,7 +263,12 @@ export async function PATCH(request, { params }) {
       }
     }
 
-    return Response.json({ success: true, orderId: id, status });
+    return Response.json({
+      success: true,
+      orderId: id,
+      status,
+      version: updateResult?.[0]?.version || (existingOrder.version + 1)
+    });
   } catch (error) {
     console.error("Error in PATCH /api/pos/orders/[id]/status:", error);
     return Response.json(

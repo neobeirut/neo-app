@@ -151,6 +151,7 @@ export default function TabletPOSPage() {
 
   const [ticketItems, setTicketItems] = useState([]);
   const [editingOrderId, setEditingOrderId] = useState(null);
+  const [editingOrderVersion, setEditingOrderVersion] = useState(null);
   const [clientOrderToken, setClientOrderToken] = useState(() => (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : "tok-" + Date.now()));
   const resetClientOrderToken = () => {
     setClientOrderToken(typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : "tok-" + Date.now());
@@ -663,6 +664,7 @@ export default function TabletPOSPage() {
   const loadOrderToTicket = (o, defaultChannel = "WhatsApp") => {
     if (!o) return;
     setEditingOrderId(o.id);
+    setEditingOrderVersion(o.version !== undefined && o.version !== null ? Number(o.version) : 1);
     setCustomerName(o.customer_name || "");
     setCustomerPhone(o.customer_phone || "");
     setDeliveryAddress(o.delivery_address || "");
@@ -985,6 +987,7 @@ export default function TabletPOSPage() {
     resetClientOrderToken();
     setTicketItems([]);
     setEditingOrderId(null);
+    setEditingOrderVersion(null);
     setCustomerName("");
     setCustomerPhone("");
     setDeliveryAddress("");
@@ -1130,6 +1133,7 @@ export default function TabletPOSPage() {
         setDeliveryAddress("");
         setSelectedChannel(null);
         setEditingOrderId(null);
+        setEditingOrderVersion(null);
         setDiscountType("none");
         setDiscountValInput(10);
         setDiscountIsPercent(true);
@@ -1159,6 +1163,7 @@ export default function TabletPOSPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             status: "preparing",
+            expected_version: editingOrderVersion,
             subtotal,
             deliveryFee: orderType === "delivery" ? (parseFloat(deliveryFee) || 0) : 0,
             discountAmount,
@@ -1178,6 +1183,14 @@ export default function TabletPOSPage() {
           })
         });
         data = await updateRes.json();
+        if (updateRes.status === 409 || data.conflict) {
+          alert(data.error || "This order was updated on another terminal. The latest version has been loaded.");
+          if (data.currentOrder) {
+            loadOrderToTicket(data.currentOrder);
+          }
+          setIsSubmitting(false);
+          return;
+        }
         if (data.success) data.orderId = editingOrderId;
       } else {
         const actualPaymentMethod =
@@ -1270,6 +1283,7 @@ export default function TabletPOSPage() {
         setDeliveryAddress("");
         setSelectedChannel(null);
         setEditingOrderId(null);
+        setEditingOrderVersion(null);
         setDiscountType("none");
         setDiscountValInput(10);
         setDiscountIsPercent(true);
