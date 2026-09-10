@@ -15,8 +15,9 @@ import StaffDepartmentsScreen from './screens/StaffDepartmentsScreen';
 import SalaryPaymentsScreen from './screens/SalaryPaymentsScreen';
 import SOPsScreen from './screens/SOPsScreen';
 import SOPFormScreen from './screens/SOPFormScreen';
-import { LayoutDashboard, ChefHat, Users, LogOut, DollarSign, Shield, BookOpen, TrendingUp, MessageSquare, Newspaper, AlertTriangle, Sparkles, Trash2, History, Coins, Truck, ShoppingBag, Calendar, ClipboardList, Package, CheckSquare, Receipt, Briefcase, Store, ChevronDown, ChevronRight, Clock, Target, Layers } from 'lucide-react';
+import { LayoutDashboard, ChefHat, Users, LogOut, DollarSign, Shield, BookOpen, TrendingUp, MessageSquare, Newspaper, AlertTriangle, Sparkles, Trash2, History, Coins, Truck, ShoppingBag, Calendar, ClipboardList, Package, CheckSquare, Receipt, Briefcase, Store, ChevronDown, ChevronRight, Clock, Target, Layers, Download } from 'lucide-react';
 import { api, hasAdminAccess } from './api/client';
+import { usePWA } from './hooks/usePWA';
 import AssessmentsScreen from './screens/AssessmentsScreen';
 import AssessmentConductWebScreen from './screens/AssessmentConductWebScreen';
 import FinanceDashboardScreen from './screens/FinanceDashboardScreen';
@@ -52,6 +53,7 @@ import InventoryScreen from './screens/InventoryScreen';
 
   function Sidebar({ onLogout, permissions, user }: { onLogout: () => void; permissions: any; user: any }) {
     const location = useLocation();
+    const { isInstallable, isInstalled, installApp } = usePWA();
 
     const [collapsedGroups, setCollapsedGroups] = useState<{ [key: string]: boolean }>({
       Operations: false,
@@ -251,29 +253,61 @@ import InventoryScreen from './screens/InventoryScreen';
             );
           })}
         </div>
-        <div style={{ borderTop: '1px solid var(--border)', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <button 
-            onClick={onLogout} 
-            title="Logout"
-            style={{ 
-              width: '36px',
-              height: '36px',
-              borderRadius: '8px',
-              border: '1px solid var(--border)',
-              backgroundColor: 'transparent',
-              color: 'var(--danger)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              transition: 'all 0.2s'
-            }}
-          >
-            <LogOut size={18} />
-          </button>
-          <div style={{ fontSize: '11px', color: 'var(--text-muted)', textAlign: 'right' }}>
-            <div style={{ fontWeight: 600, color: 'var(--text-main)' }}>Ovrload Admin v1.0.7</div>
-            <div style={{ fontSize: '10px' }}>Build: July 24, 2026</div>
+        <div style={{ borderTop: '1px solid var(--border)', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          {isInstallable && (
+            <button
+              onClick={installApp}
+              title="Install FLOW Web App"
+              style={{
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                padding: '8px 12px',
+                borderRadius: '8px',
+                border: '1px solid #3b82f6',
+                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                color: '#3b82f6',
+                fontSize: '12px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+              }}
+            >
+              <Download size={15} />
+              <span>Install FLOW App</span>
+            </button>
+          )}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <button 
+              onClick={onLogout} 
+              title="Logout"
+              style={{ 
+                width: '36px',
+                height: '36px',
+                borderRadius: '8px',
+                border: '1px solid var(--border)',
+                backgroundColor: 'transparent',
+                color: 'var(--danger)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                transition: 'all 0.2s'
+              }}
+            >
+              <LogOut size={18} />
+            </button>
+            <div style={{ fontSize: '11px', color: 'var(--text-muted)', textAlign: 'right' }}>
+              <div style={{ fontWeight: 600, color: 'var(--text-main)', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px' }}>
+                <span>FLOW Admin v1.1.0</span>
+                {isInstalled && (
+                  <span title="Running as Installed PWA" style={{ display: 'inline-block', width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#10b981' }} />
+                )}
+              </div>
+              <div style={{ fontSize: '10px' }}>Operations Portal</div>
+            </div>
           </div>
         </div>
       </div>

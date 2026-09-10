@@ -4,6 +4,11 @@
   "routes": [
     { "src": "^/tablet-punch-pwa$", "dest": "/tablet-punch-pwa/" },
     { "src": "^/tablet-punch-pwa/(.*)", "dest": "/tablet-punch-pwa/$1" },
+    { "src": "^/sw.js$", "dest": "/sw.js", "headers": { "cache-control": "no-cache, no-store, must-revalidate" } },
+    { "src": "^/manifest.json$", "dest": "/manifest.json" },
+    { "src": "^/icons/(.*)", "dest": "/icons/$1" },
+    { "src": "^/icon.png$", "dest": "/icon.png" },
+    { "src": "^/favicon.png$", "dest": "/favicon.png" },
     { "src": "^/assets/(.*)", "dest": "/assets/$1" },
     { "src": "^/privacy-policy(/.*)?$", "dest": "/privacy-policy.html" },
     { "src": "^/privacy(/.*)?$", "dest": "/privacy.html" },
@@ -15,6 +20,14 @@
     { "src": "^/(.*)$", "dest": "/index.html" }
   ],
   "headers": [
+    {
+      "source": "/sw.js",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+        { "key": "Pragma", "value": "no-cache" },
+        { "key": "Expires", "value": "0" }
+      ]
+    },
     {
       "source": "/admin(.*)",
       "headers": [
