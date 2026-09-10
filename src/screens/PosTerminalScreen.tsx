@@ -10,6 +10,9 @@ import { UpsellRecommendationBar } from "../pos/components/UpsellRecommendationB
 import { usePosShift } from "../pos/hooks/usePosShift";
 import { OpenShiftModal } from "../pos/components/OpenShiftModal";
 import { ShiftStatusBadge } from "../pos/components/ShiftStatusBadge";
+import { executeVoidTransaction } from "../pos/services/voidBridge";
+import type { CanceledItemDetail } from "../pos/services/voidBridge";
+import { VoidItemModal } from "../pos/components/VoidItemModal";
 
 interface PosTerminalScreenProps {
   user?: any;
@@ -165,6 +168,60 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     commerceBranchLink?.flow_branch_name || user?.branch || "Cloud Kitchen",
     activeCashier?.name || user?.name || "Cashier"
   );
+
+  // FLOW Void Management State
+  const [voidModalState, setVoidModalState] = useState<{
+    isOpen: boolean;
+    orderId: string | number;
+    items: CanceledItemDetail[];
+    voidType: 'item_void' | 'order_cancellation' | 'refund';
+    onSuccess?: () => void;
+  }>({
+    isOpen: false,
+    orderId: '',
+    items: [],
+    voidType: 'order_cancellation'
+  });
+
+  const handleExecuteVoid = async (reason: string, authorizedBy: string) => {
+    const { orderId, items, voidType, onSuccess } = voidModalState;
+    const branchName = commerceBranchLink?.flow_branch_name || user?.branch || "Cloud Kitchen";
+
+    const result = await executeVoidTransaction({
+      voidType,
+      branchName,
+      orderId,
+      items,
+      reason,
+      cashierName: activeCashier?.name || user?.name || "Cashier",
+      authorizedBy,
+      orderType: "POS",
+      executeCommerceMutation: async () => {
+        const res = await fetch(`${COMMERCE_API_BASE}/api/pos/orders/${orderId}/status`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            status: "cancelled",
+            voidReason: reason
+          })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          return { success: true };
+        }
+        return { success: false, error: data.error || "Failed to update order status" };
+      }
+    });
+
+    if (result.success) {
+      setVoidModalState(prev => ({ ...prev, isOpen: false }));
+      if (onSuccess) onSuccess();
+      fetchOrdersQueue();
+      return { success: true };
+    }
+
+    return { success: false, error: result.error || "Void failed during transaction" };
+  };
 
   const handleCashierPinSubmit = async (pinToSubmit?: string) => {
     const code = pinToSubmit || pinInput;
@@ -692,72 +749,42 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     }
   };
 
-  const handleRejectPendingOrder = async (orderId) => {
-    if (confirmingRejectId !== orderId) {
-      setConfirmingRejectId(orderId);
-      setTimeout(() => {
-        setConfirmingRejectId((current) => (current === orderId ? null : current));
-      }, 4000);
-      return;
-    }
-    setConfirmingRejectId(null);
-    setRejectingOrderId(orderId);
-    try {
-      const res = await fetch(`${COMMERCE_API_BASE}/api/pos/orders/${orderId}/status`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          status: "cancelled",
-          voidReason: "Rejected from POS WhatsApp Queue",
-        }),
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setPendingOrders((prev) => prev.filter((o) => o.id !== orderId));
-        fetchOrdersQueue();
-      } else {
-        alert("Failed to reject order: " + (data.error || "Unknown error"));
+  const handleRejectPendingOrder = (orderId: string | number) => {
+    const order = (pendingOrders || []).find((o: any) => o.id === orderId);
+    const items: CanceledItemDetail[] = (order?.items || []).map((i: any) => ({
+      name: i.product_name || i.name || 'Item',
+      qty: i.quantity || i.qty || 1,
+      price: i.unit_price || 0
+    }));
+
+    setVoidModalState({
+      isOpen: true,
+      orderId,
+      items,
+      voidType: 'order_cancellation',
+      onSuccess: () => {
+        setPendingOrders((prev: any) => prev.filter((o: any) => o.id !== orderId));
       }
-    } catch (err) {
-      console.error("Error rejecting pending order:", err);
-      alert("Error rejecting order: " + err.message);
-    } finally {
-      setRejectingOrderId(null);
-    }
+    });
   };
 
-  const handleDeleteHeldOrder = async (orderId) => {
-    if (confirmingDeleteHeldId !== orderId) {
-      setConfirmingDeleteHeldId(orderId);
-      setTimeout(() => {
-        setConfirmingDeleteHeldId((current) => (current === orderId ? null : current));
-      }, 4000);
-      return;
-    }
-    setConfirmingDeleteHeldId(null);
-    setDeletingHeldOrderId(orderId);
-    try {
-      const res = await fetch(`${COMMERCE_API_BASE}/api/pos/orders/${orderId}/status`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          status: "cancelled",
-          voidReason: "Deleted from Held Orders",
-        }),
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setHeldOrders((prev) => prev.filter((o) => o.id !== orderId));
-        fetchOrdersQueue();
-      } else {
-        alert("Failed to delete held order: " + (data.error || "Unknown error"));
+  const handleDeleteHeldOrder = (orderId: string | number) => {
+    const order = (heldOrders || []).find((o: any) => o.id === orderId);
+    const items: CanceledItemDetail[] = (order?.items || []).map((i: any) => ({
+      name: i.product_name || i.name || 'Item',
+      qty: i.quantity || i.qty || 1,
+      price: i.unit_price || 0
+    }));
+
+    setVoidModalState({
+      isOpen: true,
+      orderId,
+      items,
+      voidType: 'order_cancellation',
+      onSuccess: () => {
+        setHeldOrders((prev: any) => prev.filter((o: any) => o.id !== orderId));
       }
-    } catch (err) {
-      console.error("Error deleting held order:", err);
-      alert("Error deleting held order: " + err.message);
-    } finally {
-      setDeletingHeldOrderId(null);
-    }
+    });
   };
 
   const loadOrderToTicket = (o, defaultChannel = "WhatsApp") => {
@@ -1075,8 +1102,28 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     setTicketItems(updated);
   };
 
-  const handlePromptVoid = (index) => {
-    handleRemoveTicketItem(index);
+  const handlePromptVoid = (index: number) => {
+    if (editingOrderId) {
+      // Type B: Submitted item void on existing server order
+      const itemToVoid = ticketItems[index];
+      setVoidModalState({
+        isOpen: true,
+        orderId: editingOrderId,
+        items: [{
+          name: itemToVoid?.name || 'Item',
+          qty: itemToVoid?.qty || 1,
+          price: itemToVoid?.unit_price || 0,
+          product_id: itemToVoid?.product_id
+        }],
+        voidType: 'item_void',
+        onSuccess: () => {
+          handleRemoveTicketItem(index);
+        }
+      });
+    } else {
+      // Type A: Local draft cart item removal (0 audit, zero backend impact)
+      handleRemoveTicketItem(index);
+    }
   };
 
   const handleConfirmVoidItem = () => {
@@ -2881,6 +2928,32 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                                   >
                                     🖨️ Reprint
                                   </button>
+                                  {!isCancelled && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        const items: CanceledItemDetail[] = (order.items || []).map((i: any) => ({
+                                          name: i.product_name || i.name || 'Item',
+                                          qty: i.quantity || i.qty || 1,
+                                          price: i.unit_price || 0
+                                        }));
+                                        setVoidModalState({
+                                          isOpen: true,
+                                          orderId: order.id,
+                                          items,
+                                          voidType: isCompleted ? 'refund' : 'order_cancellation',
+                                          onSuccess: () => {
+                                            fetchOrderHistory();
+                                          }
+                                        });
+                                      }}
+                                      className="px-2.5 py-1.5 bg-rose-950/70 hover:bg-rose-900 text-rose-300 border border-rose-500/40 rounded-xl text-[11px] font-extrabold shadow-sm flex items-center gap-1 transition active:scale-95"
+                                      title="Void or Cancel order with FLOW audit"
+                                    >
+                                      🛡️ Void
+                                    </button>
+                                  )}
                                 </div>
                               </div>
                             </div>
@@ -3047,6 +3120,17 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         branchName={commerceBranchLink?.flow_branch_name || user?.branch || "Cloud Kitchen"}
         cashierName={activeCashier?.name || user?.name || "Cashier"}
         onConfirm={handleOpenShift}
+      />
+
+      {/* FLOW VOID TRANSACTION MODAL */}
+      <VoidItemModal
+        isOpen={voidModalState.isOpen}
+        onClose={() => setVoidModalState(prev => ({ ...prev, isOpen: false }))}
+        orderId={voidModalState.orderId}
+        items={voidModalState.items}
+        currentUser={activeCashier || user}
+        voidType={voidModalState.voidType}
+        onConfirmVoid={handleExecuteVoid}
       />
 
       {/* CASHIER PIN LOCK & SWITCH MODAL */}
