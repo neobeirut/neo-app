@@ -313,6 +313,17 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   const [ticketItems, setTicketItems] = useState([]);
   const [editingOrderId, setEditingOrderId] = useState(null);
   const [editingOrderVersion, setEditingOrderVersion] = useState(null);
+  const [posTerminalId] = useState(() => {
+    if (typeof window !== "undefined") {
+      let tid = localStorage.getItem("pos_terminal_id");
+      if (!tid) {
+        tid = "OVRLOAD-POS-" + Math.floor(1000 + Math.random() * 9000);
+        localStorage.setItem("pos_terminal_id", tid);
+      }
+      return tid;
+    }
+    return "OVRLOAD-POS-01";
+  });
   const [clientOrderToken, setClientOrderToken] = useState(() => (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : "tok-" + Date.now()));
   const resetClientOrderToken = () => {
     setClientOrderToken(typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : "tok-" + Date.now());
@@ -792,6 +803,74 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     });
   };
 
+  const releaseCurrentOrderLock = async () => {
+    if (editingOrderId) {
+      try {
+        await fetch(`${COMMERCE_API_BASE}/api/pos/orders/${editingOrderId}/release`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ claimed_terminal: posTerminalId })
+        });
+      } catch (e) {
+        console.warn("Error releasing order lock:", e);
+      }
+    }
+  };
+
+  const handleRestoreHeldTicket = async (o) => {
+    if (!o) return;
+    if (o.claimed_terminal && o.claimed_terminal !== posTerminalId) {
+      const confirmOverride = window.confirm(
+        `Order #${o.id} is currently claimed by ${o.claimed_by || "another cashier"} on ${o.claimed_terminal}.\n\nDo you want to override this claim as manager?`
+      );
+      if (!confirmOverride) return;
+      try {
+        const res = await fetch(`${COMMERCE_API_BASE}/api/pos/orders/${o.id}/claim`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            claimed_by: "Cashier",
+            claimed_terminal: posTerminalId,
+            force_override: true
+          })
+        });
+        const data = await res.json();
+        if (data.success) {
+          loadOrderToTicket(o, "POS");
+          setActiveTabModal(null);
+        } else {
+          alert(data.error || "Failed to claim order");
+        }
+      } catch (err) {
+        console.error("Error claiming order:", err);
+      }
+      return;
+    }
+
+    try {
+      const res = await fetch(`${COMMERCE_API_BASE}/api/pos/orders/${o.id}/claim`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          claimed_by: "Cashier",
+          claimed_terminal: posTerminalId,
+          force_override: false
+        })
+      });
+      const data = await res.json();
+      if (res.status === 409 || data.conflict) {
+        alert(data.error || "Order is currently being handled by another terminal.");
+        return;
+      }
+      loadOrderToTicket(o, "POS");
+      setActiveTabModal(null);
+    } catch (err) {
+      console.error("Error claiming order:", err);
+      loadOrderToTicket(o, "POS");
+      setActiveTabModal(null);
+    }
+  };
+
   const loadOrderToTicket = (o, defaultChannel = "WhatsApp") => {
     if (!o) return;
     setEditingOrderId(o.id);
@@ -1143,6 +1222,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   };
 
   const handleResetCart = () => {
+    releaseCurrentOrderLock();
     resetClientOrderToken();
     setTicketItems([]);
     setEditingOrderId(null);
@@ -2751,6 +2831,11 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                     <div>
                       <div className="font-black text-white text-sm">Held Order #{o.id}</div>
                       <div className="text-gray-400 mt-0.5">{o.customer_name || "Walk-in"} • ${parseFloat(o.total_amount || 0).toFixed(2)}</div>
+                      {o.claimed_terminal && (
+                        <div className="mt-1 px-2 py-0.5 bg-amber-950/80 text-amber-300 border border-amber-500/50 rounded text-[10px] font-bold inline-flex items-center gap-1">
+                          <span>🔒</span> In Use: {o.claimed_by || "Cashier"} ({o.claimed_terminal})
+                        </div>
+                      )}
                     </div>
                     <div className="flex items-center gap-2">
                       <button
@@ -2774,10 +2859,14 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                       </button>
                       <button
                         type="button"
-                        onClick={() => loadOrderToTicket(o, "POS")}
-                        className="px-4 py-2 bg-[#eb660c] hover:bg-[#d55909] text-white font-black rounded-xl shadow-md flex items-center gap-1"
+                        onClick={() => handleRestoreHeldTicket(o)}
+                        className={`px-4 py-2 text-white font-black rounded-xl shadow-md flex items-center gap-1 ${
+                          o.claimed_terminal && o.claimed_terminal !== posTerminalId
+                            ? "bg-amber-600 hover:bg-amber-500"
+                            : "bg-[#eb660c] hover:bg-[#d55909]"
+                        }`}
                       >
-                        <span>Restore Ticket</span>
+                        <span>{o.claimed_terminal && o.claimed_terminal !== posTerminalId ? "Claim Ticket" : "Restore Ticket"}</span>
                         <span>➔</span>
                       </button>
                     </div>

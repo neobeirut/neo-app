@@ -77,6 +77,9 @@ export async function PATCH(request, { params }) {
         SET 
           status = ${status}, 
           void_reason = ${voidReason},
+          claimed_by = NULL,
+          claimed_terminal = NULL,
+          claimed_at = NULL,
           version = COALESCE(version, 1) + 1
         WHERE id = ${id} ${expectedVersion !== null && !isNaN(expectedVersion) ? sql`AND version = ${expectedVersion}` : sql``}
         RETURNING id, status, version
@@ -90,6 +93,9 @@ export async function PATCH(request, { params }) {
         SET 
           status = ${status},
           version = COALESCE(version, 1) + 1,
+          claimed_by = NULL,
+          claimed_terminal = NULL,
+          claimed_at = NULL,
           subtotal_amount = COALESCE(${subtotal !== undefined && subtotal !== null ? subtotal : null}, subtotal_amount),
           delivery_fee = COALESCE(${deliveryFee !== undefined && deliveryFee !== null ? deliveryFee : null}, delivery_fee),
           discount_amount = COALESCE(${discountAmount !== undefined && discountAmount !== null ? discountAmount : null}, discount_amount),
