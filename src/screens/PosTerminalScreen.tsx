@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { api } from "../api/client";
 import { supabase } from "../api/supabase";
 import { resolveCommerceBranchLink, getBranchCapabilities } from "../pos/services/branchMapping";
@@ -11,6 +11,13 @@ import { BranchMappingAlert } from "../pos/components/BranchMappingAlert";
 import { usePos86 } from "../pos/hooks/usePos86";
 import { usePosUpsell } from "../pos/hooks/usePosUpsell";
 import { UpsellRecommendationBar } from "../pos/components/UpsellRecommendationBar";
+import { DiscountManagerModal } from "../pos/components/DiscountManagerModal";
+import {
+  type PosDiscountRule,
+  getRestaurantDiscounts,
+  getApplicableDiscounts,
+  calculateDiscountAmount
+} from "../pos/services/discountService";
 import { usePosShift } from "../pos/hooks/usePosShift";
 import { OpenShiftModal } from "../pos/components/OpenShiftModal";
 import { CloseShiftModal } from "../pos/components/CloseShiftModal";
@@ -467,10 +474,15 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   const [noknokDiscountPercent, setNoknokDiscountPercent] = useState(15);
 
   // Discount Selection State
-  const [discountType, setDiscountType] = useState("none"); // "none", "5%", "10%", "15%", "wa15", "toters", "noknok", "custom"
+  const [discountType, setDiscountType] = useState("none"); // "none", "5%", "10%", "15%", "wa15", "toters", "noknok", "custom", "custom_rule"
   const [discountValInput, setDiscountValInput] = useState(10);
   const [discountIsPercent, setDiscountIsPercent] = useState(true);
   const [showDiscountModal, setShowDiscountModal] = useState(false);
+
+  // Restaurant & Branch Specific Discount Configuration
+  const [restaurantDiscounts, setRestaurantDiscounts] = useState<PosDiscountRule[]>([]);
+  const [selectedDiscountRule, setSelectedDiscountRule] = useState<PosDiscountRule | null>(null);
+  const [isDiscountManagerOpen, setIsDiscountManagerOpen] = useState(false);
 
   // Print Server Settings
   const [printServerIP, setPrintServerIP] = useState("");
@@ -549,6 +561,32 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         setExchangeRate(89500);
       });
   }, [user?.restaurant_id]);
+
+  // Dynamic Restaurant & Branch Discount Resolution
+  const currentRestaurantId = commerceBranchLink?.restaurant_id || user?.restaurant_id || user?.restaurants?.id || "79256f11-a9f8-4fec-901d-69baf929762d";
+  const currentRestaurantName = user?.restaurants?.name || (currentRestaurantId === '4c0ed960-e459-42c4-962f-41229a2d3783' ? 'The Bistro' : 'Neo Beirut');
+  const currentBranchId = commerceBranchLink?.flow_branch_id || branchCapabilities?.branchId || "";
+  const currentBranchName = commerceBranchLink?.flow_branch_name || selectedTerminalBranch || user?.branch || activeCashier?.branch || "Badaro";
+
+  const fetchRestaurantDiscounts = async () => {
+    if (!currentRestaurantId) return;
+    try {
+      const res = await getRestaurantDiscounts(currentRestaurantId);
+      if (res.discounts) {
+        setRestaurantDiscounts(res.discounts);
+      }
+    } catch (err) {
+      console.warn("[POS] Error fetching restaurant discounts:", err);
+    }
+  };
+
+  useEffect(() => {
+    fetchRestaurantDiscounts();
+  }, [currentRestaurantId]);
+
+  const applicableDiscounts = useMemo(() => {
+    return getApplicableDiscounts(restaurantDiscounts, currentBranchId, currentBranchName);
+  }, [restaurantDiscounts, currentBranchId, currentBranchName]);
 
   // Helper for safe fetch with timeout
   const fetchWithTimeout = async (url, options = {}, timeoutMs = 10000) => {
@@ -1450,6 +1488,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     setSelectedChannel(null);
     setOrderType("delivery");
     setDiscountType("none");
+    setSelectedDiscountRule(null);
     setDiscountValInput(10);
     setDiscountIsPercent(true);
     setDeliveryFee(0);
@@ -1465,6 +1504,9 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   const subtotal = ticketItems.reduce((sum, item) => sum + item.unit_price * item.qty, 0);
 
   const calculatedDiscount = (() => {
+    if (selectedDiscountRule) {
+      return calculateDiscountAmount(selectedDiscountRule, subtotal);
+    }
     if (discountType === "5%") return subtotal * 0.05;
     if (discountType === "10%") return subtotal * 0.10;
     if (discountType === "15%" || discountType === "wa15") return subtotal * 0.15;
@@ -1482,6 +1524,9 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   const total = Math.max(0, subtotal + (orderType === "delivery" ? (Number(deliveryFee) || 0) : 0) - discountAmount);
 
   const discountLabel = (() => {
+    if (selectedDiscountRule) {
+      return `${selectedDiscountRule.name} (${selectedDiscountRule.type === 'percent' ? `${selectedDiscountRule.value}%` : `$${selectedDiscountRule.value}`})`;
+    }
     if (discountType === "5%") return "5%";
     if (discountType === "10%") return "10%";
     if (discountType === "15%") return "15%";
@@ -3043,15 +3088,24 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                 {/* Discount Control */}
                 <div className="space-y-1">
                   <span className="font-bold text-gray-400 text-[11px] block">Discount:</span>
-                  {discountType !== "none" && discountAmount > 0 ? (
+                  {(selectedDiscountRule || (discountType !== "none" && discountAmount > 0)) ? (
                     <div className="flex items-center justify-between bg-amber-950/50 border border-amber-500/40 px-2 py-1 rounded-lg text-amber-300 text-xs font-extrabold">
-                      <span className="truncate">{discountLabel} (-${discountAmount.toFixed(2)})</span>
+                      <span
+                        onClick={() => setShowDiscountModal(true)}
+                        className="truncate cursor-pointer hover:underline"
+                        title="Click to change discount"
+                      >
+                        {discountLabel} (-${discountAmount.toFixed(2)})
+                      </span>
                       <button
+                        type="button"
                         onClick={() => {
                           setDiscountType("none");
+                          setSelectedDiscountRule(null);
                           setDiscountValInput(10);
                         }}
-                        className="hover:text-white font-bold ml-1"
+                        className="hover:text-white font-bold ml-1.5 p-0.5 text-xs text-amber-400 hover:text-white"
+                        title="Remove discount"
                       >
                         ✕
                       </button>
@@ -3060,9 +3114,10 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                     <button
                       type="button"
                       onClick={() => setShowDiscountModal(true)}
-                      className="px-2 py-1 bg-[#0F1115] border border-[#262D3D] hover:border-[#eb660c] rounded-lg text-[11px] font-extrabold text-[#eb660c] transition-all"
+                      className="px-2.5 py-1 bg-[#0F1115] border border-[#262D3D] hover:border-amber-400 rounded-lg text-[11px] font-extrabold text-amber-400 transition-all flex items-center gap-1"
                     >
-                      + Discount
+                      <span>🏷️</span>
+                      <span>+ Discount</span>
                     </button>
                   )}
                 </div>
@@ -3257,73 +3312,180 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       {/* DISCOUNT MODAL */}
       {showDiscountModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:hidden">
-          <div className="bg-[#181C24] border border-[#262D3D] rounded-2xl w-full max-w-sm p-5 space-y-4 text-white shadow-2xl">
+          <div className="bg-[#181C24] border border-[#262D3D] rounded-2xl w-full max-w-md p-5 space-y-4 text-white shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            {/* Modal Header */}
             <div className="flex justify-between items-center border-b border-[#262D3D] pb-3">
-              <h3 className="font-extrabold text-base">Apply Discount Presets</h3>
-              <button onClick={() => setShowDiscountModal(false)} className="text-gray-400 hover:text-white font-bold">✕</button>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 text-xs font-bold">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-black text-base text-white">Apply Discount</h3>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-950/80 text-emerald-400 border border-emerald-500/30">
+                    {currentBranchName}
+                  </span>
+                </div>
+                <p className="text-[11px] text-gray-400 mt-0.5">
+                  Discounts applicable to {currentRestaurantName} • {currentBranchName}
+                </p>
+              </div>
               <button
-                onClick={() => { setDiscountType("5%"); setShowDiscountModal(false); }}
-                className="p-3 bg-[#0F1115] border border-[#262D3D] hover:border-[#eb660c] rounded-xl text-center text-white"
+                onClick={() => setShowDiscountModal(false)}
+                className="text-gray-400 hover:text-white font-bold p-1 text-sm rounded-lg hover:bg-[#262D3D]"
               >
-                5% Off
-              </button>
-              <button
-                onClick={() => { setDiscountType("10%"); setShowDiscountModal(false); }}
-                className="p-3 bg-[#0F1115] border border-[#262D3D] hover:border-[#eb660c] rounded-xl text-center text-white"
-              >
-                10% Off
-              </button>
-              <button
-                onClick={() => { setDiscountType("15%"); setShowDiscountModal(false); }}
-                className="p-3 bg-[#0F1115] border border-[#262D3D] hover:border-[#eb660c] rounded-xl text-center text-white"
-              >
-                15% Off
-              </button>
-              <button
-                onClick={() => { setDiscountType("wa15"); setShowDiscountModal(false); }}
-                className="p-3 bg-[#0F1115] border border-[#262D3D] hover:border-[#eb660c] rounded-xl text-center text-emerald-400"
-              >
-                WhatsApp 15%
-              </button>
-              <button
-                onClick={() => { setDiscountType("toters"); setShowDiscountModal(false); }}
-                className="p-3 bg-[#0F1115] border border-[#262D3D] hover:border-[#eb660c] rounded-xl text-center text-teal-300"
-              >
-                Toters ({totersDiscountPercent}%)
-              </button>
-              <button
-                onClick={() => { setDiscountType("noknok"); setShowDiscountModal(false); }}
-                className="p-3 bg-[#0F1115] border border-[#262D3D] hover:border-[#eb660c] rounded-xl text-center text-rose-300"
-              >
-                NokNok ({noknokDiscountPercent}%)
+                ✕
               </button>
             </div>
 
-            <div className="pt-2 border-t border-[#262D3D] space-y-2">
-              <span className="text-xs font-bold text-gray-400 block">Custom Discount Value:</span>
+            {/* Currently Applied Discount Banner (if active) */}
+            {(selectedDiscountRule || (discountType !== "none" && discountAmount > 0)) && (
+              <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider block">Active Discount</span>
+                  <span className="text-xs font-black text-white">{discountLabel} (-${discountAmount.toFixed(2)})</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDiscountType("none");
+                    setSelectedDiscountRule(null);
+                    setShowDiscountModal(false);
+                  }}
+                  className="px-2.5 py-1 bg-rose-950/80 hover:bg-rose-900 border border-rose-500/40 text-rose-300 hover:text-white rounded-lg text-xs font-bold transition"
+                >
+                  Remove Discount
+                </button>
+              </div>
+            )}
+
+            {/* Applicable Branch Discounts */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-black uppercase text-gray-400 tracking-wider">
+                  Presets for {currentBranchName} ({applicableDiscounts.length})
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowDiscountModal(false);
+                    setIsDiscountManagerOpen(true);
+                  }}
+                  className="text-[11px] font-bold text-amber-400 hover:text-amber-300 flex items-center gap-1 hover:underline"
+                >
+                  <span>⚙️ Manage Discounts</span>
+                </button>
+              </div>
+
+              {applicableDiscounts.length === 0 ? (
+                <div className="p-4 rounded-xl bg-[#0F1115] border border-dashed border-[#262D3D] text-center">
+                  <p className="text-xs text-gray-400 font-bold">No discount presets configured for this branch.</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowDiscountModal(false);
+                      setIsDiscountManagerOpen(true);
+                    }}
+                    className="mt-2 text-xs font-black text-amber-400 underline"
+                  >
+                    + Add discounts for {currentRestaurantName}
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-1">
+                  {applicableDiscounts.map((rule) => {
+                    const isSelected = selectedDiscountRule?.id === rule.id;
+                    return (
+                      <button
+                        key={rule.id}
+                        type="button"
+                        onClick={() => {
+                          if (rule.requires_manager_pin) {
+                            const pin = prompt(`Manager approval required for "${rule.name}". Enter Manager PIN:`);
+                            if (!pin) return;
+                          }
+                          setSelectedDiscountRule(rule);
+                          setDiscountType("custom_rule");
+                          setShowDiscountModal(false);
+                        }}
+                        className={`p-3 rounded-xl border text-left transition flex flex-col justify-between ${
+                          isSelected
+                            ? "bg-amber-500/20 border-amber-500 text-white shadow"
+                            : "bg-[#0F1115] border-[#262D3D] hover:border-amber-500/50 text-white"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between w-full">
+                          <span className="text-xs font-extrabold truncate">{rule.name}</span>
+                          {rule.requires_manager_pin && (
+                            <span className="text-[10px]" title="Requires Manager Approval">🔒</span>
+                          )}
+                        </div>
+                        <div className="mt-2 flex items-center justify-between">
+                          <span className={`text-xs font-black px-1.5 py-0.5 rounded ${
+                            rule.type === 'percent'
+                              ? 'bg-emerald-950 text-emerald-400 border border-emerald-500/30'
+                              : 'bg-sky-950 text-sky-400 border border-sky-500/30'
+                          }`}>
+                            {rule.type === 'percent' ? `${rule.value}% OFF` : `$${rule.value} OFF`}
+                          </span>
+                          <span className="text-[9px] text-gray-400 font-medium">
+                            {rule.apply_to_all_branches ? '🌐 All' : '📍 Branch'}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Custom Manual Discount Entry */}
+            <div className="pt-3 border-t border-[#262D3D] space-y-2">
+              <span className="text-xs font-bold text-gray-400 block">Or Custom Discount Value:</span>
               <div className="flex gap-2">
                 <input
                   type="number"
+                  placeholder="e.g. 10"
                   value={discountValInput}
                   onChange={(e) => setDiscountValInput(e.target.value)}
-                  className="flex-1 bg-[#0F1115] border border-[#262D3D] rounded-xl px-3 py-2 text-xs text-white font-bold"
+                  className="flex-1 bg-[#0F1115] border border-[#262D3D] rounded-xl px-3 py-2 text-xs text-white font-bold placeholder-slate-500 focus:outline-none focus:border-amber-400"
                 />
                 <button
+                  type="button"
                   onClick={() => setDiscountIsPercent(!discountIsPercent)}
-                  className="px-3 py-2 bg-[#262D3D] rounded-xl text-xs font-extrabold text-amber-400"
+                  className="px-3 py-2 bg-[#262D3D] hover:bg-[#323B4E] rounded-xl text-xs font-extrabold text-amber-400 border border-[#3A455C] transition"
                 >
                   {discountIsPercent ? "%" : "$ USD"}
                 </button>
                 <button
-                  onClick={() => { setDiscountType("custom"); setShowDiscountModal(false); }}
-                  className="px-4 py-2 bg-[#eb660c] text-white rounded-xl text-xs font-black"
+                  type="button"
+                  onClick={() => {
+                    setSelectedDiscountRule(null);
+                    setDiscountType("custom");
+                    setShowDiscountModal(false);
+                  }}
+                  className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl text-xs font-black shadow transition"
                 >
                   Apply
                 </button>
               </div>
+            </div>
+
+            {/* Manage Discounts Button in Modal Footer */}
+            <div className="pt-2 border-t border-[#262D3D] flex justify-between items-center">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDiscountModal(false);
+                  setIsDiscountManagerOpen(true);
+                }}
+                className="text-xs text-gray-400 hover:text-amber-400 font-bold flex items-center gap-1.5 transition"
+              >
+                <span>🏷️ Configure Discounts for {currentRestaurantName}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowDiscountModal(false)}
+                className="px-4 py-1.5 bg-[#262D3D] hover:bg-[#323B4E] text-gray-300 font-bold text-xs rounded-xl"
+              >
+                Close
+              </button>
             </div>
           </div>
         </div>
@@ -3490,6 +3652,30 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                     />
                   </div>
                 </div>
+              </div>
+
+              <div className="bg-[#0F1115] border border-[#262D3D] rounded-xl p-3.5 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-extrabold text-amber-400 text-xs block uppercase tracking-wider">
+                    Restaurant & Branch Discounts:
+                  </span>
+                  <span className="text-[10px] text-gray-400 font-bold">
+                    {restaurantDiscounts.length} configured
+                  </span>
+                </div>
+                <p className="text-[11px] text-gray-400">
+                  Configure discounts for {currentRestaurantName} and choose whether they apply to all branches or separate branches.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTabModal(null);
+                    setIsDiscountManagerOpen(true);
+                  }}
+                  className="w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl transition-all text-xs border border-amber-400 flex items-center justify-center gap-2 shadow"
+                >
+                  🏷️ Manage Discounts & Branch Scopes
+                </button>
               </div>
 
               <div className="bg-[#0F1115] border border-[#262D3D] rounded-xl p-3.5 flex items-center justify-between text-gray-400">
@@ -4338,6 +4524,19 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
           </div>
         </div>
       )}
+
+      {/* RESTAURANT & BRANCH DISCOUNT MANAGER MODAL */}
+      <DiscountManagerModal
+        isOpen={isDiscountManagerOpen}
+        onClose={() => setIsDiscountManagerOpen(false)}
+        restaurantId={currentRestaurantId}
+        restaurantName={currentRestaurantName}
+        currentBranchId={currentBranchId}
+        currentBranchName={currentBranchName}
+        onDiscountsUpdated={(newDiscounts) => {
+          setRestaurantDiscounts(newDiscounts);
+        }}
+      />
 </div>
   );
 }
