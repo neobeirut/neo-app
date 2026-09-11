@@ -2,6 +2,8 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { resolve } from 'path';
 
+const BACKEND_TARGET = process.env.VITE_BACKEND_URL || 'http://localhost:3000';
+
 export default defineConfig({
   plugins: [react()],
   base: '/',
@@ -9,17 +11,17 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api/pos': {
-        target: 'https://ovrload-backend-production.up.railway.app',
+        target: BACKEND_TARGET,
         changeOrigin: true,
         secure: false,
       },
       '/api/branches': {
-        target: 'https://ovrload-backend-production.up.railway.app',
+        target: BACKEND_TARGET,
         changeOrigin: true,
         secure: false,
       },
       '/api/delivery': {
-        target: 'https://ovrload-backend-production.up.railway.app',
+        target: BACKEND_TARGET,
         changeOrigin: true,
         secure: false,
       },

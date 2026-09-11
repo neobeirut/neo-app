@@ -5,7 +5,7 @@ import { supabase } from "../api/supabase";
 import { resolveCommerceBranchLink, getBranchCapabilities } from "../pos/services/branchMapping";
 import type { CommerceBranchLink } from "../pos/types/commerce";
 import type { BranchCapabilities } from "../pos/services/branchMapping";
-import { TablesScreen } from "../pos/tables";
+import { TablesScreen, getOrCreateTableAndSession } from "../pos/tables";
 import type { PosTable } from "../pos/tables";
 import { BranchMappingAlert } from "../pos/components/BranchMappingAlert";
 import { usePos86 } from "../pos/hooks/usePos86";
@@ -176,6 +176,10 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     guestCount?: number;
     waiterName?: string;
   } | null>(null);
+
+  // Quick Table Input State (Type table # on-demand)
+  const [quickTableInput, setQuickTableInput] = useState("");
+  const [isQuickTableLoading, setIsQuickTableLoading] = useState(false);
 
   // Cashier PIN Lock & Fast Switch States
   const [activeCashier, setActiveCashier] = useState<any>(user || null);
@@ -1436,6 +1440,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     releaseCurrentOrderLock();
     resetClientOrderToken();
     setActiveTableContext(null);
+    setQuickTableInput("");
     setTicketItems([]);
     setEditingOrderId(null);
     setEditingOrderVersion(null);
@@ -1521,6 +1526,74 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       await handlePrint(preCheckPayload);
     } catch (err) {
       console.error("Error printing pre-check:", err);
+    }
+  };
+
+  const handleQuickAssignTable = async (inputStr: string) => {
+    const raw = inputStr.trim();
+    if (!raw) return;
+
+    const flowBranchId = commerceBranchLink?.flow_branch_id || branchCapabilities?.branchId || "9c214659-9cc7-4f33-b115-cbbb8a823a94";
+    const flowRestId = commerceBranchLink?.restaurant_id || "79256f11-a9f8-4fec-901d-69baf929762d";
+    const extBranchId = String(commerceBranchLink?.external_branch_id || "1");
+    const cashier = activeCashier?.name || user?.name || "Cashier";
+
+    setIsQuickTableLoading(true);
+    try {
+      const res = await getOrCreateTableAndSession({
+        tableCodeInput: raw,
+        branchId: flowBranchId,
+        restaurantId: flowRestId,
+        externalBranchId: extBranchId,
+        operatorName: cashier,
+        operatorUserId: activeCashier?.id || user?.id,
+        waiterName: cashier
+      });
+
+      if (!res.success || !res.table) {
+        alert(res.error || "Failed to resolve or create table.");
+        return;
+      }
+
+      setQuickTableInput("");
+
+      // If existing occupied table has a commerce order, load it into ticket!
+      if (res.orderId) {
+        try {
+          const orderRes = await fetch(`${COMMERCE_API_BASE}/api/pos/orders?type=all`);
+          const data = await orderRes.json();
+          const ord = (data.orders || []).find((o: any) => o.id === res.orderId);
+          if (ord) {
+            loadOrderToTicket(ord, "POS");
+            setActiveTableContext({
+              orderId: res.orderId,
+              tableCode: res.table.table_code,
+              sessionId: res.sessionId,
+              guestCount: res.guestCount,
+              waiterName: res.waiterName
+            });
+            return;
+          }
+        } catch (e) {
+          console.warn("Could not load existing table order:", e);
+        }
+      }
+
+      // Fresh table session (newly created or opened)
+      setCustomerName(`Table ${res.table.table_code}`);
+      setOrderType("dine_in");
+      setSelectedChannel("POS");
+      setActiveTableContext({
+        orderId: null,
+        tableCode: res.table.table_code,
+        sessionId: res.sessionId,
+        guestCount: res.guestCount,
+        waiterName: res.waiterName
+      });
+    } catch (err: any) {
+      alert(err.message || "Error assigning table.");
+    } finally {
+      setIsQuickTableLoading(false);
     }
   };
 
@@ -2565,6 +2638,18 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                     type="button"
                     onClick={() => {
                       setActiveTableContext(null);
+                      setQuickTableInput("");
+                    }}
+                    className="text-[10px] font-black text-amber-400 hover:text-amber-300 bg-amber-950/60 hover:bg-amber-900/60 px-2 py-0.5 rounded border border-amber-500/40 transition"
+                    title="Change table number"
+                  >
+                    Change
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTableContext(null);
+                      setQuickTableInput("");
                       setTicketItems([]);
                       setPosActiveView('tables');
                     }}
@@ -2597,7 +2682,36 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                   Cancel Edit
                 </button>
               </div>
-            ) : null}
+            ) : (
+              /* Quick Table Number Input Bar: Type table number and set/create */
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleQuickAssignTable(quickTableInput);
+                }}
+                className="flex items-center gap-1.5 p-1.5 bg-[#0F1115] rounded-xl border border-[#262D3D]"
+              >
+                <div className="flex items-center gap-1 text-amber-400 text-xs font-black pl-1 flex-shrink-0">
+                  <span>🪑</span>
+                  <span>Table:</span>
+                </div>
+                <input
+                  type="text"
+                  placeholder="Type table # (e.g. 5, 12, B2)..."
+                  value={quickTableInput}
+                  onChange={(e) => setQuickTableInput(e.target.value)}
+                  disabled={isQuickTableLoading}
+                  className="flex-1 min-w-0 bg-[#181C24] border border-[#2B354B] rounded-lg px-2.5 py-1 text-xs text-white font-bold placeholder-slate-500 focus:outline-none focus:border-amber-400 disabled:opacity-50"
+                />
+                <button
+                  type="submit"
+                  disabled={!quickTableInput.trim() || isQuickTableLoading}
+                  className="px-3 py-1 bg-amber-500 hover:bg-amber-400 active:scale-95 text-slate-950 font-black text-xs rounded-lg transition disabled:opacity-50 shadow-sm flex items-center gap-1 flex-shrink-0"
+                >
+                  {isQuickTableLoading ? 'Opening...' : 'Set Table'}
+                </button>
+              </form>
+            )}
 
             {/* TICKET ACTIONS & STATUS HEADER BAR */}
             <div className="flex items-center justify-between">

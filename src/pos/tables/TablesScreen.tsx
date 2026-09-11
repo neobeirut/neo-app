@@ -10,6 +10,7 @@ import {
   closeTableSession,
   loadPendingTableSyncs,
   retrySessionSync,
+  getOrCreateTableAndSession,
   type PendingTableSync
 } from './tableService';
 import { FloorPlan } from './FloorPlan';
@@ -152,6 +153,48 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
     await fetchState();
   };
 
+  const [quickTableInput, setQuickTableInput] = useState('');
+  const [isQuickOpening, setIsQuickOpening] = useState(false);
+
+  const handleQuickTableSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!quickTableInput.trim() || isQuickOpening) return;
+
+    setIsQuickOpening(true);
+    try {
+      const res = await getOrCreateTableAndSession({
+        tableCodeInput: quickTableInput.trim(),
+        branchId,
+        restaurantId,
+        externalBranchId,
+        operatorName: cashierName,
+        waiterName: cashierName
+      });
+
+      if (!res.success || !res.table) {
+        alert(res.error || 'Failed to resolve table.');
+        return;
+      }
+
+      setQuickTableInput('');
+      await fetchState();
+
+      if (onOpenOrderInCart) {
+        onOpenOrderInCart(
+          res.orderId || null,
+          res.table.table_code,
+          res.sessionId,
+          res.guestCount,
+          res.waiterName
+        );
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error processing table');
+    } finally {
+      setIsQuickOpening(false);
+    }
+  };
+
   const filteredTables = activeAreaId 
     ? tables.filter(t => t.floor_area_id === activeAreaId)
     : tables;
@@ -190,6 +233,29 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
               </button>
             ))}
           </div>
+
+          {/* Quick Table Entry: Type table number & go / create */}
+          <form
+            onSubmit={handleQuickTableSubmit}
+            className="flex items-center gap-1.5 ml-4 bg-[#10131A] px-2 py-1 rounded-xl border border-[#262D3D]"
+          >
+            <span className="text-amber-400 text-xs font-black">🪑</span>
+            <input
+              type="text"
+              placeholder="Type Table # (e.g. 5, 12)..."
+              value={quickTableInput}
+              onChange={(e) => setQuickTableInput(e.target.value)}
+              disabled={isQuickOpening}
+              className="bg-[#181E2C] border border-[#2B354B] rounded-lg px-2.5 py-0.5 text-xs text-white font-bold placeholder-slate-500 focus:outline-none focus:border-amber-400 w-44 disabled:opacity-50"
+            />
+            <button
+              type="submit"
+              disabled={!quickTableInput.trim() || isQuickOpening}
+              className="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 active:scale-95 text-slate-950 font-black text-xs rounded-lg transition disabled:opacity-50 flex items-center gap-1 shadow-sm"
+            >
+              {isQuickOpening ? 'Opening...' : 'Go / Create'}
+            </button>
+          </form>
         </div>
 
         {/* Operational Indicators & Actions */}

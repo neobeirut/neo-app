@@ -43,6 +43,10 @@ export const FloorPlanEditor: React.FC<FloorPlanEditorProps> = ({
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [showAddAreaModal, setShowAddAreaModal] = useState(false);
   const [newAreaName, setNewAreaName] = useState('');
+  const [showAddTableModal, setShowAddTableModal] = useState(false);
+  const [newTableNumber, setNewTableNumber] = useState('');
+  const [newTableCapacity, setNewTableCapacity] = useState(4);
+  const [newTableShape, setNewTableShape] = useState<TableShape>('square');
   
   const canvasRef = useRef<HTMLDivElement>(null);
 
@@ -98,23 +102,37 @@ export const FloorPlanEditor: React.FC<FloorPlanEditorProps> = ({
     ));
   };
 
-  // Add new table
-  const handleAddNewTable = async () => {
+  // Open add table prompt
+  const handleOpenAddTableModal = () => {
     if (!activeAreaId) {
       alert('Please select or create a floor area first.');
       return;
     }
-
     const nextNumber = localTables.length + 1;
-    const newCode = `T${nextNumber}`;
+    setNewTableNumber(String(nextNumber));
+    setNewTableCapacity(4);
+    setNewTableShape('square');
+    setShowAddTableModal(true);
+  };
+
+  // Submit add new table
+  const handleAddNewTableSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!activeAreaId) return;
+
+    const raw = newTableNumber.trim();
+    if (!raw) return;
+
+    const code = /^\d+$/.test(raw) ? `T${raw}` : raw.toUpperCase();
+    const displayName = /^\d+$/.test(raw) ? `Table ${raw}` : (raw.startsWith('T') || raw.startsWith('t') ? `Table ${raw.slice(1)}` : raw);
 
     const res = await upsertTable({
       branch_id: branchId,
       floor_area_id: activeAreaId,
-      table_code: newCode,
-      display_name: `Table ${nextNumber}`,
-      capacity: 4,
-      shape: 'square',
+      table_code: code,
+      display_name: displayName,
+      capacity: newTableCapacity || 4,
+      shape: newTableShape,
       position_x: 35,
       position_y: 35,
       width: 7,
@@ -132,6 +150,8 @@ export const FloorPlanEditor: React.FC<FloorPlanEditorProps> = ({
         amount_remaining: 0
       }]);
       setSelectedTableId(res.data.id);
+      setShowAddTableModal(false);
+      setNewTableNumber('');
     } else {
       alert(res.error || 'Failed to add table');
     }
@@ -231,7 +251,7 @@ export const FloorPlanEditor: React.FC<FloorPlanEditorProps> = ({
         <div className="flex items-center gap-3">
           <button
             type="button"
-            onClick={handleAddNewTable}
+            onClick={handleOpenAddTableModal}
             className="px-3.5 py-2 rounded-xl bg-[#222A3C] hover:bg-[#2C364D] text-slate-200 text-xs font-bold flex items-center gap-2 border border-[#35425F] transition"
           >
             <Plus className="w-4 h-4 text-emerald-400" />
@@ -572,6 +592,88 @@ export const FloorPlanEditor: React.FC<FloorPlanEditorProps> = ({
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Add Table Modal */}
+      {showAddTableModal && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+          <form 
+            onSubmit={handleAddNewTableSubmit}
+            className="w-full max-w-sm bg-[#161B26] border border-[#2B354B] rounded-2xl p-5 shadow-2xl space-y-4"
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-black text-white">Create New Table</span>
+              <button 
+                type="button" 
+                onClick={() => setShowAddTableModal(false)} 
+                className="text-slate-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div>
+              <label className="text-xs text-slate-400 block mb-1 font-semibold">Table Number / Code</label>
+              <input
+                type="text"
+                autoFocus
+                placeholder="e.g. 5, 12, B2"
+                value={newTableNumber}
+                onChange={(e) => setNewTableNumber(e.target.value)}
+                className="w-full bg-[#1F2636] border border-[#303B52] rounded-xl px-3 py-2 text-white font-black text-sm outline-none focus:border-amber-400"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs text-slate-400 block mb-1 font-semibold">Shape</label>
+              <div className="grid grid-cols-3 gap-1.5">
+                {(['square', 'rectangle', 'round'] as TableShape[]).map(sh => (
+                  <button
+                    key={sh}
+                    type="button"
+                    onClick={() => setNewTableShape(sh)}
+                    className={`py-1.5 rounded-lg text-xs font-bold capitalize transition border ${
+                      newTableShape === sh
+                        ? 'bg-amber-500 text-slate-950 border-amber-400 font-black'
+                        : 'bg-[#1F2636] text-slate-300 border-[#303B52]'
+                    }`}
+                  >
+                    {sh}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs text-slate-400 block mb-1 font-semibold">Capacity (Seats)</label>
+              <input
+                type="number"
+                min="1"
+                max="30"
+                value={newTableCapacity}
+                onChange={(e) => setNewTableCapacity(parseInt(e.target.value, 10) || 4)}
+                className="w-full bg-[#1F2636] border border-[#303B52] rounded-xl px-3 py-2 text-white font-bold text-sm outline-none focus:border-amber-400"
+              />
+            </div>
+
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowAddTableModal(false)}
+                className="flex-1 py-2 rounded-xl bg-slate-800 text-slate-300 font-bold text-xs"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={!newTableNumber.trim()}
+                className="flex-1 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs disabled:opacity-50"
+              >
+                Create Table
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </div>

@@ -917,3 +917,188 @@ export async function createFloorArea(
     return { success: false, error: err.message };
   }
 }
+
+export interface QuickTableResult {
+  success: boolean;
+  table?: PosTable;
+  sessionId?: string;
+  orderId?: number | null;
+  isExistingOccupied?: boolean;
+  isNewlyCreated?: boolean;
+  guestCount?: number;
+  waiterName?: string;
+  error?: string;
+}
+
+/**
+ * On-demand Table Resolution:
+ * Enables typing a table number (e.g. "5", "T12", "Bar 1").
+ * - If table exists and is occupied: returns its active session & commerce order ID.
+ * - If table exists and is free: opens a session for it.
+ * - If table does not exist: creates the table in pos_tables, opens a session, and returns it.
+ */
+export async function getOrCreateTableAndSession(params: {
+  tableCodeInput: string;
+  branchId: string;
+  restaurantId: string;
+  externalBranchId?: string;
+  operatorName?: string;
+  operatorUserId?: string;
+  waiterName?: string;
+  guestCount?: number;
+}): Promise<QuickTableResult> {
+  const raw = params.tableCodeInput.trim();
+  if (!raw) return { success: false, error: 'Table number cannot be empty.' };
+
+  try {
+    // 1. Normalize code and display name
+    let cleanCode = raw.toUpperCase().replace(/\s+/g, ' ');
+    if (cleanCode.startsWith('TABLE ')) {
+      cleanCode = cleanCode.replace('TABLE ', 'T');
+    }
+    if (/^\d+$/.test(cleanCode)) {
+      cleanCode = `T${cleanCode}`;
+    }
+
+    const cleanDisplay = cleanCode.startsWith('T') && /^\d+$/.test(cleanCode.substring(1))
+      ? `Table ${cleanCode.substring(1)}`
+      : cleanCode;
+
+    // 2. Search for existing table in branch
+    const { data: existingTables, error: searchErr } = await supabase
+      .from('pos_tables')
+      .select('*')
+      .eq('branch_id', params.branchId)
+      .eq('active', true);
+
+    if (searchErr) throw searchErr;
+
+    let targetTable = (existingTables || []).find(t => {
+      const c = (t.table_code || '').toUpperCase();
+      const d = (t.display_name || '').toUpperCase();
+      const r = raw.toUpperCase();
+      return (
+        c === cleanCode ||
+        c === r ||
+        d === cleanDisplay.toUpperCase() ||
+        d === r ||
+        (cleanCode.startsWith('T') && c === cleanCode.substring(1)) ||
+        (c.startsWith('T') && c.substring(1) === r)
+      );
+    });
+
+    let isNewlyCreated = false;
+
+    // 3. If table does not exist, CREATE IT NOW on the fly
+    if (!targetTable) {
+      // Find or create a floor area
+      const { data: areas } = await supabase
+        .from('pos_floor_areas')
+        .select('id')
+        .eq('branch_id', params.branchId)
+        .eq('active', true)
+        .order('sort_order', { ascending: true })
+        .limit(1);
+
+      let areaId = areas && areas.length > 0 ? areas[0].id : null;
+      if (!areaId) {
+        const createAreaRes = await createFloorArea(params.branchId, params.restaurantId, 'Main Dining');
+        if (createAreaRes.success && createAreaRes.area) {
+          areaId = createAreaRes.area.id;
+        } else {
+          throw new Error('Failed to resolve floor area for new table.');
+        }
+      }
+
+      // Generate staggered position on canvas so it looks neat
+      const existingCount = (existingTables || []).length;
+      const col = existingCount % 5;
+      const row = Math.floor(existingCount / 5) % 4;
+      const posX = 5 + col * 18;
+      const posY = 10 + row * 22;
+
+      const { data: createdTable, error: createTableErr } = await supabase
+        .from('pos_tables')
+        .insert([{
+          branch_id: params.branchId,
+          floor_area_id: areaId,
+          table_code: cleanCode,
+          display_name: cleanDisplay,
+          capacity: params.guestCount || 4,
+          shape: 'square',
+          position_x: Math.min(85, posX),
+          position_y: Math.min(80, posY),
+          width: 7,
+          height: 7,
+          active: true
+        }])
+        .select()
+        .single();
+
+      if (createTableErr) throw createTableErr;
+      targetTable = createdTable;
+      isNewlyCreated = true;
+    }
+
+    // 4. Check if table already has an active session
+    const { data: activeLinks, error: linkErr } = await supabase
+      .from('pos_table_session_tables')
+      .select('session_id, session:pos_table_sessions(id, status, commerce_order_id, guest_count, assigned_waiter_name_snapshot)')
+      .eq('table_id', targetTable.id);
+
+    if (linkErr) console.warn('Could not query active table links:', linkErr);
+
+    const activeLink = (activeLinks || []).find((l: any) => {
+      const s = l.session;
+      return s && ['occupied', 'bill_requested', 'opening'].includes(s.status);
+    });
+
+    if (activeLink && activeLink.session) {
+      const sess: any = activeLink.session;
+      return {
+        success: true,
+        table: targetTable,
+        sessionId: sess.id,
+        orderId: sess.commerce_order_id || null,
+        guestCount: sess.guest_count || targetTable.capacity || 2,
+        waiterName: sess.assigned_waiter_name_snapshot || params.waiterName || 'Staff',
+        isExistingOccupied: true,
+        isNewlyCreated: false
+      };
+    }
+
+    // 5. Table is free (or newly created): Open a fresh session
+    const openRes = await openTableSession({
+      tableId: targetTable.id,
+      tableCode: targetTable.table_code,
+      branchId: params.branchId,
+      restaurantId: params.restaurantId,
+      externalBranchId: params.externalBranchId || '1',
+      guestCount: params.guestCount || targetTable.capacity || 2,
+      waiterName: params.waiterName || params.operatorName || 'Cashier',
+      operatorName: params.operatorName || 'Cashier',
+      operatorUserId: params.operatorUserId
+    });
+
+    if (!openRes.success) {
+      return {
+        success: false,
+        error: openRes.error || 'Failed to open table session.'
+      };
+    }
+
+    return {
+      success: true,
+      table: targetTable,
+      sessionId: openRes.sessionId,
+      orderId: null,
+      guestCount: params.guestCount || targetTable.capacity || 2,
+      waiterName: params.waiterName || params.operatorName || 'Cashier',
+      isExistingOccupied: false,
+      isNewlyCreated
+    };
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Error processing table number.' };
+  }
+}
+
