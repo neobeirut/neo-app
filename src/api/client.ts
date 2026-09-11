@@ -42,6 +42,10 @@ async function injectRestaurantId(payload: any) {
   return payload;
 }
 
+export function setCachedRestaurantId(id: string | null) {
+  cachedRestaurantId = id;
+}
+
 export function getRestaurantId(): string | null {
   try {
     if (typeof window !== 'undefined' && window.localStorage) {
@@ -50,6 +54,12 @@ export function getRestaurantId(): string | null {
         const cachedUser = JSON.parse(cachedUserStr);
         if (cachedUser?.restaurant_id) {
           return cachedUser.restaurant_id;
+        }
+        if (cachedUser?.restaurants?.id) {
+          return cachedUser.restaurants.id;
+        }
+        if (cachedUser?.restaurantId) {
+          return cachedUser.restaurantId;
         }
       }
     }
@@ -281,10 +291,12 @@ export const api = {
   },
 
   // Branches, Departments and Users for Access Control Dropdowns
-  getBranchesList: async (includeInactive = false) => {
-    const rid = getRestaurantId();
+  getBranchesList: async (includeInactive = false, explicitRestaurantId?: string) => {
+    const rid = explicitRestaurantId || getRestaurantId();
     let query = supabase.from('branches').select('*').order('name');
-    if (rid) query = query.eq('restaurant_id', rid);
+    if (rid) {
+      query = query.eq('restaurant_id', rid);
+    }
     const { data, error } = await query;
     if (error) return { success: false, error: error.message };
     const filtered = (data || []).filter((b: any) => {
@@ -2261,8 +2273,8 @@ export const api = {
     return { success: true, data };
   },
 
-  getBranches: async () => {
-    const rid = getRestaurantId();
+  getBranches: async (explicitRestaurantId?: string) => {
+    const rid = explicitRestaurantId || getRestaurantId();
     let query = supabase.from('branches').select('*');
     if (rid) query = query.eq('restaurant_id', rid);
     const { data, error } = await query;

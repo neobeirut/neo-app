@@ -68,9 +68,8 @@ export default function PaymentDetailsScreen({ user }: { user: any }) {
 
   const loadBranches = async () => {
     const res = await api.getBranchesList();
-    const dbNames = (res.success && res.data) ? res.data.map((b: any) => b.name) : [];
-    const combined = Array.from(new Set(['Badaro', 'Naccache', ...dbNames])).filter(Boolean);
-    setBranches(combined);
+    const dbNames = (res.success && res.data) ? res.data.map((b: any) => b.name).filter(Boolean) : [];
+    setBranches(dbNames);
   };
 
   const loadPayments = async () => {

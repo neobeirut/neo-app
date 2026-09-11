@@ -68,8 +68,7 @@ export default function DashboardScreen({
         ]);
 
         const dbBranches = (branchRes.success && branchRes.data) ? branchRes.data.map((b: any) => typeof b === 'string' ? { id: b, name: b } : b) : [];
-        const combinedNames = Array.from(new Set(['Badaro', 'Naccache', ...dbBranches.map((b: any) => b.name)]));
-        const formattedBranches = combinedNames.map((n: string) => ({ id: n, name: n }));
+        const formattedBranches = dbBranches.map((b: any) => ({ id: b.name, name: b.name }));
         setBranches(formattedBranches);
         setSelectedBranch('All');
 

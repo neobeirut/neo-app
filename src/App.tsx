@@ -18,7 +18,7 @@ import SalaryPaymentsScreen from './screens/SalaryPaymentsScreen';
 import SOPsScreen from './screens/SOPsScreen';
 import SOPFormScreen from './screens/SOPFormScreen';
 import { LayoutDashboard, ChefHat, Users, LogOut, DollarSign, Shield, BookOpen, TrendingUp, MessageSquare, Newspaper, AlertTriangle, Sparkles, Trash2, History, Coins, Truck, ShoppingBag, Calendar, ClipboardList, Package, CheckSquare, Receipt, Briefcase, Store, ChevronDown, ChevronRight, Clock, Target, Layers, Download } from 'lucide-react';
-import { api, hasAdminAccess } from './api/client';
+import { api, hasAdminAccess, getRestaurantId, setCachedRestaurantId } from './api/client';
 import { usePWA } from './hooks/usePWA';
 import AssessmentsScreen from './screens/AssessmentsScreen';
 import AssessmentConductWebScreen from './screens/AssessmentConductWebScreen';
@@ -346,10 +346,18 @@ function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () 
   const [branchesList, setBranchesList] = useState<string[]>([]);
 
   useEffect(() => {
-    api.getBranchesList().then(res => {
-      const dbNames = (res.success && res.data) ? res.data.map((b: any) => b.name) : [];
-      const combined = Array.from(new Set(['Badaro', 'Naccache', ...dbNames])).filter(Boolean);
-      setBranchesList(combined);
+    if (!user) return;
+    const rid = user.restaurant_id || user.restaurants?.id || getRestaurantId();
+    if (rid) {
+      setCachedRestaurantId(rid);
+    }
+    api.getBranchesList(false, rid || undefined).then(res => {
+      if (res.success && res.data) {
+        const dbNames = res.data.map((b: any) => b.name).filter(Boolean);
+        setBranchesList(dbNames);
+      } else {
+        setBranchesList([]);
+      }
     });
   }, [user]);
 
@@ -610,6 +618,7 @@ function App() {
 
       // Background refresh of restaurant configuration settings
       if (parsed.restaurant_id) {
+        setCachedRestaurantId(parsed.restaurant_id);
         api.getRestaurantById(parsed.restaurant_id).then(res => {
           if (res.success && res.data) {
             const updatedUser = { ...parsed, restaurants: res.data };
@@ -639,6 +648,9 @@ function App() {
   }, [user]);
 
   const handleLogin = (userData: any) => {
+    if (userData?.restaurant_id) {
+      setCachedRestaurantId(userData.restaurant_id);
+    }
     setUser(userData);
     localStorage.setItem('neo_admin_user', JSON.stringify(userData));
   };
