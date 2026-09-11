@@ -376,11 +376,20 @@ function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () 
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Fullscreen POS Terminal Mode (Zero sidebar, zero top-bar)
+  // Fullscreen Standalone Mode for POS & KDS (Zero admin sidebar, zero top-bar, dedicated kiosk window)
   if (location.pathname === '/pos') {
     return (
       <div style={{ width: '100vw', height: '100vh', overflow: 'hidden', backgroundColor: '#0F1115' }}>
         <PosTerminalScreen user={user} onExit={() => navigate('/')} />
+      </div>
+    );
+  }
+
+  if (location.pathname === '/kds') {
+    const activeBranchId = user?.branch_id || '9c214659-9cc7-4f33-b115-cbbb8a823a94';
+    return (
+      <div style={{ width: '100vw', height: '100vh', overflow: 'hidden', backgroundColor: '#030712' }}>
+        <KdsScreen branchId={activeBranchId} onExit={() => navigate('/')} />
       </div>
     );
   }
@@ -432,7 +441,7 @@ function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () 
               } 
             />
             <Route path="/pos" element={<PosTerminalScreen user={user} onExit={() => navigate('/')} />} />
-            <Route path="/kds" element={<KdsScreen branchId={user?.branch_id || '9c214659-9cc7-4f33-b115-cbbb8a823a94'} />} />
+            <Route path="/kds" element={<KdsScreen branchId={user?.branch_id || '9c214659-9cc7-4f33-b115-cbbb8a823a94'} onExit={() => navigate('/')} />} />
             {isSectionEnabled('orders') && canAccess('orders', permissions?.can_create_orders !== false || permissions?.can_receive_orders !== false) && (
               <Route path="/orders" element={<OrdersScreen user={user} />} />
             )}

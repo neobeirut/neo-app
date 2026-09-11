@@ -9,9 +9,10 @@ import { KdsSettingsModal } from './KdsSettingsModal';
 
 interface KdsScreenProps {
   branchId: string;
+  onExit?: () => void;
 }
 
-export const KdsScreen: React.FC<KdsScreenProps> = ({ branchId }) => {
+export const KdsScreen: React.FC<KdsScreenProps> = ({ branchId, onExit }) => {
   const [locationKey, setLocationKey] = useState<string>('badaro');
   const [stations, setStations] = useState<KdsStation[]>([]);
   const [activeStation, setActiveStation] = useState<KdsStation | null>(null);
@@ -97,6 +98,15 @@ export const KdsScreen: React.FC<KdsScreenProps> = ({ branchId }) => {
           >
             ⚙️
           </button>
+          {onExit && (
+            <button
+              onClick={onExit}
+              className="px-3 py-1.5 rounded-lg bg-rose-950/70 hover:bg-rose-900 text-xs font-bold text-rose-300 border border-rose-800 transition-all flex items-center gap-1.5 ml-2"
+              title="Exit KDS"
+            >
+              🚪 Exit KDS
+            </button>
+          )}
         </div>
       </header>
 
