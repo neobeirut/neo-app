@@ -5,6 +5,26 @@ import { resolve } from 'path';
 export default defineConfig({
   plugins: [react()],
   base: '/',
+  server: {
+    port: 5173,
+    proxy: {
+      '/api/pos': {
+        target: 'https://ovrload-backend-production.up.railway.app',
+        changeOrigin: true,
+        secure: false,
+      },
+      '/api/branches': {
+        target: 'https://ovrload-backend-production.up.railway.app',
+        changeOrigin: true,
+        secure: false,
+      },
+      '/api/delivery': {
+        target: 'https://ovrload-backend-production.up.railway.app',
+        changeOrigin: true,
+        secure: false,
+      },
+    },
+  },
   resolve: {
     alias: {
       '@auth/create/react': '@hono/auth-js/react',

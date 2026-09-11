@@ -7,11 +7,7 @@ import { PaymentModal, RefundModal } from '../payments';
 import { adaptOvrloadOrder } from './orderAdapter';
 import type { FlowPosOrder } from './orderAdapter';
 
-const COMMERCE_API_BASE = (
-  (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_OVRLOAD_API_URL)
-    ? import.meta.env.VITE_OVRLOAD_API_URL
-    : 'https://ovrload-backend-production.up.railway.app'
-).replace(/\/+$/, '');
+import { COMMERCE_API_BASE } from '../config';
 
 interface OrdersHubScreenProps {
   branchName?: string;

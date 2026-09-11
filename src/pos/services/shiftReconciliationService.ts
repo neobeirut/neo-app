@@ -2,11 +2,7 @@ import { api } from '../../api/client';
 import { supabase } from '../../api/supabase';
 import type { ShiftCashRecord } from './shiftCashBridge';
 
-const COMMERCE_API_BASE = (
-  (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_OVRLOAD_API_URL)
-    ? import.meta.env.VITE_OVRLOAD_API_URL
-    : 'https://ovrload-backend-production.up.railway.app'
-).replace(/\/+$/, '');
+import { COMMERCE_API_BASE } from '../config';
 
 const PRINT_SERVER_URL = 'http://192.168.18.195:9191';
 
