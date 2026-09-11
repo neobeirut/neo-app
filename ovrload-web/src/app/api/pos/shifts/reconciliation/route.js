@@ -48,14 +48,18 @@ export async function GET(request) {
         amount_refunded,
         void_reason,
         guest_count,
+        COALESCE(settled_at, created_at) as event_time,
         created_at
       FROM orders
       WHERE (
         ${numericBranchId ? sql`branch_id = ${numericBranchId}` : sql`false`}
       )
-        AND created_at >= ${startTime}
-        AND created_at <= ${endTime}
-      ORDER BY created_at ASC;
+        AND (
+          (payment_status = 'PAID' AND COALESCE(settled_at, created_at) >= ${startTime} AND COALESCE(settled_at, created_at) <= ${endTime})
+          OR (COALESCE(payment_status, '') != 'PAID' AND status = 'completed' AND COALESCE(settled_at, created_at) >= ${startTime} AND COALESCE(settled_at, created_at) <= ${endTime})
+          OR (status = 'cancelled' AND created_at >= ${startTime} AND created_at <= ${endTime})
+        )
+      ORDER BY COALESCE(settled_at, created_at) ASC;
     `;
 
     // 2. Fetch granular completed order_payments rows

@@ -78,24 +78,60 @@ export interface CashMovementParams {
 }
 
 /**
+ * Resolves the canonical physical drawer reconciliation ID for a branch and device terminal alias.
+ * Decouples POS device identity from physical cash drawer identity.
+ */
+export async function resolvePhysicalDrawerId(branchIdentifier?: string, terminalId?: string): Promise<string> {
+  if (!terminalId) return 'DRAWER-01';
+  if (!branchIdentifier) return terminalId.trim();
+
+  try {
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(branchIdentifier);
+    let query = supabase
+      .from('pos_drawer_terminal_links')
+      .select('drawer_terminal_id')
+      .eq('commerce_terminal_id', terminalId.trim())
+      .eq('active', true);
+
+    if (isUuid) {
+      query = query.eq('branch_id', branchIdentifier);
+    }
+
+    const { data } = await query.limit(1);
+    if (data && data.length > 0 && data[0].drawer_terminal_id) {
+      return data[0].drawer_terminal_id;
+    }
+  } catch (err) {
+    console.warn('[shiftCashBridge] Error resolving physical drawer ID:', err);
+  }
+
+  return terminalId.trim();
+}
+
+/**
  * Resolves all commerce terminal aliases mapped to a physical drawer.
  */
 export async function getDrawerTerminalAliases(branchId: string, drawerTerminalId: string): Promise<string[]> {
   if (!branchId || !drawerTerminalId) return drawerTerminalId ? [drawerTerminalId] : [];
 
   try {
+    const canonicalDrawer = await resolvePhysicalDrawerId(branchId, drawerTerminalId);
+
     const { data, error } = await supabase
       .from('pos_drawer_terminal_links')
       .select('commerce_terminal_id')
       .eq('branch_id', branchId)
-      .eq('drawer_terminal_id', drawerTerminalId)
+      .eq('drawer_terminal_id', canonicalDrawer)
       .eq('active', true);
 
     if (error || !data || data.length === 0) {
-      return [drawerTerminalId];
+      return [canonicalDrawer];
     }
 
     const aliases = data.map((r: any) => r.commerce_terminal_id);
+    if (!aliases.includes(canonicalDrawer)) {
+      aliases.push(canonicalDrawer);
+    }
     if (!aliases.includes(drawerTerminalId)) {
       aliases.push(drawerTerminalId);
     }
@@ -107,13 +143,15 @@ export async function getDrawerTerminalAliases(branchId: string, drawerTerminalI
 }
 
 /**
- * Queries the active open shift for a branch and terminal.
+ * Queries the active open shift for a branch and physical drawer.
  */
 export async function getActiveShift(branchIdentifier: string, terminalId?: string): Promise<ShiftCashRecord | null> {
   if (!branchIdentifier) return null;
 
   try {
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(branchIdentifier);
+    const canonicalDrawer = terminalId ? await resolvePhysicalDrawerId(branchIdentifier, terminalId) : undefined;
+
     let query = supabase
       .from('shift_cash')
       .select('*')
@@ -125,8 +163,8 @@ export async function getActiveShift(branchIdentifier: string, terminalId?: stri
       query = query.ilike('branch', `%${branchIdentifier.trim()}%`);
     }
 
-    if (terminalId) {
-      query = query.eq('terminal_id', terminalId);
+    if (canonicalDrawer) {
+      query = query.eq('terminal_id', canonicalDrawer);
     }
 
     const { data, error } = await query
@@ -186,14 +224,15 @@ export async function openShift(params: OpenShiftParams): Promise<{ success: boo
     if (!params.terminalId) {
       return { success: false, error: 'Cannot open shift without explicit terminal ID.' };
     }
-    const terminalId = params.terminalId.trim();
+    const deviceTerminalId = params.terminalId.trim();
+    const canonicalDrawerId = await resolvePhysicalDrawerId(params.branchId || params.branchName, deviceTerminalId);
     
-    // Check for existing open shift on this terminal
-    const existing = await getActiveShift(params.branchId || params.branchName, terminalId);
+    // Check for existing open shift on this canonical physical drawer
+    const existing = await getActiveShift(params.branchId || params.branchName, canonicalDrawerId);
     if (existing) {
       return {
         success: false,
-        error: `Terminal ${terminalId} already has an active open shift (opened by ${existing.user_name} at ${new Date(existing.created_at).toLocaleTimeString()}). Please close it first.`
+        error: `Physical drawer ${canonicalDrawerId} already has an active open shift (opened by ${existing.user_name} at ${new Date(existing.created_at).toLocaleTimeString()}). Please close it first.`
       };
     }
 
@@ -207,7 +246,7 @@ export async function openShift(params: OpenShiftParams): Promise<{ success: boo
       date: todayStr,
       branch: params.branchName,
       branch_id: params.branchId || null,
-      terminal_id: terminalId,
+      terminal_id: canonicalDrawerId,
       shift: defaultShift,
       rate: defaultRate,
       opening_usd: params.openingUsd || 0,

@@ -244,13 +244,15 @@ export async function POST(request, { params }) {
     const currentRefunded = parseFloat(existingOrder.amount_refunded || 0);
 
     let newPaymentStatus = 'PARTIALLY_PAID';
+    let isFullySettled = false;
     if (newTotalPaid >= orderTotal && orderTotal > 0) {
       newPaymentStatus = 'PAID';
+      isFullySettled = true;
     } else if (newTotalPaid <= 0) {
       newPaymentStatus = 'UNPAID';
     }
 
-    // 6. Update orders table summary
+    // 6. Update orders table summary with settlement timestamp
     await sql`
       UPDATE orders 
       SET 
@@ -258,6 +260,14 @@ export async function POST(request, { params }) {
         payment_status = ${newPaymentStatus},
         payment_method = ${payment_method},
         payment_operation_id = ${operation_id}::uuid,
+        settled_at = CASE 
+          WHEN ${isFullySettled} THEN COALESCE(settled_at, NOW()) 
+          ELSE settled_at 
+        END,
+        status = CASE 
+          WHEN ${isFullySettled} AND status IN ('pending', 'confirmed', 'held') THEN 'completed' 
+          ELSE status 
+        END,
         version = COALESCE(version, 1) + 1
       WHERE id = ${orderId};
     `;
