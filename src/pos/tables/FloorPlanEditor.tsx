@@ -77,9 +77,9 @@ export const FloorPlanEditor: React.FC<FloorPlanEditorProps> = ({
     let newX = ((e.clientX - rect.left - dragOffset.x) / rect.width) * 100;
     let newY = ((e.clientY - rect.top - dragOffset.y) / rect.height) * 100;
 
-    // Clamp between 2% and 88%
-    newX = Math.max(2, Math.min(88, Math.round(newX * 2) / 2));
-    newY = Math.max(2, Math.min(88, Math.round(newY * 2) / 2));
+    // Clamp between 1% and 92%
+    newX = Math.max(1, Math.min(92, Math.round(newX * 2) / 2));
+    newY = Math.max(1, Math.min(92, Math.round(newY * 2) / 2));
 
     setLocalTables(prev => prev.map(t => 
       t.id === selectedTableId ? { ...t, position_x: newX, position_y: newY } : t
@@ -117,8 +117,8 @@ export const FloorPlanEditor: React.FC<FloorPlanEditorProps> = ({
       shape: 'square',
       position_x: 35,
       position_y: 35,
-      width: 14,
-      height: 14
+      width: 7,
+      height: 7
     });
 
     if (res.success && res.data) {
@@ -279,33 +279,43 @@ export const FloorPlanEditor: React.FC<FloorPlanEditorProps> = ({
             const isSelected = table.id === selectedTableId;
             const shapeClass = 
               table.shape === 'round' ? 'rounded-full aspect-square' :
-              table.shape === 'rectangle' ? 'rounded-2xl aspect-[16/10]' :
-              'rounded-2xl aspect-square';
+              table.shape === 'rectangle' ? 'rounded-xl aspect-[16/10]' :
+              'rounded-xl aspect-square';
+
+            const renderedWidth = table.width
+              ? (table.width > 12 ? Math.round(table.width * 0.5 * 10) / 10 : table.width)
+              : 7;
 
             return (
               <div
                 key={table.id}
                 onMouseDown={(e) => handleMouseDown(e, table)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedTableId(table.id);
+                }}
                 style={{
                   left: `${table.position_x}%`,
                   top: `${table.position_y}%`,
-                  width: `${table.width || 14}%`
+                  width: `${renderedWidth}%`
                 }}
-                className={`absolute select-none cursor-move transition-shadow flex flex-col items-center justify-center p-2.5 border text-center ${shapeClass} ${
+                className={`absolute select-none cursor-move transition-shadow flex flex-col items-center justify-center p-1 sm:p-1.5 border text-center ${shapeClass} ${
                   isSelected
                     ? 'bg-amber-500/20 border-amber-400 ring-4 ring-amber-500/30 z-30 shadow-2xl scale-105'
-                    : 'bg-[#181E2C] border-[#2C374D] hover:border-slate-400 z-10'
+                    : 'bg-[#181E2C] border-[#2C374D] hover:border-slate-400 z-10 shadow-md'
                 }`}
               >
-                <div className="font-black text-sm text-white tracking-wider">
+                <div className="font-black text-xs text-white tracking-wider leading-none">
                   {table.table_code}
                 </div>
-                <div className="text-[10px] text-slate-400 font-semibold mt-0.5">
-                  Seats {table.capacity}
+                <div className="text-[9px] text-slate-400 font-semibold mt-0.5 leading-none">
+                  {table.capacity}p
                 </div>
-                <div className="text-[9px] text-slate-500 truncate max-w-full">
-                  {table.display_name}
-                </div>
+                {table.display_name && table.display_name !== table.table_code && (
+                  <div className="text-[8px] text-slate-500 truncate max-w-full px-0.5 leading-none mt-0.5">
+                    {table.display_name}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -376,6 +386,50 @@ export const FloorPlanEditor: React.FC<FloorPlanEditorProps> = ({
                 </div>
               </div>
 
+              {/* Table Size (Width) */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                    Table Size
+                  </label>
+                  <span className="text-xs font-black text-amber-400">
+                    {Math.round((selectedTable.width > 12 ? selectedTable.width * 0.5 : (selectedTable.width || 7)) * 10) / 10}%
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="4"
+                  max="14"
+                  step="0.5"
+                  value={selectedTable.width > 12 ? selectedTable.width * 0.5 : (selectedTable.width || 7)}
+                  onChange={(e) => updateSelectedProperty('width', parseFloat(e.target.value))}
+                  className="w-full accent-amber-400 cursor-pointer"
+                />
+                <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1">
+                  <button
+                    type="button"
+                    onClick={() => updateSelectedProperty('width', 5)}
+                    className="hover:text-amber-400 transition"
+                  >
+                    Compact (5%)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => updateSelectedProperty('width', 7)}
+                    className="hover:text-amber-400 font-bold text-slate-200 transition"
+                  >
+                    Standard (7%)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => updateSelectedProperty('width', 10)}
+                    className="hover:text-amber-400 transition"
+                  >
+                    Large (10%)
+                  </button>
+                </div>
+              </div>
+
               {/* Capacity Selector */}
               <div>
                 <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">
@@ -433,8 +487,8 @@ export const FloorPlanEditor: React.FC<FloorPlanEditorProps> = ({
                     <label className="text-slate-400 block mb-0.5">X: {Math.round(selectedTable.position_x)}%</label>
                     <input
                       type="range"
-                      min="2"
-                      max="88"
+                      min="1"
+                      max="92"
                       value={selectedTable.position_x}
                       onChange={(e) => updateSelectedProperty('position_x', parseFloat(e.target.value))}
                       className="w-full accent-amber-400"
@@ -444,8 +498,8 @@ export const FloorPlanEditor: React.FC<FloorPlanEditorProps> = ({
                     <label className="text-slate-400 block mb-0.5">Y: {Math.round(selectedTable.position_y)}%</label>
                     <input
                       type="range"
-                      min="2"
-                      max="88"
+                      min="1"
+                      max="92"
                       value={selectedTable.position_y}
                       onChange={(e) => updateSelectedProperty('position_y', parseFloat(e.target.value))}
                       className="w-full accent-amber-400"

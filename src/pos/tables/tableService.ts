@@ -833,8 +833,8 @@ export async function upsertTable(
           shape: table.shape || 'square',
           position_x: table.position_x,
           position_y: table.position_y,
-          width: table.width || 14,
-          height: table.height || 14,
+          width: table.width || 7,
+          height: table.height || 7,
           floor_area_id: table.floor_area_id,
           active: table.active !== undefined ? table.active : true
         })
@@ -856,8 +856,8 @@ export async function upsertTable(
           shape: table.shape || 'square',
           position_x: table.position_x || 20,
           position_y: table.position_y || 20,
-          width: table.width || 14,
-          height: table.height || 14,
+          width: table.width || 7,
+          height: table.height || 7,
           active: true
         }])
         .select()
