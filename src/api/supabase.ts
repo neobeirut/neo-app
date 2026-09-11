@@ -13,6 +13,17 @@ export function getGlobalRestaurantId(): string | null {
   if (memoryRestaurantId) return memoryRestaurantId;
   try {
     if (typeof window !== 'undefined' && window.localStorage) {
+      // 1. Direct active restaurant key if set by POS
+      const selectedRestId = window.localStorage.getItem('flow_pos_selected_restaurant');
+      if (selectedRestId && selectedRestId.trim()) return selectedRestId.trim();
+
+      // 2. Active branch key if set by POS
+      const selectedBranch = window.localStorage.getItem('flow_pos_selected_branch') || '';
+      if (selectedBranch.toLowerCase().includes('bistro')) {
+        return '4c0ed960-e459-42c4-962f-41229a2d3783';
+      }
+
+      // 3. User session from neo_admin_user
       const cachedUserStr = window.localStorage.getItem('neo_admin_user');
       if (cachedUserStr) {
         const cachedUser = JSON.parse(cachedUserStr);
@@ -21,7 +32,9 @@ export function getGlobalRestaurantId(): string | null {
         if (cachedUser?.restaurantId) return cachedUser.restaurantId;
         if (
           cachedUser?.email?.toLowerCase().includes('bistro') ||
-          cachedUser?.branch?.toLowerCase().includes('bistro')
+          cachedUser?.branch?.toLowerCase().includes('bistro') ||
+          cachedUser?.name?.toLowerCase().includes('bistro') ||
+          cachedUser?.role?.toLowerCase().includes('bistro')
         ) {
           return '4c0ed960-e459-42c4-962f-41229a2d3783';
         }
@@ -33,6 +46,7 @@ export function getGlobalRestaurantId(): string | null {
   } catch {}
   return '79256f11-a9f8-4fec-901d-69baf929762d';
 }
+
 
 const tenantFetch: typeof fetch = (input: RequestInfo | URL, init?: RequestInit) => {
   const rid = getGlobalRestaurantId();

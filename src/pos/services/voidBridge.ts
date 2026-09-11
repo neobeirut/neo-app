@@ -1,4 +1,5 @@
-import { supabase } from '../../api/supabase';
+import { supabase, getGlobalRestaurantId } from '../../api/supabase';
+
 
 export interface CanceledItemDetail {
   name: string;
@@ -42,7 +43,8 @@ export async function executeVoidTransaction(
     ? crypto.randomUUID() 
     : 'void-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9);
 
-  const defaultRestaurantId = params.restaurantId || '79256f11-a9f8-4fec-901d-69baf929762d';
+  const defaultRestaurantId = params.restaurantId || getGlobalRestaurantId() || '79256f11-a9f8-4fec-901d-69baf929762d';
+
   const todayStr = new Date().toISOString().split('T')[0];
   const timeStr = new Date().toTimeString().slice(0, 5);
 

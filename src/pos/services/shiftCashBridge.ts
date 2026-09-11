@@ -1,4 +1,4 @@
-import { supabase } from '../../api/supabase';
+import { supabase, getGlobalRestaurantId } from '../../api/supabase';
 
 export interface ShiftCashRecord {
   id: string;
@@ -145,10 +145,15 @@ export async function getDrawerTerminalAliases(branchId: string, drawerTerminalI
 /**
  * Queries the active open shift for a branch and physical drawer.
  */
-export async function getActiveShift(branchIdentifier: string, terminalId?: string): Promise<ShiftCashRecord | null> {
+export async function getActiveShift(
+  branchIdentifier: string,
+  terminalId?: string,
+  restaurantId?: string
+): Promise<ShiftCashRecord | null> {
   if (!branchIdentifier) return null;
 
   try {
+    const targetRestaurantId = restaurantId || getGlobalRestaurantId();
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(branchIdentifier);
     const canonicalDrawer = terminalId ? await resolvePhysicalDrawerId(branchIdentifier, terminalId) : undefined;
 
@@ -156,6 +161,10 @@ export async function getActiveShift(branchIdentifier: string, terminalId?: stri
       .from('shift_cash')
       .select('*')
       .eq('status', 'open');
+
+    if (targetRestaurantId) {
+      query = query.eq('restaurant_id', targetRestaurantId);
+    }
 
     if (isUuid) {
       query = query.eq('branch_id', branchIdentifier);
@@ -166,6 +175,7 @@ export async function getActiveShift(branchIdentifier: string, terminalId?: stri
     if (canonicalDrawer) {
       query = query.eq('terminal_id', canonicalDrawer);
     }
+
 
     const { data, error } = await query
       .order('created_at', { ascending: false })
@@ -227,8 +237,11 @@ export async function openShift(params: OpenShiftParams): Promise<{ success: boo
     const deviceTerminalId = params.terminalId.trim();
     const canonicalDrawerId = await resolvePhysicalDrawerId(params.branchId || params.branchName, deviceTerminalId);
     
+    // Resolve restaurant ID dynamically: from params, from global client, or fallback
+    const targetRestaurantId = params.restaurantId || getGlobalRestaurantId() || '79256f11-a9f8-4fec-901d-69baf929762d';
+
     // Check for existing open shift on this canonical physical drawer
-    const existing = await getActiveShift(params.branchId || params.branchName, canonicalDrawerId);
+    const existing = await getActiveShift(params.branchId || params.branchName, canonicalDrawerId, targetRestaurantId);
     if (existing) {
       return {
         success: false,
@@ -240,7 +253,6 @@ export async function openShift(params: OpenShiftParams): Promise<{ success: boo
     const hour = new Date().getHours();
     const defaultShift = params.shift || (hour < 16 ? 'AM' : 'PM');
     const defaultRate = params.rate || 89500;
-    const defaultRestaurantId = params.restaurantId || '79256f11-a9f8-4fec-901d-69baf929762d';
 
     const newRecord: any = {
       date: todayStr,
@@ -252,10 +264,11 @@ export async function openShift(params: OpenShiftParams): Promise<{ success: boo
       opening_usd: params.openingUsd || 0,
       opening_lbp: params.openingLbp || 0,
       user_name: params.userName || 'Cashier',
-      restaurant_id: defaultRestaurantId,
+      restaurant_id: targetRestaurantId,
       status: 'open',
       created_at: new Date().toISOString()
     };
+
 
     const { data, error } = await supabase
       .from('shift_cash')

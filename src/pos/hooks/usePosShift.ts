@@ -6,7 +6,8 @@ export function usePosShift(
   branchIdentifier: string | undefined,
   cashierName: string | undefined,
   terminalId: string = 'TERM-1',
-  branchId?: string
+  branchId?: string,
+  restaurantId?: string
 ) {
   const [activeShift, setActiveShift] = useState<ShiftCashRecord | null>(null);
   const [loading, setLoading] = useState(true);
@@ -24,7 +25,7 @@ export function usePosShift(
 
     setLoading(true);
     try {
-      const shift = await getActiveShift(branchId || branchIdentifier, terminalId);
+      const shift = await getActiveShift(branchId || branchIdentifier, terminalId, restaurantId);
       setActiveShift(shift);
     } catch (err) {
       console.error('[usePosShift] Error checking active shift:', err);
@@ -32,11 +33,11 @@ export function usePosShift(
     } finally {
       setLoading(false);
     }
-  }, [branchIdentifier, branchId, terminalId]);
+  }, [branchIdentifier, branchId, terminalId, restaurantId]);
 
   useEffect(() => {
     checkShift();
-  }, [checkShift, cashierName]);
+  }, [checkShift, cashierName, restaurantId]);
 
   const handleOpenShift = async (params: {
     openingUsd: number;
@@ -51,10 +52,12 @@ export function usePosShift(
       branchName: branchIdentifier,
       terminalId,
       userName: cashierName || 'Cashier',
+      restaurantId,
       shift: params.shift,
       openingUsd: params.openingUsd,
       openingLbp: params.openingLbp
     });
+
 
     if (res.success && res.shift) {
       setActiveShift(res.shift);

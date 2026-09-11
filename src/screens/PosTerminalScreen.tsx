@@ -1,7 +1,8 @@
 
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { api } from "../api/client";
-import { supabase } from "../api/supabase";
+import { supabase, getGlobalRestaurantId, setGlobalRestaurantId } from "../api/supabase";
+
 import { resolveCommerceBranchLink, getBranchCapabilities } from "../pos/services/branchMapping";
 import type { CommerceBranchLink } from "../pos/types/commerce";
 import type { BranchCapabilities } from "../pos/services/branchMapping";
@@ -294,6 +295,32 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     }
   });
 
+  // Dynamic Restaurant & Branch Identity Resolution
+  const currentRestaurantId =
+    commerceBranchLink?.restaurant_id ||
+    user?.restaurant_id ||
+    user?.restaurants?.id ||
+    (user?.email?.toLowerCase().includes('bistro') || user?.branch?.toLowerCase().includes('bistro') || user?.name?.toLowerCase().includes('bistro')
+      ? '4c0ed960-e459-42c4-962f-41229a2d3783'
+      : getGlobalRestaurantId() || '79256f11-a9f8-4fec-901d-69baf929762d');
+  const currentRestaurantName =
+    user?.restaurants?.name ||
+    (currentRestaurantId === '4c0ed960-e459-42c4-962f-41229a2d3783' ? 'The Bistro' : 'Neo Beirut');
+  const currentBranchId = commerceBranchLink?.flow_branch_id || branchCapabilities?.branchId || "";
+  const currentBranchName =
+    commerceBranchLink?.flow_branch_name ||
+    selectedTerminalBranch ||
+    user?.branch ||
+    activeCashier?.branch ||
+    "Badaro";
+
+  // Sync global restaurant context for Supabase tenant header
+  useEffect(() => {
+    if (currentRestaurantId) {
+      setGlobalRestaurantId(currentRestaurantId);
+    }
+  }, [currentRestaurantId]);
+
   // FLOW Shift Cash State & Bridge
   const {
     activeShift,
@@ -311,11 +338,13 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     handleOpenShift,
     handleCloseShift
   } = usePosShift(
-    commerceBranchLink?.flow_branch_name || user?.branch || "Cloud Kitchen",
+    currentBranchName,
     activeCashier?.name || user?.name || "Cashier",
     persistentTerminalId,
-    commerceBranchLink?.flow_branch_id
+    currentBranchId,
+    currentRestaurantId
   );
+
 
   // Phase 6 Shift Closing & Reporting States
   const [lastClosedShift, setLastClosedShift] = useState<any>(null);
@@ -562,13 +591,9 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       });
   }, [user?.restaurant_id]);
 
-  // Dynamic Restaurant & Branch Discount Resolution
-  const currentRestaurantId = commerceBranchLink?.restaurant_id || user?.restaurant_id || user?.restaurants?.id || "79256f11-a9f8-4fec-901d-69baf929762d";
-  const currentRestaurantName = user?.restaurants?.name || (currentRestaurantId === '4c0ed960-e459-42c4-962f-41229a2d3783' ? 'The Bistro' : 'Neo Beirut');
-  const currentBranchId = commerceBranchLink?.flow_branch_id || branchCapabilities?.branchId || "";
-  const currentBranchName = commerceBranchLink?.flow_branch_name || selectedTerminalBranch || user?.branch || activeCashier?.branch || "Badaro";
-
+  // Restaurant & Branch Discounts Fetch
   const fetchRestaurantDiscounts = async () => {
+
     if (!currentRestaurantId) return;
     try {
       const res = await getRestaurantDiscounts(currentRestaurantId);
@@ -1578,9 +1603,10 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     const raw = inputStr.trim();
     if (!raw) return;
 
-    const flowBranchId = commerceBranchLink?.flow_branch_id || branchCapabilities?.branchId || "9c214659-9cc7-4f33-b115-cbbb8a823a94";
-    const flowRestId = commerceBranchLink?.restaurant_id || "79256f11-a9f8-4fec-901d-69baf929762d";
+    const flowBranchId = currentBranchId || commerceBranchLink?.flow_branch_id || branchCapabilities?.branchId || "9c214659-9cc7-4f33-b115-cbbb8a823a94";
+    const flowRestId = currentRestaurantId;
     const extBranchId = String(commerceBranchLink?.external_branch_id || "1");
+
     const cashier = activeCashier?.name || user?.name || "Cashier";
 
     setIsQuickTableLoading(true);
@@ -2515,11 +2541,12 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         ) : posActiveView === 'tables' && branchCapabilities?.table_service ? (
           <div className="flex-1 overflow-hidden">
             <TablesScreen
-              branchId={commerceBranchLink?.flow_branch_id || branchCapabilities?.branchId || "9c214659-9cc7-4f33-b115-cbbb8a823a94"}
-              branchName={commerceBranchLink?.flow_branch_name || branchCapabilities?.branchName || "Badaro"}
-              restaurantId={commerceBranchLink?.restaurant_id || "79256f11-a9f8-4fec-901d-69baf929762d"}
+              branchId={currentBranchId || commerceBranchLink?.flow_branch_id || branchCapabilities?.branchId || "9c214659-9cc7-4f33-b115-cbbb8a823a94"}
+              branchName={currentBranchName}
+              restaurantId={currentRestaurantId}
               externalBranchId={String(commerceBranchLink?.external_branch_id || "1")}
               cashierName={activeCashier?.name || user?.name || "Cashier"}
+
               onOpenOrderInCart={async (orderId, tableCode, sessionId, guestCount, waiterName) => {
                 if (orderId) {
                   try {
