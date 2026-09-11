@@ -1,12 +1,32 @@
 /**
  * Resolves the base URL for OVRLOAD Commerce API endpoints.
- * When running in the browser on localhost / 127.0.0.1, uses relative path ""
+ * When running in a browser during local development / testing, uses relative path ""
  * to route through Vite's development proxy and prevent browser CORS blocks.
  */
-export const COMMERCE_API_BASE: string = (
-  (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_OVRLOAD_API_URL)
-    ? import.meta.env.VITE_OVRLOAD_API_URL
-    : ((typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1" || window.location.port === "5173"))
-        ? ""
-        : "https://ovrload-backend-production.up.railway.app")
-).replace(/\/+$/, "");
+function resolveCommerceApiBase(): string {
+  if (typeof window !== "undefined") {
+    const { hostname, port } = window.location;
+    // Any local development host/port or LAN IP (e.g. tablet on 192.168.x.x) routes through proxy
+    if (
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      hostname.startsWith("192.168.") ||
+      hostname.startsWith("10.") ||
+      hostname.endsWith(".local") ||
+      port === "5173" ||
+      port === "3000"
+    ) {
+      return "";
+    }
+  }
+
+  // If explicitly overridden via environment variable (e.g. deployed admin dashboard)
+  if (typeof import.meta !== "undefined" && import.meta.env?.VITE_OVRLOAD_API_URL) {
+    return import.meta.env.VITE_OVRLOAD_API_URL.replace(/\/+$/, "");
+  }
+
+  return "https://ovrload-backend-production.up.railway.app";
+}
+
+export const COMMERCE_API_BASE: string = resolveCommerceApiBase();
+

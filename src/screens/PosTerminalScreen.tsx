@@ -756,7 +756,17 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   const fetchProducts = async () => {
     setInitialLoadError(null);
     try {
-      const res = await fetchWithTimeout(`${COMMERCE_API_BASE}/api/pos/products`, {}, 10000);
+      let res: Response;
+      try {
+        res = await fetchWithTimeout(`${COMMERCE_API_BASE}/api/pos/products`, {}, 10000);
+      } catch (primaryErr) {
+        if (COMMERCE_API_BASE !== "") {
+          console.warn("[POS] Primary fetch failed, attempting relative proxy fallback /api/pos/products");
+          res = await fetchWithTimeout("/api/pos/products", {}, 10000);
+        } else {
+          throw primaryErr;
+        }
+      }
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}: Failed to load menu products`);
       }
@@ -769,7 +779,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         if (data.settings.print_server_ip) setPrintServerIP(data.settings.print_server_ip);
         if (data.settings.print_server_port) setPrintServerPort(Number(data.settings.print_server_port));
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error fetching POS products:", err);
       setInitialLoadError(err.message || "Failed to connect to POS server");
     } finally {
@@ -1901,17 +1911,28 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
           <p className="text-sm font-normal text-slate-300">
             {initialLoadError}
           </p>
-          <button
-            onClick={() => {
-              setLoading(true);
-              fetchProducts();
-              fetchOrdersQueue();
-              fetchBranchStatusAndPrompt();
-            }}
-            className="mt-2 px-6 py-3 bg-[#eb660c] hover:bg-[#d55807] text-white font-bold rounded-xl shadow-lg transition active:scale-95"
-          >
-            🔄 Retry Connection
-          </button>
+          <div className="flex items-center gap-3 mt-2">
+            <button
+              onClick={() => {
+                setLoading(true);
+                setInitialLoadError(null);
+                fetchProducts();
+                fetchOrdersQueue();
+                fetchBranchStatusAndPrompt();
+              }}
+              className="px-5 py-3 bg-[#eb660c] hover:bg-[#d55807] text-white font-bold rounded-xl shadow-lg transition active:scale-95"
+            >
+              🔄 Retry Connection
+            </button>
+            <button
+              onClick={() => {
+                window.location.reload();
+              }}
+              className="px-5 py-3 bg-[#262D3D] hover:bg-[#343D52] text-slate-200 font-bold rounded-xl shadow-lg transition active:scale-95"
+            >
+              🔁 Reload Page
+            </button>
+          </div>
         </div>
       </div>
     );
