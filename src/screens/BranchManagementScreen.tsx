@@ -258,12 +258,14 @@ function ShiftsModal({ branch, onClose }: { branch: string; onClose: () => void 
 /* ═══════════════════════════════════════════════════════
    MAIN SCREEN
 ═══════════════════════════════════════════════════════ */
-export default function BranchManagementScreen() {
+export default function BranchManagementScreen({ user: propUser }: { user?: any }) {
   const [branches, setBranches]           = useState<any[]>([]);
   const [loading,  setLoading]            = useState(true);
   const [errorMsg, setErrorMsg]           = useState<string | null>(null);
   const [searchQuery, setSearchQuery]     = useState('');
   const [shiftsByBranch, setShiftsByBranch] = useState<Record<string, BranchShift[]>>({});
+
+  const activeRestaurantId = propUser?.restaurant_id || propUser?.restaurants?.id || getRestaurantId();
 
   // Branch form state
   const [showModal,   setShowModal]   = useState(false);
@@ -284,11 +286,11 @@ export default function BranchManagementScreen() {
   // Which branch's shift modal is open
   const [shiftsModalBranch, setShiftsModalBranch] = useState<string | null>(null);
 
-  useEffect(() => { loadBranches(); loadAllShifts(); }, []);
+  useEffect(() => { loadBranches(); loadAllShifts(); }, [activeRestaurantId]);
 
   const loadBranches = async () => {
     setLoading(true); setErrorMsg(null);
-    const res = await api.getBranches();
+    const res = await api.getBranches(activeRestaurantId || undefined);
     if (res.success && res.data) setBranches(res.data);
     else setErrorMsg(res.error || 'Failed to fetch branches.');
     setLoading(false);
@@ -337,6 +339,7 @@ export default function BranchManagementScreen() {
     setSaving(true);
     const res = await api.saveBranch({
       name: name.trim(),
+      restaurant_id: activeRestaurantId || undefined,
       total_tables: parseInt(totalTables, 10),
       total_chairs: parseInt(totalChairs, 10),
       phone: phone.trim() || null,

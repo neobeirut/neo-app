@@ -581,7 +581,7 @@ function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () 
               <Route path="/super-admin" element={<SuperAdminScreen />} />
             )}
             {isSectionEnabled('branch_management') && canAccess('branch_management', !!permissions?.can_manage_branches) && (
-              <Route path="/branch-management" element={<BranchManagementScreen />} />
+              <Route path="/branch-management" element={<BranchManagementScreen user={user} />} />
             )}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
@@ -613,12 +613,20 @@ function App() {
     const saved = localStorage.getItem('neo_admin_user');
     if (saved) {
       const parsed = JSON.parse(saved);
+      if (!parsed.restaurant_id) {
+        if (parsed.email?.toLowerCase().includes('bistro') || parsed.branch?.toLowerCase().includes('bistro')) {
+          parsed.restaurant_id = '4c0ed960-e459-42c4-962f-41229a2d3783';
+        } else {
+          parsed.restaurant_id = '79256f11-a9f8-4fec-901d-69baf929762d';
+        }
+        localStorage.setItem('neo_admin_user', JSON.stringify(parsed));
+      }
+      setCachedRestaurantId(parsed.restaurant_id);
       setUser(parsed);
       sessionLogger.startHeartbeat();
 
       // Background refresh of restaurant configuration settings
       if (parsed.restaurant_id) {
-        setCachedRestaurantId(parsed.restaurant_id);
         api.getRestaurantById(parsed.restaurant_id).then(res => {
           if (res.success && res.data) {
             const updatedUser = { ...parsed, restaurants: res.data };
