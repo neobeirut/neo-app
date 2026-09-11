@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { supabase, setGlobalRestaurantId } from './supabase';
 
 let cachedRestaurantId: string | null = null;
 let cachedEmail: string | null = null;
@@ -44,7 +44,9 @@ async function injectRestaurantId(payload: any) {
 
 export function setCachedRestaurantId(id: string | null) {
   cachedRestaurantId = id;
+  setGlobalRestaurantId(id);
 }
+
 
 export function getRestaurantId(): string | null {
   try {
