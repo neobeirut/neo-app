@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { api } from "../api/client";
+import { supabase } from "../api/supabase";
 import { resolveCommerceBranchLink, getBranchCapabilities } from "../pos/services/branchMapping";
 import type { CommerceBranchLink } from "../pos/types/commerce";
 import type { BranchCapabilities } from "../pos/services/branchMapping";
@@ -134,6 +135,37 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   const [branchMappingError, setBranchMappingError] = useState<string | null>(null);
   const [isResolvingBranch, setIsResolvingBranch] = useState(true);
 
+  // Available Commerce Branches & Selection State
+  const [availableCommerceBranches, setAvailableCommerceBranches] = useState<any[]>([]);
+  const [isBranchSwitcherOpen, setIsBranchSwitcherOpen] = useState(false);
+  const [selectedTerminalBranch, setSelectedTerminalBranch] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem('flow_pos_selected_branch') || null;
+    } catch {
+      return null;
+    }
+  });
+
+  // Query all active commerce branch links for current restaurant
+  useEffect(() => {
+    const fetchAvailableBranches = async () => {
+      try {
+        let query = supabase.from('commerce_branch_links').select('*').eq('active', true);
+        const rid = user?.restaurant_id || user?.restaurants?.id;
+        if (rid && user?.role?.toLowerCase() !== 'superadmin') {
+          query = query.eq('restaurant_id', rid);
+        }
+        const { data } = await query;
+        if (data && data.length > 0) {
+          setAvailableCommerceBranches(data);
+        }
+      } catch (err) {
+        console.warn("Could not load available commerce branches:", err);
+      }
+    };
+    fetchAvailableBranches();
+  }, [user?.restaurant_id, user?.restaurants?.id]);
+
   // Main POS Navigation: SELL vs TABLES vs ORDERS
   const [posActiveView, setPosActiveView] = useState<'sell' | 'tables' | 'orders'>('sell');
   const [branchCapabilities, setBranchCapabilities] = useState<BranchCapabilities | null>(null);
@@ -153,13 +185,49 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   const [isVerifyingPin, setIsVerifyingPin] = useState(false);
 
   // Branch Resolution Logic
-  const resolveActiveBranch = async () => {
+  const resolveActiveBranch = async (explicitBranch?: string) => {
     setIsResolvingBranch(true);
     setBranchMappingError(null);
-    const branchToResolve = activeCashier?.branch || user?.branch || "Cloud Kitchen";
+
+    // Determine candidate branch:
+    // 1. Explicit argument
+    // 2. Persisted terminal selection
+    // 3. Active cashier's assigned branch (if not 'All')
+    // 4. User's assigned branch (if not 'All')
+    let branchToResolve = explicitBranch || selectedTerminalBranch;
+    if (!branchToResolve || branchToResolve.toLowerCase() === 'all') {
+      if (activeCashier?.branch && activeCashier.branch.toLowerCase() !== 'all') {
+        branchToResolve = activeCashier.branch;
+      } else if (user?.branch && user.branch.toLowerCase() !== 'all') {
+        branchToResolve = user.branch;
+      } else {
+        branchToResolve = null;
+      }
+    }
+
+    if (!branchToResolve) {
+      setCommerceBranchLink(null);
+      setBranchMappingError("No active branch selected for this terminal.");
+      setIsResolvingBranch(false);
+      return;
+    }
+
     const { link, error } = await resolveCommerceBranchLink(branchToResolve, 'ovrload');
     if (link) {
+      // Validate that the resolved branch belongs to the user's active restaurant (unless superadmin)
+      const userRid = user?.restaurant_id || user?.restaurants?.id;
+      if (userRid && link.restaurant_id && link.restaurant_id !== userRid && user?.role?.toLowerCase() !== 'superadmin') {
+        setCommerceBranchLink(null);
+        setSelectedTerminalBranch(null);
+        try { localStorage.removeItem('flow_pos_selected_branch'); } catch {}
+        setBranchMappingError("Selected branch does not belong to your active restaurant.");
+        setIsResolvingBranch(false);
+        return;
+      }
+
       setCommerceBranchLink(link);
+      setSelectedTerminalBranch(link.flow_branch_name);
+      try { localStorage.setItem('flow_pos_selected_branch', link.flow_branch_name); } catch {}
       setBranchMappingError(null);
     } else {
       setCommerceBranchLink(null);
@@ -181,9 +249,21 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     setIsResolvingBranch(false);
   };
 
+  const handleSelectTerminalBranch = async (branchName: string) => {
+    setSelectedTerminalBranch(branchName);
+    try {
+      localStorage.setItem('flow_pos_selected_branch', branchName);
+    } catch {}
+    if (activeCashier) {
+      setActiveCashier((prev: any) => prev ? { ...prev, branch: branchName } : null);
+    }
+    setIsBranchSwitcherOpen(false);
+    await resolveActiveBranch(branchName);
+  };
+
   useEffect(() => {
     resolveActiveBranch();
-  }, [user?.branch, activeCashier?.branch]);
+  }, [user?.branch, activeCashier?.branch, user?.restaurant_id]);
 
   // FLOW 86 Dynamic Availability Hook
   const { isProduct86d, unavailableProductIds, refetch86 } = usePos86(
@@ -2202,14 +2282,20 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
               </button>
             </div>
 
-            {/* Active Branch Badge */}
-            <div className="flex items-center gap-1.5 text-xs bg-[#222734] px-2.5 py-1.5 rounded-xl border border-[#2D3548]">
+            {/* Active Branch Badge with On-Click Switcher */}
+            <button
+              type="button"
+              onClick={() => setIsBranchSwitcherOpen(true)}
+              className="flex items-center gap-1.5 text-xs bg-[#222734] hover:bg-[#2c3344] px-2.5 py-1.5 rounded-xl border border-[#2D3548] hover:border-emerald-500/50 transition cursor-pointer"
+              title="Click to switch active branch for this terminal"
+            >
               <span className="text-emerald-400 font-black">📍</span>
               <span className="text-gray-300 font-medium">Branch:</span>
               <span className="text-white font-extrabold truncate max-w-[140px]">
-                {commerceBranchLink ? `${commerceBranchLink.flow_branch_name} (#${commerceBranchLink.external_branch_id})` : (user?.branch || "Unmapped")}
+                {commerceBranchLink ? `${commerceBranchLink.flow_branch_name} (#${commerceBranchLink.external_branch_id})` : (user?.branch || "Choose Branch")}
               </span>
-            </div>
+              <span className="text-[9px] text-gray-400 ml-0.5">▼</span>
+            </button>
 
             {/* 86 Indicator Badge */}
             {unavailableProductIds.size > 0 && (
@@ -3857,11 +3943,90 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       {/* UNMAPPED BRANCH BLOCKING ALERT */}
       {!isResolvingBranch && branchMappingError && (
         <BranchMappingAlert
-          branchName={activeCashier?.branch || user?.branch || "Unassigned"}
+          branchName={selectedTerminalBranch || activeCashier?.branch || user?.branch || "All"}
           errorMessage={branchMappingError}
-          onRetry={resolveActiveBranch}
+          restaurantName={user?.restaurants?.name || (user?.restaurant_id === '4c0ed960-e459-42c4-962f-41229a2d3783' ? 'The Bistro' : 'Neo Beirut')}
+          availableBranches={availableCommerceBranches}
+          onSelectBranch={handleSelectTerminalBranch}
+          onRetry={() => resolveActiveBranch()}
           onExit={onExit}
         />
+      )}
+
+      {/* ON-DEMAND BRANCH SWITCHER MODAL */}
+      {isBranchSwitcherOpen && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:hidden animate-fade-in">
+          <div className="bg-[#181C24] border border-[#262D3D] rounded-2xl w-full max-w-md p-6 space-y-4 text-white shadow-2xl">
+            <div className="flex justify-between items-center border-b border-[#262D3D] pb-3">
+              <div className="flex items-center gap-2.5">
+                <span className="text-2xl">📍</span>
+                <div>
+                  <h3 className="font-extrabold text-base">Switch Terminal Branch</h3>
+                  <p className="text-[11px] text-slate-400">
+                    {user?.restaurants?.name || (user?.restaurant_id === '4c0ed960-e459-42c4-962f-41229a2d3783' ? 'The Bistro' : 'Neo Beirut')}
+                  </p>
+                </div>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setIsBranchSwitcherOpen(false)} 
+                className="text-gray-400 hover:text-white text-xl font-bold p-1 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              <span className="text-[11px] font-black uppercase tracking-wider text-slate-400 block">
+                Choose Branch for this POS Station:
+              </span>
+              <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                {availableCommerceBranches.map((b) => {
+                  const isCurrent = commerceBranchLink?.external_branch_id === b.external_branch_id;
+                  return (
+                    <button
+                      key={b.flow_branch_id || b.external_branch_id}
+                      type="button"
+                      onClick={() => handleSelectTerminalBranch(b.flow_branch_name)}
+                      className={`w-full p-3 rounded-xl border text-left transition flex items-center justify-between cursor-pointer ${
+                        isCurrent
+                          ? 'bg-emerald-950/60 border-emerald-500 text-white shadow-md shadow-emerald-950/40 ring-1 ring-emerald-500'
+                          : 'bg-[#0F1115] hover:bg-[#202531] border-[#262D3D] text-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <span className="text-lg">📍</span>
+                        <div>
+                          <div className="text-xs font-black text-white">
+                            {b.flow_branch_name}
+                          </div>
+                          <div className="text-[10px] text-slate-400 font-mono">
+                            Branch #{b.external_branch_id} • {b.location_key}
+                          </div>
+                        </div>
+                      </div>
+                      {isCurrent ? (
+                        <span className="text-[10px] font-black uppercase text-emerald-400 bg-emerald-900/40 px-2 py-0.5 rounded">
+                          Active
+                        </span>
+                      ) : (
+                        <span className="text-xs text-slate-400 font-bold">Switch →</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setIsBranchSwitcherOpen(false)}
+              className="w-full py-2.5 bg-[#262D3D] hover:bg-[#323B4E] text-slate-300 rounded-xl text-xs font-black transition cursor-pointer"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
       )}
 
       {/* TERMINAL PAYMENT & DUAL CURRENCY CHANGE MODAL */}

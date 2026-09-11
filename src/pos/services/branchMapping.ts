@@ -111,6 +111,28 @@ export async function getBranchCapabilities(
 
     const { data, error } = await query.limit(1);
     if (error || !data || data.length === 0) {
+      // Fallback: check commerce_branch_links
+      let linkQuery = supabase.from('commerce_branch_links').select('*').eq('active', true);
+      if (isUuid) {
+        linkQuery = linkQuery.eq('flow_branch_id', branchIdentifier);
+      } else {
+        linkQuery = linkQuery.or(`flow_branch_name.ilike.%${branchIdentifier}%,external_branch_name.ilike.%${branchIdentifier}%`);
+      }
+      const { data: linkData } = await linkQuery.limit(1);
+      if (linkData && linkData.length > 0) {
+        const link = linkData[0];
+        const isCloudKitchen = link.location_key === 'cloud-kitchen' || String(link.flow_branch_name || '').toLowerCase().includes('cloud kitchen');
+        return {
+          success: true,
+          capabilities: {
+            branchId: link.flow_branch_id,
+            branchName: link.flow_branch_name,
+            dine_in: !isCloudKitchen,
+            table_service: !isCloudKitchen
+          }
+        };
+      }
+
       if (String(branchIdentifier).toLowerCase().includes('cloud kitchen')) {
         return {
           success: true,
