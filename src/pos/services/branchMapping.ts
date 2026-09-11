@@ -21,18 +21,17 @@ export async function resolveCommerceBranchLink(
     let flowBranch: any = null;
 
     if (!isUuid) {
-      // Look up FLOW branch by exact name
+      // Look up FLOW branch by name (case-insensitive)
       const { data: bData, error: bErr } = await supabase
         .from('branches')
         .select('*')
-        .eq('name', flowBranchIdentifier)
+        .ilike('name', flowBranchIdentifier.trim())
         .limit(1);
 
-      if (bErr || !bData || bData.length === 0) {
-        return { link: null, flowBranch: null, error: `FLOW branch "${flowBranchIdentifier}" not found` };
+      if (bData && bData.length > 0) {
+        flowBranch = bData[0];
+        branchId = flowBranch.id;
       }
-      flowBranch = bData[0];
-      branchId = flowBranch.id;
     } else {
       const { data: bData } = await supabase
         .from('branches')
@@ -42,7 +41,7 @@ export async function resolveCommerceBranchLink(
       if (bData && bData.length > 0) flowBranch = bData[0];
     }
 
-    // Query explicit ID mapping in commerce_branch_links
+    // Query explicit mapping in commerce_branch_links
     let query = supabase
       .from('commerce_branch_links')
       .select('*')
@@ -50,21 +49,23 @@ export async function resolveCommerceBranchLink(
       .eq('active', true);
 
     if (isUuid) {
-      query = query.eq('flow_branch_id', flowBranchIdentifier);
+      query = query.eq('flow_branch_id', branchId);
+    } else if (flowBranch?.id) {
+      query = query.or(`flow_branch_id.eq.${flowBranch.id},flow_branch_name.ilike.%${flowBranchIdentifier.trim()}%,external_branch_name.ilike.%${flowBranchIdentifier.trim()}%`);
     } else {
-      query = query.ilike('flow_branch_name', flowBranchIdentifier);
+      query = query.or(`flow_branch_name.ilike.%${flowBranchIdentifier.trim()}%,external_branch_name.ilike.%${flowBranchIdentifier.trim()}%,location_key.ilike.%${flowBranchIdentifier.trim()}%`);
     }
 
     const { data: linkData, error: linkErr } = await query.limit(1);
 
     if (linkErr) {
-      return { link: null, flowBranch: null, error: linkErr.message };
+      return { link: null, flowBranch, error: linkErr.message };
     }
 
     if (!linkData || linkData.length === 0) {
       return { 
         link: null, 
-        flowBranch: null, 
+        flowBranch, 
         error: `Branch "${flowBranchIdentifier}" is not mapped to an external commerce branch in commerce_branch_links.` 
       };
     }
@@ -74,7 +75,7 @@ export async function resolveCommerceBranchLink(
       flow_branch_name: linkData[0].flow_branch_name || flowBranchIdentifier
     };
 
-    return { link, flowBranch: null };
+    return { link, flowBranch };
   } catch (err: any) {
     return { link: null, flowBranch: null, error: err.message || 'Error resolving branch link' };
   }
