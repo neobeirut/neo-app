@@ -120,7 +120,7 @@ export interface OpenTableParams {
 
 export interface TransferTableParams {
   sessionId: string;
-  commerceOrderId: number;
+  commerceOrderId?: number | null;
   fromTableId: string;
   toTableId: string;
   toTableCode: string;
@@ -130,7 +130,7 @@ export interface TransferTableParams {
 
 export interface MergeTableParams {
   sessionId: string;
-  commerceOrderId: number;
+  commerceOrderId?: number | null;
   primaryTableCode: string;
   secondaryTableId: string;
   secondaryTableCode: string;

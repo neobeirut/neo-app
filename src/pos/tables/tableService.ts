@@ -427,7 +427,7 @@ export async function openTableSession(
     }
 
     if (!sessionId) {
-      // Step A & B: Reserve FLOW session and establish table occupancy
+      // Step A & B: Establish FLOW session and table occupancy
       const { data: sessData, error: sessErr } = await supabase
         .from('pos_table_sessions')
         .insert([{
@@ -442,7 +442,7 @@ export async function openTableSession(
           assigned_waiter_user_id: params.waiterUserId || null,
           assigned_waiter_name_snapshot: params.waiterName,
           guest_count: params.guestCount,
-          status: 'opening',
+          status: 'occupied',
           version: 1
         }])
         .select('id')
@@ -470,79 +470,15 @@ export async function openTableSession(
       }
     }
 
-    // Step C: Create dine-in order in OVRLOAD commerce (Idempotent via client_order_token)
-    const orderPayload = {
-      branch_id: parseInt(params.externalBranchId || '1', 10),
-      client_order_token: clientOrderToken,
-      orderType: 'dine_in',
-      service_type: 'dine_in',
-      table_label: params.tableCode,
-      guest_count: params.guestCount,
-      waiter_reference: params.waiterName,
-      customerName: `Table ${params.tableCode}`,
-      customerPhone: '',
-      orderSource: 'POS',
-      paymentMethod: 'Cash',
-      status: 'held', // Table opened, cart empty or held pending first round
-      subtotal: 0,
-      deliveryFee: 0,
-      discountAmount: 0,
-      total: 0,
-      items: []
-    };
-
-    const res = await fetch(`${COMMERCE_API_BASE}/api/pos/orders`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(orderPayload)
-    });
-
-    const oData = await res.json();
-    if (!res.ok || !oData.success) {
-      // Commerce creation failed: roll back FLOW session ONLY because no order exists in commerce
-      await supabase.from('pos_table_sessions').update({ status: 'failed', sync_status: 'failed', last_sync_error: oData.error || 'Failed to create commerce order' }).eq('id', sessionId);
-      await supabase.from('pos_table_session_tables').delete().eq('session_id', sessionId);
-      throw new Error(oData.error || 'Failed to create commerce dine-in order in OVRLOAD');
-    }
-
-    orderId = oData.order?.id || oData.orderId;
-    orderCreatedInCommerce = true;
-
-    // Step D & E: Finalize FLOW session with commerce_order_id and status: 'occupied'
-    const { error: finalizeErr } = await supabase
-      .from('pos_table_sessions')
-      .update({
-        commerce_order_id: orderId,
-        status: 'occupied',
-        sync_status: 'synced',
-        last_sync_error: null,
-        version: 1
-      })
-      .eq('id', sessionId);
-
-    if (finalizeErr) {
-      console.warn('FLOW session finalization warning, order #', orderId, finalizeErr);
-      // Commerce order exists! Do NOT delete session. Keep table occupied and mark sync_status = 'requires_retry'
-      await supabase
-        .from('pos_table_sessions')
-        .update({
-          commerce_order_id: orderId,
-          status: 'occupied',
-          sync_status: 'requires_retry',
-          last_sync_error: 'Finalization warning: ' + finalizeErr.message
-        })
-        .eq('id', sessionId);
-    }
-
     return {
       success: true,
       sessionId: sessionId!,
-      orderId
+      orderId: undefined
     };
   } catch (err: any) {
-    if (sessionId && !orderCreatedInCommerce) {
+    if (sessionId) {
       try {
-        await supabase.from('pos_table_sessions').update({ status: 'failed', sync_status: 'failed' }).eq('id', sessionId);
+        await supabase.from('pos_table_sessions').delete().eq('id', sessionId);
         await supabase.from('pos_table_session_tables').delete().eq('session_id', sessionId);
       } catch {}
     }
@@ -598,26 +534,28 @@ export async function transferTable(
       .update({ version: newVersion })
       .eq('id', params.sessionId);
 
-    // 2. Update OVRLOAD table_label snapshot
-    try {
-      const res = await fetch(`${COMMERCE_API_BASE}/api/pos/orders/${params.commerceOrderId}/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          table_label: params.toTableCode
-        })
-      });
-      if (!res.ok) throw new Error('Commerce HTTP ' + res.status);
-    } catch (snapErr: any) {
-      console.warn('Could not update commerce table_label snapshot; marking sync_status = requires_retry:', snapErr);
-      await supabase
-        .from('pos_table_sessions')
-        .update({
-          sync_status: 'requires_retry',
-          last_sync_error: 'Transfer sync deferred: ' + snapErr.message
-        })
-        .eq('id', params.sessionId);
-      return { success: true, warning: 'Table moved in FLOW; commerce sync queued for retry.' };
+    // 2. Update OVRLOAD table_label snapshot (if commerce order exists)
+    if (params.commerceOrderId) {
+      try {
+        const res = await fetch(`${COMMERCE_API_BASE}/api/pos/orders/${params.commerceOrderId}/status`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            table_label: params.toTableCode
+          })
+        });
+        if (!res.ok) throw new Error('Commerce HTTP ' + res.status);
+      } catch (snapErr: any) {
+        console.warn('Could not update commerce table_label snapshot; marking sync_status = requires_retry:', snapErr);
+        await supabase
+          .from('pos_table_sessions')
+          .update({
+            sync_status: 'requires_retry',
+            last_sync_error: 'Transfer sync deferred: ' + snapErr.message
+          })
+          .eq('id', params.sessionId);
+        return { success: true, warning: 'Table moved in FLOW; commerce sync queued for retry.' };
+      }
     }
 
     return { success: true };
@@ -667,27 +605,29 @@ export async function mergeTables(
       .update({ version: newVersion })
       .eq('id', params.sessionId);
 
-    // Update OVRLOAD table_label snapshot to reflect merge
-    const mergedLabel = `${params.primaryTableCode} + ${params.secondaryTableCode}`;
-    try {
-      const res = await fetch(`${COMMERCE_API_BASE}/api/pos/orders/${params.commerceOrderId}/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          table_label: mergedLabel
-        })
-      });
-      if (!res.ok) throw new Error('Commerce HTTP ' + res.status);
-    } catch (err: any) {
-      console.warn('Could not update commerce table_label on merge; marking sync_status = requires_retry:', err);
-      await supabase
-        .from('pos_table_sessions')
-        .update({
-          sync_status: 'requires_retry',
-          last_sync_error: 'Merge sync deferred: ' + err.message
-        })
-        .eq('id', params.sessionId);
-      return { success: true, warning: 'Table merged in FLOW; commerce sync queued for retry.' };
+    // Update OVRLOAD table_label snapshot to reflect merge (if commerce order exists)
+    if (params.commerceOrderId) {
+      const mergedLabel = `${params.primaryTableCode} + ${params.secondaryTableCode}`;
+      try {
+        const res = await fetch(`${COMMERCE_API_BASE}/api/pos/orders/${params.commerceOrderId}/status`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            table_label: mergedLabel
+          })
+        });
+        if (!res.ok) throw new Error('Commerce HTTP ' + res.status);
+      } catch (err: any) {
+        console.warn('Could not update commerce table_label on merge; marking sync_status = requires_retry:', err);
+        await supabase
+          .from('pos_table_sessions')
+          .update({
+            sync_status: 'requires_retry',
+            last_sync_error: 'Merge sync deferred: ' + err.message
+          })
+          .eq('id', params.sessionId);
+        return { success: true, warning: 'Table merged in FLOW; commerce sync queued for retry.' };
+      }
     }
 
     return { success: true };
@@ -702,7 +642,7 @@ export async function mergeTables(
  */
 export async function changeGuestCount(
   sessionId: string,
-  commerceOrderId: number,
+  commerceOrderId: number | null | undefined,
   newCount: number,
   expectedVersion?: number
 ): Promise<{ success: boolean; warning?: string; error?: string }> {
@@ -728,23 +668,25 @@ export async function changeGuestCount(
       })
       .eq('id', sessionId);
 
-    try {
-      const res = await fetch(`${COMMERCE_API_BASE}/api/pos/orders/${commerceOrderId}/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ guest_count: newCount })
-      });
-      if (!res.ok) throw new Error('Commerce HTTP ' + res.status);
-    } catch (err: any) {
-      console.warn('Could not update commerce guest count; marking sync_status = requires_retry:', err);
-      await supabase
-        .from('pos_table_sessions')
-        .update({
-          sync_status: 'requires_retry',
-          last_sync_error: 'Guest count sync deferred: ' + err.message
-        })
-        .eq('id', sessionId);
-      return { success: true, warning: 'Guest count updated in FLOW; commerce sync queued for retry.' };
+    if (commerceOrderId) {
+      try {
+        const res = await fetch(`${COMMERCE_API_BASE}/api/pos/orders/${commerceOrderId}/status`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ guest_count: newCount })
+        });
+        if (!res.ok) throw new Error('Commerce HTTP ' + res.status);
+      } catch (err: any) {
+        console.warn('Could not update commerce guest count; marking sync_status = requires_retry:', err);
+        await supabase
+          .from('pos_table_sessions')
+          .update({
+            sync_status: 'requires_retry',
+            last_sync_error: 'Guest count sync deferred: ' + err.message
+          })
+          .eq('id', sessionId);
+        return { success: true, warning: 'Guest count updated in FLOW; commerce sync queued for retry.' };
+      }
     }
 
     return { success: true };
@@ -793,7 +735,7 @@ export async function requestBill(
  */
 export async function closeTableSession(
   sessionId: string,
-  commerceOrderId: number,
+  commerceOrderId?: number | null,
   expectedVersion?: number
 ): Promise<{ success: boolean; error?: string }> {
   try {
@@ -808,16 +750,18 @@ export async function closeTableSession(
       }
     }
 
-    // Verify commerce order balance is resolved
-    const res = await fetch(`${COMMERCE_API_BASE}/api/pos/orders/${commerceOrderId}/payments`);
-    if (res.ok) {
-      const data = await res.json();
-      const remaining = data.orderSummary?.amountRemaining || 0;
-      if (remaining > 0.01) {
-        return {
-          success: false,
-          error: `Cannot close table: Unpaid balance of $${remaining.toFixed(2)} remaining.`
-        };
+    // Verify commerce order balance is resolved (if order exists)
+    if (commerceOrderId) {
+      const res = await fetch(`${COMMERCE_API_BASE}/api/pos/orders/${commerceOrderId}/payments`);
+      if (res.ok) {
+        const data = await res.json();
+        const remaining = data.orderSummary?.amountRemaining || 0;
+        if (remaining > 0.01) {
+          return {
+            success: false,
+            error: `Cannot close table: Unpaid balance of $${remaining.toFixed(2)} remaining.`
+          };
+        }
       }
     }
 

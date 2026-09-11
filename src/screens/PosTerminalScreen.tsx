@@ -137,8 +137,11 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   const [posActiveView, setPosActiveView] = useState<'sell' | 'tables' | 'orders'>('sell');
   const [branchCapabilities, setBranchCapabilities] = useState<BranchCapabilities | null>(null);
   const [activeTableContext, setActiveTableContext] = useState<{
-    orderId: number;
+    orderId?: number | null;
     tableCode: string;
+    sessionId?: string;
+    guestCount?: number;
+    waiterName?: string;
   } | null>(null);
 
   // Cashier PIN Lock & Fast Switch States
@@ -1492,20 +1495,26 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
 
     setIsSubmitting(true);
     try {
+      const isDineIn = Boolean(activeTableContext);
       const res = await fetch(`${COMMERCE_API_BASE}/api/pos/orders`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          branch_id: parseInt(commerceBranchLink?.external_branch_id || "1", 10),
           client_order_token: clientOrderToken,
-          orderType,
+          orderType: isDineIn ? "dine_in" : orderType,
+          service_type: isDineIn ? "dine_in" : undefined,
+          table_label: activeTableContext ? activeTableContext.tableCode : undefined,
+          guest_count: activeTableContext ? (activeTableContext.guestCount || 1) : undefined,
+          waiter_reference: activeTableContext ? (activeTableContext.waiterName || user?.name) : undefined,
           orderSource: selectedChannel || "POS",
           paymentMethod: selectedPaymentMethod,
-          customerName: customerName.trim(),
+          customerName: customerName.trim() || (activeTableContext ? `Table ${activeTableContext.tableCode}` : ""),
           customerPhone,
           deliveryAddress,
           status: "held",
           subtotal,
-          deliveryFee: orderType === "delivery" ? (parseFloat(deliveryFee) || 0) : 0,
+          deliveryFee: (!isDineIn && orderType === "delivery") ? (parseFloat(deliveryFee) || 0) : 0,
           discountAmount,
           total,
           items: ticketItems.map((item) => ({
@@ -1519,7 +1528,24 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       });
       const data = await res.json();
       if (data.success) {
+        const heldOrderId = data.order?.id || data.orderId;
+        if (activeTableContext?.sessionId && heldOrderId) {
+          try {
+            await supabase
+              .from('pos_table_sessions')
+              .update({
+                commerce_order_id: heldOrderId,
+                sync_status: 'synced',
+                last_sync_error: null
+              })
+              .eq('id', activeTableContext.sessionId);
+          } catch (e) {
+            console.warn("Could not update pos_table_sessions with held order ID:", e);
+          }
+        }
+
         resetClientOrderToken();
+        setActiveTableContext(null);
         setTicketItems([]);
         setCustomerName("");
         setCustomerPhone("");
@@ -1533,6 +1559,8 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         setDeliveryFee(0);
         setOrderType("delivery");
         fetchOrdersQueue();
+      } else {
+        alert(data.error || "Failed to hold order");
       }
     } catch (err) {
       console.error("Error holding order:", err);
@@ -1546,20 +1574,33 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       alert("No items in cart to fire.");
       return;
     }
-    const targetOrderId = activeTableContext?.orderId || editingOrderId;
-    if (!targetOrderId) {
-      alert("Please hold or open an order before firing a round to the kitchen.");
-      return;
-    }
-
+    let targetOrderId = activeTableContext?.orderId || editingOrderId;
     setIsSubmitting(true);
     try {
-      const locKey = commerceBranchLink?.location_key || 'badaro';
-      const updateRes = await fetch(`${COMMERCE_API_BASE}/api/pos/orders/${targetOrderId}/status`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      if (!targetOrderId) {
+        if (!activeTableContext) {
+          alert("Please hold or open an order before firing a round to the kitchen.");
+          setIsSubmitting(false);
+          return;
+        }
+
+        // Create the dine-in order in OVRLOAD commerce first!
+        const orderPayload = {
+          branch_id: parseInt(commerceBranchLink?.external_branch_id || "1", 10),
+          client_order_token: clientOrderToken,
+          orderType: 'dine_in',
+          service_type: 'dine_in',
+          table_label: activeTableContext.tableCode,
+          guest_count: activeTableContext.guestCount || 1,
+          waiter_reference: activeTableContext.waiterName || user?.name || 'Cashier',
+          customerName: `Table ${activeTableContext.tableCode}`,
+          customerPhone: '',
+          orderSource: 'POS',
+          paymentMethod: 'Cash',
+          status: 'held',
           subtotal,
+          deliveryFee: 0,
+          discountAmount,
           total,
           items: ticketItems.map((item) => ({
             product_id: item.product_id,
@@ -1570,21 +1611,69 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
             ).filter(Boolean),
             comment: item.note || ""
           }))
-        })
-      });
+        };
 
-      const updateData = await updateRes.json();
-      const rawItems = updateData.order?.items || [];
+        const createRes = await fetch(`${COMMERCE_API_BASE}/api/pos/orders`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(orderPayload)
+        });
+        const createData = await createRes.json();
+        if (!createRes.ok || !createData.success) {
+          throw new Error(createData.error || `Failed to create dine-in order for Table ${activeTableContext.tableCode}`);
+        }
 
+        targetOrderId = createData.order?.id || createData.orderId;
+
+        // Link this order to the FLOW table session
+        if (activeTableContext.sessionId) {
+          try {
+            await supabase
+              .from('pos_table_sessions')
+              .update({
+                commerce_order_id: targetOrderId,
+                sync_status: 'synced',
+                last_sync_error: null
+              })
+              .eq('id', activeTableContext.sessionId);
+          } catch (e) {
+            console.warn("Could not link commerce_order_id to table session:", e);
+          }
+        }
+
+        setActiveTableContext(prev => prev ? { ...prev, orderId: targetOrderId } : null);
+        resetClientOrderToken();
+      } else {
+        // Update existing order with latest items in cart
+        await fetch(`${COMMERCE_API_BASE}/api/pos/orders/${targetOrderId}/status`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            subtotal,
+            total,
+            items: ticketItems.map((item) => ({
+              product_id: item.product_id,
+              quantity: item.qty,
+              unit_price: item.unit_price,
+              customizations: (item.selectedCustomizations || []).map((c: any) =>
+                typeof c === "string" ? c : (c.ingredient || c.name || "")
+              ).filter(Boolean),
+              comment: item.note || ""
+            }))
+          })
+        });
+      }
+
+      // Now fire the round to KDS!
+      const locKey = commerceBranchLink?.location_key || 'badaro';
       const fireItems = ticketItems.map((item) => {
-        const matched = rawItems.find((ri: any) => ri.product_id === item.product_id);
         const pName = item.name || item.product_name || "Item";
         const stationKey = (pName.toLowerCase().includes('drink') || pName.toLowerCase().includes('pepsi') || pName.toLowerCase().includes('coffee') || pName.toLowerCase().includes('water'))
           ? 'BAR'
           : 'HOT_KITCHEN';
 
         return {
-          order_item_id: matched?.id || 1,
+          order_item_id: item.product_id,
           product_name: pName,
           quantity: item.qty || 1,
           station_key: stationKey,
@@ -1596,13 +1685,13 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       });
 
       const fireRes = await fireOrderRound({
-        orderId: targetOrderId,
+        orderId: targetOrderId!,
         locationKey: locKey,
         items: fireItems,
-        serviceType: orderType,
+        serviceType: 'dine_in',
         tableLabel: activeTableContext?.tableCode || customerName || 'Dine-In',
-        guestCount: 2,
-        waiterReference: user?.name || 'Cashier',
+        guestCount: activeTableContext?.guestCount || 1,
+        waiterReference: activeTableContext?.waiterName || user?.name || 'Cashier',
         firedBy: user?.name || 'POS Staff'
       });
 
@@ -1680,6 +1769,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
           effectiveChannel === "NokNok" ? "NokNok" :
           selectedPaymentMethod;
 
+        const isDineIn = Boolean(activeTableContext);
         const createRes = await fetch(`${COMMERCE_API_BASE}/api/pos/orders`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1687,15 +1777,19 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
             branch_id: parseInt(commerceBranchLink?.external_branch_id || "1", 10),
             client_order_token: clientOrderToken,
             payment_operation_id: paymentOperationId,
-            orderType,
+            orderType: isDineIn ? "dine_in" : orderType,
+            service_type: isDineIn ? "dine_in" : undefined,
+            table_label: activeTableContext ? activeTableContext.tableCode : undefined,
+            guest_count: activeTableContext ? (activeTableContext.guestCount || 1) : undefined,
+            waiter_reference: activeTableContext ? (activeTableContext.waiterName || user?.name) : undefined,
             orderSource: effectiveChannel,
             paymentMethod: actualPaymentMethod,
-            customerName,
+            customerName: customerName.trim() || (activeTableContext ? `Table ${activeTableContext.tableCode}` : ""),
             customerPhone,
             deliveryAddress,
             status: "preparing",
             subtotal,
-            deliveryFee: orderType === "delivery" ? (parseFloat(deliveryFee) || 0) : 0,
+            deliveryFee: (!isDineIn && orderType === "delivery") ? (parseFloat(deliveryFee) || 0) : 0,
             discountAmount,
             total,
             items: ticketItems.map((item) => ({
@@ -1713,6 +1807,22 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       }
 
       if (data && data.success) {
+        const completedOrderId = data.orderId || editingOrderId;
+        if (activeTableContext?.sessionId && completedOrderId) {
+          try {
+            await supabase
+              .from('pos_table_sessions')
+              .update({
+                commerce_order_id: completedOrderId,
+                status: 'closed',
+                closed_at: new Date().toISOString()
+              })
+              .eq('id', activeTableContext.sessionId);
+          } catch (e) {
+            console.warn("Error closing table session on direct payment:", e);
+          }
+        }
+
         resetClientOrderToken();
         const normalizedItems = ticketItems.map((item) => {
           const rawCusts = item.selectedCustomizations || [];
@@ -2167,19 +2277,33 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
               restaurantId={commerceBranchLink?.restaurant_id || "79256f11-a9f8-4fec-901d-69baf929762d"}
               externalBranchId={String(commerceBranchLink?.external_branch_id || "1")}
               cashierName={activeCashier?.name || user?.name || "Cashier"}
-              onOpenOrderInCart={async (orderId, tableCode) => {
-                try {
-                  const res = await fetch(`${COMMERCE_API_BASE}/api/pos/orders?type=all`);
-                  const data = await res.json();
-                  const ord = (data.orders || []).find((o: any) => o.id === orderId);
-                  if (ord) {
-                    loadOrderToTicket(ord, "POS");
-                    setActiveTableContext({ orderId, tableCode });
-                    setPosActiveView('sell');
+              onOpenOrderInCart={async (orderId, tableCode, sessionId, guestCount, waiterName) => {
+                if (orderId) {
+                  try {
+                    const res = await fetch(`${COMMERCE_API_BASE}/api/pos/orders?type=all`);
+                    const data = await res.json();
+                    const ord = (data.orders || []).find((o: any) => o.id === orderId);
+                    if (ord) {
+                      loadOrderToTicket(ord, "POS");
+                      setActiveTableContext({ orderId, tableCode, sessionId, guestCount, waiterName });
+                      setPosActiveView('sell');
+                      return;
+                    }
+                  } catch (e) {
+                    console.error("Failed to load table order into ticket:", e);
                   }
-                } catch (e) {
-                  console.error("Failed to load table order into ticket:", e);
                 }
+                // No existing commerce order yet (fresh table): start fresh ticket
+                setTicketItems([]);
+                setCustomerName(`Table ${tableCode}`);
+                setCustomerPhone("");
+                setDeliveryAddress("");
+                setSelectedChannel("POS");
+                setOrderType("dine_in");
+                setEditingOrderId(null);
+                setEditingOrderVersion(null);
+                setActiveTableContext({ orderId: null, tableCode, sessionId, guestCount, waiterName });
+                setPosActiveView('sell');
               }}
               onPrintPreCheckDoc={handlePrintPreCheckDoc}
             />
@@ -2300,17 +2424,39 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
               <div className="bg-amber-950/80 border border-amber-500/60 px-3 py-2 rounded-xl flex items-center justify-between text-xs">
                 <div className="flex items-center gap-2">
                   <span className="text-amber-400 font-black">🪑 Table {activeTableContext.tableCode}</span>
+                  {activeTableContext.waiterName && (
+                    <>
+                      <span className="text-slate-500">•</span>
+                      <span className="text-slate-300 font-semibold">{activeTableContext.waiterName}</span>
+                    </>
+                  )}
                   <span className="text-slate-500">•</span>
-                  <span className="text-amber-200 font-bold">Order #{activeTableContext.orderId}</span>
+                  <span className="text-amber-200 font-bold">
+                    {activeTableContext.orderId ? `Order #${activeTableContext.orderId}` : 'New Ticket'}
+                  </span>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setPosActiveView('tables')}
-                  className="text-[10px] font-black text-amber-300 hover:text-white bg-amber-900/60 hover:bg-amber-800 px-2.5 py-1 rounded-lg border border-amber-500/50 flex items-center gap-1 transition"
-                >
-                  <span>Floor Plan</span>
-                  <span>➔</span>
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTableContext(null);
+                      setTicketItems([]);
+                      setPosActiveView('tables');
+                    }}
+                    className="text-[10px] font-bold text-slate-400 hover:text-white px-1.5 py-0.5"
+                    title="Exit table"
+                  >
+                    Exit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPosActiveView('tables')}
+                    className="text-[10px] font-black text-amber-300 hover:text-white bg-amber-900/60 hover:bg-amber-800 px-2.5 py-1 rounded-lg border border-amber-500/50 flex items-center gap-1 transition"
+                  >
+                    <span>Floor</span>
+                    <span>➔</span>
+                  </button>
+                </div>
               </div>
             ) : editingOrderId ? (
               <div className="bg-blue-950/60 border border-blue-500/40 px-3 py-1.5 rounded-xl flex items-center justify-between text-xs">

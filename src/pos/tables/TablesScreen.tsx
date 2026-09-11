@@ -37,7 +37,13 @@ interface TablesScreenProps {
   restaurantId: string;
   externalBranchId?: string;
   cashierName: string;
-  onOpenOrderInCart?: (orderId: number, tableCode: string) => void;
+  onOpenOrderInCart?: (
+    orderId: number | null,
+    tableCode: string,
+    sessionId?: string,
+    guestCount?: number,
+    waiterName?: string
+  ) => void;
   onPrintPreCheckDoc?: (table: PosTable) => void;
 }
 
@@ -124,13 +130,19 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
     }
 
     await fetchState();
-    if (onOpenOrderInCart && res.orderId) {
-      onOpenOrderInCart(res.orderId, selectedTableForOpen.table_code);
+    if (onOpenOrderInCart) {
+      onOpenOrderInCart(
+        res.orderId || null,
+        selectedTableForOpen.table_code,
+        res.sessionId,
+        guestCount,
+        waiterName
+      );
     }
   };
 
   const handleCloseTable = async (table: PosTable) => {
-    if (!table.current_session_id || !table.commerce_order_id) return;
+    if (!table.current_session_id) return;
     const res = await closeTableSession(table.current_session_id, table.commerce_order_id);
     if (!res.success) {
       alert(res.error);
@@ -293,8 +305,14 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
         isOpen={Boolean(activeTableForDetails)}
         onClose={() => setActiveTableForDetails(null)}
         onOpenInTicket={(t) => {
-          if (onOpenOrderInCart && t.commerce_order_id) {
-            onOpenOrderInCart(t.commerce_order_id, t.table_code);
+          if (onOpenOrderInCart) {
+            onOpenOrderInCart(
+              t.commerce_order_id || null,
+              t.table_code,
+              t.current_session_id || undefined,
+              t.guest_count || undefined,
+              t.assigned_waiter || undefined
+            );
           }
           setActiveTableForDetails(null);
         }}
@@ -308,7 +326,7 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
           }
           transferTable({
             sessionId: t.current_session_id!,
-            commerceOrderId: t.commerce_order_id!,
+            commerceOrderId: t.commerce_order_id || null,
             fromTableId: t.id,
             toTableId: dest.id,
             toTableCode: dest.table_code,
@@ -331,7 +349,7 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
           }
           mergeTables({
             sessionId: t.current_session_id!,
-            commerceOrderId: t.commerce_order_id!,
+            commerceOrderId: t.commerce_order_id || null,
             primaryTableCode: t.table_code,
             secondaryTableId: sec.id,
             secondaryTableCode: sec.table_code,
@@ -349,7 +367,7 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
           if (!gStr) return;
           const g = parseInt(gStr, 10);
           if (isNaN(g) || g <= 0) return;
-          changeGuestCount(t.current_session_id!, t.commerce_order_id!, g).then(fetchState);
+          changeGuestCount(t.current_session_id!, t.commerce_order_id || null, g).then(fetchState);
         }}
         onPrintPreCheck={(t) => {
           if (onPrintPreCheckDoc) onPrintPreCheckDoc(t);
