@@ -25,6 +25,7 @@ import type { CanceledItemDetail } from "../pos/services/voidBridge";
 import { VoidItemModal } from "../pos/components/VoidItemModal";
 import { OrdersHubScreen } from "../pos/orders/OrdersHubScreen";
 import { PaymentModal, RefundModal } from "../pos/payments";
+import { TerminalPaymentModal } from "../pos/components/TerminalPaymentModal";
 import { fireOrderRound, getBranchLocationKey } from "../pos/kds";
 
 interface PosTerminalScreenProps {
@@ -442,12 +443,28 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
 
   // Payment State
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState("Cash");
+  const [exchangeRate, setExchangeRate] = useState<number>(89500);
   const [lastCompletedOrder, setLastCompletedOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [initialLoadError, setInitialLoadError] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [validationError, setValidationError] = useState("");
   const [dispatchStatusMsg, setDispatchStatusMsg] = useState("");
+
+  // Fetch exchange rate on load
+  useEffect(() => {
+    api.getExchangeRate(user?.restaurant_id)
+      .then((res) => {
+        if (res.success && res.rate && res.rate > 0) {
+          setExchangeRate(res.rate);
+        } else {
+          setExchangeRate(89500);
+        }
+      })
+      .catch(() => {
+        setExchangeRate(89500);
+      });
+  }, [user?.restaurant_id]);
 
   // Helper for safe fetch with timeout
   const fetchWithTimeout = async (url, options = {}, timeoutMs = 10000) => {
@@ -1709,7 +1726,13 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     }
   };
 
-  const handleFinalizePayment = async () => {
+  const handleFinalizePayment = async (paymentDetails?: {
+    paymentMethod?: string;
+    tenderedAmount?: number;
+    tenderedCurrency?: "USD" | "LBP";
+    changeAmount?: number;
+    changeCurrency?: "USD" | "LBP";
+  }) => {
     if (ticketItems.length === 0) return;
     if (!validateOrder()) return;
     if (!isShiftOpen) {
@@ -1724,26 +1747,37 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       ? crypto.randomUUID()
       : "pay-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7);
 
+    const actualPaymentMethod =
+      paymentDetails?.paymentMethod ||
+      (effectiveChannel === "Toters" ? "Toters" :
+       effectiveChannel === "NokNok" ? "NokNok" :
+       selectedPaymentMethod);
+
+    const isDineIn = Boolean(activeTableContext);
+    const targetOrderId = editingOrderId || activeTableContext?.orderId;
+
     setIsSubmitting(true);
     try {
       let data;
-      if (editingOrderId) {
-        const updateRes = await fetch(`${COMMERCE_API_BASE}/api/pos/orders/${editingOrderId}/status`, {
+      if (targetOrderId) {
+        const updateRes = await fetch(`${COMMERCE_API_BASE}/api/pos/orders/${targetOrderId}/status`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            status: "preparing",
+            status: isDineIn ? "completed" : "preparing",
+            payment_status: "paid",
             expected_version: editingOrderVersion,
             payment_operation_id: paymentOperationId,
             subtotal,
-            deliveryFee: orderType === "delivery" ? (parseFloat(deliveryFee) || 0) : 0,
+            deliveryFee: (!isDineIn && orderType === "delivery") ? (parseFloat(deliveryFee) || 0) : 0,
             discountAmount,
             total,
-            customerName,
+            customerName: customerName.trim() || (activeTableContext ? `Table ${activeTableContext.tableCode}` : ""),
             customerPhone,
             deliveryAddress,
-            orderType,
+            orderType: isDineIn ? "dine_in" : orderType,
             orderSource: effectiveChannel,
+            paymentMethod: actualPaymentMethod,
             items: ticketItems.map((item) => ({
               product_id: item.product_id,
               quantity: item.qty,
@@ -1762,14 +1796,8 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
           setIsSubmitting(false);
           return;
         }
-        if (data.success) data.orderId = editingOrderId;
+        if (data.success) data.orderId = targetOrderId;
       } else {
-        const actualPaymentMethod =
-          effectiveChannel === "Toters" ? "Toters" :
-          effectiveChannel === "NokNok" ? "NokNok" :
-          selectedPaymentMethod;
-
-        const isDineIn = Boolean(activeTableContext);
         const createRes = await fetch(`${COMMERCE_API_BASE}/api/pos/orders`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1787,7 +1815,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
             customerName: customerName.trim() || (activeTableContext ? `Table ${activeTableContext.tableCode}` : ""),
             customerPhone,
             deliveryAddress,
-            status: "preparing",
+            status: isDineIn ? "completed" : "preparing",
             subtotal,
             deliveryFee: (!isDineIn && orderType === "delivery") ? (parseFloat(deliveryFee) || 0) : 0,
             discountAmount,
@@ -1807,13 +1835,13 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       }
 
       if (data && data.success) {
-        const completedOrderId = data.orderId || editingOrderId;
-        if (activeTableContext?.sessionId && completedOrderId) {
+        const completedOrderId = data.orderId || data.order?.id || targetOrderId;
+        if (activeTableContext?.sessionId) {
           try {
             await supabase
               .from('pos_table_sessions')
               .update({
-                commerce_order_id: completedOrderId,
+                ...(completedOrderId ? { commerce_order_id: completedOrderId } : {}),
                 status: 'closed',
                 closed_at: new Date().toISOString()
               })
@@ -1850,18 +1878,23 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         });
 
         const completedOrderData = {
-          id: data.orderId || editingOrderId,
+          id: completedOrderId,
           order_source: effectiveChannel,
-          order_type: orderType,
-          payment_method:
-            effectiveChannel === "Toters" ? "Toters" :
-            effectiveChannel === "NokNok" ? "NokNok" :
-            selectedPaymentMethod,
-          customer_name: customerName,
+          order_type: isDineIn ? "dine_in" : orderType,
+          payment_method: actualPaymentMethod,
+          tendered_amount: paymentDetails?.tenderedAmount,
+          tendered_currency: paymentDetails?.tenderedCurrency || "USD",
+          change_amount: paymentDetails?.changeAmount,
+          change_currency: paymentDetails?.changeCurrency || "USD",
+          exchange_rate: exchangeRate,
+          customer_name: customerName.trim() || (activeTableContext ? `Table ${activeTableContext.tableCode}` : ""),
+          table_label: activeTableContext?.tableCode,
+          guest_count: activeTableContext?.guestCount,
+          waiter_name: activeTableContext?.waiterName || user?.name,
           customer_phone: customerPhone,
           delivery_address: deliveryAddress,
           subtotal_amount: subtotal,
-          delivery_fee: orderType === "delivery" ? (parseFloat(deliveryFee) || 0) : 0,
+          delivery_fee: (!isDineIn && orderType === "delivery") ? (parseFloat(deliveryFee) || 0) : 0,
           discount_amount: discountAmount,
           discount_label: discountAmount > 0 ? discountLabel : null,
           total_amount: total,
@@ -1871,6 +1904,8 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
 
         handlePrint(completedOrderData);
         setLastCompletedOrder(completedOrderData);
+        setIsTerminalPaymentModalOpen(false);
+        const wasTable = Boolean(activeTableContext);
         setActiveTableContext(null);
         setTicketItems([]);
         setCustomerName("");
@@ -1884,7 +1919,11 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         setDiscountIsPercent(true);
         setDeliveryFee(0);
         setOrderType("delivery");
-        setActiveTabModal(["Toters", "NokNok"].includes(effectiveChannel) ? null : "receipt");
+        if (wasTable) {
+          setPosActiveView('tables');
+        } else {
+          setActiveTabModal(["Toters", "NokNok"].includes(effectiveChannel) ? null : "receipt");
+        }
         fetchOrdersQueue();
       } else if (data && data.error) {
         setValidationError(`⚠️ ${data.error}`);
@@ -2889,76 +2928,126 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
 
                 <div className="flex items-center justify-between pt-1 border-t border-[#262D3D]">
                   <span className="font-extrabold text-xs uppercase text-gray-300 tracking-wider">TOTAL</span>
-                  <span className="font-black text-xl text-[#eb660c]">
-                    ${total.toFixed(2)}
-                  </span>
+                  <div className="text-right">
+                    <span className="font-black text-xl text-[#eb660c]">
+                      ${total.toFixed(2)}
+                    </span>
+                    <span className="text-[11px] font-bold text-slate-400 block -mt-0.5">
+                      ≈ {Math.round(total * (exchangeRate || 89500)).toLocaleString()} LBP
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
 
-            {/* SAME HORIZONTAL LINE: Payment Buttons on Left & PAY & PRINT on Right */}
-            <div className="flex items-center gap-2 pt-2 border-t border-[#262D3D]">
-              {/* LEFT SIDE: Cash / Whish or Prepaid Channel Badge */}
-              {!["toters", "noknok"].includes((selectedChannel || "").toLowerCase()) ? (
-                <div className="grid grid-cols-2 gap-1 w-[45%] shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedPaymentMethod("Cash")}
-                    className={`py-3 rounded-xl text-xs font-black flex items-center justify-center gap-1 border transition-all ${
-                      selectedPaymentMethod === "Cash"
-                        ? "bg-emerald-700 text-white border-emerald-500 shadow-md shadow-emerald-700/20"
-                        : "bg-[#0F1115] text-gray-300 border-[#262D3D] hover:bg-[#262D3D]"
-                    }`}
-                  >
-                    💵 Cash
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedPaymentMethod("Whish")}
-                    className={`py-3 rounded-xl text-xs font-black flex items-center justify-center gap-1 border transition-all ${
-                      selectedPaymentMethod === "Whish"
-                        ? "bg-purple-700 text-white border-purple-500 shadow-md shadow-purple-700/20"
-                        : "bg-[#0F1115] text-gray-300 border-[#262D3D] hover:bg-[#262D3D]"
-                    }`}
-                  >
-                    🟣 Whish
-                  </button>
-                </div>
-              ) : (
-                <div className="w-[45%] shrink-0">
-                  <div className={`py-3 px-2 rounded-xl text-xs font-black text-center border ${
-                    (selectedChannel || "").toLowerCase() === "toters" ? "bg-[#00C49F]/20 text-[#00C49F] border-[#00C49F]/40" : "bg-[#FF5A5F]/20 text-[#FF5A5F] border-[#FF5A5F]/40"
-                  }`}>
-                    {selectedChannel} (Prepaid)
-                  </div>
-                </div>
-              )}
-
-              {/* RIGHT SIDE: PAY & PRINT BUTTON WITH SHIFT GUARD */}
-              {!isShiftOpen ? (
+            {/* CART BOTTOM ACTION BAR */}
+            {activeTableContext ? (
+              /* DINE-IN TABLE SERVICE ACTIONS */
+              <div className="space-y-2 pt-2 border-t border-[#262D3D]">
+                {/* BIG PROMINENT FIRE ROUND TO KITCHEN BUTTON */}
                 <button
                   type="button"
-                  onClick={() => setIsOpenShiftModalOpen(true)}
-                  className="flex-1 py-3 px-2 rounded-xl text-xs font-black tracking-wider flex items-center justify-center gap-1.5 transition-all shadow-lg bg-amber-600 hover:bg-amber-500 text-white border border-amber-400 active:scale-98 animate-pulse"
-                  title="Shift is closed. Click to enter opening float and open shift."
-                >
-                  <span>🔒 No Open Shift — Tap to Open</span>
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleFinalizePayment}
+                  onClick={handleFireToKitchen}
                   disabled={ticketItems.length === 0 || isSubmitting}
-                  className={`flex-1 py-3 rounded-xl text-xs font-black tracking-wider flex items-center justify-center gap-1 transition-all shadow-lg ${
+                  className={`w-full py-4 rounded-xl text-sm font-black tracking-wider flex items-center justify-center gap-2 transition-all shadow-xl ${
                     ticketItems.length === 0 || isSubmitting
-                      ? "bg-gray-700 text-gray-500 cursor-not-allowed border border-gray-600"
-                      : "bg-[#eb660c] hover:bg-[#d55909] text-white active:scale-98 shadow-[#eb660c]/20 border border-[#eb660c]"
+                      ? "bg-[#182a20] text-emerald-800/60 border border-emerald-900/40 cursor-not-allowed"
+                      : "bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white active:scale-98 shadow-emerald-900/50 border border-emerald-400 cursor-pointer animate-pulse-subtle"
                   }`}
+                  title="Fire pending items directly to Kitchen KDS stations"
                 >
-                  {isSubmitting ? "PROCESSING..." : `PAY & PRINT — ${total.toFixed(2)}`}
+                  <span className="text-xl">🔥</span>
+                  <span>
+                    {isSubmitting
+                      ? "SENDING TO KITCHEN..."
+                      : `FIRE ROUND TO KITCHEN (${ticketItems.reduce((sum, item) => sum + (Number(item.qty) || 1), 0)} items)`}
+                  </span>
                 </button>
-              )}
-            </div>
+
+                {/* SECONDARY TABLE ACTIONS: HOLD & SETTLE/CLOSE */}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleHoldOrder}
+                    disabled={ticketItems.length === 0 || isSubmitting}
+                    className="flex-1 py-2.5 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 bg-amber-950/50 hover:bg-amber-900/60 text-amber-300 border border-amber-500/40 transition active:scale-98 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                    title="Keep table order on hold without firing new items"
+                  >
+                    <span>⏸️</span>
+                    <span>Hold Table</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!isShiftOpen) {
+                        setIsOpenShiftModalOpen(true);
+                        return;
+                      }
+                      setIsTerminalPaymentModalOpen(true);
+                    }}
+                    disabled={ticketItems.length === 0 || isSubmitting}
+                    className="flex-1 py-2.5 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white border border-blue-400 shadow-md shadow-blue-900/30 transition active:scale-98 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                    title="Collect payment (USD, LBP, Card, Whish) and close table session"
+                  >
+                    <span>💳</span>
+                    <span>Settle & Close Table</span>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* COUNTER / TAKEAWAY / DELIVERY ACTIONS */
+              <div className="flex items-center gap-2 pt-2 border-t border-[#262D3D]">
+                {["toters", "noknok"].includes((selectedChannel || "").toLowerCase()) ? (
+                  <>
+                    <div className="w-[40%] shrink-0">
+                      <div className={`py-3 px-2 rounded-xl text-xs font-black text-center border ${
+                        (selectedChannel || "").toLowerCase() === "toters"
+                          ? "bg-[#00C49F]/20 text-[#00C49F] border-[#00C49F]/40"
+                          : "bg-[#FF5A5F]/20 text-[#FF5A5F] border-[#FF5A5F]/40"
+                      }`}>
+                        {selectedChannel} (Prepaid)
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleFinalizePayment()}
+                      disabled={ticketItems.length === 0 || isSubmitting}
+                      className={`flex-1 py-3 rounded-xl text-xs font-black tracking-wider flex items-center justify-center gap-1 transition-all shadow-lg ${
+                        ticketItems.length === 0 || isSubmitting
+                          ? "bg-gray-700 text-gray-500 cursor-not-allowed border border-gray-600"
+                          : "bg-[#eb660c] hover:bg-[#d55909] text-white active:scale-98 shadow-[#eb660c]/20 border border-[#eb660c] cursor-pointer"
+                      }`}
+                    >
+                      {isSubmitting ? "PROCESSING..." : `ACCEPT & PRINT — $${total.toFixed(2)}`}
+                    </button>
+                  </>
+                ) : !isShiftOpen ? (
+                  <button
+                    type="button"
+                    onClick={() => setIsOpenShiftModalOpen(true)}
+                    className="w-full py-3 px-2 rounded-xl text-xs font-black tracking-wider flex items-center justify-center gap-1.5 transition-all shadow-lg bg-amber-600 hover:bg-amber-500 text-white border border-amber-400 active:scale-98 animate-pulse cursor-pointer"
+                    title="Shift is closed. Click to enter opening float and open shift."
+                  >
+                    <span>🔒 No Open Shift — Tap to Open</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setIsTerminalPaymentModalOpen(true)}
+                    disabled={ticketItems.length === 0 || isSubmitting}
+                    className={`w-full py-3.5 rounded-xl text-sm font-black tracking-wider flex items-center justify-center gap-2 transition-all shadow-lg ${
+                      ticketItems.length === 0 || isSubmitting
+                        ? "bg-gray-700 text-gray-500 cursor-not-allowed border border-gray-600"
+                        : "bg-[#eb660c] hover:bg-[#d55909] text-white active:scale-98 shadow-[#eb660c]/20 border border-[#eb660c] cursor-pointer"
+                    }`}
+                  >
+                    <span>💳</span>
+                    <span>SETTLE & PAY — ${total.toFixed(2)}</span>
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -3774,6 +3863,23 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
           onExit={onExit}
         />
       )}
+
+      {/* TERMINAL PAYMENT & DUAL CURRENCY CHANGE MODAL */}
+      <TerminalPaymentModal
+        isOpen={isTerminalPaymentModalOpen}
+        onClose={() => setIsTerminalPaymentModalOpen(false)}
+        totalUsd={total}
+        exchangeRate={exchangeRate}
+        isTable={Boolean(activeTableContext)}
+        tableCode={activeTableContext?.tableCode}
+        guestCount={activeTableContext?.guestCount}
+        waiterName={activeTableContext?.waiterName || user?.name}
+        orderType={orderType}
+        isSubmitting={isSubmitting}
+        onConfirmPayment={async (paymentDetails) => {
+          await handleFinalizePayment(paymentDetails);
+        }}
+      />
 
       {/* OPEN SHIFT CASH MODAL */}
       <OpenShiftModal

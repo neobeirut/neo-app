@@ -85,21 +85,21 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
     setStagedTenders([]);
     setIsSplitMode(false);
 
-    // Fetch exchange rate from FLOW app_settings / restaurants
+    // Fetch exchange rate from FLOW app_settings / restaurants (fallback: 89500)
     api.getExchangeRate()
       .then(res => {
         if (isMounted) {
           if (res.success && res.rate && res.rate > 0) {
             setExchangeRate(res.rate);
           } else {
-            setExchangeRate(null);
+            setExchangeRate(89500);
           }
           setRateLoading(false);
         }
       })
       .catch(() => {
         if (isMounted) {
-          setExchangeRate(null);
+          setExchangeRate(89500);
           setRateLoading(false);
         }
       });
@@ -412,11 +412,15 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
             <div className="p-3.5 rounded-xl bg-slate-950/60 border border-slate-800">
               <span className="text-xs text-slate-400 font-medium">Calculated Change</span>
               <div className={`text-2xl font-black mt-1 ${changeAmount > 0 ? 'text-emerald-300' : 'text-slate-500'}`}>
-                ${changeAmount.toFixed(2)}
+                {isLbp && exchangeRate
+                  ? `${Math.round(changeAmount * exchangeRate).toLocaleString()} LBP`
+                  : `$${changeAmount.toFixed(2)}`}
               </div>
               {exchangeRate && changeAmount > 0 && (
                 <div className="text-xs text-emerald-400 font-medium">
-                  {Math.round(changeAmount * exchangeRate).toLocaleString()} LBP
+                  {isLbp
+                    ? `≈ $${changeAmount.toFixed(2)} USD`
+                    : `≈ ${Math.round(changeAmount * exchangeRate).toLocaleString()} LBP`}
                 </div>
               )}
             </div>
