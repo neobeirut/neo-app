@@ -79,14 +79,19 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
       setLoadingRecon(true);
       setErrorMessage(null);
       try {
+        const { getDrawerTerminalAliases } = await import('../services/shiftCashBridge');
         const settings = await getBranchReconSettings(branchId || branchName);
         setBranchSettings(settings);
 
+        const currentTermId = shift.terminal_id || terminalId;
+        const aliases = await getDrawerTerminalAliases(branchId || shift.branch_id || '', currentTermId);
+
         const res = await calculateShiftReconciliation({
           locationKey,
+          shiftId: shift.id,
           startTime: shift.created_at,
           endTime: new Date().toISOString(),
-          terminalId: shift.terminal_id || terminalId,
+          terminalIds: aliases,
           openingUsd: Number(shift.opening_usd || 0),
           openingLbp: Number(shift.opening_lbp || 0)
         });
@@ -173,8 +178,10 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
         : varianceReason;
 
       const { closeShift } = await import('../services/shiftCashBridge');
+      const closeOpId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : 'close-' + Date.now();
       const res = await closeShift({
         shiftId: shift.id,
+        closeOperationId: closeOpId,
         actualUsd: numericActualUsd,
         actualLbp: numericActualLbp,
         expectedCashUsd: expectedUsd,

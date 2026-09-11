@@ -23,6 +23,7 @@ export interface ShiftCashRecord {
   manager_pin_verified?: boolean;
   blind_closed?: boolean;
   closing_notes?: string | null;
+  close_operation_id?: string | null;
   tender_summary?: any;
   kpi_summary?: any;
   status: 'open' | 'closed';
@@ -36,7 +37,7 @@ export interface OpenShiftParams {
   branchIdentifier: string; // branch UUID or branch name
   branchId?: string;
   branchName: string;
-  terminalId?: string;
+  terminalId: string; // Mandatory explicit persistent terminal identity
   userName: string;
   shift?: 'AM' | 'PM' | 'ALL DAY';
   openingUsd: number;
@@ -47,6 +48,7 @@ export interface OpenShiftParams {
 
 export interface CloseShiftParams {
   shiftId: string;
+  closeOperationId?: string;
   actualUsd: number;
   actualLbp: number;
   expectedCashUsd?: number;
@@ -64,8 +66,48 @@ export interface CloseShiftParams {
   differenceUsd?: number;
 }
 
+export interface CashMovementParams {
+  shiftId: string;
+  operationId: string;
+  movementType: 'cash_in' | 'cash_drop' | 'payout';
+  currency: 'USD' | 'LBP';
+  amount: number;
+  reason: string;
+  createdBy: string;
+  approvedBy?: string;
+}
+
 /**
- * Queries the active open shift for a branch and optional terminal.
+ * Resolves all commerce terminal aliases mapped to a physical drawer.
+ */
+export async function getDrawerTerminalAliases(branchId: string, drawerTerminalId: string): Promise<string[]> {
+  if (!branchId || !drawerTerminalId) return drawerTerminalId ? [drawerTerminalId] : [];
+
+  try {
+    const { data, error } = await supabase
+      .from('pos_drawer_terminal_links')
+      .select('commerce_terminal_id')
+      .eq('branch_id', branchId)
+      .eq('drawer_terminal_id', drawerTerminalId)
+      .eq('active', true);
+
+    if (error || !data || data.length === 0) {
+      return [drawerTerminalId];
+    }
+
+    const aliases = data.map((r: any) => r.commerce_terminal_id);
+    if (!aliases.includes(drawerTerminalId)) {
+      aliases.push(drawerTerminalId);
+    }
+    return aliases;
+  } catch (err) {
+    console.warn('[shiftCashBridge] Error fetching drawer terminal aliases:', err);
+    return [drawerTerminalId];
+  }
+}
+
+/**
+ * Queries the active open shift for a branch and terminal.
  */
 export async function getActiveShift(branchIdentifier: string, terminalId?: string): Promise<ShiftCashRecord | null> {
   if (!branchIdentifier) return null;
@@ -108,12 +150,43 @@ export async function getActiveShift(branchIdentifier: string, terminalId?: stri
 }
 
 /**
+ * Records an operational cash movement in FLOW shift_cash_movements.
+ */
+export async function recordCashMovement(params: CashMovementParams): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { error } = await supabase
+      .from('shift_cash_movements')
+      .insert([{
+        shift_id: params.shiftId,
+        operation_id: params.operationId,
+        movement_type: params.movementType,
+        currency: params.currency,
+        amount: params.amount,
+        reason: params.reason,
+        created_by: params.createdBy,
+        approved_by: params.approvedBy || null
+      }]);
+
+    if (error) {
+      console.error('[shiftCashBridge] Error recording cash movement:', error);
+      return { success: false, error: error.message };
+    }
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Failed to record cash movement' };
+  }
+}
+
+/**
  * Opens a new shift cash session in FLOW shift_cash.
- * Ensures a terminal does not have conflicting active open shifts.
+ * Ensures an explicit persistent terminal ID is provided and prevents concurrent open shifts.
  */
 export async function openShift(params: OpenShiftParams): Promise<{ success: boolean; shift?: ShiftCashRecord; error?: string }> {
   try {
-    const terminalId = params.terminalId || 'TERM-1';
+    if (!params.terminalId) {
+      return { success: false, error: 'Cannot open shift without explicit terminal ID.' };
+    }
+    const terminalId = params.terminalId.trim();
     
     // Check for existing open shift on this terminal
     const existing = await getActiveShift(params.branchId || params.branchName, terminalId);
@@ -164,14 +237,20 @@ export async function openShift(params: OpenShiftParams): Promise<{ success: boo
 
 /**
  * Closes an existing shift cash session in FLOW shift_cash with complete reconciliation data.
+ * Executes atomically and idempotently using close_operation_id.
  */
 export async function closeShift(params: CloseShiftParams): Promise<{ success: boolean; shift?: ShiftCashRecord; error?: string }> {
   try {
     const nowIso = new Date().toISOString();
+    const opId = params.closeOperationId || (
+      typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'close-' + Date.now()
+    );
+
     const updatePayload: any = {
       status: 'closed',
       closed_at: nowIso,
       finalized_at: nowIso,
+      close_operation_id: opId,
       actual_usd: params.actualUsd,
       actual_lbp: params.actualLbp,
       expected_cash_usd: params.expectedCashUsd !== undefined ? params.expectedCashUsd : 0,
@@ -186,20 +265,16 @@ export async function closeShift(params: CloseShiftParams): Promise<{ success: b
       closing_notes: params.closingNotes || null
     };
 
-    if (params.tenderSummary) {
-      updatePayload.tender_summary = params.tenderSummary;
-    }
-    if (params.kpiSummary) {
-      updatePayload.kpi_summary = params.kpiSummary;
-    }
-    if (params.salesLbp !== undefined) {
-      updatePayload.sales_lbp = params.salesLbp;
-    }
+    if (params.tenderSummary) updatePayload.tender_summary = params.tenderSummary;
+    if (params.kpiSummary) updatePayload.kpi_summary = params.kpiSummary;
+    if (params.salesLbp !== undefined) updatePayload.sales_lbp = params.salesLbp;
 
+    // Atomic conditional update: update ONLY IF status is 'open'
     const { data, error } = await supabase
       .from('shift_cash')
       .update(updatePayload)
       .eq('id', params.shiftId)
+      .eq('status', 'open')
       .select();
 
     if (error) {
@@ -207,7 +282,27 @@ export async function closeShift(params: CloseShiftParams): Promise<{ success: b
       return { success: false, error: error.message };
     }
 
-    return { success: true, shift: (data && data[0]) as ShiftCashRecord };
+    if (data && data.length > 0) {
+      return { success: true, shift: data[0] as ShiftCashRecord };
+    }
+
+    // If 0 rows updated, verify if already closed under the same operation_id (idempotency)
+    const { data: existing, error: fetchErr } = await supabase
+      .from('shift_cash')
+      .select('*')
+      .eq('id', params.shiftId)
+      .single();
+
+    if (!fetchErr && existing) {
+      if (existing.close_operation_id === opId) {
+        return { success: true, shift: existing as ShiftCashRecord };
+      }
+      if (existing.status === 'closed') {
+        return { success: false, error: 'Shift was already closed and finalized under another operation.' };
+      }
+    }
+
+    return { success: false, error: 'Failed to close shift: record not found or already closed.' };
   } catch (err: any) {
     console.error('[shiftCashBridge] Exception closing shift:', err);
     return { success: false, error: err?.message || 'Failed to close shift' };

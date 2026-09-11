@@ -162,12 +162,21 @@ export async function POST(request, { params }) {
       });
     }
 
+    const BRANCH_ID_TO_LOCATION = {
+      1: 'cloud-kitchen',
+      2: 'badaro',
+      3: 'badaro-bistro',
+      4: 'naccache-bistro'
+    };
+    const finalLocationKey = body.location_key || BRANCH_ID_TO_LOCATION[existingOrder.branch_id] || 'cloud-kitchen';
+
     // 3. Insert into order_payments
     const [insertedPayment] = await sql`
       INSERT INTO order_payments (
         operation_id,
         order_id,
         check_id,
+        location_key,
         payment_method,
         payment_category,
         currency,
@@ -185,6 +194,7 @@ export async function POST(request, { params }) {
         ${operation_id}::uuid,
         ${orderId},
         ${checkIdInt},
+        ${finalLocationKey},
         ${payment_method},
         ${payment_category},
         ${currency},

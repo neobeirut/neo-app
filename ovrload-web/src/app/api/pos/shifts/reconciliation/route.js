@@ -11,26 +11,27 @@ export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const locationKey = searchParams.get('location_key');
-    let branchId = searchParams.get('branch_id');
     const startTime = searchParams.get('start_time');
     const endTime = searchParams.get('end_time') || new Date().toISOString();
-    const terminalId = searchParams.get('terminal_id');
+    const rawTerminalIds = searchParams.get('terminal_ids') || searchParams.get('terminal_id');
 
-    if (!branchId && locationKey) {
-      branchId = LOCATION_TO_BRANCH_ID[locationKey];
-    }
-
-    if (!branchId) {
-      return Response.json({ error: "Missing required parameter: branch_id or location_key" }, { status: 400 });
+    if (!locationKey) {
+      return Response.json({ error: "Missing required parameter: location_key" }, { status: 400 });
     }
 
     if (!startTime) {
       return Response.json({ error: "Missing required parameter: start_time" }, { status: 400 });
     }
 
-    const numericBranchId = parseInt(branchId, 10);
+    const numericBranchId = LOCATION_TO_BRANCH_ID[locationKey] || null;
 
-    // 1. Fetch commerce orders in the shift time window
+    // Parse terminal IDs for drawer-specific physical cash filtering
+    let terminalList = [];
+    if (rawTerminalIds) {
+      terminalList = rawTerminalIds.split(',').map(t => t.trim()).filter(Boolean);
+    }
+
+    // 1. Fetch commerce orders in the shift time window for this location
     const orders = await sql`
       SELECT 
         id,
@@ -49,26 +50,45 @@ export async function GET(request) {
         guest_count,
         created_at
       FROM orders
-      WHERE branch_id = ${numericBranchId}
+      WHERE (
+        ${numericBranchId ? sql`branch_id = ${numericBranchId}` : sql`false`}
+      )
         AND created_at >= ${startTime}
         AND created_at <= ${endTime}
       ORDER BY created_at ASC;
     `;
 
-    // 2. Fetch granular order_payments rows
+    // 2. Fetch granular completed order_payments rows
     const payments = await sql`
       SELECT 
-        p.*,
-        o.branch_id
+        p.*
       FROM order_payments p
-      JOIN orders o ON o.id = p.order_id
-      WHERE o.branch_id = ${numericBranchId}
+      WHERE LOWER(p.status) = 'completed'
+        AND (
+          p.location_key = ${locationKey}
+          OR (${numericBranchId ? sql`p.order_id IN (SELECT id FROM orders WHERE branch_id = ${numericBranchId})` : sql`false`})
+        )
         AND p.created_at >= ${startTime}
         AND p.created_at <= ${endTime}
-        ${terminalId ? sql`AND p.terminal_id = ${terminalId}` : sql``};
+        ${terminalList.length > 0 ? sql`AND p.terminal_id IN ${sql(terminalList)}` : sql``};
     `;
 
-    // 3. Compute aggregations
+    // 3. Fetch granular completed order_refunds rows (using refund's completed_at!)
+    const refundsList = await sql`
+      SELECT 
+        r.*
+      FROM order_refunds r
+      WHERE LOWER(r.status) = 'completed'
+        AND (
+          r.location_key = ${locationKey}
+          OR (${numericBranchId ? sql`r.order_id IN (SELECT id FROM orders WHERE branch_id = ${numericBranchId})` : sql`false`})
+        )
+        AND r.completed_at >= ${startTime}
+        AND r.completed_at <= ${endTime}
+        ${terminalList.length > 0 ? sql`AND r.terminal_id IN ${sql(terminalList)}` : sql``};
+    `;
+
+    // 4. Compute aggregations
     let grossSales = 0;
     let totalDiscounts = 0;
     let totalRefunds = 0;
@@ -89,6 +109,15 @@ export async function GET(request) {
       noknok_usd: 0,
       noknok_orders: 0,
       other_usd: 0
+    };
+
+    const refunds = {
+      cash_usd: 0,
+      cash_lbp: 0,
+      cash_lbp_usd_equiv: 0,
+      whish_usd: 0,
+      card_usd: 0,
+      total_usd: 0
     };
 
     const channels = {
@@ -135,46 +164,55 @@ export async function GET(request) {
       else if (oType.includes('take') || oType.includes('pick')) channels.takeaway++;
       else channels.delivery++;
 
-      // Check if order has granular payments in order_payments
-      const orderPays = payments.filter(p => p.order_id === o.id);
-      if (orderPays.length > 0) {
-        for (const p of orderPays) {
-          if (p.status === 'REFUNDED') continue;
-          const pMethod = (p.payment_method || '').toLowerCase();
-          const amtUsd = parseFloat(p.amount_usd || 0);
-          const amtCurr = parseFloat(p.amount_in_currency || amtUsd);
-          if (pMethod.includes('usd') && pMethod.includes('cash')) {
-            tenders.cash_usd += amtUsd;
-          } else if (pMethod.includes('lbp') && pMethod.includes('cash')) {
-            tenders.cash_lbp += amtCurr;
-            tenders.cash_lbp_usd_equiv += amtUsd;
-          } else if (pMethod.includes('whish')) {
-            tenders.whish_usd += amtUsd;
-          } else if (pMethod.includes('card')) {
-            tenders.card_usd += amtUsd;
-          } else {
-            tenders.other_usd += amtUsd;
-          }
-        }
+      // Tally legacy external/aggregator totals if not in payments
+      if (src.includes('toter')) {
+        tenders.toters_usd += total;
+        tenders.toters_orders++;
+      } else if (src.includes('nok')) {
+        tenders.noknok_usd += total;
+        tenders.noknok_orders++;
+      }
+    }
+
+    // Process granular payments
+    for (const p of payments) {
+      const pMethod = p.payment_method || '';
+      const curr = (p.currency || 'USD').toUpperCase();
+      const amtUsd = parseFloat(p.amount_usd || 0);
+      const amtCurr = parseFloat(p.amount_in_currency || amtUsd);
+
+      if (pMethod === 'Cash USD' || (pMethod === 'Cash' && curr === 'USD')) {
+        tenders.cash_usd += amtUsd;
+      } else if (pMethod === 'Cash LBP' || (pMethod === 'Cash' && curr === 'LBP')) {
+        tenders.cash_lbp += amtCurr;
+        tenders.cash_lbp_usd_equiv += amtUsd;
+      } else if (pMethod.toLowerCase().includes('whish')) {
+        tenders.whish_usd += amtUsd;
+      } else if (pMethod.toLowerCase().includes('card')) {
+        tenders.card_usd += amtUsd;
       } else {
-        // Legacy / order-level attribution
-        const pMethod = (o.payment_method || o.order_source || '').toLowerCase();
-        if (src.includes('toter') || pMethod.includes('toter')) {
-          tenders.toters_usd += total;
-          tenders.toters_orders++;
-        } else if (src.includes('nok') || pMethod.includes('nok')) {
-          tenders.noknok_usd += total;
-          tenders.noknok_orders++;
-        } else if (pMethod.includes('whish')) {
-          tenders.whish_usd += total;
-        } else if (pMethod.includes('card')) {
-          tenders.card_usd += total;
-        } else if (pMethod.includes('lbp')) {
-          tenders.cash_lbp += total * 89500;
-          tenders.cash_lbp_usd_equiv += total;
-        } else {
-          tenders.cash_usd += total;
-        }
+        tenders.other_usd += amtUsd;
+      }
+    }
+
+    // Process granular refunds from order_refunds table
+    for (const r of refundsList) {
+      const pMethod = r.payment_method || '';
+      const curr = (r.currency || 'USD').toUpperCase();
+      const amtUsd = parseFloat(r.amount_usd || r.amount || 0);
+      const amtCurr = parseFloat(r.amount_in_currency || r.amount || amtUsd);
+
+      refunds.total_usd += amtUsd;
+
+      if (pMethod === 'Cash USD' || (pMethod.toLowerCase().includes('cash') && curr === 'USD')) {
+        refunds.cash_usd += amtUsd;
+      } else if (pMethod === 'Cash LBP' || (pMethod.toLowerCase().includes('cash') && curr === 'LBP')) {
+        refunds.cash_lbp += amtCurr;
+        refunds.cash_lbp_usd_equiv += amtUsd;
+      } else if (pMethod.toLowerCase().includes('whish')) {
+        refunds.whish_usd += amtUsd;
+      } else if (pMethod.toLowerCase().includes('card')) {
+        refunds.card_usd += amtUsd;
       }
     }
 
@@ -183,10 +221,10 @@ export async function GET(request) {
 
     return Response.json({
       success: true,
-      branchId: numericBranchId,
-      locationKey: locationKey || Object.keys(LOCATION_TO_BRANCH_ID).find(k => LOCATION_TO_BRANCH_ID[k] === numericBranchId),
+      locationKey,
       startTime,
       endTime,
+      terminalIds: terminalList,
       ordersCount,
       grossSales: parseFloat(grossSales.toFixed(2)),
       totalDiscounts: parseFloat(totalDiscounts.toFixed(2)),
@@ -208,6 +246,14 @@ export async function GET(request) {
         noknok_usd: parseFloat(tenders.noknok_usd.toFixed(2)),
         noknok_orders: tenders.noknok_orders,
         other_usd: parseFloat(tenders.other_usd.toFixed(2))
+      },
+      refunds: {
+        cash_usd: parseFloat(refunds.cash_usd.toFixed(2)),
+        cash_lbp: Math.round(refunds.cash_lbp),
+        cash_lbp_usd_equiv: parseFloat(refunds.cash_lbp_usd_equiv.toFixed(2)),
+        whish_usd: parseFloat(refunds.whish_usd.toFixed(2)),
+        card_usd: parseFloat(refunds.card_usd.toFixed(2)),
+        total_usd: parseFloat(refunds.total_usd.toFixed(2))
       },
       channels
     });

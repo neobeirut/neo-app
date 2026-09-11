@@ -50,6 +50,22 @@ export interface ShiftReconciliationSummary {
   voidCount: number;
   voidTotal: number;
   tenders: ShiftTenderBreakdown;
+  refunds?: {
+    cash_usd: number;
+    cash_lbp: number;
+    cash_lbp_usd_equiv: number;
+    whish_usd: number;
+    card_usd: number;
+    total_usd: number;
+  };
+  movements?: {
+    cashInUsd: number;
+    cashInLbp: number;
+    cashDropsUsd: number;
+    cashDropsLbp: number;
+    payoutsUsd: number;
+    payoutsLbp: number;
+  };
   channels: ShiftChannelBreakdown;
   expectedCashUsd: number;
   expectedCashLbp: number;
@@ -110,13 +126,14 @@ export async function getBranchReconSettings(branchIdentifier?: string): Promise
 
 /**
  * Queries authoritative commerce transactions from OVRLOAD and builds
- * the full shift reconciliation summary.
+ * the full shift reconciliation summary including cash movements and refunds.
  */
 export async function calculateShiftReconciliation(params: {
   locationKey: string;
-  branchId?: number;
+  shiftId?: string;
   startTime: string;
   endTime?: string;
+  terminalIds?: string[];
   terminalId?: string;
   openingUsd: number;
   openingLbp: number;
@@ -124,11 +141,16 @@ export async function calculateShiftReconciliation(params: {
   try {
     const end = params.endTime || new Date().toISOString();
     const url = new URL(`${COMMERCE_API_BASE}/api/pos/shifts/reconciliation`);
-    if (params.locationKey) url.searchParams.set('location_key', params.locationKey);
-    if (params.branchId) url.searchParams.set('branch_id', String(params.branchId));
+    url.searchParams.set('location_key', params.locationKey);
     url.searchParams.set('start_time', params.startTime);
     url.searchParams.set('end_time', end);
-    if (params.terminalId) url.searchParams.set('terminal_id', params.terminalId);
+
+    const termList = params.terminalIds && params.terminalIds.length > 0
+      ? params.terminalIds
+      : (params.terminalId ? [params.terminalId] : []);
+    if (termList.length > 0) {
+      url.searchParams.set('terminal_ids', termList.join(','));
+    }
 
     const res = await fetch(url.toString());
     if (!res.ok) {
@@ -141,15 +163,52 @@ export async function calculateShiftReconciliation(params: {
       return { success: false, error: data.error || 'Failed to fetch reconciliation' };
     }
 
-    // Physical Drawer Expected Cash formula:
-    // Expected USD = Opening USD + Cash USD Sales - Cash USD Refunds
-    // Expected LBP = Opening LBP + Cash LBP Sales - Cash LBP Refunds
-    // Digital tenders (Whish, Card, Toters, NokNok) are strictly excluded from drawer cash
-    const expectedUsd = (params.openingUsd || 0) + (data.tenders?.cash_usd || 0);
-    const expectedLbp = (params.openingLbp || 0) + (data.tenders?.cash_lbp || 0);
+    // Query FLOW shift_cash_movements if shiftId is provided
+    let cashInUsd = 0;
+    let cashInLbp = 0;
+    let cashDropsUsd = 0;
+    let cashDropsLbp = 0;
+    let payoutsUsd = 0;
+    let payoutsLbp = 0;
+
+    if (params.shiftId) {
+      try {
+        const { data: movements } = await supabase
+          .from('shift_cash_movements')
+          .select('*')
+          .eq('shift_id', params.shiftId);
+
+        if (movements) {
+          for (const m of movements) {
+            const amt = Number(m.amount || 0);
+            if (m.currency === 'USD') {
+              if (m.movement_type === 'cash_in') cashInUsd += amt;
+              else if (m.movement_type === 'cash_drop') cashDropsUsd += amt;
+              else if (m.movement_type === 'payout') payoutsUsd += amt;
+            } else if (m.currency === 'LBP') {
+              if (m.movement_type === 'cash_in') cashInLbp += amt;
+              else if (m.movement_type === 'cash_drop') cashDropsLbp += amt;
+              else if (m.movement_type === 'payout') payoutsLbp += amt;
+            }
+          }
+        }
+      } catch (movErr) {
+        console.warn('[shiftReconciliationService] Error querying cash movements:', movErr);
+      }
+    }
+
+    // Authoritative Physical Drawer Expected Cash formula:
+    // Expected USD = Opening USD + Cash USD Sales + USD Cash In - Cash USD Refunds - USD Cash Drops - USD Payouts
+    // Expected LBP = Opening LBP + Cash LBP Sales + LBP Cash In - Cash LBP Refunds - LBP Cash Drops - LBP Payouts
+    const cashUsdSales = data.tenders?.cash_usd || 0;
+    const cashLbpSales = data.tenders?.cash_lbp || 0;
+    const cashUsdRefunds = data.refunds?.cash_usd || 0;
+    const cashLbpRefunds = data.refunds?.cash_lbp || 0;
+
+    const expectedUsd = (params.openingUsd || 0) + cashUsdSales + cashInUsd - cashUsdRefunds - cashDropsUsd - payoutsUsd;
+    const expectedLbp = (params.openingLbp || 0) + cashLbpSales + cashInLbp - cashLbpRefunds - cashDropsLbp - payoutsLbp;
 
     const summary: ShiftReconciliationSummary = {
-      branchId: data.branchId,
       locationKey: data.locationKey,
       startTime: params.startTime,
       endTime: end,
@@ -174,6 +233,22 @@ export async function calculateShiftReconciliation(params: {
         noknok_usd: 0,
         noknok_orders: 0,
         other_usd: 0
+      },
+      refunds: data.refunds || {
+        cash_usd: 0,
+        cash_lbp: 0,
+        cash_lbp_usd_equiv: 0,
+        whish_usd: 0,
+        card_usd: 0,
+        total_usd: 0
+      },
+      movements: {
+        cashInUsd,
+        cashInLbp,
+        cashDropsUsd,
+        cashDropsLbp,
+        payoutsUsd,
+        payoutsLbp
       },
       channels: data.channels || {
         pos: 0,
@@ -228,7 +303,7 @@ export function checkVarianceThresholds(
 }
 
 /**
- * Verifies a Manager PIN code for variance override.
+ * Verifies a Manager PIN code for variance override using permission check.
  */
 export async function verifyManagerPin(pin: string): Promise<{ success: boolean; managerName?: string; managerId?: string; error?: string }> {
   try {
@@ -238,13 +313,16 @@ export async function verifyManagerPin(pin: string): Promise<{ success: boolean;
     }
 
     const u = res.data;
+    const perms = typeof u.admin_permissions === 'object' && u.admin_permissions !== null ? u.admin_permissions : {};
+    const isSuper = u.is_super_admin === true || (u.role || '').toLowerCase() === 'superadmin';
+    const hasVariancePerm = perms['pos_shift_variance_approve'] === true || perms.pos_shift_variance_approve === true;
     const role = (u.role || '').toLowerCase();
-    const isManager = role === 'manager' || role === 'admin' || (u.admin_permissions && u.admin_permissions.length > 0);
+    const hasFallbackMgmt = (role === 'manager' || role === 'admin') && (perms.finance === true || Object.keys(perms).length === 0);
 
-    if (!isManager) {
+    if (!isSuper && !hasVariancePerm && !hasFallbackMgmt) {
       return {
         success: false,
-        error: `User "${u.name}" has role "${u.role}". Manager or Admin PIN is required to authorize cash variance.`
+        error: `User "${u.name}" does not have the 'pos_shift_variance_approve' permission.`
       };
     }
 
@@ -343,7 +421,8 @@ export async function printShiftReport(printPayload: any): Promise<{ success: bo
  * Queries all shifts for a branch for a specific day and aggregates daily store metrics.
  */
 export async function getDailyBranchControlSummary(branchIdentifier: string, dateStr?: string) {
-  const targetDate = dateStr || new Date().toISOString().split('T')[0];
+  // Use Asia/Beirut local date boundary
+  const targetDate = dateStr || new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Beirut' }).format(new Date());
   try {
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(branchIdentifier);
     let query = supabase

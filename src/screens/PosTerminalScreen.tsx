@@ -190,10 +190,24 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     commerceBranchLink?.flow_branch_name || user?.branch || "Cloud Kitchen"
   );
 
-  // FLOW Shift Cash Management Hook
+  // Persistent POS terminal identity (from localStorage or hardware station ID)
+  const [persistentTerminalId] = useState<string>(() => {
+    try {
+      const stored = localStorage.getItem('flow_pos_terminal_id');
+      if (stored && stored.trim()) return stored.trim();
+      const generated = 'FLOW-TERM-' + (commerceBranchLink?.location_key || '01').toUpperCase();
+      localStorage.setItem('flow_pos_terminal_id', generated);
+      return generated;
+    } catch {
+      return 'FLOW-TERM-01';
+    }
+  });
+
+  // FLOW Shift Cash State & Bridge
   const {
     activeShift,
     isShiftOpen,
+    loading: shiftLoading,
     isOpenShiftModalOpen,
     setIsOpenShiftModalOpen,
     isCloseShiftModalOpen,
@@ -208,7 +222,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   } = usePosShift(
     commerceBranchLink?.flow_branch_name || user?.branch || "Cloud Kitchen",
     activeCashier?.name || user?.name || "Cashier",
-    "TERM-1",
+    persistentTerminalId,
     commerceBranchLink?.flow_branch_id
   );
 
@@ -3615,7 +3629,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         branchName={commerceBranchLink?.flow_branch_name || user?.branch || "Cloud Kitchen"}
         branchId={commerceBranchLink?.flow_branch_id}
         locationKey={commerceBranchLink?.location_key || "cloud-kitchen"}
-        terminalId={activeShift?.terminal_id || "TERM-1"}
+        terminalId={activeShift?.terminal_id || persistentTerminalId}
         cashierName={activeCashier?.name || user?.name || "Cashier"}
         onShiftClosed={(closedShift, recon) => {
           setLastClosedShift(closedShift);
@@ -3643,9 +3657,10 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
           onSelectShiftReport={async (selectedShift) => {
             const res = await calculateShiftReconciliation({
               locationKey: commerceBranchLink?.location_key || 'cloud-kitchen',
+              shiftId: selectedShift.id,
               startTime: selectedShift.created_at,
               endTime: selectedShift.closed_at || undefined,
-              terminalId: selectedShift.terminal_id || "TERM-1",
+              terminalId: selectedShift.terminal_id || persistentTerminalId,
               openingUsd: Number(selectedShift.opening_usd || 0),
               openingLbp: Number(selectedShift.opening_lbp || 0)
             });

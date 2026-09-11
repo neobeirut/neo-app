@@ -11,13 +11,17 @@ export async function POST(request, { params }) {
       payment_id = null,
       refund_type = 'partial', // 'full' or 'partial'
       amount,
+      amount_usd = null,
+      amount_in_currency = null,
+      exchange_rate_used = null,
       currency = 'USD',
       payment_method = 'Cash USD',
       reason = 'Refund requested',
       terminal_id = null,
       requested_by_reference = 'Cashier',
       approved_by_reference = 'Manager',
-      external_reference = null
+      external_reference = null,
+      location_key = null
     } = body;
 
     if (!operation_id) {
@@ -31,7 +35,7 @@ export async function POST(request, { params }) {
 
     // 1. Verify existing order
     const [existingOrder] = await sql`
-      SELECT id, total_amount, status, payment_method,
+      SELECT id, branch_id, total_amount, status, payment_method,
              COALESCE(payment_status, 'UNPAID') as payment_status,
              COALESCE(amount_paid, 0)::float as amount_paid,
              COALESCE(amount_refunded, 0)::float as amount_refunded,
@@ -44,6 +48,17 @@ export async function POST(request, { params }) {
     if (!existingOrder) {
       return Response.json({ error: "Order not found" }, { status: 404 });
     }
+
+    const BRANCH_ID_TO_LOCATION = {
+      1: 'cloud-kitchen',
+      2: 'badaro',
+      3: 'badaro-bistro',
+      4: 'naccache-bistro'
+    };
+    const finalLocationKey = location_key || BRANCH_ID_TO_LOCATION[existingOrder.branch_id] || 'cloud-kitchen';
+    const finalAmountUsd = amount_usd !== null && amount_usd !== undefined ? parseFloat(amount_usd) : refundAmount;
+    const finalAmountInCurrency = amount_in_currency !== null && amount_in_currency !== undefined ? parseFloat(amount_in_currency) : refundAmount;
+    const finalExchangeRate = exchange_rate_used !== null && exchange_rate_used !== undefined ? parseFloat(exchange_rate_used) : (currency === 'LBP' ? 89500 : null);
 
     // 2. Idempotency Check: if operation_id already exists in order_refunds
     const [existingRefund] = await sql`
@@ -75,8 +90,12 @@ export async function POST(request, { params }) {
         operation_id,
         order_id,
         payment_id,
+        location_key,
         refund_type,
         amount,
+        amount_usd,
+        amount_in_currency,
+        exchange_rate_used,
         currency,
         payment_method,
         reason,
@@ -91,8 +110,12 @@ export async function POST(request, { params }) {
         ${operation_id}::uuid,
         ${orderId},
         ${payment_id !== null ? parseInt(payment_id, 10) : null},
+        ${finalLocationKey},
         ${refund_type},
         ${refundAmount},
+        ${finalAmountUsd},
+        ${finalAmountInCurrency},
+        ${finalExchangeRate},
         ${currency},
         ${payment_method},
         ${reason},
