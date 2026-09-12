@@ -99,7 +99,7 @@ export async function PATCH(request, { params }) {
       if (isPreparingOrAccepted && !wasPreparingOrAccepted && phoneToNotify) {
         try {
           const normPhone = String(phoneToNotify).replace(/\D/g, "").replace(/^00/, "").replace(/^0/, "961");
-          const target = normPhone.length === 8 ? "961" + normPhone : normPhone;
+          const target = (normPhone.length === 7 || normPhone.length === 8) ? "961" + normPhone : normPhone;
           const apiKey = process.env.INFOBIP_API_KEY || "d42824b2b707759420c14250c320ec7b-449822b8-55e1-4d67-906f-8a19af1d302e";
           const baseUrl = (process.env.INFOBIP_BASE_URL || "https://y4r1q1.api.infobip.com").replace(/\/$/, "");
           const sender = "96181202607";
