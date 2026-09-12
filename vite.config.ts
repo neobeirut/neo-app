@@ -27,6 +27,27 @@ export default defineConfig({
       },
     },
   },
+  preview: {
+    port: 4173,
+    proxy: {
+      '/api/pos': {
+        target: BACKEND_TARGET,
+        changeOrigin: true,
+        secure: false,
+      },
+      '/api/branches': {
+        target: BACKEND_TARGET,
+        changeOrigin: true,
+        secure: false,
+      },
+      '/api/delivery': {
+        target: BACKEND_TARGET,
+        changeOrigin: true,
+        secure: false,
+      },
+    },
+  },
+
   resolve: {
     alias: {
       '@auth/create/react': '@hono/auth-js/react',
