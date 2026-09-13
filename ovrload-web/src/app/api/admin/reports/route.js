@@ -182,9 +182,9 @@ export async function GET(request) {
         SUM(oi.quantity)::int as total_qty,
         SUM((oi.quantity * oi.unit_price)::float) as total_revenue
       FROM order_items oi
-      JOIN orders o ON oi.order_id = o.id
-      LEFT JOIN products p ON oi.product_id = p.id
-      LEFT JOIN categories c ON p.category_id = c.id
+      JOIN orders o ON oi.order_id::integer = o.id
+      LEFT JOIN products p ON oi.product_id::integer = p.id
+      LEFT JOIN categories c ON p.category_id::integer = c.id
       WHERE ${salesStatusFilterO} ${dateWhereClauseO}
       GROUP BY oi.product_id, p.name, c.name
       ORDER BY total_qty DESC
@@ -197,9 +197,9 @@ export async function GET(request) {
         SUM(oi.quantity)::int as total_qty,
         SUM((oi.quantity * oi.unit_price)::float) as total_revenue
       FROM order_items oi
-      JOIN orders o ON oi.order_id = o.id
-      LEFT JOIN products p ON oi.product_id = p.id
-      LEFT JOIN categories c ON p.category_id = c.id
+      JOIN orders o ON oi.order_id::integer = o.id
+      LEFT JOIN products p ON oi.product_id::integer = p.id
+      LEFT JOIN categories c ON p.category_id::integer = c.id
       WHERE ${salesStatusFilterO} ${dateWhereClauseO}
       GROUP BY c.name
       ORDER BY total_revenue DESC`
