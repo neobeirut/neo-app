@@ -11,6 +11,8 @@ import { COMMERCE_API_BASE } from '../config';
 
 interface OrdersHubScreenProps {
   branchName?: string;
+  restaurantId?: string | null;
+  branchId?: string | number | null;
   onSelectOrder?: (order: FlowPosOrder) => void;
   onOpenOrderToTicket?: (order: FlowPosOrder) => void;
   onRequestVoid?: (order: FlowPosOrder) => void;
@@ -21,6 +23,8 @@ interface OrdersHubScreenProps {
 
 export const OrdersHubScreen: React.FC<OrdersHubScreenProps> = ({
   branchName = 'Cloud Kitchen',
+  restaurantId,
+  branchId,
   onSelectOrder,
   onOpenOrderToTicket,
   onRequestVoid,
@@ -43,7 +47,7 @@ export const OrdersHubScreen: React.FC<OrdersHubScreenProps> = ({
     isMuted,
     setIsMuted,
     refreshOrders
-  } = useOrders();
+  } = useOrders({ restaurantId, branchId });
 
   const [selectedOrderId, setSelectedOrderId] = useState<string | number | null>(null);
   const [activeDetailOrder, setActiveDetailOrder] = useState<FlowPosOrder | null>(null);

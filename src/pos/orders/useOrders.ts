@@ -27,6 +27,8 @@ function playNewOrderChime() {
 }
 
 export interface UseOrdersOptions {
+  restaurantId?: string | null;
+  branchId?: string | number | null;
   pollingIntervalMs?: number;
   slaConfig?: SlaConfig;
   autoChime?: boolean;
@@ -34,6 +36,8 @@ export interface UseOrdersOptions {
 
 export function useOrders(options: UseOrdersOptions = {}) {
   const {
+    restaurantId,
+    branchId,
     pollingIntervalMs = 10000,
     slaConfig = DEFAULT_SLA_CONFIG,
     autoChime = true
@@ -54,10 +58,16 @@ export function useOrders(options: UseOrdersOptions = {}) {
   const fetchOrders = useCallback(async (isSilent = false) => {
     if (!isSilent) setIsLoading(true);
     try {
-      const res = await fetch(COMMERCE_API_BASE + '/api/pos/orders?type=all');
+      const qs: string[] = ['type=all'];
+      if (restaurantId) qs.push(`restaurant_id=${encodeURIComponent(restaurantId)}`);
+      if (branchId) qs.push(`branch_id=${encodeURIComponent(String(branchId))}`);
+      const queryStr = `?${qs.join('&')}`;
+
+      const res = await fetch(`${COMMERCE_API_BASE}/api/pos/orders${queryStr}`);
       if (!res.ok) throw new Error('Failed to fetch orders (HTTP ' + res.status + ')');
       const rawOrders = await res.json();
-      const adapted = (Array.isArray(rawOrders) ? rawOrders : []).map(o => adaptOvrloadOrder(o, slaConfig));
+      const list = Array.isArray(rawOrders) ? rawOrders : (rawOrders.orders || []);
+      const adapted = list.map((o: any) => adaptOvrloadOrder(o, slaConfig));
 
       if (!isFirstFetchRef.current && autoChime && !isMuted) {
         let hasNew = false;
@@ -84,7 +94,7 @@ export function useOrders(options: UseOrdersOptions = {}) {
     } finally {
       if (!isSilent) setIsLoading(false);
     }
-  }, [slaConfig, autoChime, isMuted]);
+  }, [restaurantId, branchId, slaConfig, autoChime, isMuted]);
 
   useEffect(() => {
     fetchOrders(false);

@@ -43,6 +43,7 @@ interface PosTerminalScreenProps {
 }
 
 import { COMMERCE_API_BASE } from "../pos/config";
+import { fetchPosCatalog } from "../pos/services/posCatalogService";
 
 
 const FAVORITE_PRODUCT_NAMES = [
@@ -54,6 +55,15 @@ const FAVORITE_PRODUCT_NAMES = [
   "diet pepsi",
   "chocolate load",
   "banoffee overload",
+  // Bistro popular items
+  "boulette aux trois fromages",
+  "steak-frites",
+  "risotto",
+  "lemonade",
+  "burger",
+  "espresso",
+  "poulet croquant",
+  "salade"
 ];
 
 const partitionCustomizations = (customizations) => {
@@ -143,6 +153,26 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   const [branchMappingError, setBranchMappingError] = useState<string | null>(null);
   const [isResolvingBranch, setIsResolvingBranch] = useState(true);
 
+  // Dynamic Restaurant & Branch Identity Resolution (Lifted to top for strict tenant isolation)
+  const currentRestaurantId =
+    commerceBranchLink?.restaurant_id ||
+    user?.restaurant_id ||
+    user?.restaurants?.id ||
+    (user?.email?.toLowerCase().includes('bistro') || user?.branch?.toLowerCase().includes('bistro') || user?.name?.toLowerCase().includes('bistro')
+      ? '4c0ed960-e459-42c4-962f-41229a2d3783'
+      : getGlobalRestaurantId() || '79256f11-a9f8-4fec-901d-69baf929762d');
+
+  const currentRestaurantName =
+    user?.restaurants?.name ||
+    (currentRestaurantId === '4c0ed960-e459-42c4-962f-41229a2d3783' ? 'The Bistro' : 'Neo Beirut');
+
+  // Sync global restaurant context for Supabase tenant header
+  useEffect(() => {
+    if (currentRestaurantId) {
+      setGlobalRestaurantId(currentRestaurantId);
+    }
+  }, [currentRestaurantId]);
+
   // Available Commerce Branches & Selection State
   const [availableCommerceBranches, setAvailableCommerceBranches] = useState<any[]>([]);
   const [isBranchSwitcherOpen, setIsBranchSwitcherOpen] = useState(false);
@@ -154,14 +184,13 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     }
   });
 
-  // Query all active commerce branch links for current restaurant
+  // Query all active commerce branch links strictly for current restaurant
   useEffect(() => {
     const fetchAvailableBranches = async () => {
       try {
         let query = supabase.from('commerce_branch_links').select('*').eq('active', true);
-        const rid = user?.restaurant_id || user?.restaurants?.id;
-        if (rid && user?.role?.toLowerCase() !== 'superadmin') {
-          query = query.eq('restaurant_id', rid);
+        if (currentRestaurantId) {
+          query = query.eq('restaurant_id', currentRestaurantId);
         }
         const { data } = await query;
         if (data && data.length > 0) {
@@ -172,7 +201,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       }
     };
     fetchAvailableBranches();
-  }, [user?.restaurant_id, user?.restaurants?.id]);
+  }, [currentRestaurantId]);
 
   // Main POS Navigation: SELL vs TABLES vs ORDERS
   const [posActiveView, setPosActiveView] = useState<'sell' | 'tables' | 'orders'>('sell');
@@ -207,13 +236,30 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     // 3. Active cashier's assigned branch (if not 'All')
     // 4. User's assigned branch (if not 'All')
     let branchToResolve = explicitBranch || selectedTerminalBranch;
+
+    // Validate that candidate branch belongs to current restaurant if available
+    if (availableCommerceBranches.length > 0 && branchToResolve) {
+      const match = availableCommerceBranches.some(
+        (b) => b.flow_branch_name?.toLowerCase() === branchToResolve?.toLowerCase() ||
+               b.flow_branch_id === branchToResolve ||
+               b.external_branch_name?.toLowerCase() === branchToResolve?.toLowerCase()
+      );
+      if (!match) {
+        // Switch to the first valid branch for this restaurant
+        branchToResolve = availableCommerceBranches[0].flow_branch_name;
+        setSelectedTerminalBranch(branchToResolve);
+      }
+    }
+
     if (!branchToResolve || branchToResolve.toLowerCase() === 'all') {
       if (activeCashier?.branch && activeCashier.branch.toLowerCase() !== 'all') {
         branchToResolve = activeCashier.branch;
       } else if (user?.branch && user.branch.toLowerCase() !== 'all') {
         branchToResolve = user.branch;
+      } else if (availableCommerceBranches.length > 0) {
+        branchToResolve = availableCommerceBranches[0].flow_branch_name;
       } else {
-        branchToResolve = null;
+        branchToResolve = currentRestaurantId === '4c0ed960-e459-42c4-962f-41229a2d3783' ? 'Badaro (Bistro)' : 'Badaro';
       }
     }
 
@@ -227,8 +273,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     const { link, error } = await resolveCommerceBranchLink(branchToResolve, 'ovrload');
     if (link) {
       // Validate that the resolved branch belongs to the user's active restaurant (unless superadmin)
-      const userRid = user?.restaurant_id || user?.restaurants?.id;
-      if (userRid && link.restaurant_id && link.restaurant_id !== userRid && user?.role?.toLowerCase() !== 'superadmin') {
+      if (currentRestaurantId && link.restaurant_id && link.restaurant_id !== currentRestaurantId && user?.role?.toLowerCase() !== 'superadmin') {
         setCommerceBranchLink(null);
         setSelectedTerminalBranch(null);
         try { localStorage.removeItem('flow_pos_selected_branch'); } catch {}
@@ -295,31 +340,14 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     }
   });
 
-  // Dynamic Restaurant & Branch Identity Resolution
-  const currentRestaurantId =
-    commerceBranchLink?.restaurant_id ||
-    user?.restaurant_id ||
-    user?.restaurants?.id ||
-    (user?.email?.toLowerCase().includes('bistro') || user?.branch?.toLowerCase().includes('bistro') || user?.name?.toLowerCase().includes('bistro')
-      ? '4c0ed960-e459-42c4-962f-41229a2d3783'
-      : getGlobalRestaurantId() || '79256f11-a9f8-4fec-901d-69baf929762d');
-  const currentRestaurantName =
-    user?.restaurants?.name ||
-    (currentRestaurantId === '4c0ed960-e459-42c4-962f-41229a2d3783' ? 'The Bistro' : 'Neo Beirut');
+  // Dynamic Branch Identity Resolution
   const currentBranchId = commerceBranchLink?.flow_branch_id || branchCapabilities?.branchId || "";
   const currentBranchName =
     commerceBranchLink?.flow_branch_name ||
     selectedTerminalBranch ||
     user?.branch ||
     activeCashier?.branch ||
-    "Badaro";
-
-  // Sync global restaurant context for Supabase tenant header
-  useEffect(() => {
-    if (currentRestaurantId) {
-      setGlobalRestaurantId(currentRestaurantId);
-    }
-  }, [currentRestaurantId]);
+    (currentRestaurantId === '4c0ed960-e459-42c4-962f-41229a2d3783' ? 'Badaro (Bistro)' : 'Badaro');
 
   // FLOW Shift Cash State & Bridge
   const {
@@ -923,21 +951,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   const fetchProducts = async () => {
     setInitialLoadError(null);
     try {
-      let res: Response;
-      try {
-        res = await fetchWithTimeout(`${COMMERCE_API_BASE}/api/pos/products`, {}, 10000);
-      } catch (primaryErr) {
-        if (COMMERCE_API_BASE !== "") {
-          console.warn("[POS] Primary fetch failed, attempting relative proxy fallback /api/pos/products");
-          res = await fetchWithTimeout("/api/pos/products", {}, 10000);
-        } else {
-          throw primaryErr;
-        }
-      }
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}: Failed to load menu products`);
-      }
-      const data = await res.json();
+      const data = await fetchPosCatalog(currentRestaurantId);
       if (data.categories) setCategories(data.categories);
       if (data.products) setProducts(data.products);
       if (data.settings) {
@@ -998,9 +1012,11 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     if (isPollingRef.current) return;
     isPollingRef.current = true;
     try {
+      const extBranchId = commerceBranchLink?.external_branch_id || '';
+      const qs = `restaurant_id=${encodeURIComponent(currentRestaurantId || '')}${extBranchId ? `&branch_id=${encodeURIComponent(extBranchId)}` : ''}`;
       const [pendingRes, heldRes] = await Promise.all([
-        fetchWithTimeout("/api/pos/orders?type=pending", {}, 8000),
-        fetchWithTimeout("/api/pos/orders?type=held", {}, 8000)
+        fetchWithTimeout(`/api/pos/orders?type=pending&${qs}`, {}, 8000),
+        fetchWithTimeout(`/api/pos/orders?type=held&${qs}`, {}, 8000)
       ]);
       const pendingData = await pendingRes.json();
       const heldData = await heldRes.json();
@@ -1742,6 +1758,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           branch_id: parseInt(commerceBranchLink?.external_branch_id || "1", 10),
+          restaurant_id: currentRestaurantId,
           client_order_token: clientOrderToken,
           orderType: isDineIn ? "dine_in" : orderType,
           service_type: isDineIn ? "dine_in" : undefined,
@@ -1760,6 +1777,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
           total,
           items: ticketItems.map((item) => ({
             product_id: item.product_id,
+            name: item.name,
             quantity: item.qty,
             unit_price: item.unit_price,
             customizations: (item.selectedCustomizations || []).map((c) => c.ingredient || c.name || c),
@@ -1828,6 +1846,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         // Create the dine-in order in OVRLOAD commerce first!
         const orderPayload = {
           branch_id: parseInt(commerceBranchLink?.external_branch_id || "1", 10),
+          restaurant_id: currentRestaurantId,
           client_order_token: clientOrderToken,
           orderType: 'dine_in',
           service_type: 'dine_in',
@@ -1845,6 +1864,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
           total,
           items: ticketItems.map((item) => ({
             product_id: item.product_id,
+            name: item.name,
             quantity: item.qty,
             unit_price: item.unit_price,
             customizations: (item.selectedCustomizations || []).map((c: any) =>
@@ -2027,6 +2047,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             branch_id: parseInt(commerceBranchLink?.external_branch_id || "1", 10),
+            restaurant_id: currentRestaurantId,
             client_order_token: clientOrderToken,
             payment_operation_id: paymentOperationId,
             orderType: isDineIn ? "dine_in" : orderType,
@@ -2046,6 +2067,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
             total,
             items: ticketItems.map((item) => ({
               product_id: item.product_id,
+              name: item.name,
               quantity: item.qty,
               unit_price: item.unit_price,
               customizations: (item.selectedCustomizations || []).map((c) =>
@@ -2162,7 +2184,9 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
 
   const fetchOrderHistory = async () => {
     try {
-      const res = await fetch(`${COMMERCE_API_BASE}/api/pos/orders?type=all`);
+      const extBranchId = commerceBranchLink?.external_branch_id || '';
+      const qs = `restaurant_id=${encodeURIComponent(currentRestaurantId || '')}${extBranchId ? `&branch_id=${encodeURIComponent(extBranchId)}` : ''}`;
+      const res = await fetch(`${COMMERCE_API_BASE}/api/pos/orders?type=all&${qs}`);
       const data = await res.json();
       if (data.orders) setCompletedOrdersHistory(data.orders);
     } catch (err) {
@@ -2319,13 +2343,13 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         <header className="h-14 bg-[#181C24] border-b border-[#262D3D] px-4 flex items-center justify-between shadow-md print:hidden flex-shrink-0 z-10">
           {/* Brand + All Action Buttons on Left */}
           <div className="flex items-center gap-3">
-            {/* Brand Logo */}
+            {/* Dynamic Brand Logo */}
             <div className="flex items-center gap-2">
-              <span className="w-7 h-7 rounded-lg bg-[#eb660c] flex items-center justify-center font-black text-white text-sm">
-                O
+              <span className="w-7 h-7 rounded-lg bg-[#eb660c] flex items-center justify-center font-black text-white text-sm uppercase">
+                {currentRestaurantName ? currentRestaurantName.charAt(0) : "P"}
               </span>
               <span className="font-extrabold text-base tracking-wider text-white">
-                OVR<span className="text-[#eb660c]">LOAD</span> <span className="text-[#eb660c] font-black text-[10px] ml-0.5">POS</span>
+                {currentRestaurantName || "FLOW"} <span className="text-[#eb660c] font-black text-[10px] ml-0.5">POS</span>
               </span>
             </div>
 
@@ -2522,7 +2546,9 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         {posActiveView === 'orders' ? (
           <div className="flex-1 overflow-hidden">
             <OrdersHubScreen
-              branchName={commerceBranchLink?.flow_branch_name || user?.branch || "Cloud Kitchen"}
+              branchName={commerceBranchLink?.flow_branch_name || user?.branch || (currentRestaurantId === '4c0ed960-e459-42c4-962f-41229a2d3783' ? 'Badaro (Bistro)' : 'Badaro')}
+              restaurantId={currentRestaurantId}
+              branchId={commerceBranchLink?.external_branch_id}
               currentTerminalId={posTerminalId}
               activeCashierName={activeCashier?.name || user?.name || "Cashier"}
               onOpenOrderToTicket={(order) => {
