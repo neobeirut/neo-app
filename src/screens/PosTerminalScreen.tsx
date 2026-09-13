@@ -44,6 +44,9 @@ interface PosTerminalScreenProps {
 
 import { COMMERCE_API_BASE } from "../pos/config";
 import { fetchPosCatalog } from "../pos/services/posCatalogService";
+import { fetchPosScreens, savePosScreens, TILE_COLORS } from "../pos/services/posScreenService";
+import type { PosScreen, PosScreenButton } from "../pos/types/posScreen";
+import PosPinScreen from "../pos/components/PosPinScreen";
 
 
 const FAVORITE_PRODUCT_NAMES = [
@@ -604,6 +607,15 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   const [validationError, setValidationError] = useState("");
   const [dispatchStatusMsg, setDispatchStatusMsg] = useState("");
 
+  // POS Screen Matrix & Horizontal Touch Bar States
+  const [posScreens, setPosScreens] = useState<PosScreen[]>([]);
+  const [currentScreenId, setCurrentScreenId] = useState<string>('root');
+  const [screenStack, setScreenStack] = useState<string[]>([]);
+  const [isFeaturesModalOpen, setIsFeaturesModalOpen] = useState(false);
+  const [isPinLockOpen, setIsPinLockOpen] = useState(false);
+  const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
+  const [transferTargetTableInput, setTransferTargetTableInput] = useState("");
+
   // Fetch exchange rate on load
   useEffect(() => {
     api.getExchangeRate(user?.restaurant_id)
@@ -954,6 +966,19 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       const data = await fetchPosCatalog(currentRestaurantId);
       if (data.categories) setCategories(data.categories);
       if (data.products) setProducts(data.products);
+
+      // Load POS Screen Matrix (modifiable screens & subscreens)
+      try {
+        const screens = await fetchPosScreens(currentRestaurantId, data.categories || [], data.products || []);
+        setPosScreens(screens);
+        const rootScreen = screens.find((s) => s.isRoot) || screens[0];
+        if (rootScreen) {
+          setCurrentScreenId(rootScreen.id);
+        }
+      } catch (screenErr) {
+        console.warn("Could not load POS screens:", screenErr);
+      }
+
       if (data.settings) {
         if (data.settings.toters_discount_percent !== undefined) setTotersDiscountPercent(data.settings.toters_discount_percent);
         if (data.settings.noknok_discount_percent !== undefined) setNoknokDiscountPercent(data.settings.noknok_discount_percent);
@@ -1369,6 +1394,104 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
           note: "",
         },
       ]);
+    }
+  };
+
+  // Screen Matrix Navigation Helpers
+  const activePosScreen = useMemo(() => {
+    if (!posScreens || posScreens.length === 0) return null;
+    return posScreens.find((s) => s.id === currentScreenId) || posScreens.find((s) => s.isRoot) || posScreens[0];
+  }, [posScreens, currentScreenId]);
+
+  const handleNavigateToSubscreen = (targetScreenId?: string) => {
+    if (!targetScreenId) return;
+    setScreenStack((prev) => [...prev, currentScreenId]);
+    setCurrentScreenId(targetScreenId);
+  };
+
+  const handleBackToParentScreen = () => {
+    if (screenStack.length > 0) {
+      const prevScreenId = screenStack[screenStack.length - 1];
+      setScreenStack((prev) => prev.slice(0, -1));
+      setCurrentScreenId(prevScreenId);
+    } else {
+      const rootScreen = posScreens.find((s) => s.isRoot) || posScreens[0];
+      if (rootScreen) setCurrentScreenId(rootScreen.id);
+    }
+  };
+
+  const handleTouchButtonPress = (btn: PosScreenButton) => {
+    if (btn.type === 'screen') {
+      handleNavigateToSubscreen(btn.targetScreenId);
+    } else {
+      const prod = products.find((p: any) => String(p.id) === String(btn.productId)) ||
+                   products.find((p: any) => (p.name || '').toLowerCase() === (btn.label || '').toLowerCase()) ||
+                   { id: btn.productId || 'item_' + Date.now(), name: btn.label, unit_price_usd: 0, customizations: [] };
+
+      if (isProduct86d((prod as any).id)) {
+        alert(`⚠️ "${(prod as any).name}" is currently 86'd (unavailable) by the kitchen.`);
+        return;
+      }
+
+      if ((prod as any).customizations && (prod as any).customizations.length > 0) {
+        handleOpenCustomization(prod);
+      } else {
+        handleQuickAddProduct(prod);
+      }
+    }
+  };
+
+  // Horizontal Bottom Bar Action 4: Kitchen Hold Pacing Instruction
+  const handleInsertHold = () => {
+    setTicketItems((prev: any) => [
+      ...prev,
+      {
+        product_id: 'hold_separator_' + Date.now(),
+        name: '⏸️ --- HOLD FOR NEXT COURSE ---',
+        unit_price: 0,
+        qty: 1,
+        selectedCustomizations: [],
+        note: 'HOLD',
+        isHoldSeparator: true
+      }
+    ]);
+  };
+
+  // Horizontal Bottom Bar Action 5: Kitchen Firing Command
+  const handleKitchenFireChit = async () => {
+    if (ticketItems.length === 0 && !activeTableContext?.orderId && !editingOrderId) {
+      alert("No active table or items in cart to fire to the kitchen.");
+      return;
+    }
+
+    const tableLabel = activeTableContext ? `Table ${activeTableContext.tableCode}` : (customerName || 'Direct Order');
+    const waiterName = activeCashier?.name || user?.name || 'Staff';
+
+    // Kitchen Fire Chit print payload
+    const fireChitPayload = {
+      isKitchenFire: true,
+      title: "*** FIRE KITCHEN ***",
+      table: tableLabel,
+      server: waiterName,
+      timestamp: new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
+      items: ticketItems.map((item: any) => ({
+        qty: item.qty || 1,
+        name: item.name || 'Item',
+        note: item.note || '',
+        modifiers: (item.selectedCustomizations || []).map((c: any) => typeof c === 'string' ? c : (c.ingredient || c.name || ''))
+      }))
+    };
+
+    try {
+      await handlePrint(fireChitPayload);
+    } catch (err) {
+      console.warn("Print fire chit error:", err);
+    }
+
+    if (ticketItems.length > 0) {
+      await handleFireToKitchen();
+    } else {
+      alert(`🔥🔥🔥 FIRE sent to kitchen for ${tableLabel}!`);
     }
   };
 
@@ -2605,9 +2728,11 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
             />
           </div>
         ) : (
-          <div className="flex-1 flex overflow-hidden min-h-0">
-            {/* LEFT AREA (65% Width): Categories Bar + Product Grid */}
-            <div className="w-[65%] flex flex-col h-full overflow-hidden border-r border-[#262D3D]">
+          <div className="flex-1 flex flex-col overflow-hidden min-h-0">
+            {/* MAIN WORKSPACE: MATRIX ON LEFT & CART ON RIGHT */}
+            <div className="flex-1 flex overflow-hidden min-h-0">
+              {/* LEFT AREA (65% Width): Categories Bar + Product Grid */}
+              <div className="w-[65%] flex flex-col h-full overflow-hidden border-r border-[#262D3D]">
               {/* FLOW UPSELL RECOMMENDATIONS */}
               <UpsellRecommendationBar
                 upsells={activeUpsells}
@@ -2615,101 +2740,116 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                 isProduct86d={isProduct86d}
               />
 
-              {/* CATEGORIES BAR */}
-          <div className="px-4 py-2.5 bg-[#14171F] border-b border-[#262D3D] flex items-center gap-2 overflow-x-auto no-scrollbar flex-shrink-0">
-            {availableCategoryList.map((cat) => {
-              const isSelected = selectedCategory === cat;
-              return (
-                <button
-                  key={cat}
-                  onClick={() => setSelectedCategory(cat)}
-                  className={`px-4 py-2 rounded-xl text-xs font-extrabold whitespace-nowrap transition-all flex items-center gap-1.5 shrink-0 border ${
-                    isSelected
-                      ? "bg-[#eb660c] text-white border-[#eb660c] shadow-md shadow-[#eb660c]/20 scale-102"
-                      : "bg-[#181C24] text-gray-300 border-[#262D3D] hover:bg-[#262D3D] hover:text-white"
-                  }`}
-                >
-                  <span>{formatCategoryDisplay(cat)}</span>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* PRODUCT GRID (3 Columns in a row) */}
-          <div className="flex-1 overflow-y-auto p-3.5 grid grid-cols-3 gap-3 align-content-start">
-            {filteredProducts.length === 0 ? (
-              <div className="col-span-full py-16 text-center text-gray-400 font-medium text-sm">
-                No products found in this category.
-              </div>
-            ) : (
-              filteredProducts.map((p) => {
-                const hasOptions = p.customizations && p.customizations.length > 0;
-                const optionsCount = hasOptions
-                  ? new Set(p.customizations.map((c) => c.option_group_name || c.name)).size || p.customizations.length
-                  : 0;
-
-                const is86 = isProduct86d(p.id);
-                return (
-                  <div
-                    key={p.id}
-                    onClick={() => !is86 && handleQuickAddProduct(p)}
-                    className={`bg-[#181C24] border rounded-xl p-3 flex flex-col justify-between transition-all relative overflow-hidden min-h-[105px] h-auto ${
-                      is86
-                        ? "opacity-45 grayscale border-rose-950/80 cursor-not-allowed"
-                        : "hover:bg-[#1f2532] border-[#262D3D] hover:border-[#eb660c]/50 cursor-pointer group shadow-sm"
-                    }`}
-                  >
-                    <div>
-                      <div className="flex items-start justify-between gap-1">
-                        <div className="flex flex-col gap-0.5">
-                          {is86 && (
-                            <span className="inline-block text-[9px] font-black px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-400 border border-rose-500/40 w-fit">
-                              🚫 86'D (Unavailable)
-                            </span>
-                          )}
-                          <h4 className={`font-extrabold text-xs transition-colors leading-tight ${is86 ? "text-gray-400 line-through" : "text-white group-hover:text-[#eb660c]"}`}>
-                            {p.name}
-                          </h4>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={(e) => toggleFavoriteProduct(p.id, e)}
-                          className={`text-xs px-1 hover:scale-125 transition-all ${
-                            favoriteProductIds.includes(p.id) ? "text-amber-400 opacity-100" : "text-gray-500 opacity-30 hover:opacity-100"
-                          }`}
-                          title={favoriteProductIds.includes(p.id) ? "Starred as Favorite" : "Add to Favorites"}
-                        >
-                          ★
-                        </button>
-                      </div>
-                      {hasOptions && (
-                        <span className="inline-block mt-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#eb660c]/15 text-[#eb660c] border border-[#eb660c]/30">
-                          {optionsCount} option{optionsCount > 1 ? "s" : ""}
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="flex items-center justify-between mt-auto pt-1.5 border-t border-[#262D3D]/60">
-                      <span className="font-black text-xs text-[#eb660c]">
-                        ${(p.unit_price_usd || 0).toFixed(2)}
-                      </span>
+              {/* POS SCREEN MATRIX NAVIGATION & TILES */}
+              <div className="flex-1 flex flex-col overflow-hidden bg-[#0C0F17]">
+                {/* SCREEN HEADER & BREADCRUMBS */}
+                <div className="px-4 py-3 bg-[#131722] border-b border-[#262D3D] flex items-center justify-between gap-3 flex-shrink-0">
+                  <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+                    {screenStack.length > 0 && (
                       <button
                         type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleQuickAddProduct(p);
-                        }}
-                        className="px-2.5 py-1 bg-[#eb660c] group-hover:bg-[#d55909] text-white rounded-lg text-[11px] font-black shadow-sm transition-all active:scale-95 flex items-center gap-1"
+                        onClick={handleBackToParentScreen}
+                        className="px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-black text-xs border border-amber-500/40 flex items-center gap-1.5 transition active:scale-95 shadow cursor-pointer"
                       >
-                        + Add
+                        <span>←</span>
+                        <span>Back</span>
                       </button>
+                    )}
+
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-slate-400">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const root = posScreens.find(s => s.isRoot) || posScreens[0];
+                          if (root) {
+                            setScreenStack([]);
+                            setCurrentScreenId(root.id);
+                          }
+                        }}
+                        className={`hover:text-white transition ${activePosScreen?.isRoot ? 'text-amber-400 font-black text-sm' : ''}`}
+                      >
+                        Main Menu
+                      </button>
+                      {activePosScreen && !activePosScreen.isRoot && (
+                        <>
+                          <span className="text-slate-600">/</span>
+                          <span className="text-white font-black text-sm">{activePosScreen.name}</span>
+                        </>
+                      )}
                     </div>
                   </div>
-                );
-              })
-            )}
-          </div>
-        </div>
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-slate-500 font-semibold hidden sm:inline">
+                      {activePosScreen?.buttons?.length || 0} items
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setIsFeaturesModalOpen(true)}
+                      className="px-2.5 py-1 rounded-xl bg-[#1D2332] hover:bg-[#283247] text-slate-300 text-xs font-bold border border-[#2B354D] flex items-center gap-1.5 transition cursor-pointer"
+                      title="Open Features"
+                    >
+                      <span>⚙️ Features</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* TOUCH SCREEN BUTTONS GRID: Pure Product Names Only */}
+                <div className="flex-1 overflow-y-auto p-4">
+                  {(!activePosScreen || !activePosScreen.buttons || activePosScreen.buttons.length === 0) ? (
+                    <div className="h-full flex flex-col items-center justify-center text-center p-8 border-2 border-dashed border-[#222838] rounded-3xl my-auto">
+                      <p className="text-slate-400 font-bold text-sm">No buttons configured on this screen.</p>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const defaultScreens = (await import("../pos/services/posScreenService")).generateDefaultScreens(categories, products);
+                          setPosScreens(defaultScreens);
+                          savePosScreens(currentRestaurantId, defaultScreens);
+                          const root = defaultScreens.find(s => s.isRoot) || defaultScreens[0];
+                          if (root) setCurrentScreenId(root.id);
+                        }}
+                        className="mt-3 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs transition active:scale-95 cursor-pointer shadow-lg shadow-amber-500/20"
+                      >
+                        Rebuild From Menu Catalog
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3.5 align-content-start">
+                      {activePosScreen.buttons.map((btn, idx) => {
+                        const colorTheme = TILE_COLORS.find(c => c.id === btn.color) || TILE_COLORS[0];
+                        const isSubscreen = btn.type === 'screen';
+
+                        return (
+                          <button
+                            key={btn.id || idx}
+                            type="button"
+                            onClick={() => handleTouchButtonPress(btn)}
+                            className={`min-h-[105px] rounded-2xl border p-4 flex flex-col items-center justify-center text-center shadow-lg transition-all active:scale-95 cursor-pointer relative overflow-hidden group select-none ${
+                              isSubscreen
+                                ? `${colorTheme.bg} ${colorTheme.border} ring-1 ring-white/10 hover:border-amber-400`
+                                : 'bg-[#161B26] hover:bg-[#1F2636] border-[#262F44] hover:border-amber-500/50'
+                            }`}
+                          >
+                            {isSubscreen && (
+                              <span className="absolute top-2 right-2 text-[10px] px-1.5 py-0.2 rounded bg-black/50 text-amber-300 font-black tracking-wider">
+                                FOLDER ➔
+                              </span>
+                            )}
+
+                            {/* PURE PRODUCT NAME ONLY (nothing else displayed) */}
+                            <span className={`font-black text-sm md:text-base leading-snug tracking-wide line-clamp-3 ${
+                              isSubscreen ? colorTheme.text : 'text-slate-100 group-hover:text-amber-300'
+                            }`}>
+                              {btn.label}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
 
         {/* RIGHT PANEL: TICKET CART & CHECKOUT (35% Width) */}
         <div className="w-[35%] flex flex-col h-full bg-[#14171F] overflow-hidden flex-shrink-0">
@@ -2861,178 +3001,182 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
               </div>
             </div>
 
-            {/* UNIFIED 5-BUTTON SMART CHANNEL BAR */}
-            <div className="grid grid-cols-5 gap-1 p-1 bg-[#0F1115] rounded-xl border border-[#262D3D]">
-              {[
-                { id: "Toters", label: "Toters 🟢" },
-                { id: "WhatsApp", label: "WA 📱" },
-                { id: "POS", label: "POS" },
-                { id: "NokNok", label: "NokNok 🔴" },
-                { id: "App", label: "App 📲" },
-              ].map((src) => {
-                const isCurrent =
-                  src.id === "POS" || src.id === "Pick-up"
-                    ? !selectedChannel || selectedChannel === "POS" || selectedChannel === "Pick-up"
-                    : (selectedChannel || "").toLowerCase() === src.id.toLowerCase();
+            {/* UNIFIED SMART CHANNEL BAR & CUSTOMER FIELDS (Hidden when at a Dine-In Table) */}
+            {!activeTableContext && (
+              <div className="space-y-2 pt-1 border-t border-[#262D3D]/60">
+                <div className="grid grid-cols-5 gap-1 p-1 bg-[#0F1115] rounded-xl border border-[#262D3D]">
+                  {[
+                    { id: "Toters", label: "Toters 🟢" },
+                    { id: "WhatsApp", label: "WA 📱" },
+                    { id: "POS", label: "POS" },
+                    { id: "NokNok", label: "NokNok 🔴" },
+                    { id: "App", label: "App 📲" },
+                  ].map((src) => {
+                    const isCurrent =
+                      src.id === "POS" || src.id === "Pick-up"
+                        ? !selectedChannel || selectedChannel === "POS" || selectedChannel === "Pick-up"
+                        : (selectedChannel || "").toLowerCase() === src.id.toLowerCase();
 
-                return (
-                  <button
-                    key={src.id}
-                    type="button"
-                    onClick={() => handleSelectChannelSource(src.id === "POS" ? "Pick-up" : src.id)}
-                    className={`py-2 px-1 rounded-lg text-[11px] font-black transition-all text-center truncate ${
-                      isCurrent
-                        ? "bg-[#eb660c] text-white shadow-md shadow-[#eb660c]/20"
-                        : "text-gray-400 hover:text-white hover:bg-[#181C24]"
-                    }`}
-                  >
-                    {src.id === "POS" ? "Pick-up 🛍️" : src.label}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Sub-toggle for WhatsApp and App (Delivery vs Pickup) */}
-            {["WhatsApp", "App"].some(ch => (selectedChannel || "").toLowerCase() === ch.toLowerCase()) && (
-              <div className="flex items-center justify-between px-2 py-1 bg-[#0F1115] rounded-lg border border-[#262D3D]">
-                <span className="text-[11px] font-bold text-gray-400">{selectedChannel} Type:</span>
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => setOrderType("delivery")}
-                    className={`px-2.5 py-0.5 rounded text-[11px] font-black transition-all ${
-                      orderType === "delivery"
-                        ? "bg-[#eb660c] text-white shadow-sm"
-                        : "text-gray-400 hover:text-white hover:bg-[#181C24]"
-                    }`}
-                  >
-                    🛵 Delivery
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setOrderType("pickup")}
-                    className={`px-2.5 py-0.5 rounded text-[11px] font-black transition-all ${
-                      orderType === "pickup"
-                        ? "bg-[#eb660c] text-white shadow-sm"
-                        : "text-gray-400 hover:text-white hover:bg-[#181C24]"
-                    }`}
-                  >
-                    🛍 Pickup
-                  </button>
+                    return (
+                      <button
+                        key={src.id}
+                        type="button"
+                        onClick={() => handleSelectChannelSource(src.id === "POS" ? "Pick-up" : src.id)}
+                        className={`py-2 px-1 rounded-lg text-[11px] font-black transition-all text-center truncate ${
+                          isCurrent
+                            ? "bg-[#eb660c] text-white shadow-md shadow-[#eb660c]/20"
+                            : "text-gray-400 hover:text-white hover:bg-[#181C24]"
+                        }`}
+                      >
+                        {src.id === "POS" ? "Pick-up 🛍️" : src.label}
+                      </button>
+                    );
+                  })}
                 </div>
-              </div>
-            )}
 
-            {/* CUSTOMER FIELDS */}
-            <div className="pt-1 border-t border-[#262D3D]/60 space-y-1.5 relative">
-              <div className="grid grid-cols-2 gap-2">
-                <input
-                  type="text"
-                  placeholder="Customer Name *"
-                  value={customerName}
-                  onChange={(e) => {
-                    setCustomerName(e.target.value);
-                    if (validationError) setValidationError("");
-                  }}
-                  className={`w-full bg-[#0F1115] border ${
-                    validationError && !customerName.trim()
-                      ? "border-rose-500 ring-2 ring-rose-500/50 bg-rose-950/20"
-                      : "border-[#262D3D]"
-                  } rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-gray-500 font-medium focus:outline-none focus:border-[#eb660c]`}
-                />
-                <div className="relative">
-                  <input
-                    type="text"
-                    placeholder="Phone Number"
-                    value={customerPhone}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setCustomerPhone(val);
-                      handleCustomerSearch(val);
-                    }}
-                    className="w-full bg-[#0F1115] border border-[#262D3D] rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-gray-500 font-medium focus:outline-none focus:border-[#eb660c]"
-                  />
-                  {showCustomerDropdown && customerSearchResults.length > 0 && (
-                    <div className="absolute z-30 left-0 right-0 top-full mt-1 bg-[#181C24] border border-[#262D3D] rounded-xl shadow-xl max-h-40 overflow-y-auto">
-                      {customerSearchResults.map((c) => (
-                        <div
-                          key={c.id}
-                          onClick={() => handleSelectCustomer(c)}
-                          className="p-2 hover:bg-[#262D3D] cursor-pointer text-xs border-b border-[#262D3D] last:border-0"
-                        >
-                          <div className="font-bold text-white">{c.customer_name || "Customer"}</div>
-                          <div className="text-[11px] text-gray-400">{c.customer_phone}</div>
+                {/* Sub-toggle for WhatsApp and App (Delivery vs Pickup) */}
+                {["WhatsApp", "App"].some(ch => (selectedChannel || "").toLowerCase() === ch.toLowerCase()) && (
+                  <div className="flex items-center justify-between px-2 py-1 bg-[#0F1115] rounded-lg border border-[#262D3D]">
+                    <span className="text-[11px] font-bold text-gray-400">{selectedChannel} Type:</span>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setOrderType("delivery")}
+                        className={`px-2.5 py-0.5 rounded text-[11px] font-black transition-all ${
+                          orderType === "delivery"
+                            ? "bg-[#eb660c] text-white shadow-sm"
+                            : "text-gray-400 hover:text-white hover:bg-[#181C24]"
+                        }`}
+                      >
+                        🛵 Delivery
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setOrderType("pickup")}
+                        className={`px-2.5 py-0.5 rounded text-[11px] font-black transition-all ${
+                          orderType === "pickup"
+                            ? "bg-[#eb660c] text-white shadow-sm"
+                            : "text-gray-400 hover:text-white hover:bg-[#181C24]"
+                        }`}
+                      >
+                        🛍 Pickup
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* CUSTOMER FIELDS */}
+                <div className="pt-1 border-t border-[#262D3D]/60 space-y-1.5 relative">
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      type="text"
+                      placeholder="Customer Name *"
+                      value={customerName}
+                      onChange={(e) => {
+                        setCustomerName(e.target.value);
+                        if (validationError) setValidationError("");
+                      }}
+                      className={`w-full bg-[#0F1115] border ${
+                        validationError && !customerName.trim()
+                          ? "border-rose-500 ring-2 ring-rose-500/50 bg-rose-950/20"
+                          : "border-[#262D3D]"
+                      } rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-gray-500 font-medium focus:outline-none focus:border-[#eb660c]`}
+                    />
+                    <div className="relative">
+                      <input
+                        type="text"
+                        placeholder="Phone Number"
+                        value={customerPhone}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setCustomerPhone(val);
+                          handleCustomerSearch(val);
+                        }}
+                        className="w-full bg-[#0F1115] border border-[#262D3D] rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-gray-500 font-medium focus:outline-none focus:border-[#eb660c]"
+                      />
+                      {showCustomerDropdown && customerSearchResults.length > 0 && (
+                        <div className="absolute z-30 left-0 right-0 top-full mt-1 bg-[#181C24] border border-[#262D3D] rounded-xl shadow-xl max-h-40 overflow-y-auto">
+                          {customerSearchResults.map((c) => (
+                            <div
+                              key={c.id}
+                              onClick={() => handleSelectCustomer(c)}
+                              className="p-2 hover:bg-[#262D3D] cursor-pointer text-xs border-b border-[#262D3D] last:border-0"
+                            >
+                              <div className="font-bold text-white">{c.customer_name || "Customer"}</div>
+                              <div className="text-[11px] text-gray-400">{c.customer_phone}</div>
+                            </div>
+                          ))}
                         </div>
-                      ))}
+                      )}
+                    </div>
+                  </div>
+
+                  {/* WHATSAPP LOCATION DETECTED BADGE / AUTO-FILL PROMPT */}
+                  {detectedWaLocation && (
+                    <div className="bg-emerald-950/90 border border-emerald-500/70 rounded-xl p-2 flex items-center justify-between text-xs shadow-lg animate-fade-in">
+                      <div className="flex-1 min-w-0 pr-2">
+                        <div className="font-black text-emerald-300 flex items-center gap-1.5 text-[11px]">
+                          <span>📍</span>
+                          <span>WhatsApp Location Received</span>
+                          <span className="text-[9px] bg-emerald-800 text-emerald-100 px-1.5 py-0.5 rounded-full font-bold">
+                            {detectedWaLocation.receivedMinutesAgo <= 1 ? "Just now" : `${detectedWaLocation.receivedMinutesAgo}m ago`}
+                          </span>
+                        </div>
+                        <div className="text-[10px] text-gray-300 truncate mt-0.5">
+                          {detectedWaLocation.address} {detectedWaLocation.distanceKm ? `• ${detectedWaLocation.distanceKm} km` : ""}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOrderType("delivery");
+                          const fullAddr = detectedWaLocation.address && detectedWaLocation.mapUrl
+                            ? `${detectedWaLocation.address} [Maps Pin: ${detectedWaLocation.mapUrl}]`
+                            : (detectedWaLocation.mapUrl || detectedWaLocation.address || "");
+                          setDeliveryAddress(fullAddr);
+                          if (detectedWaLocation.deliveryFee !== undefined && detectedWaLocation.deliveryFee !== null) {
+                            setDeliveryFee(detectedWaLocation.deliveryFee);
+                          }
+                        }}
+                        className="bg-[#eb660c] hover:bg-[#ff771f] text-white text-[11px] font-black px-2.5 py-1.5 rounded-lg shadow-md shrink-0 flex items-center gap-1 transition-all active:scale-95"
+                      >
+                        <span>⚡ Auto-Fill</span>
+                        {detectedWaLocation.deliveryFee !== undefined && (
+                          <span>(${detectedWaLocation.deliveryFee?.toFixed(2)})</span>
+                        )}
+                      </button>
+                    </div>
+                  )}
+
+                  {/* DELIVERY ADDRESS / LOCATION TEXTAREA (Visible for Delivery Orders) */}
+                  {orderType === "delivery" && (
+                    <div className="space-y-1 pt-0.5">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[10px] font-bold text-gray-400">
+                          📍 Delivery Address & WhatsApp Map Link:
+                        </label>
+                        {deliveryAddress && (
+                          <button
+                            type="button"
+                            onClick={() => setDeliveryAddress("")}
+                            className="text-[10px] text-gray-400 hover:text-red-400 font-bold"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                      <textarea
+                        rows={2}
+                        placeholder="Street, Bldg, Floor, or paste WhatsApp / Google Maps link..."
+                        value={deliveryAddress}
+                        onChange={(e) => setDeliveryAddress(e.target.value)}
+                        className="w-full bg-[#0F1115] border border-[#262D3D] rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-gray-500 font-medium focus:outline-none focus:border-[#eb660c] resize-none"
+                      />
                     </div>
                   )}
                 </div>
               </div>
-
-              {/* WHATSAPP LOCATION DETECTED BADGE / AUTO-FILL PROMPT */}
-              {detectedWaLocation && (
-                <div className="bg-emerald-950/90 border border-emerald-500/70 rounded-xl p-2 flex items-center justify-between text-xs shadow-lg animate-fade-in">
-                  <div className="flex-1 min-w-0 pr-2">
-                    <div className="font-black text-emerald-300 flex items-center gap-1.5 text-[11px]">
-                      <span>📍</span>
-                      <span>WhatsApp Location Received</span>
-                      <span className="text-[9px] bg-emerald-800 text-emerald-100 px-1.5 py-0.5 rounded-full font-bold">
-                        {detectedWaLocation.receivedMinutesAgo <= 1 ? "Just now" : `${detectedWaLocation.receivedMinutesAgo}m ago`}
-                      </span>
-                    </div>
-                    <div className="text-[10px] text-gray-300 truncate mt-0.5">
-                      {detectedWaLocation.address} {detectedWaLocation.distanceKm ? `• ${detectedWaLocation.distanceKm} km` : ""}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setOrderType("delivery");
-                      const fullAddr = detectedWaLocation.address && detectedWaLocation.mapUrl
-                        ? `${detectedWaLocation.address} [Maps Pin: ${detectedWaLocation.mapUrl}]`
-                        : (detectedWaLocation.mapUrl || detectedWaLocation.address || "");
-                      setDeliveryAddress(fullAddr);
-                      if (detectedWaLocation.deliveryFee !== undefined && detectedWaLocation.deliveryFee !== null) {
-                        setDeliveryFee(detectedWaLocation.deliveryFee);
-                      }
-                    }}
-                    className="bg-[#eb660c] hover:bg-[#ff771f] text-white text-[11px] font-black px-2.5 py-1.5 rounded-lg shadow-md shrink-0 flex items-center gap-1 transition-all active:scale-95"
-                  >
-                    <span>⚡ Auto-Fill</span>
-                    {detectedWaLocation.deliveryFee !== undefined && (
-                      <span>(${detectedWaLocation.deliveryFee?.toFixed(2)})</span>
-                    )}
-                  </button>
-                </div>
-              )}
-
-              {/* DELIVERY ADDRESS / LOCATION TEXTAREA (Visible for Delivery Orders) */}
-              {orderType === "delivery" && (
-                <div className="space-y-1 pt-0.5">
-                  <div className="flex items-center justify-between">
-                    <label className="text-[10px] font-bold text-gray-400">
-                      📍 Delivery Address & WhatsApp Map Link:
-                    </label>
-                    {deliveryAddress && (
-                      <button
-                        type="button"
-                        onClick={() => setDeliveryAddress("")}
-                        className="text-[10px] text-gray-400 hover:text-red-400 font-bold"
-                      >
-                        Clear
-                      </button>
-                    )}
-                  </div>
-                  <textarea
-                    rows={2}
-                    placeholder="Street, Bldg, Floor, or paste WhatsApp / Google Maps link..."
-                    value={deliveryAddress}
-                    onChange={(e) => setDeliveryAddress(e.target.value)}
-                    className="w-full bg-[#0F1115] border border-[#262D3D] rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-gray-500 font-medium focus:outline-none focus:border-[#eb660c] resize-none"
-                  />
-                </div>
-              )}
-            </div>
+            )}
           </div>
 
           {/* TICKET ITEMS LIST */}
@@ -3044,7 +3188,27 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                 <p className="text-xs text-gray-500 mt-1 max-w-[200px]">Tap a product from the catalog to start an order.</p>
               </div>
             ) : (
-              ticketItems.map((item, index) => (
+              ticketItems.map((item, index) => {
+                if (item.isHoldSeparator) {
+                  return (
+                    <div key={index} className="py-2.5 px-3 rounded-2xl bg-indigo-950/80 border border-indigo-500/60 flex items-center justify-between text-indigo-200 my-2 shadow-md">
+                      <div className="flex items-center gap-2 text-xs font-black tracking-wider">
+                        <span className="text-base">⏸️</span>
+                        <span>HOLD FOR NEXT COURSE</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveTicketItem(index)}
+                        className="text-indigo-400 hover:text-rose-300 text-xs font-bold px-2 py-0.5 rounded-lg bg-black/40 hover:bg-black/60 transition cursor-pointer"
+                        title="Remove Hold Line"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  );
+                }
+
+                return (
                 <div key={index} className="bg-[#181C24] border border-[#262D3D] rounded-xl p-2.5 space-y-1.5 shadow-sm">
                   <div className="flex items-start justify-between">
                     <div className="flex-1 min-w-0 pr-2">
@@ -3118,7 +3282,8 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                     </div>
                   </div>
                 </div>
-              ))
+              );
+            })
             )}
           </div>
 
@@ -3248,119 +3413,109 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
               </div>
             </div>
 
-            {/* CART BOTTOM ACTION BAR */}
-            {activeTableContext ? (
-              /* DINE-IN TABLE SERVICE ACTIONS */
-              <div className="space-y-2 pt-2 border-t border-[#262D3D]">
-                {/* BIG PROMINENT FIRE ROUND TO KITCHEN BUTTON */}
-                <button
-                  type="button"
-                  onClick={handleFireToKitchen}
-                  disabled={ticketItems.length === 0 || isSubmitting}
-                  className={`w-full py-4 rounded-xl text-sm font-black tracking-wider flex items-center justify-center gap-2 transition-all shadow-xl ${
-                    ticketItems.length === 0 || isSubmitting
-                      ? "bg-[#182a20] text-emerald-800/60 border border-emerald-900/40 cursor-not-allowed"
-                      : "bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white active:scale-98 shadow-emerald-900/50 border border-emerald-400 cursor-pointer animate-pulse-subtle"
-                  }`}
-                  title="Fire pending items directly to Kitchen KDS stations"
-                >
-                  <span className="text-xl">🔥</span>
-                  <span>
-                    {isSubmitting
-                      ? "SENDING TO KITCHEN..."
-                      : `FIRE ROUND TO KITCHEN (${ticketItems.reduce((sum, item) => sum + (Number(item.qty) || 1), 0)} items)`}
+            {/* CART FOOTER STATUS */}
+            <div className="pt-2 border-t border-[#262D3D] flex items-center justify-between text-xs font-bold text-gray-400">
+              {activeTableContext ? (
+                <div className="flex items-center gap-2 w-full justify-between">
+                  <span className="flex items-center gap-1.5 text-amber-400 bg-amber-950/40 px-2.5 py-1 rounded-lg border border-amber-500/30">
+                    <span>🪑</span> Table {activeTableContext.tableCode} ({ticketItems.reduce((sum, item) => sum + (Number(item.qty) || 1), 0)} items)
                   </span>
-                </button>
-
-                {/* SECONDARY TABLE ACTIONS: HOLD & SETTLE/CLOSE */}
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handleHoldOrder}
-                    disabled={ticketItems.length === 0 || isSubmitting}
-                    className="flex-1 py-2.5 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 bg-amber-950/50 hover:bg-amber-900/60 text-amber-300 border border-amber-500/40 transition active:scale-98 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-                    title="Keep table order on hold without firing new items"
-                  >
-                    <span>⏸️</span>
-                    <span>Hold Table</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!isShiftOpen) {
-                        setIsOpenShiftModalOpen(true);
-                        return;
-                      }
-                      setIsTerminalPaymentModalOpen(true);
-                    }}
-                    disabled={ticketItems.length === 0 || isSubmitting}
-                    className="flex-1 py-2.5 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white border border-blue-400 shadow-md shadow-blue-900/30 transition active:scale-98 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-                    title="Collect payment (USD, LBP, Card, Whish) and close table session"
-                  >
-                    <span>💳</span>
-                    <span>Settle & Close Table</span>
-                  </button>
+                  <span className="text-[11px] text-slate-400 font-semibold">Touch FIRE or HOLD below</span>
                 </div>
-              </div>
-            ) : (
-              /* COUNTER / TAKEAWAY / DELIVERY ACTIONS */
-              <div className="flex items-center gap-2 pt-2 border-t border-[#262D3D]">
-                {["toters", "noknok"].includes((selectedChannel || "").toLowerCase()) ? (
-                  <>
-                    <div className="w-[40%] shrink-0">
-                      <div className={`py-3 px-2 rounded-xl text-xs font-black text-center border ${
-                        (selectedChannel || "").toLowerCase() === "toters"
-                          ? "bg-[#00C49F]/20 text-[#00C49F] border-[#00C49F]/40"
-                          : "bg-[#FF5A5F]/20 text-[#FF5A5F] border-[#FF5A5F]/40"
-                      }`}>
-                        {selectedChannel} (Prepaid)
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => handleFinalizePayment()}
-                      disabled={ticketItems.length === 0 || isSubmitting}
-                      className={`flex-1 py-3 rounded-xl text-xs font-black tracking-wider flex items-center justify-center gap-1 transition-all shadow-lg ${
-                        ticketItems.length === 0 || isSubmitting
-                          ? "bg-gray-700 text-gray-500 cursor-not-allowed border border-gray-600"
-                          : "bg-[#eb660c] hover:bg-[#d55909] text-white active:scale-98 shadow-[#eb660c]/20 border border-[#eb660c] cursor-pointer"
-                      }`}
-                    >
-                      {isSubmitting ? "PROCESSING..." : `ACCEPT & PRINT — $${total.toFixed(2)}`}
-                    </button>
-                  </>
-                ) : !isShiftOpen ? (
-                  <button
-                    type="button"
-                    onClick={() => setIsOpenShiftModalOpen(true)}
-                    className="w-full py-3 px-2 rounded-xl text-xs font-black tracking-wider flex items-center justify-center gap-1.5 transition-all shadow-lg bg-amber-600 hover:bg-amber-500 text-white border border-amber-400 active:scale-98 animate-pulse cursor-pointer"
-                    title="Shift is closed. Click to enter opening float and open shift."
-                  >
-                    <span>🔒 No Open Shift — Tap to Open</span>
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setIsTerminalPaymentModalOpen(true)}
-                    disabled={ticketItems.length === 0 || isSubmitting}
-                    className={`w-full py-3.5 rounded-xl text-sm font-black tracking-wider flex items-center justify-center gap-2 transition-all shadow-lg ${
-                      ticketItems.length === 0 || isSubmitting
-                        ? "bg-gray-700 text-gray-500 cursor-not-allowed border border-gray-600"
-                        : "bg-[#eb660c] hover:bg-[#d55909] text-white active:scale-98 shadow-[#eb660c]/20 border border-[#eb660c] cursor-pointer"
-                    }`}
-                  >
-                    <span>💳</span>
-                    <span>SETTLE & PAY — ${total.toFixed(2)}</span>
-                  </button>
-                )}
-              </div>
-            )}
+              ) : ["toters", "noknok"].includes((selectedChannel || "").toLowerCase()) ? (
+                <div className="flex items-center gap-2 w-full justify-between">
+                  <span className="text-emerald-400 bg-emerald-950/40 px-2.5 py-1 rounded-lg border border-emerald-500/30">
+                    🛵 {selectedChannel} (Prepaid)
+                  </span>
+                  <span className="text-[11px] text-slate-400 font-semibold">Ready to Settle</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 w-full justify-between">
+                  <span className="text-slate-300 font-bold">
+                    Direct Order ({ticketItems.reduce((sum, item) => sum + (Number(item.qty) || 1), 0)} items)
+                  </span>
+                  <span className="text-[11px] text-slate-400 font-semibold">Total: ${total.toFixed(2)}</span>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
-          </div>
-        )}
+    </div>
+
+      {/* 5 HORIZONTAL ACTION BUTTONS DOCK AT BOTTOM */}
+      <div className="h-16 bg-[#131722] border-t-2 border-[#262D3D] px-4 py-2 flex items-center gap-2.5 flex-shrink-0 z-20 shadow-2xl">
+        {/* 1 - Features */}
+        <button
+          type="button"
+          onClick={() => setIsFeaturesModalOpen(true)}
+          className="flex-1 h-full rounded-xl bg-[#1E2433] hover:bg-[#283042] active:scale-98 text-slate-200 hover:text-white font-black text-xs md:text-sm tracking-wider flex items-center justify-center gap-2 border border-[#3A455C] shadow-md transition cursor-pointer"
+          title="Open POS Features: History, Store Control, Transfer Table, Shift"
+        >
+          <span className="text-base md:text-lg">⚙️</span>
+          <span>Features</span>
+        </button>
+
+        {/* 2 - Hold Table */}
+        <button
+          type="button"
+          onClick={handleHoldOrder}
+          disabled={ticketItems.length === 0 || isSubmitting}
+          className="flex-1 h-full rounded-xl bg-amber-950/60 hover:bg-amber-900/80 active:scale-98 text-amber-300 font-black text-xs md:text-sm tracking-wider flex items-center justify-center gap-2 border border-amber-500/50 shadow-md transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+          title="Keep table order on hold"
+        >
+          <span className="text-base md:text-lg">⏸️</span>
+          <span>Hold Table</span>
+        </button>
+
+        {/* 3 - Settle & close */}
+        <button
+          type="button"
+          onClick={() => {
+            if (["toters", "noknok"].includes((selectedChannel || "").toLowerCase())) {
+              handleFinalizePayment();
+              return;
+            }
+            if (!isShiftOpen) {
+              setIsOpenShiftModalOpen(true);
+              return;
+            }
+            setIsTerminalPaymentModalOpen(true);
+          }}
+          disabled={ticketItems.length === 0 && !activeTableContext?.orderId && !editingOrderId}
+          className="flex-[1.2] h-full rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 active:scale-98 text-white font-black text-xs md:text-sm tracking-wider flex items-center justify-center gap-2 border border-blue-400 shadow-lg shadow-blue-900/40 transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+          title="Collect payment and settle order / table"
+        >
+          <span className="text-base md:text-lg">💳</span>
+          <span>Settle & close</span>
+        </button>
+
+        {/* 4 - Hold */}
+        <button
+          type="button"
+          onClick={handleInsertHold}
+          disabled={ticketItems.length === 0}
+          className="flex-1 h-full rounded-xl bg-purple-950/60 hover:bg-purple-900/80 active:scale-98 text-purple-300 font-black text-xs md:text-sm tracking-wider flex items-center justify-center gap-2 border border-purple-500/50 shadow-md transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+          title="Send hold info to kitchen: pause between courses"
+        >
+          <span className="text-base md:text-lg">⏳</span>
+          <span>Hold</span>
+        </button>
+
+        {/* 5 - Fire */}
+        <button
+          type="button"
+          onClick={handleKitchenFireChit}
+          disabled={ticketItems.length === 0 && !activeTableContext?.orderId && !editingOrderId}
+          className="flex-[1.2] h-full rounded-xl bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 active:scale-98 text-white font-black text-xs md:text-sm tracking-wider flex items-center justify-center gap-2 border border-red-400 shadow-lg shadow-red-900/50 transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+          title="Fire current round to kitchen / KDS"
+        >
+          <span className="text-base md:text-xl animate-pulse">🔥</span>
+          <span>Fire</span>
+        </button>
+      </div>
+    </div>
+  )}
 
       {/* DISCOUNT MODAL */}
       {showDiscountModal && (
@@ -4590,6 +4745,210 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
           setRestaurantDiscounts(newDiscounts);
         }}
       />
+
+      {/* FEATURES MODAL */}
+      {isFeaturesModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#181C24] border border-[#262D3D] rounded-3xl w-full max-w-lg p-6 space-y-5 text-white shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-[#262D3D] pb-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">⚙️</span>
+                <h3 className="font-black text-lg text-white">POS Features</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsFeaturesModalOpen(false)}
+                className="p-1.5 rounded-xl hover:bg-[#262D3D] text-gray-400 hover:text-white font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3.5">
+              {/* Order History */}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsFeaturesModalOpen(false);
+                  fetchOrderHistory();
+                  setActiveTabModal("history");
+                }}
+                className="p-4 rounded-2xl bg-[#222734] hover:bg-[#2c3344] border border-[#2D3548] flex flex-col items-center justify-center gap-2 text-center transition active:scale-95 group cursor-pointer"
+              >
+                <span className="text-3xl group-hover:scale-110 transition-transform">📜</span>
+                <span className="font-extrabold text-sm text-gray-200 group-hover:text-white">Order History</span>
+                <span className="text-[11px] text-gray-400">View past bills & receipts</span>
+              </button>
+
+              {/* Store Control */}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsFeaturesModalOpen(false);
+                  setIsDailyControlOpen(true);
+                }}
+                className="p-4 rounded-2xl bg-[#222734] hover:bg-[#2c3344] border border-[#2D3548] flex flex-col items-center justify-center gap-2 text-center transition active:scale-95 group cursor-pointer"
+              >
+                <span className="text-3xl group-hover:scale-110 transition-transform">🏪</span>
+                <span className="font-extrabold text-sm text-gray-200 group-hover:text-white">Store Control</span>
+                <span className="text-[11px] text-gray-400">Branch status, 86 items, channels</span>
+              </button>
+
+              {/* Transfer Table */}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsFeaturesModalOpen(false);
+                  if (!activeTableContext) {
+                    alert("Please select or open an active table first to transfer.");
+                    return;
+                  }
+                  setTransferTargetTableInput("");
+                  setIsTransferModalOpen(true);
+                }}
+                className="p-4 rounded-2xl bg-[#222734] hover:bg-[#2c3344] border border-[#2D3548] flex flex-col items-center justify-center gap-2 text-center transition active:scale-95 group cursor-pointer"
+              >
+                <span className="text-3xl group-hover:scale-110 transition-transform">🔀</span>
+                <span className="font-extrabold text-sm text-gray-200 group-hover:text-white">Transfer Table</span>
+                <span className="text-[11px] text-gray-400">Move current table order to another</span>
+              </button>
+
+              {/* Screen Builder */}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsFeaturesModalOpen(false);
+                  window.location.hash = '#/pos-screens';
+                }}
+                className="p-4 rounded-2xl bg-[#222734] hover:bg-[#2c3344] border border-[#2D3548] flex flex-col items-center justify-center gap-2 text-center transition active:scale-95 group cursor-pointer"
+              >
+                <span className="text-3xl group-hover:scale-110 transition-transform">🎨</span>
+                <span className="font-extrabold text-sm text-gray-200 group-hover:text-white">Screen Builder</span>
+                <span className="text-[11px] text-gray-400">Create & customize POS screens</span>
+              </button>
+
+              {/* Shift / Drawer */}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsFeaturesModalOpen(false);
+                  if (!activeShift) {
+                    setIsOpenShiftModalOpen(true);
+                  } else {
+                    setIsCloseShiftModalOpen(true);
+                  }
+                }}
+                className="p-4 rounded-2xl bg-[#222734] hover:bg-[#2c3344] border border-[#2D3548] flex flex-col items-center justify-center gap-2 text-center transition active:scale-95 group cursor-pointer"
+              >
+                <span className="text-3xl group-hover:scale-110 transition-transform">💼</span>
+                <span className="font-extrabold text-sm text-gray-200 group-hover:text-white">Shift / Drawer</span>
+                <span className="text-[11px] text-gray-400">{activeShift ? 'Close Shift / X-Report' : 'Open Shift Float'}</span>
+              </button>
+
+              {/* Lock Screen / Switch Cashier */}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsFeaturesModalOpen(false);
+                  setIsPinLockOpen(true);
+                }}
+                className="p-4 rounded-2xl bg-[#222734] hover:bg-[#2c3344] border border-[#2D3548] flex flex-col items-center justify-center gap-2 text-center transition active:scale-95 group cursor-pointer"
+              >
+                <span className="text-3xl group-hover:scale-110 transition-transform">🔒</span>
+                <span className="font-extrabold text-sm text-gray-200 group-hover:text-white">Lock / Switch PIN</span>
+                <span className="text-[11px] text-gray-400">Active: {activeCashier?.name || user?.name || 'Staff'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TRANSFER TABLE MODAL */}
+      {isTransferModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#181C24] border border-[#262D3D] rounded-3xl w-full max-w-sm p-6 space-y-4 text-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-[#262D3D] pb-3">
+              <h3 className="font-black text-base text-white flex items-center gap-2">
+                <span>🔀</span> Transfer Table
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsTransferModalOpen(false)}
+                className="text-gray-400 hover:text-white font-bold text-sm"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300">
+              Transfer current ticket from <strong className="text-amber-400">Table {activeTableContext?.tableCode}</strong> to another table:
+            </p>
+
+            <div>
+              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                Destination Table # (e.g. 8, T12)
+              </label>
+              <input
+                type="text"
+                value={transferTargetTableInput}
+                onChange={(e) => setTransferTargetTableInput(e.target.value)}
+                placeholder="Enter destination table number..."
+                className="w-full bg-[#10131A] border border-[#262D3D] rounded-xl px-3 py-2.5 text-white font-bold text-sm focus:outline-none focus:border-amber-400"
+                autoFocus
+              />
+            </div>
+
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsTransferModalOpen(false)}
+                className="flex-1 py-2.5 rounded-xl bg-gray-700/50 hover:bg-gray-700 text-slate-300 font-bold text-xs"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const dest = transferTargetTableInput.trim().toUpperCase();
+                  if (!dest) {
+                    alert("Please enter a destination table number.");
+                    return;
+                  }
+                  if (dest === String(activeTableContext?.tableCode).toUpperCase()) {
+                    alert("Destination table cannot be the same as current table.");
+                    return;
+                  }
+
+                  setActiveTableContext(prev => prev ? { ...prev, tableCode: dest } : null);
+                  setCustomerName(`Table ${dest}`);
+                  setIsTransferModalOpen(false);
+                  alert(`✅ Order successfully transferred to Table ${dest}!`);
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-lg shadow-blue-600/30"
+              >
+                Confirm Transfer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PIN LOCK SCREEN OVERLAY */}
+      {isPinLockOpen && (
+        <div className="fixed inset-0 z-50 bg-black/95 backdrop-blur-md flex items-center justify-center">
+          <div className="w-full max-w-md p-4">
+            <PosPinScreen
+              isLockScreen={true}
+              initialRestaurantId={currentRestaurantId}
+              onCancelLock={() => setIsPinLockOpen(false)}
+              onSuccess={(cashierUser) => {
+                setActiveCashier(cashierUser);
+                setIsPinLockOpen(false);
+              }}
+            />
+          </div>
+        </div>
+      )}
 </div>
   );
 }

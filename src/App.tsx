@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { HashRouter, Routes, Route, Navigate, Link, useLocation, useNavigate } from 'react-router-dom';
 import LoginScreen from './screens/LoginScreen';
+import PosPinScreen from './pos/components/PosPinScreen';
 import PosTerminalScreen from './screens/PosTerminalScreen';
+import PosScreenBuilderScreen from './screens/PosScreenBuilderScreen';
 import { KdsScreen } from './pos/kds';
 
 import MenuManualScreen from './screens/MenuManualScreen';
@@ -441,6 +443,7 @@ function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () 
               } 
             />
             <Route path="/pos" element={<PosTerminalScreen user={user} onExit={() => navigate('/')} />} />
+            <Route path="/pos-screens" element={<PosScreenBuilderScreen user={user} />} />
             <Route path="/kds" element={<KdsScreen branchId={user?.branch_id || '9c214659-9cc7-4f33-b115-cbbb8a823a94'} onExit={() => navigate('/')} />} />
             {isSectionEnabled('orders') && canAccess('orders', permissions?.can_create_orders !== false || permissions?.can_receive_orders !== false) && (
               <Route path="/orders" element={<OrdersScreen user={user} />} />
@@ -616,6 +619,7 @@ function darkenColor(hex: string, percent: number): string {
 function App() {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [authMode, setAuthMode] = useState<'pin' | 'password'>('pin');
 
   useEffect(() => {
     // Quick and simple persist
@@ -684,8 +688,19 @@ function App() {
     <HashRouter>
       {user ? (
         <MainLayout user={user} onLogout={handleLogout} onUpdateUser={handleLogin} />
+      ) : authMode === 'pin' ? (
+        <PosPinScreen
+          onSuccess={(userData) => {
+            handleLogin(userData);
+            window.location.hash = '#/pos';
+          }}
+          onSwitchToPasswordLogin={() => setAuthMode('password')}
+        />
       ) : (
-        <LoginScreen onLogin={handleLogin} />
+        <LoginScreen
+          onLogin={handleLogin}
+          onSwitchToPin={() => setAuthMode('pin')}
+        />
       )}
     </HashRouter>
   );

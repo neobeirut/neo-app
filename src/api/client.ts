@@ -204,20 +204,48 @@ export const api = {
   },
 
   // Fast Cashier PIN Switch / Verification for FLOW POS Terminal
-  verifyCashierPin: async (pin: string) => {
+  verifyCashierPin: async (pin: string, preferredRestaurantId?: string) => {
     const cleanPin = (pin || '').trim();
     if (!cleanPin) return { success: false, error: 'PIN required' };
     try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('id, name, role, branch, departments, restaurant_id, admin_permissions')
-        .eq('pin', cleanPin)
-        .single();
-
-      if (error || !data) {
-        return { success: false, error: 'Invalid Cashier PIN' };
+      let targetRestaurantId = preferredRestaurantId || getRestaurantId();
+      if (!targetRestaurantId && typeof window !== 'undefined' && window.localStorage) {
+        targetRestaurantId = window.localStorage.getItem('flow_pos_selected_restaurant') || undefined;
       }
-      return { success: true, data };
+
+      if (targetRestaurantId) {
+        setGlobalRestaurantId(targetRestaurantId);
+        const { data, error } = await supabase
+          .from('users')
+          .select('id, name, email, role, branch, departments, restaurant_id, admin_permissions, restaurants:restaurant_id(*)')
+          .eq('pin', cleanPin)
+          .limit(1);
+
+        if (!error && data && data.length > 0) {
+          return { success: true, data: data[0] };
+        }
+      }
+
+      // Try known tenants for seamless multi-tenant POS terminal unlock
+      const knownTenants = [
+        '4c0ed960-e459-42c4-962f-41229a2d3783', // The Bistro
+        '79256f11-a9f8-4fec-901d-69baf929762d'  // Neo Beirut
+      ];
+
+      for (const tId of knownTenants) {
+        setGlobalRestaurantId(tId);
+        const { data, error } = await supabase
+          .from('users')
+          .select('id, name, email, role, branch, departments, restaurant_id, admin_permissions, restaurants:restaurant_id(*)')
+          .eq('pin', cleanPin)
+          .limit(1);
+
+        if (!error && data && data.length > 0) {
+          return { success: true, data: data[0] };
+        }
+      }
+
+      return { success: false, error: 'Invalid PIN code' };
     } catch (e: any) {
       return { success: false, error: e?.message || 'Error validating PIN' };
     }

@@ -3,7 +3,7 @@ import { api } from '../api/client';
 import { sessionLogger } from '../utils/sessionLogger';
 import { Lock, User, AlertCircle, Eye, EyeOff, ShieldCheck, Layers } from 'lucide-react';
 
-export default function LoginScreen({ onLogin }: { onLogin: (user: any) => void }) {
+export default function LoginScreen({ onLogin, onSwitchToPin }: { onLogin: (user: any) => void; onSwitchToPin?: () => void }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -115,6 +115,28 @@ export default function LoginScreen({ onLogin }: { onLogin: (user: any) => void 
             )}
           </button>
         </form>
+
+        {onSwitchToPin && (
+          <div style={{ marginTop: '16px', textAlign: 'center' }}>
+            <button
+              type="button"
+              onClick={onSwitchToPin}
+              style={{
+                background: 'rgba(235, 102, 12, 0.12)',
+                border: '1px solid rgba(235, 102, 12, 0.3)',
+                color: '#eb660c',
+                padding: '8px 16px',
+                borderRadius: '12px',
+                fontSize: '13px',
+                fontWeight: 700,
+                cursor: 'pointer',
+                transition: 'all 0.2s'
+              }}
+            >
+              🔢 Switch to POS Touch PIN Keypad
+            </button>
+          </div>
+        )}
 
         <div className="auth-footer">
           <ShieldCheck size={14} />
