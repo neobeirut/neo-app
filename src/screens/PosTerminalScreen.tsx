@@ -594,6 +594,50 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     if (activeTableContext.isExistingOccupied) return true;
     return false;
   }, [activeTableContext, ticketItems]);
+
+  // Course Pacing State: Table Fire Counts (persisted per shift session)
+  const [tableFireCounts, setTableFireCounts] = useState<Record<string, number>>(() => {
+    try {
+      const stored = localStorage.getItem('flow_pos_table_fire_counts');
+      return stored ? JSON.parse(stored) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const updateTableFireCount = (key: string, count: number) => {
+    setTableFireCounts(prev => {
+      const next = { ...prev, [key]: count };
+      try {
+        localStorage.setItem('flow_pos_table_fire_counts', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  };
+
+  const currentTableKey = useMemo(() => {
+    if (activeTableContext?.tableCode) {
+      return 'TABLE_' + String(activeTableContext.tableCode).toUpperCase().replace(/\s+/g, '');
+    }
+    if (editingOrderId) {
+      return 'ORDER_' + editingOrderId;
+    }
+    return 'WALK_IN';
+  }, [activeTableContext, editingOrderId]);
+
+  // Count of Hold lines placed in current ticket order
+  const currentTableHolds = useMemo(() => {
+    return ticketItems.filter((i: any) =>
+      Boolean(i.isHoldSeparator) ||
+      i.name === 'HOLD' ||
+      (typeof i.name === 'string' && i.name.toUpperCase().includes('HOLD'))
+    ).length;
+  }, [ticketItems]);
+
+  const currentTableFires = tableFireCounts[currentTableKey] || 0;
+  // Fire is active till the fire count is less than the Hold count per table
+  const isFireActive = currentTableHolds > 0 && currentTableFires < currentTableHolds;
+  const remainingFires = Math.max(0, currentTableHolds - currentTableFires);
   const [posTerminalId] = useState(() => {
     if (typeof window !== "undefined") {
       let tid = localStorage.getItem("pos_terminal_id");
@@ -1308,13 +1352,21 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         }
       }
 
+      const rawName = String(i.product_name || i.name || '').trim();
+      const isHold = Boolean(i.isHoldSeparator) ||
+        String(i.product_id || '').startsWith('hold_') ||
+        rawName.toUpperCase() === 'HOLD' ||
+        rawName.toUpperCase().includes('HOLD FOR NEXT COURSE') ||
+        rawName.toUpperCase() === '--- HOLD ---';
+
       return {
-        product_id: i.product_id || i.id,
-        name: i.product_name || i.name,
-        unit_price: Number(i.unit_price) || 0,
+        product_id: isHold ? (i.product_id || 'hold_separator_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6)) : (i.product_id || i.id),
+        name: isHold ? 'HOLD' : (i.product_name || i.name),
+        unit_price: isHold ? 0 : (Number(i.unit_price) || 0),
         qty: Number(i.quantity || i.qty) || 1,
         selectedCustomizations: custs,
-        note: i.comment || i.note || "",
+        note: i.comment || i.note || (isHold ? "Kitchen waits for fire" : ""),
+        isHoldSeparator: isHold
       };
     });
     setTicketItems(items);
@@ -1498,43 +1550,72 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
 
   // Horizontal Bottom Bar Action 4: Kitchen Hold Pacing Instruction
   const handleInsertHold = () => {
+    if (ticketItems.length === 0) {
+      alert("⚠️ Please add items to the ticket first before placing a Hold.");
+      return;
+    }
+
+    const lastItem: any = ticketItems[ticketItems.length - 1];
+    if (lastItem?.isHoldSeparator || lastItem?.name === 'HOLD') {
+      alert("⚠️ A Hold line is already placed at this position.");
+      return;
+    }
+
     setTicketItems((prev: any) => [
       ...prev,
       {
         product_id: 'hold_separator_' + Date.now(),
-        name: '⏸️ --- HOLD FOR NEXT COURSE ---',
+        name: 'HOLD',
         unit_price: 0,
         qty: 1,
         selectedCustomizations: [],
-        note: 'HOLD',
+        note: 'Kitchen waits for fire',
         isHoldSeparator: true
       }
     ]);
   };
 
-  // Horizontal Bottom Bar Action 5: Kitchen Firing Command
+  // Horizontal Bottom Bar Action 5: Kitchen Firing Command (Active till fire count < hold count per table)
   const handleKitchenFireChit = async () => {
-    if (ticketItems.length === 0 && !activeTableContext?.orderId && !editingOrderId) {
-      alert("No active table or items in cart to fire to the kitchen.");
+    if (!isFireActive) {
+      if (currentTableHolds === 0) {
+        alert("⚠️ No held courses in this ticket. Tap 'Hold' between items to pace kitchen preparation.");
+      } else {
+        alert(`⚠️ All held courses (${currentTableHolds}) have already been fired.`);
+      }
       return;
     }
 
-    const tableLabel = activeTableContext ? `Table ${activeTableContext.tableCode}` : (customerName || 'Direct Order');
+    const nextFire = currentTableFires + 1;
+    updateTableFireCount(currentTableKey, nextFire);
+
+    const tableLabel = activeTableContext
+      ? (String(activeTableContext.tableCode).toUpperCase().startsWith('T')
+          ? `Table ${activeTableContext.tableCode.replace(/^T/i, '')}`
+          : `Table ${activeTableContext.tableCode}`)
+      : (customerName || 'Table');
     const waiterName = activeCashier?.name || user?.name || 'Staff';
 
-    // Kitchen Fire Chit print payload
+    // Separate Fire Ticket print payload
+    // Ex: Table 7 \n Fire
     const fireChitPayload = {
       isKitchenFire: true,
-      title: "*** FIRE KITCHEN ***",
+      isSeparateFireTicket: true,
+      title: "FIRE",
       table: tableLabel,
+      text: "FIRE",
+      content: `${tableLabel}\nFire`,
+      fireRound: nextFire,
+      totalHolds: currentTableHolds,
       server: waiterName,
-      timestamp: new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
-      items: ticketItems.map((item: any) => ({
-        qty: item.qty || 1,
-        name: item.name || 'Item',
-        note: item.note || '',
-        modifiers: (item.selectedCustomizations || []).map((c: any) => typeof c === 'string' ? c : (c.ingredient || c.name || ''))
-      }))
+      timestamp: new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }),
+      items: [
+        {
+          name: "FIRE",
+          qty: 1,
+          note: `Course ${nextFire + 1}`
+        }
+      ]
     };
 
     try {
@@ -1543,11 +1624,26 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       console.warn("Print fire chit error:", err);
     }
 
-    if (ticketItems.length > 0) {
-      await handleFireToKitchen();
-    } else {
-      alert(`🔥🔥🔥 FIRE sent to kitchen for ${tableLabel}!`);
+    // Also notify KDS if active
+    if (activeTableContext?.orderId || editingOrderId) {
+      try {
+        const locKey = commerceBranchLink?.location_key || 'badaro';
+        await fireOrderRound({
+          orderId: (activeTableContext?.orderId || editingOrderId)!,
+          locationKey: locKey,
+          items: [],
+          serviceType: 'dine_in',
+          tableLabel: tableLabel,
+          waiterReference: waiterName,
+          firedBy: waiterName
+        });
+      } catch (kdsErr) {
+        console.warn("KDS fire round notice:", kdsErr);
+      }
     }
+
+    const remaining = currentTableHolds - nextFire;
+    alert(`🔥 Separate Fire ticket sent to printer:\n\n${tableLabel}\nFire\n\n(${remaining} fire${remaining === 1 ? '' : 's'} remaining)`);
   };
 
   const handleOpenCustomization = (product, itemIndex = null) => {
@@ -1694,6 +1790,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   };
 
   const handleResetCart = () => {
+    updateTableFireCount(currentTableKey, 0);
     releaseCurrentOrderLock();
     resetClientOrderToken();
     setActiveTableContext(null);
@@ -2315,6 +2412,20 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
 
         resetClientOrderToken();
         const normalizedItems = ticketItems.map((item) => {
+          if (item.isHoldSeparator || item.name === 'HOLD') {
+            return {
+              qty: 1,
+              name: "HOLD",
+              unit_price: 0,
+              selectedCustomizations: [],
+              addons: [],
+              removals: [],
+              customizations_print_text: [],
+              note: "Kitchen pauses — fire to resume",
+              isHoldSeparator: true
+            };
+          }
+
           const rawCusts = item.selectedCustomizations || [];
           const { addons, removals } = partitionCustomizations(rawCusts);
 
@@ -2367,6 +2478,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         handlePrint(completedOrderData);
         setLastCompletedOrder(completedOrderData);
         setIsTerminalPaymentModalOpen(false);
+        updateTableFireCount(currentTableKey, 0);
         const wasTable = Boolean(activeTableContext);
         setActiveTableContext(null);
         setTicketItems([]);
@@ -2960,42 +3072,20 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                 <span className="text-xs font-black uppercase text-white tracking-wider">
                   Current Order
                 </span>
-                {ticketItems.length > 0 && (
+                {ticketItems.filter(i => !i.isHoldSeparator && i.name !== 'HOLD').length > 0 && (
                   <span className="px-2 py-0.5 bg-[#eb660c]/20 text-[#eb660c] text-[10px] font-black rounded-full border border-[#eb660c]/30">
-                    {ticketItems.reduce((sum, item) => sum + (Number(item.qty) || 1), 0)} items
+                    {ticketItems.filter(i => !i.isHoldSeparator && i.name !== 'HOLD').reduce((sum, item) => sum + (Number(item.qty) || 1), 0)} items
                   </span>
                 )}
               </div>
 
               <div className="flex items-center gap-1.5">
-                {ticketItems.length > 0 && !editingOrderId && (
-                  <button
-                    type="button"
-                    onClick={handleHoldOrder}
-                    disabled={isSubmitting}
-                    className="px-2.5 py-1 bg-amber-950/50 hover:bg-amber-900/60 text-amber-300 border border-amber-500/40 rounded-lg text-[10px] font-bold transition-all active:scale-95 flex items-center gap-1"
-                  >
-                    ⏸️ Hold
-                  </button>
-                )}
-
-                {ticketItems.length > 0 && (activeTableContext || editingOrderId) && (
-                  <button
-                    type="button"
-                    onClick={handleFireToKitchen}
-                    disabled={isSubmitting}
-                    className="px-2.5 py-1 bg-emerald-950/70 hover:bg-emerald-900/80 text-emerald-300 border border-emerald-500/50 rounded-lg text-[10px] font-black transition-all active:scale-95 flex items-center gap-1 shadow-sm"
-                  >
-                    🔥 Fire Round
-                  </button>
-                )}
-
                 {(ticketItems.length > 0 || customerName || customerPhone || deliveryAddress || editingOrderId) && (
                   <button
                     type="button"
                     onClick={handleResetCart}
                     disabled={isSubmitting}
-                    className="px-2.5 py-1 bg-rose-950/60 hover:bg-rose-900/70 text-rose-300 border border-rose-500/50 rounded-lg text-[10px] font-extrabold transition-all active:scale-95 flex items-center gap-1 shadow-sm"
+                    className="px-2.5 py-1 bg-rose-950/60 hover:bg-rose-900/70 text-rose-300 border border-rose-500/50 rounded-lg text-[10px] font-extrabold transition-all active:scale-95 flex items-center gap-1 shadow-sm cursor-pointer"
                     title="Reset cart & clear ticket"
                   >
                     🗑️ Reset Cart
@@ -3192,17 +3282,23 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
               </div>
             ) : (
               ticketItems.map((item, index) => {
-                if (item.isHoldSeparator) {
+                if (item.isHoldSeparator || item.name === 'HOLD') {
                   return (
-                    <div key={index} className="py-2.5 px-3 rounded-2xl bg-indigo-950/80 border border-indigo-500/60 flex items-center justify-between text-indigo-200 my-2 shadow-md">
-                      <div className="flex items-center gap-2 text-xs font-black tracking-wider">
-                        <span className="text-base">⏸️</span>
-                        <span>HOLD FOR NEXT COURSE</span>
+                    <div
+                      key={index}
+                      className="my-2 py-2 px-3 rounded-xl bg-purple-950/70 border border-purple-500/60 flex items-center justify-between text-purple-200 shadow-sm"
+                    >
+                      <div className="flex items-center gap-2 text-xs font-black tracking-widest uppercase">
+                        <span className="text-sm">⏸️</span>
+                        <span>HOLD</span>
+                        <span className="text-[10px] text-purple-300/80 font-medium normal-case tracking-normal">
+                          (kitchen waits for fire)
+                        </span>
                       </div>
                       <button
                         type="button"
                         onClick={() => handleRemoveTicketItem(index)}
-                        className="text-indigo-400 hover:text-rose-300 text-xs font-bold px-2 py-0.5 rounded-lg bg-black/40 hover:bg-black/60 transition cursor-pointer"
+                        className="text-purple-400 hover:text-rose-300 text-xs font-bold px-2 py-0.5 rounded-lg bg-black/40 hover:bg-black/60 transition cursor-pointer"
                         title="Remove Hold Line"
                       >
                         ✕
@@ -3499,7 +3595,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
           onClick={handleInsertHold}
           disabled={ticketItems.length === 0}
           className="flex-1 h-full rounded-xl bg-purple-950/60 hover:bg-purple-900/80 active:scale-98 text-purple-300 font-black text-xs md:text-sm tracking-wider flex items-center justify-center gap-2 border border-purple-500/50 shadow-md transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-          title="Send hold info to kitchen: pause between courses"
+          title="Insert HOLD separator: tells kitchen to pause before next items"
         >
           <span className="text-base md:text-lg">⏳</span>
           <span>Hold</span>
@@ -3509,12 +3605,22 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         <button
           type="button"
           onClick={handleKitchenFireChit}
-          disabled={ticketItems.length === 0 && !activeTableContext?.orderId && !editingOrderId}
-          className="flex-[1.2] h-full rounded-xl bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 active:scale-98 text-white font-black text-xs md:text-sm tracking-wider flex items-center justify-center gap-2 border border-red-400 shadow-lg shadow-red-900/50 transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-          title="Fire current round to kitchen / KDS"
+          disabled={!isFireActive}
+          className={`flex-[1.2] h-full rounded-xl active:scale-98 font-black text-xs md:text-sm tracking-wider flex items-center justify-center gap-2 border shadow-lg transition cursor-pointer ${
+            isFireActive
+              ? 'bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 text-white border-red-400 shadow-red-900/50 animate-pulse'
+              : 'bg-[#181C24] text-slate-500 border-[#262D3D] opacity-40 cursor-not-allowed'
+          }`}
+          title={
+            currentTableHolds === 0
+              ? "No held courses in this ticket. Insert 'Hold' between items to pace courses."
+              : isFireActive
+              ? `Fire next held course (${remainingFires} remaining)`
+              : `All held courses have been fired (${currentTableFires}/${currentTableHolds})`
+          }
         >
-          <span className="text-base md:text-xl animate-pulse">🔥</span>
-          <span>Fire</span>
+          <span className="text-base md:text-xl">🔥</span>
+          <span>Fire {isFireActive ? `(${remainingFires})` : ''}</span>
         </button>
       </div>
     </div>
