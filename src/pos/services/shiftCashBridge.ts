@@ -144,50 +144,89 @@ export async function getDrawerTerminalAliases(branchId: string, drawerTerminalI
 
 /**
  * Queries the active open shift for a branch and physical drawer.
+ * Seamlessly handles 'All' branch indicators and hardware cash drawer fallback.
  */
 export async function getActiveShift(
-  branchIdentifier: string,
+  branchIdentifier?: string,
   terminalId?: string,
   restaurantId?: string
 ): Promise<ShiftCashRecord | null> {
-  if (!branchIdentifier) return null;
-
   try {
     const targetRestaurantId = restaurantId || getGlobalRestaurantId();
-    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(branchIdentifier);
-    const canonicalDrawer = terminalId ? await resolvePhysicalDrawerId(branchIdentifier, terminalId) : undefined;
+    const cleanBranch = branchIdentifier ? branchIdentifier.trim() : '';
+    const isBranchSpecified = cleanBranch.length > 0 && cleanBranch.toLowerCase() !== 'all' && cleanBranch !== '*';
+    const isUuid = isBranchSpecified ? /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanBranch) : false;
+    const canonicalDrawer = terminalId ? await resolvePhysicalDrawerId(cleanBranch || '', terminalId) : undefined;
 
-    let query = supabase
-      .from('shift_cash')
-      .select('*')
-      .eq('status', 'open');
+    // 1. Primary Query: if a specific branch is provided, query by branch (+ drawer if provided)
+    if (isBranchSpecified) {
+      let query = supabase
+        .from('shift_cash')
+        .select('*')
+        .eq('status', 'open');
 
-    if (targetRestaurantId) {
-      query = query.eq('restaurant_id', targetRestaurantId);
+      if (targetRestaurantId) {
+        query = query.eq('restaurant_id', targetRestaurantId);
+      }
+
+      if (isUuid) {
+        query = query.eq('branch_id', cleanBranch);
+      } else {
+        query = query.ilike('branch', `%${cleanBranch}%`);
+      }
+
+      if (canonicalDrawer) {
+        query = query.eq('terminal_id', canonicalDrawer);
+      }
+
+      const { data, error } = await query
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (!error && data && data.length > 0) {
+        return data[0] as ShiftCashRecord;
+      }
     }
 
-    if (isUuid) {
-      query = query.eq('branch_id', branchIdentifier);
-    } else {
-      query = query.ilike('branch', `%${branchIdentifier.trim()}%`);
-    }
-
+    // 2. Hardware / Physical Drawer Fallback:
+    // A physical cash drawer is unique hardware. If canonicalDrawer is specified,
+    // find any open shift for this drawer in this restaurant.
     if (canonicalDrawer) {
-      query = query.eq('terminal_id', canonicalDrawer);
+      let drawerQuery = supabase
+        .from('shift_cash')
+        .select('*')
+        .eq('status', 'open')
+        .eq('terminal_id', canonicalDrawer);
+
+      if (targetRestaurantId) {
+        drawerQuery = drawerQuery.eq('restaurant_id', targetRestaurantId);
+      }
+
+      const { data: drawerData, error: drawerError } = await drawerQuery
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (!drawerError && drawerData && drawerData.length > 0) {
+        return drawerData[0] as ShiftCashRecord;
+      }
     }
 
+    // 3. Restaurant-level Fallback:
+    // If branch was 'All' or unspecified and no drawer ID, find the active open shift in this restaurant
+    if (!isBranchSpecified && targetRestaurantId && !canonicalDrawer) {
+      let restQuery = supabase
+        .from('shift_cash')
+        .select('*')
+        .eq('status', 'open')
+        .eq('restaurant_id', targetRestaurantId);
 
-    const { data, error } = await query
-      .order('created_at', { ascending: false })
-      .limit(1);
+      const { data: restData, error: restError } = await restQuery
+        .order('created_at', { ascending: false })
+        .limit(1);
 
-    if (error) {
-      console.warn('[shiftCashBridge] Error fetching active shift:', error.message);
-      return null;
-    }
-
-    if (data && data.length > 0) {
-      return data[0] as ShiftCashRecord;
+      if (!restError && restData && restData.length > 0) {
+        return restData[0] as ShiftCashRecord;
+      }
     }
 
     return null;
@@ -228,6 +267,7 @@ export async function recordCashMovement(params: CashMovementParams): Promise<{ 
 /**
  * Opens a new shift cash session in FLOW shift_cash.
  * Ensures an explicit persistent terminal ID is provided and prevents concurrent open shifts.
+ * If an active open shift already exists on this physical drawer, gracefully adopts it.
  */
 export async function openShift(params: OpenShiftParams): Promise<{ success: boolean; shift?: ShiftCashRecord; error?: string }> {
   try {
@@ -243,9 +283,10 @@ export async function openShift(params: OpenShiftParams): Promise<{ success: boo
     // Check for existing open shift on this canonical physical drawer
     const existing = await getActiveShift(params.branchId || params.branchName, canonicalDrawerId, targetRestaurantId);
     if (existing) {
+      console.log(`[shiftCashBridge] Drawer ${canonicalDrawerId} already has active open shift (${existing.id}). Adopting existing shift.`);
       return {
-        success: false,
-        error: `Physical drawer ${canonicalDrawerId} already has an active open shift (opened by ${existing.user_name} at ${new Date(existing.created_at).toLocaleTimeString()}). Please close it first.`
+        success: true,
+        shift: existing
       };
     }
 

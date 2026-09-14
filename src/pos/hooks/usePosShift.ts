@@ -16,20 +16,22 @@ export function usePosShift(
   const [isShiftReportModalOpen, setIsShiftReportModalOpen] = useState(false);
   const [reportModalMode, setReportModalMode] = useState<'X' | 'CLOSE'>('X');
 
-  const checkShift = useCallback(async () => {
-    if (!branchIdentifier) {
+  const checkShift = useCallback(async (): Promise<ShiftCashRecord | null> => {
+    if (!branchIdentifier && !terminalId) {
       setActiveShift(null);
       setLoading(false);
-      return;
+      return null;
     }
 
     setLoading(true);
     try {
       const shift = await getActiveShift(branchId || branchIdentifier, terminalId, restaurantId);
       setActiveShift(shift);
+      return shift;
     } catch (err) {
       console.error('[usePosShift] Error checking active shift:', err);
       setActiveShift(null);
+      return null;
     } finally {
       setLoading(false);
     }

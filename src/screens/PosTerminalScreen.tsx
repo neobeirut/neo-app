@@ -348,13 +348,20 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   });
 
   // Dynamic Branch Identity Resolution
-  const currentBranchId = commerceBranchLink?.flow_branch_id || branchCapabilities?.branchId || "";
+  const candidateBranch = commerceBranchLink?.flow_branch_name || selectedTerminalBranch;
+  const userBranchClean = (user?.branch && user.branch.toLowerCase() !== 'all') ? user.branch : undefined;
+  const activeCashierBranchClean = (activeCashier?.branch && activeCashier.branch.toLowerCase() !== 'all') ? activeCashier.branch : undefined;
+
   const currentBranchName =
-    commerceBranchLink?.flow_branch_name ||
-    selectedTerminalBranch ||
-    user?.branch ||
-    activeCashier?.branch ||
+    candidateBranch ||
+    userBranchClean ||
+    activeCashierBranchClean ||
     (currentRestaurantId === '4c0ed960-e459-42c4-962f-41229a2d3783' ? 'Badaro (Bistro)' : 'Badaro');
+
+  const currentBranchId =
+    commerceBranchLink?.flow_branch_id ||
+    branchCapabilities?.branchId ||
+    (currentRestaurantId === '4c0ed960-e459-42c4-962f-41229a2d3783' ? '9c214659-9cc7-4f33-b115-cbbb8a823a94' : '');
 
   const refreshFloorTables = async () => {
     const flowBranchId = currentBranchId || commerceBranchLink?.flow_branch_id || branchCapabilities?.branchId || "9c214659-9cc7-4f33-b115-cbbb8a823a94";
@@ -379,6 +386,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     activeShift,
     isShiftOpen,
     loading: shiftLoading,
+    checkShift,
     isOpenShiftModalOpen,
     setIsOpenShiftModalOpen,
     isCloseShiftModalOpen,
@@ -402,11 +410,15 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   const [hasPromptedShiftClosed, setHasPromptedShiftClosed] = useState(false);
 
   useEffect(() => {
-    if (!shiftLoading && !isShiftOpen && !hasPromptedShiftClosed) {
-      setHasPromptedShiftClosed(true);
-      setIsOpenShiftModalOpen(true);
+    if (!isResolvingBranch && !shiftLoading) {
+      if (isShiftOpen) {
+        setIsOpenShiftModalOpen(false);
+      } else if (!hasPromptedShiftClosed) {
+        setHasPromptedShiftClosed(true);
+        setIsOpenShiftModalOpen(true);
+      }
     }
-  }, [shiftLoading, isShiftOpen, hasPromptedShiftClosed]);
+  }, [isResolvingBranch, shiftLoading, isShiftOpen, hasPromptedShiftClosed]);
 
 
   // Phase 6 Shift Closing & Reporting States
@@ -503,6 +515,12 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         setIsCashierModalOpen(false);
         setPinInput("");
         setPinError("");
+        const currentShift = await checkShift();
+        if (!currentShift) {
+          setIsOpenShiftModalOpen(true);
+        } else {
+          setIsOpenShiftModalOpen(false);
+        }
       } else {
         setPinError(res.error || "Invalid PIN code");
         setPinInput("");
@@ -4936,18 +4954,26 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         locationKey={commerceBranchLink?.location_key || "cloud-kitchen"}
         terminalId={activeShift?.terminal_id || persistentTerminalId}
         cashierName={activeCashier?.name || user?.name || "Cashier"}
-        onShiftClosed={(closedShift, recon) => {
+        onShiftClosed={async (closedShift, recon) => {
           setLastClosedShift(closedShift);
           setShiftReportData(recon);
           setReportModalMode('CLOSE');
           setIsShiftReportModalOpen(true);
+          await checkShift();
+          setHasPromptedShiftClosed(false);
         }}
       />
 
       {/* PHASE 6 SHIFT REPORT MODAL (X Report & Shift Close Report) */}
       <ShiftReportModal
         isOpen={isShiftReportModalOpen}
-        onClose={() => setIsShiftReportModalOpen(false)}
+        onClose={() => {
+          setIsShiftReportModalOpen(false);
+          if (reportModalMode === 'CLOSE' && !isShiftOpen) {
+            setIsOpenShiftModalOpen(true);
+            setHasPromptedShiftClosed(true);
+          }
+        }}
         shift={reportModalMode === 'X' ? activeShift : (lastClosedShift || activeShift)}
         reconciliation={shiftReportData}
         isXReport={reportModalMode === 'X'}
@@ -5421,9 +5447,15 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
               isLockScreen={true}
               initialRestaurantId={currentRestaurantId}
               onCancelLock={() => setIsPinLockOpen(false)}
-              onSuccess={(cashierUser) => {
+              onSuccess={async (cashierUser) => {
                 setActiveCashier(cashierUser);
                 setIsPinLockOpen(false);
+                const currentShift = await checkShift();
+                if (!currentShift) {
+                  setIsOpenShiftModalOpen(true);
+                } else {
+                  setIsOpenShiftModalOpen(false);
+                }
               }}
             />
           </div>
