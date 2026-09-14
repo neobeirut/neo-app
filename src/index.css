@@ -382,23 +382,46 @@ html, body {
    UNIFIED BRANDING & DESIGN OVERRIDES (Financial Analytics reference style)
    ========================================================================== */
 
-/* Typography & Titles */
+/* Typography & Titles - Clean styling without forcing dark blue !important on headings */
 h1 {
-  font-size: 26px !important;
-  font-weight: 800 !important;
-  color: var(--text-main) !important;
-  letter-spacing: -0.5px !important;
-  margin-bottom: 4px !important;
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  margin-bottom: 4px;
 }
 
 h1 + p {
-  color: var(--text-muted) !important;
-  font-size: 14px !important;
-  margin-top: 4px !important;
+  color: var(--text-muted);
+  font-size: 14px;
+  margin-top: 4px;
 }
 
-h2, h3, h4 {
-  color: var(--text-main) !important;
+/* Ensure all headings in dark containers, modals, and POS terminal are pure crisp white */
+.pos-terminal h1,
+.pos-terminal h2,
+.pos-terminal h3,
+.pos-terminal h4,
+[class*="bg-[#181C24]"] h1,
+[class*="bg-[#181C24]"] h2,
+[class*="bg-[#181C24]"] h3,
+[class*="bg-[#181C24]"] h4,
+[class*="bg-[#151820]"] h1,
+[class*="bg-[#151820]"] h2,
+[class*="bg-[#151820]"] h3,
+[class*="bg-[#151820]"] h4,
+[class*="bg-[#10141E]"] h1,
+[class*="bg-[#10141E]"] h2,
+[class*="bg-[#10141E]"] h3,
+[class*="bg-[#10141E]"] h4,
+[class*="bg-[#0F1115]"] h1,
+[class*="bg-[#0F1115]"] h2,
+[class*="bg-[#0F1115]"] h3,
+[class*="bg-[#0F1115]"] h4,
+.dark h1,
+.dark h2,
+.dark h3,
+.dark h4 {
+  color: #ffffff !important;
 }
 
 /* Sleek Tables */

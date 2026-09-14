@@ -249,7 +249,7 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
               🔒
             </div>
             <div>
-              <h2 className="font-extrabold text-lg text-white">Close Shift Cash Session</h2>
+              <h2 className="font-extrabold text-lg text-white !text-white" style={{ color: '#ffffff' }}>Close Shift Cash Session</h2>
               <p className="text-xs text-gray-400 font-mono">
                 {branchName} • {terminalId} • Shift #{shift.shift} • Cashier: {shift.user_name}
               </p>

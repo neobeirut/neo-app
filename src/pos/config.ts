@@ -14,9 +14,10 @@ function resolveCommerceApiBase(): string {
       hostname.startsWith("10.") ||
       hostname.endsWith(".local") ||
       port === "5173" ||
-      port === "3000"
+      port === "3000" ||
+      port === "4173"
     ) {
-      return "";
+      return origin || "http://localhost:4173";
     }
   }
 

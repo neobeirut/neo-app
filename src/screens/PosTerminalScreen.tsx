@@ -3710,14 +3710,25 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       </div>
     </div>
 
-      {/* 5 HORIZONTAL ACTION BUTTONS DOCK AT BOTTOM */}
+      {/* 6 HORIZONTAL ACTION BUTTONS DOCK AT BOTTOM */}
       <div className="h-16 bg-[#131722] border-t-2 border-[#262D3D] px-4 py-2 flex items-center gap-2.5 flex-shrink-0 z-20 shadow-2xl">
+        {/* 0 - Lock / Logout (Far Left) */}
+        <button
+          type="button"
+          onClick={() => setIsPinLockOpen(true)}
+          className="h-full px-4 rounded-xl bg-[#222734] hover:bg-[#2c3344] active:scale-95 text-slate-200 hover:text-white font-black text-xs md:text-sm tracking-wider flex items-center justify-center gap-2 border border-[#3A455C] shadow-md transition cursor-pointer flex-shrink-0"
+          title="Lock Terminal / Switch Cashier (Logout)"
+        >
+          <span className="text-base md:text-lg">🔒</span>
+          <span>Logout</span>
+        </button>
+
         {/* 1 - Features */}
         <button
           type="button"
           onClick={() => setIsFeaturesModalOpen(true)}
           className="flex-1 h-full rounded-xl bg-[#1E2433] hover:bg-[#283042] active:scale-98 text-slate-200 hover:text-white font-black text-xs md:text-sm tracking-wider flex items-center justify-center gap-2 border border-[#3A455C] shadow-md transition cursor-pointer"
-          title="Open POS Features: History, Store Control, Transfer Table, Shift"
+          title="Open POS Features: History, Store Control, Shift, Tables, Orders"
         >
           <span className="text-base md:text-lg">⚙️</span>
           <span>Features</span>
@@ -5201,39 +5212,6 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                 <span className="text-[10px] text-gray-400">Status, 86 items</span>
               </button>
 
-              {/* Transfer Table */}
-              <button
-                type="button"
-                onClick={() => {
-                  setIsFeaturesModalOpen(false);
-                  if (!activeTableContext) {
-                    alert("Please select or open an active table first to transfer.");
-                    return;
-                  }
-                  setTransferTargetTableInput("");
-                  setIsTransferModalOpen(true);
-                }}
-                className="p-3 rounded-2xl bg-[#222734] hover:bg-[#2c3344] border border-[#2D3548] flex flex-col items-center justify-center gap-1 text-center transition active:scale-95 group cursor-pointer"
-              >
-                <span className="text-2xl group-hover:scale-110 transition-transform">🔀</span>
-                <span className="font-extrabold text-xs text-gray-200 group-hover:text-white">Transfer Table</span>
-                <span className="text-[10px] text-gray-400">Move table to another</span>
-              </button>
-
-              {/* Screen Builder */}
-              <button
-                type="button"
-                onClick={() => {
-                  setIsFeaturesModalOpen(false);
-                  window.location.hash = '#/pos-screens';
-                }}
-                className="p-3 rounded-2xl bg-[#222734] hover:bg-[#2c3344] border border-[#2D3548] flex flex-col items-center justify-center gap-1 text-center transition active:scale-95 group cursor-pointer"
-              >
-                <span className="text-2xl group-hover:scale-110 transition-transform">🎨</span>
-                <span className="font-extrabold text-xs text-gray-200 group-hover:text-white">Screen Builder</span>
-                <span className="text-[10px] text-gray-400">Customize POS screens</span>
-              </button>
-
               {/* Shift / Drawer */}
               <button
                 type="button"
@@ -5250,20 +5228,6 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                 <span className="text-2xl group-hover:scale-110 transition-transform">💼</span>
                 <span className="font-extrabold text-xs text-gray-200 group-hover:text-white">Shift / Drawer</span>
                 <span className="text-[10px] text-gray-400">{activeShift ? 'Close / X-Report' : 'Open Shift Float'}</span>
-              </button>
-
-              {/* Lock Screen / Switch Cashier */}
-              <button
-                type="button"
-                onClick={() => {
-                  setIsFeaturesModalOpen(false);
-                  setIsPinLockOpen(true);
-                }}
-                className="p-3 rounded-2xl bg-[#222734] hover:bg-[#2c3344] border border-[#2D3548] flex flex-col items-center justify-center gap-1 text-center transition active:scale-95 group cursor-pointer"
-              >
-                <span className="text-2xl group-hover:scale-110 transition-transform">🔒</span>
-                <span className="font-extrabold text-xs text-gray-200 group-hover:text-white">Lock / Switch PIN</span>
-                <span className="text-[10px] text-gray-400">Switch cashier staff</span>
               </button>
 
               {/* Floor Plan Tables */}
@@ -5296,35 +5260,17 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                 <span className="text-[10px] text-gray-400">Online & branch orders</span>
               </button>
 
-              {/* POS Settings */}
+              {/* Exit POS under Features - Disabled until app/PWA deployment */}
               <button
                 type="button"
-                onClick={() => {
-                  setIsFeaturesModalOpen(false);
-                  setActiveTabModal("settings");
-                }}
-                className="p-3 rounded-2xl bg-[#222734] hover:bg-[#2c3344] border border-[#2D3548] flex flex-col items-center justify-center gap-1 text-center transition active:scale-95 group cursor-pointer"
+                disabled={true}
+                className="p-3 rounded-2xl bg-zinc-900/60 border border-zinc-700/40 opacity-40 cursor-not-allowed flex flex-col items-center justify-center gap-1 text-center transition sm:col-span-3 select-none"
+                title="Exit POS is disabled. Reserved for Native App / PWA deployment."
               >
-                <span className="text-2xl group-hover:scale-110 transition-transform">⚙️</span>
-                <span className="font-extrabold text-xs text-gray-200 group-hover:text-white">POS Settings</span>
-                <span className="text-[10px] text-gray-400">Printers & hardware</span>
+                <span className="text-2xl opacity-60">🚪</span>
+                <span className="font-extrabold text-xs text-slate-400">Exit POS (Disabled)</span>
+                <span className="text-[10px] text-slate-500">Reserved for Native App / PWA deployment</span>
               </button>
-
-              {/* Exit POS under Features */}
-              {onExit && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsFeaturesModalOpen(false);
-                    onExit();
-                  }}
-                  className="p-3 rounded-2xl bg-rose-950/40 hover:bg-rose-900/60 border border-rose-500/40 flex flex-col items-center justify-center gap-1 text-center transition active:scale-95 group cursor-pointer sm:col-span-3"
-                >
-                  <span className="text-2xl group-hover:scale-110 transition-transform">🚪</span>
-                  <span className="font-extrabold text-xs text-rose-300 group-hover:text-white">Exit POS</span>
-                  <span className="text-[10px] text-rose-400/80">Return to Admin Operations Portal</span>
-                </button>
-              )}
             </div>
           </div>
         </div>

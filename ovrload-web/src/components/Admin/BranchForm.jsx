@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 const DAYS_OF_WEEK = [
   { id: "monday", label: "Monday" },
@@ -27,25 +27,21 @@ const formatTimeHHMM = (timeStr) => {
   return s;
 };
 
-export function BranchForm({ editingItem, onSave, onCancel }) {
-  const [isSaving, setIsSaving] = useState(false);
+/** Parse weekday_schedule regardless of whether it arrives as a JSON string or an object. */
+const parseSchedule = (raw) => {
+  if (!raw) return DEFAULT_SCHEDULE;
+  if (typeof raw === "string") {
+    try { return JSON.parse(raw); } catch (e) { return DEFAULT_SCHEDULE; }
+  }
+  if (typeof raw === "object") return raw;
+  return DEFAULT_SCHEDULE;
+};
 
-  const initialSchedule = (() => {
-    if (editingItem?.weekday_schedule) {
-      if (typeof editingItem.weekday_schedule === "string") {
-        try {
-          return JSON.parse(editingItem.weekday_schedule);
-        } catch (e) {}
-      } else if (typeof editingItem.weekday_schedule === "object") {
-        return editingItem.weekday_schedule;
-      }
-    }
-    return DEFAULT_SCHEDULE;
-  })();
-
-  const initialStatus = editingItem?.operational_status || (editingItem?.orders_active === false ? "closed" : "open");
-
-  const [formData, setFormData] = useState({
+/** Build a clean formData snapshot from an editingItem (or null for a new branch). */
+const buildFormData = (editingItem) => {
+  const schedule = parseSchedule(editingItem?.weekday_schedule);
+  const status = editingItem?.operational_status || (editingItem?.orders_active === false ? "closed" : "open");
+  return {
     name: editingItem?.name || "",
     address: editingItem?.address || "",
     phone: editingItem?.phone || "",
@@ -64,10 +60,25 @@ export function BranchForm({ editingItem, onSave, onCancel }) {
     delivery_start_time: formatTimeHHMM(editingItem?.delivery_start_time || "11:00"),
     delivery_end_time: formatTimeHHMM(editingItem?.delivery_end_time || "20:00"),
     orders_active: editingItem?.orders_active ?? true,
-    operational_status: initialStatus,
+    operational_status: status,
     closure_reason: editingItem?.closure_reason || "Overloaded",
-    weekday_schedule: initialSchedule,
-  });
+    weekday_schedule: schedule,
+  };
+};
+
+export function BranchForm({ editingItem, onSave, onCancel }) {
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Initialize formData from editingItem
+  const [formData, setFormData] = useState(() => buildFormData(editingItem));
+
+  // Re-sync form state whenever editingItem changes (e.g. after fetchBranches refreshes).
+  // This is the fix: useState() only runs once on mount, so without this effect
+  // a refreshed editingItem (with the saved weekday_schedule from the DB) would be
+  // ignored and the form would silently discard or overwrite the correct schedule.
+  useEffect(() => {
+    setFormData(buildFormData(editingItem));
+  }, [editingItem?.id, editingItem?.weekday_schedule]);
 
   const [imageError, setImageError] = useState(null);
 

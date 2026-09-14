@@ -58,7 +58,7 @@ export const OpenShiftModal: React.FC<OpenShiftModalProps> = ({
               💵
             </div>
             <div>
-              <h3 className="font-extrabold text-base">Open Shift Cash Session</h3>
+              <h3 className="font-extrabold text-base text-white !text-white" style={{ color: '#ffffff' }}>Open Shift Cash Session</h3>
               <p className="text-xs text-gray-400">FLOW Shift Management • {branchName}</p>
             </div>
           </div>

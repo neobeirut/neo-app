@@ -4,6 +4,7 @@ import LoginScreen from './screens/LoginScreen';
 import PosPinScreen from './pos/components/PosPinScreen';
 import PosTerminalScreen from './screens/PosTerminalScreen';
 import PosScreenBuilderScreen from './screens/PosScreenBuilderScreen';
+import PosSettingsScreen from './screens/PosSettingsScreen';
 import { KdsScreen } from './pos/kds';
 
 import MenuManualScreen from './screens/MenuManualScreen';
@@ -19,7 +20,7 @@ import StaffDepartmentsScreen from './screens/StaffDepartmentsScreen';
 import SalaryPaymentsScreen from './screens/SalaryPaymentsScreen';
 import SOPsScreen from './screens/SOPsScreen';
 import SOPFormScreen from './screens/SOPFormScreen';
-import { LayoutDashboard, ChefHat, Users, LogOut, DollarSign, Shield, BookOpen, TrendingUp, MessageSquare, Newspaper, AlertTriangle, Sparkles, Trash2, History, Coins, Truck, ShoppingBag, Calendar, ClipboardList, Package, CheckSquare, Receipt, Briefcase, Store, ChevronDown, ChevronRight, Clock, Target, Layers, Download } from 'lucide-react';
+import { LayoutDashboard, ChefHat, Users, LogOut, DollarSign, Shield, BookOpen, TrendingUp, MessageSquare, Newspaper, AlertTriangle, Sparkles, Trash2, History, Coins, Truck, ShoppingBag, Calendar, ClipboardList, Package, CheckSquare, Receipt, Briefcase, Store, ChevronDown, ChevronRight, Clock, Target, Layers, Download, Settings } from 'lucide-react';
 import { api, hasAdminAccess, getRestaurantId, setCachedRestaurantId } from './api/client';
 import { usePWA } from './hooks/usePWA';
 import AssessmentsScreen from './screens/AssessmentsScreen';
@@ -110,6 +111,8 @@ import InventoryScreen from './screens/InventoryScreen';
         name: 'Operations',
         items: [
           { to: '/pos', label: 'Point of Sale (POS)', icon: <Store size={18} />, visible: canAccess('pos', true), key: 'pos' },
+          { to: '/pos-screens', label: 'POS Screen Builder', icon: <Layers size={18} />, visible: canAccess('pos', true), key: 'pos-screens' },
+          { to: '/pos-settings', label: 'POS Settings', icon: <Settings size={18} />, visible: canAccess('pos', true), key: 'pos-settings' },
           { to: '/kds', label: 'Kitchen Display (KDS)', icon: <ChefHat size={18} />, visible: canAccess('pos', true), key: 'kds' },
           { to: '/orders', label: 'Branch Orders', icon: <ShoppingBag size={18} />, visible: canAccess('orders', permissions?.can_create_orders !== false || permissions?.can_receive_orders !== false), key: 'orders' },
           { to: '/client-orders', label: 'Client Orders', icon: <Briefcase size={18} />, visible: canAccess('client_orders', !!permissions?.can_view_client_orders), key: 'client_orders' },
@@ -444,6 +447,7 @@ function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () 
             />
             <Route path="/pos" element={<PosTerminalScreen user={user} onExit={() => navigate('/')} />} />
             <Route path="/pos-screens" element={<PosScreenBuilderScreen user={user} />} />
+            <Route path="/pos-settings" element={<PosSettingsScreen user={user} />} />
             <Route path="/kds" element={<KdsScreen branchId={user?.branch_id || '9c214659-9cc7-4f33-b115-cbbb8a823a94'} onExit={() => navigate('/')} />} />
             {isSectionEnabled('orders') && canAccess('orders', permissions?.can_create_orders !== false || permissions?.can_receive_orders !== false) && (
               <Route path="/orders" element={<OrdersScreen user={user} />} />

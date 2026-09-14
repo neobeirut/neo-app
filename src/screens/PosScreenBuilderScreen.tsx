@@ -294,13 +294,13 @@ export default function PosScreenBuilderScreen({ user }: { user?: any }) {
   }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto text-slate-100 font-sans">
-      <div className="flex flex-wrap items-center justify-between gap-4 pb-6 border-b border-slate-800">
+    <div className="p-6 max-w-7xl mx-auto space-y-6 text-slate-100 font-sans">
+      <div className="bg-[#121620] border border-slate-800 rounded-2xl p-6 shadow-xl flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <button
             type="button"
             onClick={() => navigate(-1)}
-            className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 transition"
+            className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 transition cursor-pointer"
             title="Go Back"
           >
             <ArrowLeft size={20} />

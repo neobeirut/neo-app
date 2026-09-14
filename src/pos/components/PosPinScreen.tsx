@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { api, setCachedRestaurantId } from '../../api/client';
 import { setGlobalRestaurantId } from '../../api/supabase';
 import { sessionLogger } from '../../utils/sessionLogger';
@@ -153,7 +153,7 @@ export default function PosPinScreen({
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-slate-900 border border-slate-800 text-amber-400 mb-3 shadow-inner">
             <Lock size={24} />
           </div>
-          <h2 className="text-xl font-black text-slate-100">Enter Cashier PIN</h2>
+          <h2 className="text-xl font-black text-white !text-white" style={{ color: '#ffffff' }}>Enter Cashier PIN</h2>
           <p className="text-xs text-slate-400 mt-1">Tap your 4-digit code to unlock the terminal</p>
         </div>
 
