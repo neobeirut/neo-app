@@ -107,6 +107,14 @@ export default function ReportsView() {
     (categories || []).forEach((cat) => {
       csvContent += `"${cat.category_name}",${cat.total_qty || 0},$${(cat.total_revenue || 0).toFixed(2)}\n`;
     });
+    csvContent += "\n";
+
+    // Individual Orders Breakdown
+    csvContent += "SALES ORDERS LIST\n";
+    csvContent += "Order ID,Customer,Phone,Origin,Payment Method,Status,Date/Time,Subtotal,Discounts,Delivery Fee,Total\n";
+    (orders || []).forEach((o) => {
+      csvContent += `#${o.id},"${o.customer_name || ''}","${o.customer_phone || ''}",${o.order_source},${o.payment_method},${o.status},"${new Date(o.created_at).toLocaleString()}",$${(o.subtotal_amount || 0).toFixed(2)},$${(o.discount_amount || 0).toFixed(2)},$${(o.delivery_fee || 0).toFixed(2)},$${(o.total_amount || 0).toFixed(2)}\n`;
+    });
 
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
@@ -122,6 +130,7 @@ export default function ReportsView() {
   const paymentMethods = reportData?.paymentMethods || [];
   const topProducts = reportData?.topProducts || [];
   const categories = reportData?.categories || [];
+  const orders = reportData?.orders || [];
   const voidedSummary = reportData?.voidedSummary || {};
   const voidedOrders = reportData?.voidedOrders || [];
   const hourlySales = reportData?.hourlySales || [];
@@ -674,6 +683,88 @@ export default function ReportsView() {
                     );
                   });
                 })()
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* SALES ORDERS LIST TABLE */}
+      <div className="bg-[#181C24] border border-[#262D3D] rounded-2xl p-5 space-y-4 shadow-lg">
+        <div className="flex justify-between items-center border-b border-[#262D3D] pb-3">
+          <h2 className="text-base font-extrabold text-white flex items-center gap-2">
+            <ShoppingBag className="w-5 h-5 text-[#eb660c]" /> Completed & Sales Orders List
+          </h2>
+          <span className="text-xs text-gray-400 font-bold">{orders.length} Orders in Range</span>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead>
+              <tr className="border-b border-[#262D3D] text-gray-400 font-bold uppercase text-[10px]">
+                <th className="pb-3 pl-2">Order</th>
+                <th className="pb-3">Customer</th>
+                <th className="pb-3">Origin</th>
+                <th className="pb-3">Payment</th>
+                <th className="pb-3">Status</th>
+                <th className="pb-3">Date / Time</th>
+                <th className="pb-3 text-right pr-2">Total Amount</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#262D3D]/50 text-gray-300 font-semibold">
+              {orders.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="text-center py-8 text-gray-500">No orders recorded for this period</td>
+                </tr>
+              ) : (
+                orders.map((order) => {
+                  const source = order.order_source || "Pick-up";
+                  const badgeColor =
+                    source === "Toters" ? "bg-[#00C49F] text-black" :
+                    source === "WhatsApp" ? "bg-[#25D366] text-black" :
+                    source === "App" ? "bg-[#3B82F6] text-white" :
+                    source === "POS" || source === "In-Store" ? "bg-[#eb660c] text-white" :
+                    "bg-[#E5C07B] text-black";
+
+                  return (
+                    <tr key={order.id} className="hover:bg-[#0F1115]/50 transition-colors">
+                      <td className="py-3 pl-2 font-black text-white">
+                        #{order.id}
+                      </td>
+                      <td className="py-3">
+                        <div className="font-bold text-white">{order.customer_name || "Guest"}</div>
+                        {order.customer_phone && (
+                          <div className="text-[10px] text-gray-500">{order.customer_phone}</div>
+                        )}
+                      </td>
+                      <td className="py-3">
+                        <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black ${badgeColor}`}>
+                          {source}
+                        </span>
+                      </td>
+                      <td className="py-3 text-gray-400 font-medium">
+                        {order.payment_method || "Cash"}
+                      </td>
+                      <td className="py-3">
+                        <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold capitalize ${
+                          order.status === "completed" ? "bg-emerald-500/20 text-emerald-400" :
+                          order.status === "preparing" ? "bg-purple-500/20 text-purple-400" :
+                          order.status === "ready" ? "bg-blue-500/20 text-blue-400" :
+                          order.status === "held" ? "bg-amber-500/20 text-amber-400" :
+                          "bg-gray-700 text-gray-300"
+                        }`}>
+                          {order.status || "completed"}
+                        </span>
+                      </td>
+                      <td className="py-3 text-gray-400 text-[11px]">
+                        {new Date(order.created_at).toLocaleString()}
+                      </td>
+                      <td className="py-3 text-right pr-2 font-black text-emerald-400 text-sm">
+                        ${(order.total_amount || 0).toFixed(2)}
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
