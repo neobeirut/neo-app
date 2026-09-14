@@ -637,6 +637,39 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   // Fire is active till the fire count is less than the Hold count per table
   const isFireActive = currentTableHolds > 0 && currentTableFires < currentTableHolds;
   const remainingFires = Math.max(0, currentTableHolds - currentTableFires);
+
+  // Sell Mode: Scheduled Order Popup state
+  const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
+  const [scheduledOrderDate, setScheduledOrderDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [scheduledOrderTime, setScheduledOrderTime] = useState<string>("");
+  const [scheduledOrderNote, setScheduledOrderNote] = useState<string>("");
+
+  const applyQuickSchedule = (mins: number) => {
+    const d = new Date(Date.now() + mins * 60000);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const hh = String(d.getHours()).padStart(2, '0');
+    const min = String(d.getMinutes()).padStart(2, '0');
+    setScheduledOrderDate(`${yyyy}-${mm}-${dd}`);
+    setScheduledOrderTime(`${hh}:${min}`);
+  };
+
+  const formatScheduledTimeDisplay = (dateStr: string, timeStr: string) => {
+    if (!timeStr) return "";
+    try {
+      const todayStr = new Date().toISOString().split('T')[0];
+      const isToday = dateStr === todayStr;
+      const [h, m] = timeStr.split(':').map(Number);
+      const dateObj = new Date();
+      dateObj.setHours(h, m, 0, 0);
+      const timeFormatted = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      return isToday ? `Today at ${timeFormatted}` : `${dateStr} at ${timeFormatted}`;
+    } catch {
+      return `${dateStr} ${timeStr}`;
+    }
+  };
+
   const [posTerminalId] = useState(() => {
     if (typeof window !== "undefined") {
       let tid = localStorage.getItem("pos_terminal_id");
@@ -1547,13 +1580,25 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     }
   };
 
-  // Horizontal Bottom Bar Action 4: Kitchen Hold Pacing Instruction
+  // Horizontal Bottom Bar Action 3: Hold
+  // In Table Mode: Course Hold separator for kitchen pacing
+  // In Sell Mode: Opens popup to schedule the order for pickup / delivery
   const handleInsertHold = () => {
     if (ticketItems.length === 0) {
-      alert("⚠️ Please add items to the ticket first before placing a Hold.");
+      alert("⚠️ Please add items to the ticket first.");
       return;
     }
 
+    // In Sell mode (OTC / no active table): Open Schedule Order popup
+    if (!activeTableContext) {
+      if (!scheduledOrderTime) {
+        applyQuickSchedule(30);
+      }
+      setIsScheduleModalOpen(true);
+      return;
+    }
+
+    // In Dine-In Table mode: Course hold separator
     const lastItem: any = ticketItems[ticketItems.length - 1];
     if (lastItem?.isHoldSeparator || lastItem?.name === 'HOLD') {
       alert("⚠️ A Hold line is already placed at this position.");
@@ -2043,7 +2088,9 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     if (!selectedChannel && !editingOrderId) {
       setSelectedChannel("POS");
     }
-    if (!customerName || !customerName.trim()) {
+    const isPickup = orderType === "pickup" || (selectedChannel || "").toLowerCase().includes("pick");
+    const isDineIn = Boolean(activeTableContext);
+    if (!isPickup && !isDineIn && (!customerName || !customerName.trim())) {
       setValidationError("⚠️ Customer name is required to save the order");
       return false;
     }
@@ -2063,6 +2110,14 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     setIsSubmitting(true);
     try {
       const isDineIn = Boolean(activeTableContext);
+      const isPickup = orderType === "pickup" || (selectedChannel || "").toLowerCase().includes("pick");
+      const defaultCustomer = isDineIn
+        ? `Table ${activeTableContext?.tableCode}`
+        : isPickup
+        ? "Pickup Customer"
+        : "Direct Order";
+      const resolvedCustomerName = customerName.trim() || defaultCustomer;
+
       const res = await fetch(`${COMMERCE_API_BASE}/api/pos/orders`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -2077,7 +2132,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
           waiter_reference: activeTableContext ? (activeTableContext.waiterName || user?.name) : undefined,
           orderSource: selectedChannel || "POS",
           paymentMethod: selectedPaymentMethod,
-          customerName: customerName.trim() || (activeTableContext ? `Table ${activeTableContext.tableCode}` : ""),
+          customerName: resolvedCustomerName,
           customerPhone,
           deliveryAddress,
           status: "held",
@@ -2085,6 +2140,9 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
           deliveryFee: (!isDineIn && orderType === "delivery") ? (parseFloat(deliveryFee) || 0) : 0,
           discountAmount,
           total,
+          is_scheduled: Boolean(scheduledOrderTime),
+          scheduled_for: scheduledOrderTime ? `${scheduledOrderDate} ${scheduledOrderTime}` : undefined,
+          scheduled_note: scheduledOrderNote || undefined,
           items: ticketItems.map((item) => ({
             product_id: item.product_id,
             name: item.name,
@@ -2113,6 +2171,46 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
           }
         }
 
+        // If this was a scheduled order, print the kitchen ticket chit
+        if (scheduledOrderTime) {
+          const formattedSchedule = formatScheduledTimeDisplay(scheduledOrderDate, scheduledOrderTime);
+          const scheduledKitchenPayload = {
+            id: heldOrderId,
+            isScheduledOrder: true,
+            title: "*** SCHEDULED ORDER ***",
+            scheduled_for: `${scheduledOrderDate} ${scheduledOrderTime}`,
+            scheduled_time_display: formattedSchedule,
+            scheduled_note: scheduledOrderNote,
+            order_source: selectedChannel || "POS",
+            order_type: orderType,
+            customer_name: resolvedCustomerName,
+            customer_phone: customerPhone,
+            items: [
+              {
+                name: "*** SCHEDULED ORDER ***",
+                qty: 1,
+                unit_price: 0,
+                customizations_print_text: [
+                  `READY AT: ${formattedSchedule}`,
+                  ...(scheduledOrderNote ? [`NOTE: ${scheduledOrderNote}`] : [])
+                ],
+                note: `READY AT: ${formattedSchedule}${scheduledOrderNote ? ` | ${scheduledOrderNote}` : ''}`
+              },
+              ...ticketItems.map((it: any) => ({
+                name: it.name,
+                qty: it.qty,
+                note: it.note,
+                customizations_print_text: (it.selectedCustomizations || []).map((c: any) => typeof c === 'string' ? c : c.name || c.ingredient)
+              }))
+            ]
+          };
+          try {
+            await handlePrint(scheduledKitchenPayload);
+          } catch (pe) {
+            console.warn("Kitchen print for scheduled order error:", pe);
+          }
+        }
+
         resetClientOrderToken();
         setActiveTableContext(null);
         setTicketItems([]);
@@ -2127,6 +2225,8 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         setDiscountIsPercent(true);
         setDeliveryFee(0);
         setOrderType("delivery");
+        setScheduledOrderTime("");
+        setScheduledOrderNote("");
         fetchOrdersQueue();
       } else {
         alert(data.error || "Failed to hold order");
@@ -2447,6 +2547,32 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
           };
         });
 
+        // If scheduled order in Sell mode, print prominent scheduled chit header
+        if (scheduledOrderTime) {
+          const formattedSchedule = formatScheduledTimeDisplay(scheduledOrderDate, scheduledOrderTime);
+          normalizedItems.unshift({
+            qty: 1,
+            name: "*** SCHEDULED ORDER ***",
+            unit_price: 0,
+            selectedCustomizations: [],
+            addons: [],
+            removals: [],
+            customizations_print_text: [
+              `READY AT: ${formattedSchedule}`,
+              ...(scheduledOrderNote ? [`NOTE: ${scheduledOrderNote}`] : [])
+            ],
+            note: `READY AT: ${formattedSchedule}${scheduledOrderNote ? ` | ${scheduledOrderNote}` : ''}`,
+            isHoldSeparator: false
+          });
+        }
+
+        const isPickup = orderType === "pickup" || (effectiveChannel || "").toLowerCase().includes("pick");
+        const defaultCustomer = isDineIn
+          ? `Table ${activeTableContext?.tableCode}`
+          : isPickup
+          ? "Pickup Customer"
+          : "Direct Order";
+
         const completedOrderData = {
           id: completedOrderId,
           order_source: effectiveChannel,
@@ -2457,12 +2583,16 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
           change_amount: paymentDetails?.changeAmount,
           change_currency: paymentDetails?.changeCurrency || "USD",
           exchange_rate: exchangeRate,
-          customer_name: customerName.trim() || (activeTableContext ? `Table ${activeTableContext.tableCode}` : ""),
+          customer_name: customerName.trim() || defaultCustomer,
           table_label: activeTableContext?.tableCode,
           guest_count: activeTableContext?.guestCount,
           waiter_name: activeTableContext?.waiterName || user?.name,
           customer_phone: customerPhone,
           delivery_address: deliveryAddress,
+          is_scheduled: Boolean(scheduledOrderTime),
+          scheduled_for: scheduledOrderTime ? `${scheduledOrderDate} ${scheduledOrderTime}` : null,
+          scheduled_time_display: scheduledOrderTime ? formatScheduledTimeDisplay(scheduledOrderDate, scheduledOrderTime) : null,
+          scheduled_notes: scheduledOrderNote || null,
           subtotal_amount: subtotal,
           delivery_fee: (!isDineIn && orderType === "delivery") ? (parseFloat(deliveryFee) || 0) : 0,
           discount_amount: discountAmount,
@@ -2490,6 +2620,8 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         setDiscountIsPercent(true);
         setDeliveryFee(0);
         setOrderType("delivery");
+        setScheduledOrderTime("");
+        setScheduledOrderNote("");
         if (wasTable) {
           setPosActiveView('tables');
         } else {
@@ -3156,14 +3288,22 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                   <div className="grid grid-cols-2 gap-2">
                     <input
                       type="text"
-                      placeholder="Customer Name *"
+                      placeholder={
+                        orderType === "pickup" || (selectedChannel || "").toLowerCase().includes("pick")
+                          ? "Customer Name (Optional)"
+                          : "Customer Name *"
+                      }
                       value={customerName}
                       onChange={(e) => {
                         setCustomerName(e.target.value);
                         if (validationError) setValidationError("");
                       }}
                       className={`w-full bg-[#0F1115] border ${
-                        validationError && !customerName.trim()
+                        validationError &&
+                        !customerName.trim() &&
+                        orderType !== "pickup" &&
+                        !(selectedChannel || "").toLowerCase().includes("pick") &&
+                        !activeTableContext
                           ? "border-rose-500 ring-2 ring-rose-500/50 bg-rose-950/20"
                           : "border-[#262D3D]"
                       } rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-gray-500 font-medium focus:outline-none focus:border-[#eb660c]`}
@@ -3258,6 +3398,48 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                         onChange={(e) => setDeliveryAddress(e.target.value)}
                         className="w-full bg-[#0F1115] border border-[#262D3D] rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-gray-500 font-medium focus:outline-none focus:border-[#eb660c] resize-none"
                       />
+                    </div>
+                  )}
+
+                  {/* ACTIVE SCHEDULED ORDER BADGE */}
+                  {scheduledOrderTime && (
+                    <div className="bg-purple-950/80 border border-purple-500/60 rounded-xl p-2.5 flex items-center justify-between text-xs shadow-lg animate-fade-in">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-base">⏳</span>
+                        <div className="min-w-0">
+                          <div className="font-black text-purple-200 text-[11px] flex items-center gap-1.5">
+                            <span>SCHEDULED ORDER</span>
+                            <span className="text-[10px] bg-purple-800 text-purple-100 px-1.5 py-0.5 rounded font-bold">
+                              {formatScheduledTimeDisplay(scheduledOrderDate, scheduledOrderTime)}
+                            </span>
+                          </div>
+                          {scheduledOrderNote && (
+                            <div className="text-[10px] text-purple-300 font-medium truncate mt-0.5">
+                              Note: {scheduledOrderNote}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setIsScheduleModalOpen(true)}
+                          className="px-2 py-1 text-[10px] font-bold text-purple-200 hover:text-white bg-purple-900/80 hover:bg-purple-800 rounded-lg transition"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setScheduledOrderTime("");
+                            setScheduledOrderNote("");
+                          }}
+                          className="px-2 py-1 text-[10px] font-bold text-rose-300 hover:text-rose-100 bg-rose-950/50 hover:bg-rose-900 rounded-lg transition"
+                          title="Remove schedule"
+                        >
+                          ✕
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -3504,32 +3686,6 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                 </div>
               </div>
             </div>
-
-            {/* CART FOOTER STATUS */}
-            <div className="pt-2 border-t border-[#262D3D] flex items-center justify-between text-xs font-bold text-gray-400">
-              {activeTableContext ? (
-                <div className="flex items-center gap-2 w-full justify-between">
-                  <span className="flex items-center gap-1.5 text-amber-400 bg-amber-950/40 px-2.5 py-1 rounded-lg border border-amber-500/30">
-                    <span>🪑</span> Table {activeTableContext.tableCode} ({ticketItems.reduce((sum, item) => sum + (Number(item.qty) || 1), 0)} items)
-                  </span>
-                  <span className="text-[11px] text-slate-400 font-semibold">Touch FIRE or HOLD below</span>
-                </div>
-              ) : ["toters", "noknok"].includes((selectedChannel || "").toLowerCase()) ? (
-                <div className="flex items-center gap-2 w-full justify-between">
-                  <span className="text-emerald-400 bg-emerald-950/40 px-2.5 py-1 rounded-lg border border-emerald-500/30">
-                    🛵 {selectedChannel} (Prepaid)
-                  </span>
-                  <span className="text-[11px] text-slate-400 font-semibold">Ready to Settle</span>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 w-full justify-between">
-                  <span className="text-slate-300 font-bold">
-                    Direct Order ({ticketItems.reduce((sum, item) => sum + (Number(item.qty) || 1), 0)} items)
-                  </span>
-                  <span className="text-[11px] text-slate-400 font-semibold">Total: ${total.toFixed(2)}</span>
-                </div>
-              )}
-            </div>
           </div>
         </div>
       </div>
@@ -3548,26 +3704,24 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
           <span>Features</span>
         </button>
 
-        {/* 2 - Settle & close */}
+        {/* 2 - Place order (disabled in Sell mode or when no table) */}
         <button
           type="button"
-          onClick={() => {
-            if (["toters", "noknok"].includes((selectedChannel || "").toLowerCase())) {
-              handleFinalizePayment();
-              return;
-            }
-            if (!isShiftOpen) {
-              setIsOpenShiftModalOpen(true);
-              return;
-            }
-            setIsTerminalPaymentModalOpen(true);
-          }}
-          disabled={ticketItems.length === 0 && !activeTableContext?.orderId && !editingOrderId}
-          className="flex-[1.1] h-full rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 active:scale-98 text-white font-black text-xs md:text-sm tracking-wider flex items-center justify-center gap-2 border border-blue-400 shadow-lg shadow-blue-900/40 transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-          title="Collect payment and settle order / table"
+          onClick={handleHoldOrder}
+          disabled={ticketItems.length === 0 || isSubmitting || !activeTableContext}
+          className={`flex-[1.1] h-full rounded-xl font-black text-xs md:text-sm tracking-wider flex items-center justify-center gap-2 border shadow-lg transition ${
+            ticketItems.length === 0 || isSubmitting || !activeTableContext
+              ? 'bg-[#181C24] text-slate-500 border-[#262D3D] opacity-40 cursor-not-allowed'
+              : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 active:scale-98 text-white border-emerald-400 shadow-emerald-950/50 cursor-pointer'
+          }`}
+          title={
+            !activeTableContext
+              ? "Place order is disabled in Sell mode. In Sell mode, please use 'Settle & close' to complete orders."
+              : "Place and submit order to kitchen / table"
+          }
         >
-          <span className="text-base md:text-lg">💳</span>
-          <span>Settle & close</span>
+          <span className="text-base md:text-lg">🍽️</span>
+          <span>{isSubmitting ? 'Placing...' : 'Place order'}</span>
         </button>
 
         {/* 3 - Hold */}
@@ -3575,11 +3729,27 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
           type="button"
           onClick={handleInsertHold}
           disabled={ticketItems.length === 0}
-          className="flex-1 h-full rounded-xl bg-purple-950/60 hover:bg-purple-900/80 active:scale-98 text-purple-300 font-black text-xs md:text-sm tracking-wider flex items-center justify-center gap-2 border border-purple-500/50 shadow-md transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-          title="Insert HOLD separator: tells kitchen to pause before next items"
+          className={`flex-1 h-full rounded-xl active:scale-98 font-black text-xs md:text-sm tracking-wider flex items-center justify-center gap-2 border shadow-md transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+            scheduledOrderTime && !activeTableContext
+              ? 'bg-purple-900 text-white border-purple-400 ring-2 ring-purple-400/50 shadow-purple-950/60'
+              : 'bg-purple-950/60 hover:bg-purple-900/80 text-purple-300 border-purple-500/50'
+          }`}
+          title={
+            activeTableContext
+              ? "Insert HOLD separator: tells kitchen to pause before next items"
+              : scheduledOrderTime
+              ? `Order scheduled for ${formatScheduledTimeDisplay(scheduledOrderDate, scheduledOrderTime)}. Click to edit.`
+              : "Schedule order: set pickup / delivery ready time to print on kitchen ticket"
+          }
         >
           <span className="text-base md:text-lg">⏳</span>
-          <span>Hold</span>
+          <span>
+            {activeTableContext
+              ? "Hold"
+              : scheduledOrderTime
+              ? `Sched: ${scheduledOrderTime}`
+              : "Hold"}
+          </span>
         </button>
 
         {/* 4 - Fire */}
@@ -3604,20 +3774,184 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
           <span>Fire {isFireActive ? `(${remainingFires})` : ''}</span>
         </button>
 
-        {/* 5 - Place order (moved to the right of the screen) */}
+        {/* 5 - Settle & close (far right) */}
         <button
           type="button"
-          onClick={handleHoldOrder}
-          disabled={ticketItems.length === 0 || isSubmitting}
-          className="flex-[1.3] h-full rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 active:scale-98 text-white font-black text-xs md:text-sm tracking-wider flex items-center justify-center gap-2 border border-emerald-400 shadow-lg shadow-emerald-950/50 transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-          title="Place and submit order to kitchen / table"
+          onClick={() => {
+            if (["toters", "noknok"].includes((selectedChannel || "").toLowerCase())) {
+              handleFinalizePayment();
+              return;
+            }
+            if (!isShiftOpen) {
+              setIsOpenShiftModalOpen(true);
+              return;
+            }
+            setIsTerminalPaymentModalOpen(true);
+          }}
+          disabled={ticketItems.length === 0 && !activeTableContext?.orderId && !editingOrderId}
+          className="flex-[1.3] h-full rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 active:scale-98 text-white font-black text-xs md:text-sm tracking-wider flex items-center justify-center gap-2 border border-blue-400 shadow-lg shadow-blue-900/40 transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+          title="Collect payment and settle order / table"
         >
-          <span className="text-base md:text-lg">🍽️</span>
-          <span>{isSubmitting ? 'Placing...' : 'Place order'}</span>
+          <span className="text-base md:text-lg">💳</span>
+          <span>Settle & close</span>
         </button>
       </div>
     </div>
   )}
+
+      {/* SCHEDULE ORDER MODAL (Hold in Sell mode) */}
+      {isScheduleModalOpen && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:hidden">
+          <div className="bg-[#181C24] border border-[#262D3D] rounded-2xl w-full max-w-md p-5 space-y-4 text-white shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="flex justify-between items-center border-b border-[#262D3D] pb-3">
+              <div className="flex items-center gap-2.5">
+                <span className="text-2xl">⏳</span>
+                <div>
+                  <h3 className="font-black text-base text-white">Schedule Order (Hold)</h3>
+                  <p className="text-[11px] text-gray-400">
+                    Set target prep & ready time. Info prints on kitchen ticket.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsScheduleModalOpen(false)}
+                className="text-gray-400 hover:text-white font-bold p-1 text-sm rounded-lg hover:bg-[#262D3D]"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Quick Time Presets */}
+            <div>
+              <label className="text-xs font-bold text-gray-300 block mb-1.5">
+                Quick Preset Ready Times:
+              </label>
+              <div className="grid grid-cols-5 gap-1.5">
+                {[15, 30, 45, 60, 120].map((mins) => (
+                  <button
+                    key={mins}
+                    type="button"
+                    onClick={() => applyQuickSchedule(mins)}
+                    className="px-2 py-2 rounded-xl bg-[#0F1115] hover:bg-purple-950/70 border border-[#262D3D] hover:border-purple-500/60 text-xs font-black text-purple-200 hover:text-white transition text-center"
+                  >
+                    +{mins < 60 ? `${mins}m` : `${mins / 60}h`}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Date & Time Selectors */}
+            <div className="grid grid-cols-2 gap-2.5">
+              <div>
+                <label className="text-[11px] font-bold text-gray-400 block mb-1">
+                  Target Ready Date:
+                </label>
+                <input
+                  type="date"
+                  value={scheduledOrderDate}
+                  onChange={(e) => setScheduledOrderDate(e.target.value)}
+                  className="w-full bg-[#0F1115] border border-[#262D3D] rounded-xl px-3 py-2 text-xs text-white font-semibold focus:outline-none focus:border-purple-500"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-bold text-gray-400 block mb-1">
+                  Target Ready Time:
+                </label>
+                <input
+                  type="time"
+                  value={scheduledOrderTime}
+                  onChange={(e) => setScheduledOrderTime(e.target.value)}
+                  className="w-full bg-[#0F1115] border border-[#262D3D] rounded-xl px-3 py-2 text-xs text-white font-semibold focus:outline-none focus:border-purple-500"
+                />
+              </div>
+            </div>
+
+            {/* Special Kitchen Notes */}
+            <div>
+              <label className="text-[11px] font-bold text-gray-400 block mb-1">
+                Kitchen Prep & Pickup Note (prints on ticket):
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. Customer will pick up curbside at 1:30 PM, pack sauces separately"
+                value={scheduledOrderNote}
+                onChange={(e) => setScheduledOrderNote(e.target.value)}
+                className="w-full bg-[#0F1115] border border-[#262D3D] rounded-xl px-3 py-2 text-xs text-white placeholder-gray-500 font-medium focus:outline-none focus:border-purple-500"
+              />
+            </div>
+
+            {/* Preview Banner */}
+            {scheduledOrderTime && (
+              <div className="p-3 bg-purple-950/40 border border-purple-500/40 rounded-xl text-xs space-y-1">
+                <div className="font-bold text-purple-300 flex items-center gap-1.5">
+                  <span>🖨️</span>
+                  <span>Kitchen Chit Print Preview:</span>
+                </div>
+                <div className="font-mono text-[11px] text-white bg-black/50 p-2.5 rounded-lg border border-purple-500/20 space-y-0.5">
+                  <div className="font-bold text-amber-300">*** SCHEDULED ORDER ***</div>
+                  <div className="text-purple-200 font-bold">
+                    READY AT: {formatScheduledTimeDisplay(scheduledOrderDate, scheduledOrderTime)}
+                  </div>
+                  {scheduledOrderNote && <div className="text-gray-300">NOTE: {scheduledOrderNote}</div>}
+                </div>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex items-center gap-2 pt-2 border-t border-[#262D3D]">
+              {scheduledOrderTime && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setScheduledOrderTime("");
+                    setScheduledOrderNote("");
+                    setIsScheduleModalOpen(false);
+                  }}
+                  className="px-3 py-2.5 rounded-xl bg-rose-950/40 hover:bg-rose-900/60 border border-rose-500/40 text-rose-300 font-bold text-xs transition"
+                  title="Clear schedule"
+                >
+                  Clear
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setIsScheduleModalOpen(false)}
+                className="flex-1 py-2.5 rounded-xl bg-[#262D3D] hover:bg-[#323B4E] text-gray-300 hover:text-white font-bold text-xs transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!scheduledOrderTime) {
+                    applyQuickSchedule(30);
+                  }
+                  setIsScheduleModalOpen(false);
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black text-xs transition shadow-lg shadow-purple-950/50"
+              >
+                Confirm Schedule
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!scheduledOrderTime) {
+                    applyQuickSchedule(30);
+                  }
+                  setIsScheduleModalOpen(false);
+                  await handleHoldOrder();
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-black text-xs transition shadow-lg shadow-amber-950/50"
+                title="Save scheduled order into held orders queue immediately and print kitchen chit"
+              >
+                Hold & Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* DISCOUNT MODAL */}
       {showDiscountModal && (
