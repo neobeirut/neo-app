@@ -6,7 +6,7 @@ import { supabase, getGlobalRestaurantId, setGlobalRestaurantId } from "../api/s
 import { resolveCommerceBranchLink, getBranchCapabilities } from "../pos/services/branchMapping";
 import type { CommerceBranchLink } from "../pos/types/commerce";
 import type { BranchCapabilities } from "../pos/services/branchMapping";
-import { TablesScreen, getOrCreateTableAndSession, TableKeypadModal, loadFloorState } from "../pos/tables";
+import { TablesScreen, getOrCreateTableAndSession, TableKeypadModal, loadFloorState, closeTableSession } from "../pos/tables";
 import type { PosTable } from "../pos/tables";
 import { BranchMappingAlert } from "../pos/components/BranchMappingAlert";
 import { usePos86 } from "../pos/hooks/usePos86";
@@ -215,6 +215,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     sessionId?: string;
     guestCount?: number;
     waiterName?: string;
+    isExistingOccupied?: boolean;
   } | null>(null);
 
   // Quick Table Input State (Type table # on-demand)
@@ -583,6 +584,16 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   const [ticketItems, setTicketItems] = useState([]);
   const [editingOrderId, setEditingOrderId] = useState(null);
   const [editingOrderVersion, setEditingOrderVersion] = useState(null);
+
+  // Check if active table is already occupied / committed
+  const isCurrentTableOccupied = useMemo(() => {
+    if (!activeTableContext) return false;
+    // An occupied table has an active order entered or loaded, or items in ticket
+    if (activeTableContext.orderId) return true;
+    if (ticketItems.length > 0) return true;
+    if (activeTableContext.isExistingOccupied) return true;
+    return false;
+  }, [activeTableContext, ticketItems]);
   const [posTerminalId] = useState(() => {
     if (typeof window !== "undefined") {
       let tid = localStorage.getItem("pos_terminal_id");
@@ -1824,7 +1835,8 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
               tableCode: res.table.table_code,
               sessionId: res.sessionId,
               guestCount: res.guestCount,
-              waiterName: res.waiterName
+              waiterName: res.waiterName,
+              isExistingOccupied: true,
             });
             return;
           }
@@ -1833,7 +1845,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         }
       }
 
-      // Fresh table session (newly created or opened)
+      // Fresh table session (newly created or opened before order entered)
       setCustomerName(`Table ${res.table.table_code}`);
       setOrderType("dine_in");
       setSelectedChannel("POS");
@@ -1842,7 +1854,8 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         tableCode: res.table.table_code,
         sessionId: res.sessionId,
         guestCount: res.guestCount,
-        waiterName: res.waiterName
+        waiterName: res.waiterName,
+        isExistingOccupied: false,
       });
     } catch (err: any) {
       alert(err.message || "Error assigning table.");
@@ -1853,6 +1866,20 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
 
   const handleTableKeypadSelect = async (tableCode: string) => {
     setIsTableKeypadOpen(false);
+    if (activeTableContext && isCurrentTableOccupied) {
+      alert("⚠️ Table is already occupied. You cannot change the table number unless you click Transfer Table.");
+      setTransferTargetTableInput("");
+      setIsTransferModalOpen(true);
+      return;
+    }
+    // Changing table before order is entered: clean up previous empty table session
+    if (activeTableContext?.sessionId && !isCurrentTableOccupied) {
+      try {
+        await closeTableSession(activeTableContext.sessionId);
+      } catch (e) {
+        console.warn("Released previous empty table session:", e);
+      }
+    }
     await handleQuickAssignTable(tableCode);
     setPosActiveView('sell');
   };
@@ -1862,7 +1889,12 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     setPosActiveView('tables');
   };
 
-  const handleClearCurrentTable = () => {
+  const handleClearCurrentTable = async () => {
+    if (activeTableContext?.sessionId && !isCurrentTableOccupied) {
+      try {
+        await closeTableSession(activeTableContext.sessionId);
+      } catch (e) {}
+    }
     setActiveTableContext(null);
     setQuickTableInput("");
     setCustomerName("");
@@ -2852,54 +2884,58 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
 
           {/* TICKET HEADER & UNIFIED SMART CHANNEL BAR */}
           <div className="p-3 border-b border-[#262D3D] space-y-2 bg-[#181C24] flex-shrink-0">
-            {/* Active Table Context or Editing Order Banner */}
+            {/* Active Table Context Bar */}
             {activeTableContext ? (
-              <div className="bg-amber-950/80 border border-amber-500/60 px-3 py-2 rounded-xl flex items-center justify-between text-xs">
+              <div className="bg-[#181C26] border border-[#2B354D] px-3 py-1.5 rounded-xl flex items-center justify-between text-xs">
                 <div className="flex items-center gap-2">
                   <span className="text-amber-400 font-black">🪑 Table {activeTableContext.tableCode}</span>
-                  {activeTableContext.waiterName && (
+                  {isCurrentTableOccupied && (
+                    <span className="px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 text-[10px] font-bold border border-rose-500/40">
+                      Occupied
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  {isCurrentTableOccupied ? (
+                    /* Table already occupied: Cannot change table # directly; must Transfer */
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTransferTargetTableInput("");
+                        setIsTransferModalOpen(true);
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-black text-xs transition active:scale-95 shadow cursor-pointer flex items-center gap-1"
+                      title="Transfer occupied table to another table"
+                    >
+                      <span>🔀</span>
+                      <span>Transfer Table</span>
+                    </button>
+                  ) : (
+                    /* Before order is entered: Option to change table */
                     <>
-                      <span className="text-slate-500">•</span>
-                      <span className="text-slate-300 font-semibold">{activeTableContext.waiterName}</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          refreshFloorTables();
+                          setIsTableKeypadOpen(true);
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-black text-xs border border-amber-500/40 transition active:scale-95 cursor-pointer flex items-center gap-1"
+                        title="Change table before order is entered"
+                      >
+                        <span>🔄</span>
+                        <span>Change Table</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleClearCurrentTable}
+                        className="text-slate-400 hover:text-rose-300 text-xs font-bold px-1.5 py-0.5 cursor-pointer"
+                        title="Clear table"
+                      >
+                        ✕
+                      </button>
                     </>
                   )}
-                  <span className="text-slate-500">•</span>
-                  <span className="text-amber-200 font-bold">
-                    {activeTableContext.orderId ? `Order #${activeTableContext.orderId}` : 'New Ticket'}
-                  </span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      refreshFloorTables();
-                      setIsTableKeypadOpen(true);
-                    }}
-                    className="text-[10px] font-black text-amber-400 hover:text-amber-300 bg-amber-950/60 hover:bg-amber-900/60 px-2 py-0.5 rounded border border-amber-500/40 transition cursor-pointer"
-                    title="Change table number"
-                  >
-                    Change
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setActiveTableContext(null);
-                      setQuickTableInput("");
-                      setCustomerName("");
-                    }}
-                    className="text-[10px] font-bold text-slate-400 hover:text-white px-1.5 py-0.5 cursor-pointer"
-                    title="Exit table"
-                  >
-                    Exit
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPosActiveView('tables')}
-                    className="text-[10px] font-black text-amber-300 hover:text-white bg-amber-900/60 hover:bg-amber-800 px-2.5 py-1 rounded-lg border border-amber-500/50 flex items-center gap-1 transition cursor-pointer"
-                  >
-                    <span>Floor</span>
-                    <span>➔</span>
-                  </button>
                 </div>
               </div>
             ) : editingOrderId ? (
@@ -2916,25 +2952,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                   Cancel Edit
                 </button>
               </div>
-            ) : (
-              /* Touch Table Selector Trigger */
-              <button
-                type="button"
-                onClick={() => {
-                  refreshFloorTables();
-                  setIsTableKeypadOpen(true);
-                }}
-                className="w-full flex items-center justify-between px-3 py-2 bg-[#0F1115] hover:bg-[#181C26] rounded-xl border border-[#262D3D] text-xs transition cursor-pointer active:scale-98 group"
-              >
-                <div className="flex items-center gap-2 text-slate-400 font-bold">
-                  <span className="text-amber-400">🪑</span>
-                  <span>Dine-In Table: <span className="text-slate-500 font-normal">None assigned</span></span>
-                </div>
-                <span className="text-[11px] font-black text-amber-400 bg-amber-950/60 border border-amber-500/40 px-2.5 py-1 rounded-lg group-hover:bg-amber-900/60 transition">
-                  Tap to Enter #
-                </span>
-              </button>
-            )}
+            ) : null}
 
             {/* TICKET ACTIONS & STATUS HEADER BAR */}
             <div className="flex items-center justify-between">
@@ -4885,13 +4903,49 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                 className="w-full bg-[#10131A] border border-[#262D3D] rounded-xl px-3 py-2.5 text-white font-bold text-sm focus:outline-none focus:border-amber-400"
                 autoFocus
               />
+
+              {/* Touch keypad for destination table */}
+              <div className="grid grid-cols-3 gap-1.5 pt-2">
+                {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map(d => (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => setTransferTargetTableInput(prev => prev + d)}
+                    className="h-10 bg-[#121620] hover:bg-[#1C2232] text-white font-black text-sm rounded-xl border border-[#262F44] transition active:scale-95 cursor-pointer"
+                  >
+                    {d}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setTransferTargetTableInput('')}
+                  className="h-10 bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 font-bold text-xs rounded-xl border border-rose-500/30 transition active:scale-95 cursor-pointer"
+                >
+                  Clear
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTransferTargetTableInput(prev => prev + '0')}
+                  className="h-10 bg-[#121620] hover:bg-[#1C2232] text-white font-black text-sm rounded-xl border border-[#262F44] transition active:scale-95 cursor-pointer"
+                >
+                  0
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTransferTargetTableInput(prev => prev.slice(0, -1))}
+                  className="h-10 bg-[#1E2333] hover:bg-[#283147] text-amber-400 font-black text-sm rounded-xl border border-[#2C364D] transition active:scale-95 cursor-pointer"
+                  title="Backspace"
+                >
+                  ⌫
+                </button>
+              </div>
             </div>
 
             <div className="flex items-center gap-2 pt-2">
               <button
                 type="button"
                 onClick={() => setIsTransferModalOpen(false)}
-                className="flex-1 py-2.5 rounded-xl bg-gray-700/50 hover:bg-gray-700 text-slate-300 font-bold text-xs"
+                className="flex-1 py-2.5 rounded-xl bg-gray-700/50 hover:bg-gray-700 text-slate-300 font-bold text-xs cursor-pointer"
               >
                 Cancel
               </button>
@@ -4908,12 +4962,14 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                     return;
                   }
 
+                  const prevTable = activeTableContext?.tableCode;
                   setActiveTableContext(prev => prev ? { ...prev, tableCode: dest } : null);
                   setCustomerName(`Table ${dest}`);
                   setIsTransferModalOpen(false);
-                  alert(`✅ Order successfully transferred to Table ${dest}!`);
+                  refreshFloorTables();
+                  alert(`✅ Order successfully transferred from Table ${prevTable} to Table ${dest}!`);
                 }}
-                className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-lg shadow-blue-600/30"
+                className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-lg shadow-blue-600/30 cursor-pointer"
               >
                 Confirm Transfer
               </button>
@@ -4929,6 +4985,11 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         onSelectTable={handleTableKeypadSelect}
         onOpenFloorMap={handleOpenFloorMap}
         currentTableCode={activeTableContext?.tableCode}
+        isCurrentTableOccupied={isCurrentTableOccupied}
+        onOpenTransferModal={() => {
+          setTransferTargetTableInput("");
+          setIsTransferModalOpen(true);
+        }}
         onClearTable={handleClearCurrentTable}
         tables={branchFloorTables}
         isLoading={isQuickTableLoading}
