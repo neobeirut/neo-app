@@ -1,4 +1,4 @@
-﻿export interface PosScreenButton {
+export interface PosScreenButton {
   id: string;
   label: string;
   type: 'screen' | 'product';
@@ -13,6 +13,8 @@ export interface PosScreen {
   name: string;
   isRoot?: boolean;
   buttons: PosScreenButton[];
+  gridCols?: number; // 4 to 7 (or undefined for dynamic auto)
+  gridRows?: number; // 5 to 7 (or undefined for dynamic auto)
 }
 
 export interface PosScreenLayoutConfig {

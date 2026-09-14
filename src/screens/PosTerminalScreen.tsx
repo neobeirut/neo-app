@@ -44,7 +44,7 @@ interface PosTerminalScreenProps {
 
 import { COMMERCE_API_BASE } from "../pos/config";
 import { fetchPosCatalog } from "../pos/services/posCatalogService";
-import { fetchPosScreens, savePosScreens, TILE_COLORS } from "../pos/services/posScreenService";
+import { fetchPosScreens, savePosScreens, TILE_COLORS, calculateDynamicGrid, getGridButtonDensity } from "../pos/services/posScreenService";
 import type { PosScreen, PosScreenButton } from "../pos/types/posScreen";
 import PosPinScreen from "../pos/components/PosPinScreen";
 
@@ -1402,6 +1402,18 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     if (!posScreens || posScreens.length === 0) return null;
     return posScreens.find((s) => s.id === currentScreenId) || posScreens.find((s) => s.isRoot) || posScreens[0];
   }, [posScreens, currentScreenId]);
+
+  const activeGridConfig = useMemo(() => {
+    return calculateDynamicGrid(
+      activePosScreen?.buttons?.length || 0,
+      activePosScreen?.gridCols,
+      activePosScreen?.gridRows
+    );
+  }, [activePosScreen?.buttons?.length, activePosScreen?.gridCols, activePosScreen?.gridRows]);
+
+  const activeGridDensity = useMemo(() => {
+    return getGridButtonDensity(activeGridConfig.cols, activeGridConfig.rows);
+  }, [activeGridConfig.cols, activeGridConfig.rows]);
 
   const handleNavigateToSubscreen = (targetScreenId?: string) => {
     if (!targetScreenId) return;
@@ -2781,7 +2793,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
 
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-slate-500 font-semibold hidden sm:inline">
-                      {activePosScreen?.buttons?.length || 0} items
+                      {activePosScreen?.buttons?.length || 0} items ({activeGridConfig.cols}×{activeGridConfig.rows})
                     </span>
                     <button
                       type="button"
@@ -2794,7 +2806,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                   </div>
                 </div>
 
-                {/* TOUCH SCREEN BUTTONS GRID: Pure Product Names Only */}
+                {/* TOUCH SCREEN BUTTONS GRID: Pure Product Names Only with Dynamic 4-7 cols x 5-7 rows */}
                 <div className="flex-1 overflow-y-auto p-4">
                   {(!activePosScreen || !activePosScreen.buttons || activePosScreen.buttons.length === 0) ? (
                     <div className="h-full flex flex-col items-center justify-center text-center p-8 border-2 border-dashed border-[#222838] rounded-3xl my-auto">
@@ -2814,7 +2826,14 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                       </button>
                     </div>
                   ) : (
-                    <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3.5 align-content-start">
+                    <div
+                      className="w-full align-content-start"
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: `repeat(${activeGridConfig.cols}, minmax(0, 1fr))`,
+                        gap: activeGridDensity.gap
+                      }}
+                    >
                       {activePosScreen.buttons.map((btn, idx) => {
                         const colorTheme = TILE_COLORS.find(c => c.id === btn.color) || TILE_COLORS[0];
                         const isSubscreen = btn.type === 'screen';
@@ -2824,20 +2843,20 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                             key={btn.id || idx}
                             type="button"
                             onClick={() => handleTouchButtonPress(btn)}
-                            className={`min-h-[105px] rounded-2xl border p-4 flex flex-col items-center justify-center text-center shadow-lg transition-all active:scale-95 cursor-pointer relative overflow-hidden group select-none ${
+                            className={`${activeGridDensity.minHeight} ${activeGridDensity.padding} rounded-2xl border flex flex-col items-center justify-center text-center shadow-lg transition-all active:scale-95 cursor-pointer relative overflow-hidden group select-none ${
                               isSubscreen
                                 ? `${colorTheme.bg} ${colorTheme.border} ring-1 ring-white/10 hover:border-amber-400`
                                 : 'bg-[#161B26] hover:bg-[#1F2636] border-[#262F44] hover:border-amber-500/50'
                             }`}
                           >
                             {isSubscreen && (
-                              <span className="absolute top-2 right-2 text-[10px] px-1.5 py-0.2 rounded bg-black/50 text-amber-300 font-black tracking-wider">
+                              <span className="absolute top-1.5 right-1.5 text-[9px] px-1 py-0.2 rounded bg-black/50 text-amber-300 font-black tracking-wider">
                                 FOLDER ➔
                               </span>
                             )}
 
                             {/* PURE PRODUCT NAME ONLY (nothing else displayed) */}
-                            <span className={`font-black text-sm md:text-base leading-snug tracking-wide line-clamp-3 ${
+                            <span className={`font-black ${activeGridDensity.fontSize} leading-tight tracking-wide line-clamp-3 ${
                               isSubscreen ? colorTheme.text : 'text-slate-100 group-hover:text-amber-300'
                             }`}>
                               {btn.label}

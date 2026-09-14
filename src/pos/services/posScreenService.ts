@@ -1,4 +1,4 @@
-﻿import { supabase } from '../../api/supabase';
+import { supabase } from '../../api/supabase';
 import type { PosScreen, PosScreenButton } from '../types/posScreen';
 
 // Modern Palette for Screen Matrix Tiles
@@ -11,6 +11,86 @@ export const TILE_COLORS = [
   { id: 'rose', name: 'Burgundy / Rose', bg: 'bg-rose-950/70', border: 'border-rose-500/50', text: 'text-rose-200', hover: 'hover:bg-rose-900/80' },
   { id: 'teal', name: 'Teal Accent', bg: 'bg-teal-950/70', border: 'border-teal-500/50', text: 'text-teal-200', hover: 'hover:bg-teal-900/80' }
 ];
+
+/**
+ * Calculates dynamic grid layout dimensions adhering to:
+ * Minimum: 4 horizontal (cols) × 5 vertical (rows) = 20 buttons
+ * Maximum: 7 horizontal (cols) × 7 vertical (rows) = 49 buttons
+ */
+export function calculateDynamicGrid(
+  buttonCount: number,
+  requestedCols?: number,
+  requestedRows?: number
+): { cols: number; rows: number; totalSlots: number } {
+  let cols = requestedCols ? Math.min(7, Math.max(4, requestedCols)) : 0;
+  let rows = requestedRows ? Math.min(7, Math.max(5, requestedRows)) : 0;
+
+  if (cols > 0 && rows > 0) {
+    return { cols, rows, totalSlots: cols * rows };
+  }
+
+  // Dynamic automatic calculation based on number of buttons
+  if (buttonCount <= 20) {
+    cols = cols || 4;
+    rows = rows || 5;
+  } else if (buttonCount <= 25) {
+    cols = cols || 5;
+    rows = rows || 5;
+  } else if (buttonCount <= 30) {
+    cols = cols || 5;
+    rows = rows || 6;
+  } else if (buttonCount <= 36) {
+    cols = cols || 6;
+    rows = rows || 6;
+  } else if (buttonCount <= 42) {
+    cols = cols || 7;
+    rows = rows || 6;
+  } else {
+    cols = cols || 7;
+    rows = rows || 7;
+  }
+
+  cols = Math.min(7, Math.max(4, cols));
+  rows = Math.min(7, Math.max(5, rows));
+
+  return { cols, rows, totalSlots: cols * rows };
+}
+
+/**
+ * Provides adaptive UI density metrics (padding, text size, height) based on grid dimensions.
+ */
+export function getGridButtonDensity(cols: number, rows: number) {
+  if (cols >= 7 || rows >= 7) {
+    return {
+      padding: 'p-1.5',
+      fontSize: 'text-[11px]',
+      minHeight: 'min-h-[52px]',
+      gap: '0.375rem'
+    };
+  }
+  if (cols >= 6 || rows >= 6) {
+    return {
+      padding: 'p-2',
+      fontSize: 'text-xs',
+      minHeight: 'min-h-[64px]',
+      gap: '0.5rem'
+    };
+  }
+  if (cols >= 5) {
+    return {
+      padding: 'p-2.5',
+      fontSize: 'text-xs md:text-sm',
+      minHeight: 'min-h-[76px]',
+      gap: '0.625rem'
+    };
+  }
+  return {
+    padding: 'p-3',
+    fontSize: 'text-sm md:text-base',
+    minHeight: 'min-h-[88px]',
+    gap: '0.75rem'
+  };
+}
 
 export function generateDefaultScreens(categories: any[] = [], products: any[] = []): PosScreen[] {
   const screens: PosScreen[] = [];

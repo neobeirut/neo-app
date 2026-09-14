@@ -1,12 +1,12 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, getRestaurantId } from '../api/client';
 import { fetchPosCatalog } from '../pos/services/posCatalogService';
-import { fetchPosScreens, savePosScreens, generateDefaultScreens, TILE_COLORS } from '../pos/services/posScreenService';
+import { fetchPosScreens, savePosScreens, generateDefaultScreens, TILE_COLORS, calculateDynamicGrid, getGridButtonDensity } from '../pos/services/posScreenService';
 import type { PosScreen, PosScreenButton } from '../pos/types/posScreen';
 import { 
   Layers, Plus, Trash2, Edit3, ArrowLeft, Save, RefreshCw, 
-  FolderPlus, MoveLeft, MoveRight, Check, AlertCircle
+  FolderPlus, MoveLeft, MoveRight, Check, AlertCircle, Grid, Search, CheckSquare, Square
 } from 'lucide-react';
 
 export default function PosScreenBuilderScreen({ user }: { user?: any }) {
@@ -34,6 +34,12 @@ export default function PosScreenBuilderScreen({ user }: { user?: any }) {
   const [btnTargetScreenId, setBtnTargetScreenId] = useState('');
   const [btnProductId, setBtnProductId] = useState<string | number>('');
   const [btnColor, setBtnColor] = useState('slate');
+
+  // Bulk Add Products Modal State
+  const [isBulkAddModalOpen, setIsBulkAddModalOpen] = useState(false);
+  const [bulkSelectedProductIds, setBulkSelectedProductIds] = useState<Set<string | number>>(new Set());
+  const [bulkSearchQuery, setBulkSearchQuery] = useState('');
+  const [bulkCategoryFilter, setBulkCategoryFilter] = useState<string>('all');
 
   useEffect(() => {
     async function loadData() {
@@ -65,6 +71,10 @@ export default function PosScreenBuilderScreen({ user }: { user?: any }) {
   }, [currentRestaurantId]);
 
   const activeScreen = screens.find((s) => s.id === activeScreenId) || screens[0];
+  const computedGrid = activeScreen
+    ? calculateDynamicGrid(activeScreen.buttons.length, activeScreen.gridCols, activeScreen.gridRows)
+    : { cols: 4, rows: 5, totalSlots: 20 };
+  const gridDensity = getGridButtonDensity(computedGrid.cols, computedGrid.rows);
 
   const handleSave = async () => {
     setSaving(true);
@@ -198,6 +208,78 @@ export default function PosScreenBuilderScreen({ user }: { user?: any }) {
 
     const updatedScreens = screens.map((s) => (s.id === activeScreen.id ? { ...s, buttons: updatedButtons } : s));
     setScreens(updatedScreens);
+  };
+
+  const handleUpdateGridDimensions = (cols?: number, rows?: number) => {
+    if (!activeScreen) return;
+    const updatedScreens = screens.map((s) =>
+      s.id === activeScreen.id ? { ...s, gridCols: cols, gridRows: rows } : s
+    );
+    setScreens(updatedScreens);
+  };
+
+  const handleOpenBulkAddModal = () => {
+    setBulkSelectedProductIds(new Set());
+    setBulkSearchQuery('');
+    setBulkCategoryFilter('all');
+    setIsBulkAddModalOpen(true);
+  };
+
+  const handleToggleBulkProduct = (prodId: string | number) => {
+    setBulkSelectedProductIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(prodId)) next.delete(prodId);
+      else next.add(prodId);
+      return next;
+    });
+  };
+
+  const filteredBulkProducts = products.filter((p) => {
+    const matchesCategory =
+      bulkCategoryFilter === 'all' ||
+      String(p.category_id) === String(bulkCategoryFilter) ||
+      (p.category && String(p.category).toLowerCase() === bulkCategoryFilter.toLowerCase());
+    const matchesSearch =
+      !bulkSearchQuery.trim() || p.name?.toLowerCase().includes(bulkSearchQuery.toLowerCase().trim());
+    return matchesCategory && matchesSearch;
+  });
+
+  const handleSelectAllBulkFiltered = () => {
+    const ids = filteredBulkProducts.map((p) => p.id);
+    setBulkSelectedProductIds((prev) => {
+      const next = new Set(prev);
+      const allSelected = ids.every((id) => next.has(id));
+      if (allSelected) {
+        ids.forEach((id) => next.delete(id));
+      } else {
+        ids.forEach((id) => next.add(id));
+      }
+      return next;
+    });
+  };
+
+  const handleConfirmBulkAdd = () => {
+    if (!activeScreen) return;
+    const selectedProductsList = products.filter((p) => bulkSelectedProductIds.has(p.id));
+    if (selectedProductsList.length === 0) {
+      setIsBulkAddModalOpen(false);
+      return;
+    }
+
+    const newButtons: PosScreenButton[] = selectedProductsList.map((p, idx) => ({
+      id: 'btn_prod_' + p.id + '_' + Date.now() + '_' + idx,
+      label: p.name || 'Dish',
+      type: 'product',
+      productId: p.id,
+      color: 'slate',
+      sortOrder: activeScreen.buttons.length + idx
+    }));
+
+    const updatedScreens = screens.map((s) =>
+      s.id === activeScreen.id ? { ...s, buttons: [...s.buttons, ...newButtons] } : s
+    );
+    setScreens(updatedScreens);
+    setIsBulkAddModalOpen(false);
   };
 
   if (loading) {
@@ -366,24 +448,87 @@ export default function PosScreenBuilderScreen({ user }: { user?: any }) {
                   )}
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => handleOpenAddButtonModal()}
-                  className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 text-amber-400 border border-amber-500/30 text-xs font-bold flex items-center gap-1.5 transition shadow"
-                >
-                  <Plus size={16} />
-                  <span>Add Button</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleOpenBulkAddModal}
+                    className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 border border-slate-700 text-xs font-bold flex items-center gap-1.5 transition shadow"
+                    title="Bulk Add Products to this screen"
+                  >
+                    <CheckSquare size={14} className="text-amber-400" />
+                    <span>Bulk Add Dishes</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleOpenAddButtonModal()}
+                    className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 active:scale-95 text-slate-950 text-xs font-black flex items-center gap-1.5 transition shadow"
+                  >
+                    <Plus size={16} />
+                    <span>Add Button</span>
+                  </button>
+                </div>
               </div>
 
-              <div className="py-2.5 flex items-center justify-between text-xs text-slate-400">
-                <span>
-                  Buttons display <strong>strictly the product name</strong> (nothing else) on the POS terminal.
-                </span>
-                <span>{activeScreen.buttons.length} tiles configured</span>
+              {/* Grid Dimensions & Density Control Bar */}
+              <div className="py-2 px-3 rounded-xl bg-slate-900/80 border border-slate-800/80 my-2.5 flex flex-wrap items-center justify-between gap-3 text-xs">
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-1.5 font-bold text-slate-300">
+                    <Grid size={15} className="text-amber-400" />
+                    <span>Grid Matrix:</span>
+                  </div>
+
+                  {/* Columns Selector (4 to 7 or Auto) */}
+                  <div className="flex items-center gap-1.5">
+                    <label className="text-slate-400 text-[11px]">Cols (H):</label>
+                    <select
+                      value={activeScreen.gridCols || ''}
+                      onChange={(e) => handleUpdateGridDimensions(e.target.value ? Number(e.target.value) : undefined, activeScreen.gridRows)}
+                      className="bg-slate-800 border border-slate-700 text-white rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-amber-500"
+                    >
+                      <option value="">Auto ({computedGrid.cols})</option>
+                      <option value="4">4 Cols (Min)</option>
+                      <option value="5">5 Cols</option>
+                      <option value="6">6 Cols</option>
+                      <option value="7">7 Cols (Max)</option>
+                    </select>
+                  </div>
+
+                  {/* Rows Selector (5 to 7 or Auto) */}
+                  <div className="flex items-center gap-1.5">
+                    <label className="text-slate-400 text-[11px]">Rows (V):</label>
+                    <select
+                      value={activeScreen.gridRows || ''}
+                      onChange={(e) => handleUpdateGridDimensions(activeScreen.gridCols, e.target.value ? Number(e.target.value) : undefined)}
+                      className="bg-slate-800 border border-slate-700 text-white rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-amber-500"
+                    >
+                      <option value="">Auto ({computedGrid.rows})</option>
+                      <option value="5">5 Rows (Min)</option>
+                      <option value="6">6 Rows</option>
+                      <option value="7">7 Rows (Max)</option>
+                    </select>
+                  </div>
+
+                  {/* Capacity & Matrix Info */}
+                  <span className="px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono text-[11px] border border-slate-700">
+                    {computedGrid.cols} × {computedGrid.rows} ({computedGrid.totalSlots} slots)
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2 text-slate-400">
+                  <span>
+                    {activeScreen.buttons.length} tiles configured
+                  </span>
+                  {activeScreen.buttons.length > computedGrid.totalSlots && (
+                    <span className="text-amber-400 font-semibold text-[11px] flex items-center gap-1">
+                      <AlertCircle size={12} />
+                      Scrolls on touch
+                    </span>
+                  )}
+                </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto pt-2 pb-4">
+              <div className="flex-1 overflow-y-auto pt-1 pb-4">
                 {activeScreen.buttons.length === 0 ? (
                   <div className="h-full flex flex-col items-center justify-center text-center p-8 border-2 border-dashed border-slate-800 rounded-2xl">
                     <FolderPlus size={36} className="text-slate-600 mb-2" />
@@ -391,75 +536,90 @@ export default function PosScreenBuilderScreen({ user }: { user?: any }) {
                     <p className="text-xs text-slate-500 mt-1 max-w-sm">
                       Add buttons linking to sub-screens (e.g. Starters, Drinks) or specific menu dishes.
                     </p>
-                    <button
-                      type="button"
-                      onClick={() => handleOpenAddButtonModal()}
-                      className="mt-4 px-4 py-2 rounded-xl bg-amber-500 text-slate-950 text-xs font-black"
-                    >
-                      Add First Button
-                    </button>
+                    <div className="mt-4 flex gap-2">
+                      <button
+                        type="button"
+                        onClick={handleOpenBulkAddModal}
+                        className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-400 border border-amber-500/30 text-xs font-bold"
+                      >
+                        Bulk Add Dishes
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenAddButtonModal()}
+                        className="px-3.5 py-2 rounded-xl bg-amber-500 text-slate-950 text-xs font-black"
+                      >
+                        Add Single Button
+                      </button>
+                    </div>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: `repeat(${computedGrid.cols}, minmax(0, 1fr))`,
+                      gap: gridDensity.gap
+                    }}
+                  >
                     {activeScreen.buttons.map((btn, idx) => {
                       const colorTheme = TILE_COLORS.find((c) => c.id === btn.color) || TILE_COLORS[0];
                       return (
                         <div
                           key={btn.id || idx}
-                          className={`relative group rounded-2xl border p-4 flex flex-col justify-between min-h-[105px] transition-all shadow-md ${colorTheme.bg} ${colorTheme.border}`}
+                          className={`relative group rounded-xl border ${gridDensity.minHeight} ${gridDensity.padding} flex flex-col justify-between transition-all shadow-md ${colorTheme.bg} ${colorTheme.border}`}
                         >
                           <div className="flex items-center justify-between gap-1 opacity-80 group-hover:opacity-100 transition">
-                            <span className="text-[10px] uppercase font-black tracking-wider px-1.5 py-0.5 rounded bg-black/40 text-slate-300">
-                              {btn.type === 'screen' ? '📁 Subscreen' : '🍽️ Product'}
+                            <span className="text-[9px] uppercase font-black tracking-wider px-1 py-0.2 rounded bg-black/40 text-slate-300">
+                              {btn.type === 'screen' ? '📁 Sub' : '🍽️ Dish'}
                             </span>
-                            <div className="flex items-center gap-1">
+                            <div className="flex items-center gap-0.5">
                               <button
                                 type="button"
                                 disabled={idx === 0}
                                 onClick={() => handleMoveButton(idx, 'left')}
-                                className="p-1 rounded bg-black/40 hover:bg-black/80 text-slate-400 hover:text-white disabled:opacity-20 transition"
+                                className="p-0.5 rounded bg-black/40 hover:bg-black/80 text-slate-400 hover:text-white disabled:opacity-20 transition"
                                 title="Move Left"
                               >
-                                <MoveLeft size={12} />
+                                <MoveLeft size={11} />
                               </button>
                               <button
                                 type="button"
                                 disabled={idx === activeScreen.buttons.length - 1}
                                 onClick={() => handleMoveButton(idx, 'right')}
-                                className="p-1 rounded bg-black/40 hover:bg-black/80 text-slate-400 hover:text-white disabled:opacity-20 transition"
+                                className="p-0.5 rounded bg-black/40 hover:bg-black/80 text-slate-400 hover:text-white disabled:opacity-20 transition"
                                 title="Move Right"
                               >
-                                <MoveRight size={12} />
+                                <MoveRight size={11} />
                               </button>
                               <button
                                 type="button"
                                 onClick={() => handleOpenAddButtonModal(idx)}
-                                className="p-1 rounded bg-black/40 hover:bg-black/80 text-slate-400 hover:text-amber-400 transition"
+                                className="p-0.5 rounded bg-black/40 hover:bg-black/80 text-slate-400 hover:text-amber-400 transition"
                                 title="Edit Button"
                               >
-                                <Edit3 size={12} />
+                                <Edit3 size={11} />
                               </button>
                               <button
                                 type="button"
                                 onClick={() => handleDeleteButton(idx)}
-                                className="p-1 rounded bg-black/40 hover:bg-red-950 text-slate-400 hover:text-red-400 transition"
+                                className="p-0.5 rounded bg-black/40 hover:bg-red-950 text-slate-400 hover:text-red-400 transition"
                                 title="Delete Button"
                               >
-                                <Trash2 size={12} />
+                                <Trash2 size={11} />
                               </button>
                             </div>
                           </div>
 
-                          <div className="my-auto py-2 text-center">
-                            <span className={`font-black text-sm leading-snug line-clamp-2 ${colorTheme.text}`}>
+                          <div className="my-auto py-1 text-center">
+                            <span className={`font-black ${gridDensity.fontSize} leading-tight line-clamp-2 ${colorTheme.text}`}>
                               {btn.label}
                             </span>
                           </div>
 
-                          <div className="text-[10px] text-slate-400 text-center truncate opacity-70">
+                          <div className="text-[9px] text-slate-400 text-center truncate opacity-70">
                             {btn.type === 'screen'
                               ? `Opens: ${screens.find((s) => s.id === btn.targetScreenId)?.name || 'Screen'}`
-                              : 'Adds to cart / Opens modifier'}
+                              : 'Product'}
                           </div>
                         </div>
                       );
@@ -652,6 +812,128 @@ export default function PosScreenBuilderScreen({ user }: { user?: any }) {
               >
                 {editingButtonIndex !== null ? 'Update Button' : 'Add Button'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Add Dishes Modal */}
+      {isBulkAddModalOpen && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#181C24] border border-slate-800 rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col p-6 shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div>
+                <h3 className="text-lg font-black text-white flex items-center gap-2">
+                  <CheckSquare className="text-amber-400" size={20} />
+                  Bulk Add Dishes to {activeScreen?.name}
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Quickly select multiple dishes to populate buttons on this screen.
+                </p>
+              </div>
+              <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                {bulkSelectedProductIds.size} Selected
+              </span>
+            </div>
+
+            {/* Filter and Search Bar */}
+            <div className="py-3 flex flex-wrap items-center gap-2 border-b border-slate-800/60">
+              <div className="relative flex-1 min-w-[200px]">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  value={bulkSearchQuery}
+                  onChange={(e) => setBulkSearchQuery(e.target.value)}
+                  placeholder="Search dishes by name..."
+                  className="w-full pl-9 pr-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <select
+                value={bulkCategoryFilter}
+                onChange={(e) => setBulkCategoryFilter(e.target.value)}
+                className="bg-slate-900 border border-slate-700 text-xs text-white rounded-xl px-3 py-1.5 focus:outline-none focus:border-amber-500"
+              >
+                <option value="all">All Categories</option>
+                {categories.map((cat) => (
+                  <option key={cat.id} value={cat.id}>
+                    {cat.name}
+                  </option>
+                ))}
+              </select>
+
+              <button
+                type="button"
+                onClick={handleSelectAllBulkFiltered}
+                className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200 transition"
+              >
+                {filteredBulkProducts.length > 0 &&
+                filteredBulkProducts.every((p) => bulkSelectedProductIds.has(p.id))
+                  ? 'Deselect Filtered'
+                  : 'Select All Filtered'}
+              </button>
+            </div>
+
+            {/* Product List Grid */}
+            <div className="flex-1 overflow-y-auto py-3 space-y-1.5 pr-1 min-h-[260px] max-h-[420px]">
+              {filteredBulkProducts.length === 0 ? (
+                <div className="text-center py-10 text-slate-500 text-xs">
+                  No dishes found matching your search or category filter.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {filteredBulkProducts.map((p) => {
+                    const isSelected = bulkSelectedProductIds.has(p.id);
+                    return (
+                      <div
+                        key={p.id}
+                        onClick={() => handleToggleBulkProduct(p.id)}
+                        className={`p-2.5 rounded-xl border flex items-center justify-between gap-3 cursor-pointer transition select-none ${
+                          isSelected
+                            ? 'bg-amber-500/15 border-amber-500/60 text-white'
+                            : 'bg-slate-900/60 border-slate-800 text-slate-300 hover:bg-slate-800/60'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5 truncate">
+                          <div className={`p-1 rounded ${isSelected ? 'text-amber-400' : 'text-slate-500'}`}>
+                            {isSelected ? <CheckSquare size={16} /> : <Square size={16} />}
+                          </div>
+                          <div className="truncate">
+                            <div className="font-bold text-xs text-white truncate">{p.name}</div>
+                            <div className="text-[10px] text-slate-400">
+                              {p.category || 'Menu Item'} • ${Number(p.price || 0).toFixed(2)}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex items-center justify-between pt-3 border-t border-slate-800">
+              <div className="text-xs text-slate-400">
+                {bulkSelectedProductIds.size} dish{bulkSelectedProductIds.size === 1 ? '' : 'es'} will be added as buttons.
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsBulkAddModalOpen(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={bulkSelectedProductIds.size === 0}
+                  onClick={handleConfirmBulkAdd}
+                  className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-40 disabled:hover:bg-amber-500 text-slate-950 text-xs font-black transition"
+                >
+                  Add {bulkSelectedProductIds.size} Button{bulkSelectedProductIds.size === 1 ? '' : 's'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
