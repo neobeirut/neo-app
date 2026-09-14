@@ -4,10 +4,11 @@ import { Users, Clock, DollarSign, CheckCircle2, AlertCircle } from 'lucide-reac
 
 interface TableCardProps {
   table: PosTable;
+  isSelected?: boolean;
   onClick: () => void;
 }
 
-export const TableCard: React.FC<TableCardProps> = ({ table, onClick }) => {
+export const TableCard: React.FC<TableCardProps> = ({ table, isSelected = false, onClick }) => {
   const isAvailable = table.status === 'available';
   const isBillRequested = table.status === 'bill_requested';
   const isOccupied = table.status === 'occupied' || isBillRequested;
@@ -19,9 +20,12 @@ export const TableCard: React.FC<TableCardProps> = ({ table, onClick }) => {
 
   return (
     <div
+      data-table-code={table.table_code}
       onClick={onClick}
       className={`relative flex flex-col justify-between p-3.5 border transition-all cursor-pointer select-none shadow-lg active:scale-95 ${shapeClass} ${
-        isAvailable
+        isSelected
+          ? 'ring-4 ring-amber-400 border-amber-400 bg-amber-950/50 shadow-amber-500/30 scale-[1.03] z-10'
+          : isAvailable
           ? 'bg-slate-900/80 border-emerald-500/40 hover:border-emerald-400 hover:bg-slate-900 shadow-emerald-500/5'
           : isBillRequested
           ? 'bg-amber-950/60 border-amber-500/70 shadow-amber-500/20 ring-2 ring-amber-500/40 animate-pulse'

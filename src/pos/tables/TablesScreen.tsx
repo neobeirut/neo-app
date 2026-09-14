@@ -15,8 +15,7 @@ import {
 } from './tableService';
 import { FloorPlan } from './FloorPlan';
 import { FloorPlanEditor } from './FloorPlanEditor';
-import { TableDetailsPanel } from './TableDetailsPanel';
-import { OpenTableModal } from './OpenTableModal';
+import { TableKeypadPanel } from './TableKeypadPanel';
 import { SplitBillModal } from './SplitBillModal';
 import { PaymentModal } from '../payments';
 import { 
@@ -27,8 +26,8 @@ import {
   Sliders, 
   Users, 
   Receipt, 
-  DollarSign,
-  CheckCircle2,
+  DollarSign, 
+  CheckCircle2, 
   AlertCircle
 } from 'lucide-react';
 
@@ -38,6 +37,7 @@ interface TablesScreenProps {
   restaurantId: string;
   externalBranchId?: string;
   cashierName: string;
+  initialTableCode?: string | null;
   onOpenOrderInCart?: (
     orderId: number | null,
     tableCode: string,
@@ -54,20 +54,20 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
   restaurantId,
   externalBranchId = '1',
   cashierName,
+  initialTableCode = null,
   onOpenOrderInCart,
   onPrintPreCheckDoc
 }) => {
   const [areas, setAreas] = useState<FloorArea[]>([]);
   const [tables, setTables] = useState<PosTable[]>([]);
   const [activeAreaId, setActiveAreaId] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'grid' | 'canvas'>('grid');
+  const [viewMode, setViewMode] = useState<'grid' | 'canvas'>('canvas');
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
 
-  // Modals & Panels
-  const [selectedTableForOpen, setSelectedTableForOpen] = useState<PosTable | null>(null);
-  const [activeTableForDetails, setActiveTableForDetails] = useState<PosTable | null>(null);
+  // Modals (Split & Payment)
   const [tableForSplit, setTableForSplit] = useState<PosTable | null>(null);
   const [activePaymentOrder, setActivePaymentOrder] = useState<any | null>(null);
 
@@ -101,98 +101,25 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
 
   useEffect(() => {
     fetchState();
-    const interval = setInterval(fetchState, 8000); // 8s live polling for table statuses & balances
+    const interval = setInterval(fetchState, 8000); // 8s live polling
     return () => clearInterval(interval);
   }, [branchId]);
 
-  const handleTableClick = (table: PosTable) => {
-    if (table.status === 'available') {
-      setSelectedTableForOpen(table);
-    } else {
-      setActiveTableForDetails(table);
-    }
-  };
-
-  const handleOpenTableConfirm = async ({ guestCount, waiterName }: { guestCount: number; waiterName: string }) => {
-    if (!selectedTableForOpen) return;
-    const res = await openTableSession({
-      tableId: selectedTableForOpen.id,
-      tableCode: selectedTableForOpen.table_code,
-      branchId,
-      restaurantId,
-      externalBranchId,
-      guestCount,
-      waiterName,
-      operatorName: cashierName
-    });
-
-    if (!res.success) {
-      throw new Error(res.error);
-    }
-
-    await fetchState();
-    if (onOpenOrderInCart) {
-      onOpenOrderInCart(
-        res.orderId || null,
-        selectedTableForOpen.table_code,
-        res.sessionId,
-        guestCount,
-        waiterName
-      );
-    }
-  };
-
-  const handleCloseTable = async (table: PosTable) => {
-    if (!table.current_session_id) return;
-    const res = await closeTableSession(table.current_session_id, table.commerce_order_id);
-    if (!res.success) {
-      alert(res.error);
-      return;
-    }
-    setActiveTableForDetails(null);
-    await fetchState();
-  };
-
-  const [quickTableInput, setQuickTableInput] = useState('');
-  const [isQuickOpening, setIsQuickOpening] = useState(false);
-
-  const handleQuickTableSubmit = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!quickTableInput.trim() || isQuickOpening) return;
-
-    setIsQuickOpening(true);
-    try {
-      const res = await getOrCreateTableAndSession({
-        tableCodeInput: quickTableInput.trim(),
-        branchId,
-        restaurantId,
-        externalBranchId,
-        operatorName: cashierName,
-        waiterName: cashierName
+  // Set initial selected table if provided
+  useEffect(() => {
+    if (initialTableCode && tables.length > 0) {
+      const clean = initialTableCode.trim().toUpperCase();
+      const match = tables.find(t => {
+        const c = (t.table_code || '').toUpperCase();
+        return c === clean || c === `T${clean}` || c.replace(/^T/, '') === clean;
       });
-
-      if (!res.success || !res.table) {
-        alert(res.error || 'Failed to resolve table.');
-        return;
-      }
-
-      setQuickTableInput('');
-      await fetchState();
-
-      if (onOpenOrderInCart) {
-        onOpenOrderInCart(
-          res.orderId || null,
-          res.table.table_code,
-          res.sessionId,
-          res.guestCount,
-          res.waiterName
-        );
-      }
-    } catch (err: any) {
-      alert(err.message || 'Error processing table');
-    } finally {
-      setIsQuickOpening(false);
+      if (match) setSelectedTableId(match.id);
     }
+  }, [initialTableCode, tables]);
+
+  // When a table is clicked on the Floor Map, simply select it (no popup!)
+  const handleTableClick = (table: PosTable) => {
+    setSelectedTableId(table.id);
   };
 
   const filteredTables = activeAreaId 
@@ -209,7 +136,7 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
   return (
     <div className="h-full flex flex-col bg-[#0F1115] text-white select-none overflow-hidden relative">
       {/* Subheader Toolbar */}
-      <div className="px-6 py-2.5 bg-[#181C24] border-b border-[#262D3D] flex items-center justify-between flex-shrink-0">
+      <div className="px-4 py-2 bg-[#181C24] border-b border-[#262D3D] flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5 text-xs text-slate-300 font-bold">
             <MapPin className="w-4 h-4 text-amber-400" />
@@ -217,13 +144,13 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
           </div>
 
           {/* Floor Area Tabs */}
-          <div className="flex items-center gap-1.5 ml-4">
+          <div className="flex items-center gap-1.5 ml-3">
             {areas.map(area => (
               <button
                 key={area.id}
                 type="button"
                 onClick={() => setActiveAreaId(area.id)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
                   activeAreaId === area.id
                     ? 'bg-amber-500 text-slate-950 shadow'
                     : 'bg-slate-900 hover:bg-slate-800 text-slate-400 border border-slate-800'
@@ -233,35 +160,12 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
               </button>
             ))}
           </div>
-
-          {/* Quick Table Entry: Type table number & go / create */}
-          <form
-            onSubmit={handleQuickTableSubmit}
-            className="flex items-center gap-1.5 ml-4 bg-[#10131A] px-2 py-1 rounded-xl border border-[#262D3D]"
-          >
-            <span className="text-amber-400 text-xs font-black">🪑</span>
-            <input
-              type="text"
-              placeholder="Type Table # (e.g. 5, 12)..."
-              value={quickTableInput}
-              onChange={(e) => setQuickTableInput(e.target.value)}
-              disabled={isQuickOpening}
-              className="bg-[#181E2C] border border-[#2B354B] rounded-lg px-2.5 py-0.5 text-xs text-white font-bold placeholder-slate-500 focus:outline-none focus:border-amber-400 w-44 disabled:opacity-50"
-            />
-            <button
-              type="submit"
-              disabled={!quickTableInput.trim() || isQuickOpening}
-              className="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 active:scale-95 text-slate-950 font-black text-xs rounded-lg transition disabled:opacity-50 flex items-center gap-1 shadow-sm"
-            >
-              {isQuickOpening ? 'Opening...' : 'Go / Create'}
-            </button>
-          </form>
         </div>
 
         {/* Operational Indicators & Actions */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
           {/* Quick Metrics Pills */}
-          <div className="hidden md:flex items-center gap-2 text-[11px] font-bold bg-[#10131A] px-2.5 py-1 rounded-xl border border-[#262D3D]">
+          <div className="hidden lg:flex items-center gap-2 text-[11px] font-bold bg-[#10131A] px-2.5 py-1 rounded-xl border border-[#262D3D]">
             <span className="text-emerald-400 font-black">{availableCount} Free</span>
             <span className="text-slate-600">•</span>
             <span className="text-rose-400 font-black">{occupiedCount} Seated</span>
@@ -276,7 +180,7 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
             {totalDue > 0 && (
               <>
                 <span className="text-slate-600">•</span>
-                <span className="text-amber-400 font-black">$${totalDue.toFixed(2)} Due</span>
+                <span className="text-amber-400 font-black">${totalDue.toFixed(2)} Due</span>
               </>
             )}
           </div>
@@ -286,7 +190,7 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
             <button
               type="button"
               onClick={() => setViewMode('grid')}
-              className={`p-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1 ${
+              className={`p-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
                 viewMode === 'grid' ? 'bg-[#262D3D] text-white shadow' : 'text-slate-400 hover:text-white'
               }`}
               title="Grid View"
@@ -296,7 +200,7 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
             <button
               type="button"
               onClick={() => setViewMode('canvas')}
-              className={`p-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1 ${
+              className={`p-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
                 viewMode === 'canvas' ? 'bg-[#262D3D] text-white shadow' : 'text-slate-400 hover:text-white'
               }`}
               title="2D Floor Layout View"
@@ -310,11 +214,11 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
             <button
               type="button"
               onClick={() => setShowSyncModal(true)}
-              className="px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-black transition flex items-center gap-1.5 animate-pulse"
+              className="px-2.5 py-1 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-black transition flex items-center gap-1.5 animate-pulse cursor-pointer"
               title="Review and reconcile out-of-sync table sessions"
             >
               <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
-              <span>⚠️ {pendingSyncs.length} TABLE SYNCS PENDING</span>
+              <span>{pendingSyncs.length} PENDING</span>
             </button>
           )}
 
@@ -322,7 +226,7 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
           <button
             type="button"
             onClick={() => setIsEditorOpen(true)}
-            className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition flex items-center gap-1.5 border border-slate-700"
+            className="px-2.5 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition flex items-center gap-1.5 border border-slate-700 cursor-pointer"
             title="Design Floor Plan (Manager)"
           >
             <Sliders className="w-3.5 h-3.5 text-amber-400" />
@@ -334,7 +238,7 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
             type="button"
             onClick={fetchState}
             disabled={loading}
-            className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition"
+            className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition cursor-pointer"
             title="Refresh floor state"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
@@ -342,115 +246,47 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
         </div>
       </div>
 
-      {/* Main Floor Plan Canvas / Grid */}
-      <div className="flex-1 overflow-y-auto">
-        {errorMsg && (
-          <div className="m-6 p-4 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-sm">
-            {errorMsg}
-          </div>
-        )}
+      {/* MAIN TWO-COLUMN SPLIT: LEFT FLOOR MAP, RIGHT TABLE KEYPAD PANEL */}
+      <div className="flex-1 flex overflow-hidden min-h-0">
+        {/* LEFT COLUMN: VIEW FLOOR MAP */}
+        <div className="flex-1 flex flex-col h-full overflow-y-auto border-r border-[#262D3D] bg-[#0E1118]">
+          {errorMsg && (
+            <div className="m-4 p-3 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs">
+              {errorMsg}
+            </div>
+          )}
 
-        <FloorPlan
-          tables={filteredTables}
-          viewMode={viewMode}
-          onTableClick={handleTableClick}
-        />
+          <FloorPlan
+            tables={filteredTables}
+            viewMode={viewMode}
+            selectedTableId={selectedTableId}
+            onTableClick={handleTableClick}
+          />
+        </div>
+
+        {/* RIGHT COLUMN: KEYPAD TO CREATE OR EDIT TABLE */}
+        <div className="w-[360px] lg:w-[400px] flex flex-col h-full overflow-hidden bg-[#131722] flex-shrink-0">
+          <TableKeypadPanel
+            tables={tables}
+            areas={areas}
+            activeAreaId={activeAreaId}
+            branchId={branchId}
+            restaurantId={restaurantId}
+            externalBranchId={externalBranchId}
+            cashierName={cashierName}
+            selectedTable={tables.find(t => t.id === selectedTableId) || null}
+            initialTableCode={initialTableCode}
+            onSelectTable={(table) => {
+              setSelectedTableId(table ? table.id : null);
+            }}
+            onTableStateChange={fetchState}
+            onOpenOrderInCart={onOpenOrderInCart}
+            onPrintPreCheckDoc={onPrintPreCheckDoc}
+          />
+        </div>
       </div>
 
-      {/* Modals & Drawers */}
-      <OpenTableModal
-        isOpen={Boolean(selectedTableForOpen)}
-        table={selectedTableForOpen}
-        defaultWaiterName={cashierName}
-        onClose={() => setSelectedTableForOpen(null)}
-        onConfirm={handleOpenTableConfirm}
-      />
-
-      <TableDetailsPanel
-        table={activeTableForDetails}
-        isOpen={Boolean(activeTableForDetails)}
-        onClose={() => setActiveTableForDetails(null)}
-        onOpenInTicket={(t) => {
-          if (onOpenOrderInCart) {
-            onOpenOrderInCart(
-              t.commerce_order_id || null,
-              t.table_code,
-              t.current_session_id || undefined,
-              t.guest_count || undefined,
-              t.assigned_waiter || undefined
-            );
-          }
-          setActiveTableForDetails(null);
-        }}
-        onTransferTable={(t) => {
-          const targetCode = prompt(`Move table ${t.table_code} to which table code? (e.g. T8)`);
-          if (!targetCode) return;
-          const dest = tables.find(tb => tb.table_code.toUpperCase() === targetCode.trim().toUpperCase() && tb.status === 'available');
-          if (!dest) {
-            alert(`Table "${targetCode}" not found or is currently occupied.`);
-            return;
-          }
-          transferTable({
-            sessionId: t.current_session_id!,
-            commerceOrderId: t.commerce_order_id || null,
-            fromTableId: t.id,
-            toTableId: dest.id,
-            toTableCode: dest.table_code,
-            operatorName: cashierName
-          }).then(res => {
-            if (!res.success) alert(res.error);
-            else {
-              setActiveTableForDetails(null);
-              fetchState();
-            }
-          });
-        }}
-        onMergeTable={(t) => {
-          const secCode = prompt(`Merge which available table into ${t.table_code}? (e.g. T9)`);
-          if (!secCode) return;
-          const sec = tables.find(tb => tb.table_code.toUpperCase() === secCode.trim().toUpperCase() && tb.status === 'available');
-          if (!sec) {
-            alert(`Table "${secCode}" not found or is currently occupied.`);
-            return;
-          }
-          mergeTables({
-            sessionId: t.current_session_id!,
-            commerceOrderId: t.commerce_order_id || null,
-            primaryTableCode: t.table_code,
-            secondaryTableId: sec.id,
-            secondaryTableCode: sec.table_code,
-            operatorName: cashierName
-          }).then(res => {
-            if (!res.success) alert(res.error);
-            else {
-              setActiveTableForDetails(null);
-              fetchState();
-            }
-          });
-        }}
-        onChangeGuests={(t) => {
-          const gStr = prompt('Enter new guest count:', String(t.guest_count || 1));
-          if (!gStr) return;
-          const g = parseInt(gStr, 10);
-          if (isNaN(g) || g <= 0) return;
-          changeGuestCount(t.current_session_id!, t.commerce_order_id || null, g).then(fetchState);
-        }}
-        onPrintPreCheck={(t) => {
-          if (onPrintPreCheckDoc) onPrintPreCheckDoc(t);
-        }}
-        onSplitBill={(t) => {
-          setTableForSplit(t);
-        }}
-        onTakePayment={(t) => {
-          setActivePaymentOrder({
-            id: t.commerce_order_id,
-            totalAmount: t.current_bill || 0,
-            tableCode: t.table_code
-          });
-        }}
-        onCloseTable={handleCloseTable}
-      />
-
+      {/* Split Bill Modal (Only if cashier explicitly opens it) */}
       {tableForSplit && (
         <SplitBillModal
           isOpen={Boolean(tableForSplit)}
@@ -467,6 +303,7 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
         />
       )}
 
+      {/* Payment Modal */}
       {activePaymentOrder && (
         <PaymentModal
           isOpen={Boolean(activePaymentOrder)}
@@ -567,7 +404,7 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
                           await fetchState();
                           setRetryingSessionId(null);
                         }}
-                        className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs uppercase tracking-wider transition-all disabled:opacity-50"
+                        className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs uppercase tracking-wider transition-all disabled:opacity-50 cursor-pointer"
                       >
                         {isRetrying ? 'Retrying...' : '[ RETRY ]'}
                       </button>
@@ -584,7 +421,7 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
               <button
                 type="button"
                 onClick={() => setShowSyncModal(false)}
-                className="px-5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition"
+                className="px-5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition cursor-pointer"
               >
                 Close
               </button>

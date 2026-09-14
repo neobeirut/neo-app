@@ -6,12 +6,14 @@ import { Users, Clock } from 'lucide-react';
 interface FloorPlanProps {
   tables: PosTable[];
   viewMode?: 'canvas' | 'grid';
+  selectedTableId?: string | null;
   onTableClick: (table: PosTable) => void;
 }
 
 export const FloorPlan: React.FC<FloorPlanProps> = ({ 
   tables, 
   viewMode = 'grid', 
+  selectedTableId = null,
   onTableClick 
 }) => {
   if (viewMode === 'canvas') {
@@ -40,6 +42,7 @@ export const FloorPlan: React.FC<FloorPlanProps> = ({
           return (
             <div
               key={table.id}
+              data-table-code={table.table_code}
               onClick={() => onTableClick(table)}
               style={{
                 left: `${table.position_x}%`,
@@ -47,7 +50,9 @@ export const FloorPlan: React.FC<FloorPlanProps> = ({
                 width: `${renderedWidth}%`
               }}
               className={`absolute p-1.5 sm:p-2 border transition-all cursor-pointer select-none shadow-xl active:scale-95 flex flex-col justify-between ${shapeClass} ${
-                isAvailable
+                table.id === selectedTableId
+                  ? 'ring-4 ring-amber-400 border-amber-400 bg-amber-950/70 shadow-amber-500/40 z-20 scale-105'
+                  : isAvailable
                   ? 'bg-slate-900/90 border-emerald-500/50 hover:border-emerald-400 hover:bg-slate-900 shadow-emerald-500/5'
                   : isBillRequested
                   ? 'bg-amber-950/80 border-amber-500 shadow-amber-500/30 ring-2 ring-amber-500/50 animate-pulse'
@@ -112,6 +117,7 @@ export const FloorPlan: React.FC<FloorPlanProps> = ({
           <TableCard
             key={table.id}
             table={table}
+            isSelected={table.id === selectedTableId}
             onClick={() => onTableClick(table)}
           />
         ))}

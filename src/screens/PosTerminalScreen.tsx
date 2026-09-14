@@ -6,7 +6,7 @@ import { supabase, getGlobalRestaurantId, setGlobalRestaurantId } from "../api/s
 import { resolveCommerceBranchLink, getBranchCapabilities } from "../pos/services/branchMapping";
 import type { CommerceBranchLink } from "../pos/types/commerce";
 import type { BranchCapabilities } from "../pos/services/branchMapping";
-import { TablesScreen, getOrCreateTableAndSession, TableKeypadModal, loadFloorState, closeTableSession } from "../pos/tables";
+import { TablesScreen, getOrCreateTableAndSession, loadFloorState, closeTableSession } from "../pos/tables";
 import type { PosTable } from "../pos/tables";
 import { BranchMappingAlert } from "../pos/components/BranchMappingAlert";
 import { usePos86 } from "../pos/hooks/usePos86";
@@ -222,8 +222,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   const [quickTableInput, setQuickTableInput] = useState("");
   const [isQuickTableLoading, setIsQuickTableLoading] = useState(false);
 
-  // Table Keypad Modal State & Live Floor Tables
-  const [isTableKeypadOpen, setIsTableKeypadOpen] = useState(false);
+  // Live Floor Tables
   const [branchFloorTables, setBranchFloorTables] = useState<PosTable[]>([]);
 
   // Cashier PIN Lock & Fast Switch States
@@ -1962,7 +1961,6 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   };
 
   const handleTableKeypadSelect = async (tableCode: string) => {
-    setIsTableKeypadOpen(false);
     if (activeTableContext && isCurrentTableOccupied) {
       alert("⚠️ Table is already occupied. You cannot change the table number unless you click Transfer Table.");
       setTransferTargetTableInput("");
@@ -1982,7 +1980,6 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   };
 
   const handleOpenFloorMap = () => {
-    setIsTableKeypadOpen(false);
     setPosActiveView('tables');
   };
 
@@ -2692,7 +2689,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                   type="button"
                   onClick={() => {
                     refreshFloorTables();
-                    setIsTableKeypadOpen(true);
+                    setPosActiveView('tables');
                   }}
                   className="h-8 px-3 rounded-lg bg-[#181D28] hover:bg-[#22293A] text-slate-200 border border-[#2B354D] text-xs font-black flex items-center gap-1.5 transition cursor-pointer"
                 >
@@ -2737,7 +2734,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
               />
             </div>
           </div>
-        ) : posActiveView === 'tables' && branchCapabilities?.table_service ? (
+        ) : posActiveView === 'tables' ? (
           <div className="flex-1 flex flex-col overflow-hidden">
             <div className="h-12 bg-[#181C24] border-b border-[#262D3D] px-4 flex items-center justify-between flex-shrink-0">
               <div className="flex items-center gap-3">
@@ -2760,14 +2757,10 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => {
-                    refreshFloorTables();
-                    setIsTableKeypadOpen(true);
-                  }}
-                  className="h-8 px-3 rounded-lg bg-amber-500 text-slate-950 font-black text-xs border border-amber-400 flex items-center gap-1.5 shadow cursor-pointer"
+                  className="h-8 px-3 rounded-lg bg-amber-500 text-slate-950 font-black text-xs border border-amber-400 flex items-center gap-1.5 shadow"
                 >
                   <span>🪑</span>
-                  <span>Tables (Keypad)</span>
+                  <span>{activeTableContext ? `Table ${activeTableContext.tableCode}` : 'Tables'}</span>
                 </button>
                 <button
                   type="button"
@@ -2794,7 +2787,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                 restaurantId={currentRestaurantId}
                 externalBranchId={String(commerceBranchLink?.external_branch_id || "1")}
                 cashierName={activeCashier?.name || user?.name || "Cashier"}
-
+                initialTableCode={activeTableContext?.tableCode || null}
                 onOpenOrderInCart={async (orderId, tableCode, sessionId, guestCount, waiterName) => {
                   if (orderId) {
                     try {
@@ -2952,14 +2945,14 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
               type="button"
               onClick={() => {
                 refreshFloorTables();
-                setIsTableKeypadOpen(true);
+                setPosActiveView('tables');
               }}
               className={`h-11 px-2 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 shadow-sm ${
                 activeTableContext
                   ? 'bg-amber-500/20 text-amber-300 border border-amber-500/60 ring-1 ring-amber-500/30'
                   : 'bg-[#181D28] hover:bg-[#22293A] text-slate-200 border border-[#2B354D]'
               }`}
-              title="Open table keypad"
+              title="Open Floor Plan & Tables"
             >
               <span className="text-sm">🪑</span>
               <span className="truncate">{activeTableContext ? `Table ${activeTableContext.tableCode}` : 'Tables'}</span>
@@ -3030,7 +3023,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                         type="button"
                         onClick={() => {
                           refreshFloorTables();
-                          setIsTableKeypadOpen(true);
+                          setPosActiveView('tables');
                         }}
                         className="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-black text-xs border border-amber-500/40 transition active:scale-95 cursor-pointer flex items-center gap-1"
                         title="Change table before order is entered"
@@ -3555,19 +3548,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
           <span>Features</span>
         </button>
 
-        {/* 2 - Hold Table */}
-        <button
-          type="button"
-          onClick={handleHoldOrder}
-          disabled={ticketItems.length === 0 || isSubmitting}
-          className="flex-1 h-full rounded-xl bg-amber-950/60 hover:bg-amber-900/80 active:scale-98 text-amber-300 font-black text-xs md:text-sm tracking-wider flex items-center justify-center gap-2 border border-amber-500/50 shadow-md transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-          title="Keep table order on hold"
-        >
-          <span className="text-base md:text-lg">⏸️</span>
-          <span>Hold Table</span>
-        </button>
-
-        {/* 3 - Settle & close */}
+        {/* 2 - Settle & close */}
         <button
           type="button"
           onClick={() => {
@@ -3582,14 +3563,14 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
             setIsTerminalPaymentModalOpen(true);
           }}
           disabled={ticketItems.length === 0 && !activeTableContext?.orderId && !editingOrderId}
-          className="flex-[1.2] h-full rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 active:scale-98 text-white font-black text-xs md:text-sm tracking-wider flex items-center justify-center gap-2 border border-blue-400 shadow-lg shadow-blue-900/40 transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+          className="flex-[1.1] h-full rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 active:scale-98 text-white font-black text-xs md:text-sm tracking-wider flex items-center justify-center gap-2 border border-blue-400 shadow-lg shadow-blue-900/40 transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
           title="Collect payment and settle order / table"
         >
           <span className="text-base md:text-lg">💳</span>
           <span>Settle & close</span>
         </button>
 
-        {/* 4 - Hold */}
+        {/* 3 - Hold */}
         <button
           type="button"
           onClick={handleInsertHold}
@@ -3601,12 +3582,12 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
           <span>Hold</span>
         </button>
 
-        {/* 5 - Fire */}
+        {/* 4 - Fire */}
         <button
           type="button"
           onClick={handleKitchenFireChit}
           disabled={!isFireActive}
-          className={`flex-[1.2] h-full rounded-xl active:scale-98 font-black text-xs md:text-sm tracking-wider flex items-center justify-center gap-2 border shadow-lg transition cursor-pointer ${
+          className={`flex-[1.1] h-full rounded-xl active:scale-98 font-black text-xs md:text-sm tracking-wider flex items-center justify-center gap-2 border shadow-lg transition cursor-pointer ${
             isFireActive
               ? 'bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 text-white border-red-400 shadow-red-900/50 animate-pulse'
               : 'bg-[#181C24] text-slate-500 border-[#262D3D] opacity-40 cursor-not-allowed'
@@ -3621,6 +3602,18 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         >
           <span className="text-base md:text-xl">🔥</span>
           <span>Fire {isFireActive ? `(${remainingFires})` : ''}</span>
+        </button>
+
+        {/* 5 - Place order (moved to the right of the screen) */}
+        <button
+          type="button"
+          onClick={handleHoldOrder}
+          disabled={ticketItems.length === 0 || isSubmitting}
+          className="flex-[1.3] h-full rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 active:scale-98 text-white font-black text-xs md:text-sm tracking-wider flex items-center justify-center gap-2 border border-emerald-400 shadow-lg shadow-emerald-950/50 transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+          title="Place and submit order to kitchen / table"
+        >
+          <span className="text-base md:text-lg">🍽️</span>
+          <span>{isSubmitting ? 'Placing...' : 'Place order'}</span>
         </button>
       </div>
     </div>
@@ -5084,22 +5077,6 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         </div>
       )}
 
-      {/* TABLE NUMERIC KEYPAD MODAL */}
-      <TableKeypadModal
-        isOpen={isTableKeypadOpen}
-        onClose={() => setIsTableKeypadOpen(false)}
-        onSelectTable={handleTableKeypadSelect}
-        onOpenFloorMap={handleOpenFloorMap}
-        currentTableCode={activeTableContext?.tableCode}
-        isCurrentTableOccupied={isCurrentTableOccupied}
-        onOpenTransferModal={() => {
-          setTransferTargetTableInput("");
-          setIsTransferModalOpen(true);
-        }}
-        onClearTable={handleClearCurrentTable}
-        tables={branchFloorTables}
-        isLoading={isQuickTableLoading}
-      />
 
       {/* PIN LOCK SCREEN OVERLAY */}
       {isPinLockOpen && (
