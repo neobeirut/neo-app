@@ -37,8 +37,8 @@ export async function getUserOrders(userId) {
     FROM orders o
     LEFT JOIN branches b ON o.branch_id = b.id
     LEFT JOIN user_addresses ua ON o.address_id = ua.id
-    JOIN order_items oi ON o.id = oi.order_id
-    JOIN products p ON oi.product_id = p.id
+    JOIN order_items oi ON o.id::text = oi.order_id::text
+    LEFT JOIN products p ON oi.product_id::text = p.id::text
     WHERE o.user_id = ${userId}
     GROUP BY o.id, b.name, b.address, ua.building, ua.company_name, ua.address_line2
     ORDER BY o.created_at DESC

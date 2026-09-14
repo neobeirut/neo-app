@@ -25,7 +25,7 @@ export async function GET(request, { params }) {
           json_build_object(
             'id', oi.id,
             'product_id', oi.product_id,
-            'product_name', p.name,
+            'product_name', COALESCE(oi.product_name, p.name, 'Item'),
             'quantity', oi.quantity,
             'unit_price', oi.unit_price,
             'total_price', oi.total_price
@@ -33,8 +33,8 @@ export async function GET(request, { params }) {
         ) as items
       FROM orders o
       LEFT JOIN user_addresses ua ON o.address_id = ua.id
-      LEFT JOIN order_items oi ON o.id = oi.order_id
-      LEFT JOIN products p ON oi.product_id = p.id
+      LEFT JOIN order_items oi ON o.id::text = oi.order_id::text
+      LEFT JOIN products p ON oi.product_id::text = p.id::text
       WHERE o.user_id = ${userId}
       GROUP BY o.id, ua.building, ua.company_name, ua.address_line2
       ORDER BY o.created_at DESC

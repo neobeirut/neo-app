@@ -177,16 +177,16 @@ export async function GET(request) {
     const topProducts = await sql(
       `SELECT 
         oi.product_id,
-        COALESCE(p.name, 'Unknown Item') as product_name,
+        COALESCE(oi.product_name, p.name, 'Unknown Item') as product_name,
         COALESCE(c.name, 'Uncategorized') as category_name,
         SUM(oi.quantity)::int as total_qty,
         SUM((oi.quantity * oi.unit_price)::float) as total_revenue
       FROM order_items oi
       JOIN orders o ON oi.order_id = o.id
-      LEFT JOIN products p ON oi.product_id = p.id
+      LEFT JOIN products p ON (CASE WHEN oi.product_id ~ '^[0-9]+$' THEN oi.product_id::integer ELSE NULL END) = p.id
       LEFT JOIN categories c ON p.category_id = c.id
       WHERE ${salesStatusFilterO} ${dateWhereClauseO}
-      GROUP BY oi.product_id, p.name, c.name
+      GROUP BY oi.product_id, COALESCE(oi.product_name, p.name, 'Unknown Item'), c.name
       ORDER BY total_qty DESC
       LIMIT 15`
     ) || [];
@@ -198,11 +198,30 @@ export async function GET(request) {
         SUM((oi.quantity * oi.unit_price)::float) as total_revenue
       FROM order_items oi
       JOIN orders o ON oi.order_id = o.id
-      LEFT JOIN products p ON oi.product_id = p.id
+      LEFT JOIN products p ON (CASE WHEN oi.product_id ~ '^[0-9]+$' THEN oi.product_id::integer ELSE NULL END) = p.id
       LEFT JOIN categories c ON p.category_id = c.id
       WHERE ${salesStatusFilterO} ${dateWhereClauseO}
       GROUP BY c.name
       ORDER BY total_revenue DESC`
+    ) || [];
+
+    const ordersList = await sql(
+      `SELECT 
+        id,
+        COALESCE(order_source, 'Pick-up') as order_source,
+        COALESCE(payment_method, 'Cash') as payment_method,
+        customer_name,
+        customer_phone,
+        subtotal_amount::float,
+        discount_amount::float,
+        delivery_fee::float,
+        total_amount::float,
+        status,
+        created_at
+      FROM orders
+      WHERE ${salesStatusFilter} ${dateWhereClause}
+      ORDER BY created_at DESC
+      LIMIT 100`
     ) || [];
 
     const voidedSummaryRows = await sql(
@@ -279,6 +298,7 @@ export async function GET(request) {
       paymentMethods: Array.isArray(paymentMethods) ? paymentMethods : [],
       topProducts: Array.isArray(topProducts) ? topProducts : [],
       categories: Array.isArray(categories) ? categories : [],
+      orders: Array.isArray(ordersList) ? ordersList : [],
       voidedSummary: (voidedSummaryRows && voidedSummaryRows[0]) ? voidedSummaryRows[0] : { void_count: 0, total_voided_amount: 0 },
       voidedOrders: Array.isArray(voidedOrders) ? voidedOrders : [],
       hourlySales: Array.isArray(hourlySales) ? hourlySales : [],

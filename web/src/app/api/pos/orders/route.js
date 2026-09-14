@@ -59,11 +59,11 @@ export async function GET(request) {
             'total_price', oi.total_price::float,
             'customizations', oi.customizations,
             'comment', oi.comment,
-            'product_name', p.name
+            'product_name', COALESCE(oi.product_name, p.name, 'Item')
           ))
            FROM order_items oi
-           LEFT JOIN products p ON oi.product_id = p.id
-           WHERE oi.order_id = o.id
+           LEFT JOIN products p ON oi.product_id::text = p.id::text
+           WHERE oi.order_id::text = o.id::text
           ), '[]'::json
         ) as items
       FROM orders o

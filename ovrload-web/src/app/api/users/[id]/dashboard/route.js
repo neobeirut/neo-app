@@ -101,13 +101,13 @@ export async function GET(request, { params }) {
         SELECT 
           oi.order_id,
           oi.quantity,
-          p.name as product_name,
+          COALESCE(oi.product_name, p.name, 'Item') as product_name,
           oi.total_price,
           p.category_id,
           c.name as category_name
         FROM order_items oi
-        JOIN products p ON oi.product_id = p.id
-        LEFT JOIN categories c ON p.category_id = c.id
+        LEFT JOIN products p ON oi.product_id::text = p.id::text
+        LEFT JOIN categories c ON p.category_id::text = c.id::text
         WHERE oi.order_id = ANY(${orderIds})
       `;
 

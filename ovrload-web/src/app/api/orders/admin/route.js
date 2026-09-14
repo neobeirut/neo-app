@@ -96,7 +96,7 @@ export async function GET(request) {
           oi.order_id,
           oi.id,
           oi.product_id,
-          p.name as product_name,
+          COALESCE(oi.product_name, p.name, 'Item') as product_name,
           p.image_url as product_image,
           oi.quantity,
           oi.unit_price,
@@ -104,7 +104,7 @@ export async function GET(request) {
           oi.customizations,
           oi.comment
         FROM order_items oi
-        JOIN products p ON oi.product_id = p.id
+        LEFT JOIN products p ON oi.product_id::text = p.id::text
         WHERE oi.order_id = ANY(${orderIds})
         ORDER BY oi.id
       `;
