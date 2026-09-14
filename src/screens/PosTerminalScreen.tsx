@@ -2849,13 +2849,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                                 : 'bg-[#161B26] hover:bg-[#1F2636] border-[#262F44] hover:border-amber-500/50'
                             }`}
                           >
-                            {isSubscreen && (
-                              <span className="absolute top-1.5 right-1.5 text-[9px] px-1 py-0.2 rounded bg-black/50 text-amber-300 font-black tracking-wider">
-                                FOLDER ➔
-                              </span>
-                            )}
-
-                            {/* PURE PRODUCT NAME ONLY (nothing else displayed) */}
+                            {/* PURE BUTTON NAME ONLY (nothing else displayed) */}
                             <span className={`font-black ${activeGridDensity.fontSize} leading-tight tracking-wide line-clamp-3 ${
                               isSubscreen ? colorTheme.text : 'text-slate-100 group-hover:text-amber-300'
                             }`}>
