@@ -76,6 +76,13 @@ export const OpenShiftModal: React.FC<OpenShiftModalProps> = ({
             ⚠️ {error}
           </div>
         )}
+        <div className="mb-4 p-3 bg-amber-500/15 border border-amber-500/40 rounded-xl text-amber-300 flex items-start gap-2.5 text-xs">
+          <span className="text-base leading-none">⚠️</span>
+          <div>
+            <div className="font-extrabold text-amber-200">Shift is Currently Closed</div>
+            <div className="text-amber-300/80 mt-0.5">Please count and enter your opening cash float to begin taking orders and processing payments.</div>
+          </div>
+        </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="bg-[#1F2430] p-3 rounded-xl border border-[#2D3548] flex justify-between items-center text-xs">

@@ -376,6 +376,16 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     currentRestaurantId
   );
 
+  // Auto popup for closed shift after cashier logs in with PIN
+  const [hasPromptedShiftClosed, setHasPromptedShiftClosed] = useState(false);
+
+  useEffect(() => {
+    if (!shiftLoading && !isShiftOpen && !hasPromptedShiftClosed) {
+      setHasPromptedShiftClosed(true);
+      setIsOpenShiftModalOpen(true);
+    }
+  }, [shiftLoading, isShiftOpen, hasPromptedShiftClosed]);
+
 
   // Phase 6 Shift Closing & Reporting States
   const [lastClosedShift, setLastClosedShift] = useState<any>(null);
@@ -2474,270 +2484,100 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
 
   return (
     <div className="h-screen max-h-screen flex flex-col bg-[#0F1115] text-white font-sans overflow-hidden select-none">
-        {/* FULL-WIDTH TERMINAL HEADER */}
-        <header className="h-14 bg-[#181C24] border-b border-[#262D3D] px-4 flex items-center justify-between shadow-md print:hidden flex-shrink-0 z-10">
-          {/* Brand + All Action Buttons on Left */}
-          <div className="flex items-center gap-3">
-            {/* Dynamic Brand Logo */}
-            <div className="flex items-center gap-2">
-              <span className="w-7 h-7 rounded-lg bg-[#eb660c] flex items-center justify-center font-black text-white text-sm uppercase">
-                {currentRestaurantName ? currentRestaurantName.charAt(0) : "P"}
-              </span>
-              <span className="font-extrabold text-base tracking-wider text-white">
-                {currentRestaurantName || "FLOW"} <span className="text-[#eb660c] font-black text-[10px] ml-0.5">POS</span>
-              </span>
-            </div>
-
-            {/* Action Buttons (Moved Left next to Logo) */}
-            <div className="flex items-center gap-1.5 ml-2">
-              {/* WhatsApp Orders Button */}
-              <button
-                onClick={() => setActiveTabModal("incoming")}
-                className="px-2.5 py-1.5 bg-[#262D3D] hover:bg-[#323B4E] rounded-xl text-xs font-bold text-white transition-all flex items-center gap-1 border border-[#3A455C]"
-              >
-                <span>📱 WhatsApp</span>
-                {pendingOrders.length > 0 && (
-                  <span className="px-1.5 py-0.5 rounded-full bg-[#eb660c] text-white text-[10px] font-black animate-pulse">
-                    {pendingOrders.length}
-                  </span>
-                )}
-              </button>
-
-              {/* Held Orders Button */}
-              <button
-                onClick={() => setActiveTabModal("held")}
-                className="px-2.5 py-1.5 bg-[#262D3D] hover:bg-[#323B4E] rounded-xl text-xs font-bold text-white transition-all flex items-center gap-1 border border-[#3A455C]"
-              >
-                <span>⏸️ Held ({heldOrders.length})</span>
-              </button>
-
-              {/* History Button */}
-              <button
-                onClick={() => {
-                  fetchOrderHistory();
-                  setActiveTabModal("history");
-                }}
-                className="px-2.5 py-1.5 bg-[#262D3D] hover:bg-[#323B4E] rounded-xl text-xs font-bold text-white transition-all flex items-center gap-1 border border-[#3A455C]"
-              >
-                <span>📜 History</span>
-              </button>
-
-              {/* Settings Button with Green/Red Light Indicator */}
-              <button
-                onClick={() => setActiveTabModal("settings")}
-                className="px-2.5 py-1.5 bg-[#262D3D] hover:bg-[#323B4E] rounded-xl text-xs font-bold text-white transition-all flex items-center gap-1.5 border border-[#3A455C]"
-                title={`POS Settings • Branch Status: ${realtimeStatus.isOpen ? "OPEN" : "CLOSED"}`}
-              >
-                <span className={`w-2.5 h-2.5 rounded-full ${
-                  realtimeStatus.isOpen ? "bg-emerald-400 shadow-sm shadow-emerald-400/80 animate-pulse" : "bg-rose-500 shadow-sm shadow-rose-500/80"
-                }`}></span>
-                <span>⚙️ Settings</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Right Header: Active Branch, 86 Badge, Shift Badge, Active Cashier, Switch PIN, and Exit to FLOW */}
-          <div className="flex items-center gap-2">
-            {/* SELL / TABLES / ORDERS View Switcher */}
-            <div className="flex items-center bg-[#10131A] p-1 rounded-xl border border-[#262D3D] mr-1">
+        {posActiveView === 'orders' ? (
+          <div className="flex-1 flex flex-col overflow-hidden">
+            <div className="h-12 bg-[#181C24] border-b border-[#262D3D] px-4 flex items-center justify-between flex-shrink-0">
               <button
                 type="button"
                 onClick={() => setPosActiveView('sell')}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-black tracking-wider transition-all flex items-center gap-1.5 ${
-                  posActiveView === 'sell'
-                    ? 'bg-[#eb660c] text-white shadow-md shadow-[#eb660c]/20'
-                    : 'text-gray-400 hover:text-white hover:bg-[#1a202c]'
-                }`}
+                className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center gap-1.5 transition active:scale-95 cursor-pointer shadow"
               >
-                <span>🛒</span>
-                <span>SELL</span>
+                <span>←</span>
+                <span>Back to POS Register</span>
               </button>
-              {Boolean(branchCapabilities?.table_service) && (
-                <button
-                  type="button"
-                  onClick={() => setPosActiveView('tables')}
-                  className={`px-3.5 py-1.5 rounded-lg text-xs font-black tracking-wider transition-all flex items-center gap-1.5 ${
-                    posActiveView === 'tables'
-                      ? 'bg-[#eb660c] text-white shadow-md shadow-[#eb660c]/20'
-                      : 'text-gray-400 hover:text-white hover:bg-[#1a202c]'
-                  }`}
-                >
-                  <span>🪑</span>
-                  <span>TABLES</span>
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => setPosActiveView('orders')}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-black tracking-wider transition-all flex items-center gap-1.5 ${
-                  posActiveView === 'orders'
-                    ? 'bg-[#eb660c] text-white shadow-md shadow-[#eb660c]/20'
-                    : 'text-gray-400 hover:text-white hover:bg-[#1a202c]'
-                }`}
-              >
-                <span>📋</span>
-                <span>ORDERS</span>
-                {pendingOrders && pendingOrders.length > 0 && (
-                  <span className="px-1.5 py-0.2 rounded-full bg-rose-500 text-white text-[10px] font-black animate-pulse">
-                    {pendingOrders.length}
-                  </span>
-                )}
-              </button>
-            </div>
-
-            {/* Active Branch Badge with On-Click Switcher */}
-            <button
-              type="button"
-              onClick={() => setIsBranchSwitcherOpen(true)}
-              className="flex items-center gap-1.5 text-xs bg-[#222734] hover:bg-[#2c3344] px-2.5 py-1.5 rounded-xl border border-[#2D3548] hover:border-emerald-500/50 transition cursor-pointer"
-              title="Click to switch active branch for this terminal"
-            >
-              <span className="text-emerald-400 font-black">📍</span>
-              <span className="text-gray-300 font-medium">Branch:</span>
-              <span className="text-white font-extrabold truncate max-w-[140px]">
-                {commerceBranchLink ? `${commerceBranchLink.flow_branch_name} (#${commerceBranchLink.external_branch_id})` : (user?.branch || "Choose Branch")}
-              </span>
-              <span className="text-[9px] text-gray-400 ml-0.5">▼</span>
-            </button>
-
-            {/* 86 Indicator Badge */}
-            {unavailableProductIds.size > 0 && (
-              <div 
-                className="flex items-center gap-1 text-xs bg-rose-950/60 border border-rose-500/50 text-rose-300 px-2 py-1.5 rounded-xl font-bold"
-                title={`${unavailableProductIds.size} menu items currently marked 86 in FLOW`}
-              >
-                <span>🚫</span>
-                <span>${unavailableProductIds.size} 86'd</span>
+              <div className="flex items-center gap-2 text-xs font-bold text-slate-300">
+                <span>📋 Orders Hub</span>
+                <span className="text-slate-500">•</span>
+                <span className="text-slate-400">{commerceBranchLink?.flow_branch_name || user?.branch || currentBranchName}</span>
               </div>
-            )}
-
-            {/* Shift Status Badge */}
-            <ShiftStatusBadge
-              shift={activeShift}
-              onOpenShiftClick={() => setIsOpenShiftModalOpen(true)}
-              onCloseShiftClick={() => setIsCloseShiftModalOpen(true)}
-              onXReportClick={async () => {
-                if (activeShift) {
-                  const res = await calculateShiftReconciliation({
-                    locationKey: commerceBranchLink?.location_key || 'cloud-kitchen',
-                    startTime: activeShift.created_at,
-                    terminalId: activeShift.terminal_id || "TERM-1",
-                    openingUsd: Number(activeShift.opening_usd || 0),
-                    openingLbp: Number(activeShift.opening_lbp || 0)
-                  });
-                  if (res.success && res.summary) {
-                    setShiftReportData(res.summary);
-                    setReportModalMode('X');
-                    setIsShiftReportModalOpen(true);
-                  } else {
-                    alert(res.error || 'Failed to generate X Report snapshot');
-                  }
-                }
-              }}
-            />
-
-            {/* Daily Store Control Button */}
-            <button
-              type="button"
-              onClick={() => setIsDailyControlOpen(true)}
-              className="flex items-center gap-1.5 bg-[#222734] hover:bg-[#2c3344] border border-[#2D3548] text-gray-300 hover:text-white px-2.5 py-1.5 rounded-xl text-xs font-bold transition"
-              title="Daily Branch Store Control Dashboard"
-            >
-              <span>🏪</span>
-              <span className="hidden xl:inline">Store Control</span>
-            </button>
-
-            {/* Cashier Indicator & Lock/Switch */}
-            <button
-              type="button"
-              onClick={() => {
-                setPinInput("");
-                setPinError("");
-                setIsCashierModalOpen(true);
-              }}
-              className="px-3 py-1.5 bg-[#262D3D] hover:bg-[#323B4E] rounded-xl text-xs font-bold text-white transition-all flex items-center gap-2 border border-[#3A455C]"
-              title="Click to Switch Cashier PIN"
-            >
-              <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse"></span>
-              <span className="text-gray-300 font-medium">Cashier:</span>
-              <span className="text-white font-extrabold">{activeCashier?.name || user?.name || "Cashier"}</span>
-              <span className="text-[11px] bg-blue-900/60 text-blue-300 px-1.5 py-0.5 rounded font-mono">🔒 Switch</span>
-            </button>
-
-            {/* Exit POS back to FLOW Operations Portal */}
-            {onExit && (
-              <button
-                type="button"
-                onClick={onExit}
-                className="px-3 py-1.5 bg-rose-950/60 hover:bg-rose-900/80 text-rose-300 border border-rose-500/40 rounded-xl text-xs font-extrabold transition-all active:scale-95 flex items-center gap-1.5"
-                title="Exit POS and return to FLOW Admin"
-              >
-                <span>🚪 Exit POS</span>
-              </button>
-            )}
-          </div>
-        </header>
-
-        {posActiveView === 'orders' ? (
-          <div className="flex-1 overflow-hidden">
-            <OrdersHubScreen
-              branchName={commerceBranchLink?.flow_branch_name || user?.branch || (currentRestaurantId === '4c0ed960-e459-42c4-962f-41229a2d3783' ? 'Badaro (Bistro)' : 'Badaro')}
-              restaurantId={currentRestaurantId}
-              branchId={commerceBranchLink?.external_branch_id}
-              currentTerminalId={posTerminalId}
-              activeCashierName={activeCashier?.name || user?.name || "Cashier"}
-              onOpenOrderToTicket={(order) => {
-                loadOrderToTicket(order.rawOrder, order.channel);
-                setActiveTableContext(null);
-                setPosActiveView('sell');
-              }}
-              onReprint={(order) => {
-                handleReprintOrder(order.rawOrder);
-              }}
-              onRequestVoid={(order) => {
-                handleDirectVoidOrder(order);
-              }}
-            />
+            </div>
+            <div className="flex-1 overflow-hidden">
+              <OrdersHubScreen
+                branchName={commerceBranchLink?.flow_branch_name || user?.branch || (currentRestaurantId === '4c0ed960-e459-42c4-962f-41229a2d3783' ? 'Badaro (Bistro)' : 'Badaro')}
+                restaurantId={currentRestaurantId}
+                branchId={commerceBranchLink?.external_branch_id}
+                currentTerminalId={posTerminalId}
+                activeCashierName={activeCashier?.name || user?.name || "Cashier"}
+                onOpenOrderToTicket={(order) => {
+                  loadOrderToTicket(order.rawOrder, order.channel);
+                  setActiveTableContext(null);
+                  setPosActiveView('sell');
+                }}
+                onReprint={(order) => {
+                  handleReprintOrder(order.rawOrder);
+                }}
+                onRequestVoid={(order) => {
+                  handleDirectVoidOrder(order);
+                }}
+              />
+            </div>
           </div>
         ) : posActiveView === 'tables' && branchCapabilities?.table_service ? (
-          <div className="flex-1 overflow-hidden">
-            <TablesScreen
-              branchId={currentBranchId || commerceBranchLink?.flow_branch_id || branchCapabilities?.branchId || "9c214659-9cc7-4f33-b115-cbbb8a823a94"}
-              branchName={currentBranchName}
-              restaurantId={currentRestaurantId}
-              externalBranchId={String(commerceBranchLink?.external_branch_id || "1")}
-              cashierName={activeCashier?.name || user?.name || "Cashier"}
+          <div className="flex-1 flex flex-col overflow-hidden">
+            <div className="h-12 bg-[#181C24] border-b border-[#262D3D] px-4 flex items-center justify-between flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => setPosActiveView('sell')}
+                className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center gap-1.5 transition active:scale-95 cursor-pointer shadow"
+              >
+                <span>←</span>
+                <span>Back to POS Register</span>
+              </button>
+              <div className="flex items-center gap-2 text-xs font-bold text-slate-300">
+                <span>🪑 Floor Plan & Tables</span>
+                <span className="text-slate-500">•</span>
+                <span className="text-slate-400">{currentBranchName}</span>
+              </div>
+            </div>
+            <div className="flex-1 overflow-hidden">
+              <TablesScreen
+                branchId={currentBranchId || commerceBranchLink?.flow_branch_id || branchCapabilities?.branchId || "9c214659-9cc7-4f33-b115-cbbb8a823a94"}
+                branchName={currentBranchName}
+                restaurantId={currentRestaurantId}
+                externalBranchId={String(commerceBranchLink?.external_branch_id || "1")}
+                cashierName={activeCashier?.name || user?.name || "Cashier"}
 
-              onOpenOrderInCart={async (orderId, tableCode, sessionId, guestCount, waiterName) => {
-                if (orderId) {
-                  try {
-                    const res = await fetch(`${COMMERCE_API_BASE}/api/pos/orders?type=all`);
-                    const data = await res.json();
-                    const ord = (data.orders || []).find((o: any) => o.id === orderId);
-                    if (ord) {
-                      loadOrderToTicket(ord, "POS");
-                      setActiveTableContext({ orderId, tableCode, sessionId, guestCount, waiterName });
-                      setPosActiveView('sell');
-                      return;
+                onOpenOrderInCart={async (orderId, tableCode, sessionId, guestCount, waiterName) => {
+                  if (orderId) {
+                    try {
+                      const res = await fetch(`${COMMERCE_API_BASE}/api/pos/orders?type=all`);
+                      const data = await res.json();
+                      const ord = (data.orders || []).find((o: any) => o.id === orderId);
+                      if (ord) {
+                        loadOrderToTicket(ord, "POS");
+                        setActiveTableContext({ orderId, tableCode, sessionId, guestCount, waiterName });
+                        setPosActiveView('sell');
+                        return;
+                      }
+                    } catch (e) {
+                      console.error("Failed to load table order into ticket:", e);
                     }
-                  } catch (e) {
-                    console.error("Failed to load table order into ticket:", e);
                   }
-                }
-                // No existing commerce order yet (fresh table): start fresh ticket
-                setTicketItems([]);
-                setCustomerName(`Table ${tableCode}`);
-                setCustomerPhone("");
-                setDeliveryAddress("");
-                setSelectedChannel("POS");
-                setOrderType("dine_in");
-                setEditingOrderId(null);
-                setEditingOrderVersion(null);
-                setActiveTableContext({ orderId: null, tableCode, sessionId, guestCount, waiterName });
-                setPosActiveView('sell');
-              }}
-              onPrintPreCheckDoc={handlePrintPreCheckDoc}
-            />
+                  // No existing commerce order yet (fresh table): start fresh ticket
+                  setTicketItems([]);
+                  setCustomerName(`Table ${tableCode}`);
+                  setCustomerPhone("");
+                  setDeliveryAddress("");
+                  setSelectedChannel("POS");
+                  setOrderType("dine_in");
+                  setEditingOrderId(null);
+                  setEditingOrderVersion(null);
+                  setActiveTableContext({ orderId: null, tableCode, sessionId, guestCount, waiterName });
+                  setPosActiveView('sell');
+                }}
+                onPrintPreCheckDoc={handlePrintPreCheckDoc}
+              />
+            </div>
           </div>
         ) : (
           <div className="flex-1 flex flex-col overflow-hidden min-h-0">
@@ -2795,14 +2635,6 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                     <span className="text-xs text-slate-500 font-semibold hidden sm:inline">
                       {activePosScreen?.buttons?.length || 0} items ({activeGridConfig.cols}×{activeGridConfig.rows})
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => setIsFeaturesModalOpen(true)}
-                      className="px-2.5 py-1 rounded-xl bg-[#1D2332] hover:bg-[#283247] text-slate-300 text-xs font-bold border border-[#2B354D] flex items-center gap-1.5 transition cursor-pointer"
-                      title="Open Features"
-                    >
-                      <span>⚙️ Features</span>
-                    </button>
                   </div>
                 </div>
 
@@ -4474,81 +4306,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         />
       )}
 
-      {/* ON-DEMAND BRANCH SWITCHER MODAL */}
-      {isBranchSwitcherOpen && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:hidden animate-fade-in">
-          <div className="bg-[#181C24] border border-[#262D3D] rounded-2xl w-full max-w-md p-6 space-y-4 text-white shadow-2xl">
-            <div className="flex justify-between items-center border-b border-[#262D3D] pb-3">
-              <div className="flex items-center gap-2.5">
-                <span className="text-2xl">📍</span>
-                <div>
-                  <h3 className="font-extrabold text-base">Switch Terminal Branch</h3>
-                  <p className="text-[11px] text-slate-400">
-                    {user?.restaurants?.name || (user?.restaurant_id === '4c0ed960-e459-42c4-962f-41229a2d3783' ? 'The Bistro' : 'Neo Beirut')}
-                  </p>
-                </div>
-              </div>
-              <button 
-                type="button"
-                onClick={() => setIsBranchSwitcherOpen(false)} 
-                className="text-gray-400 hover:text-white text-xl font-bold p-1 cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
 
-            <div className="space-y-2">
-              <span className="text-[11px] font-black uppercase tracking-wider text-slate-400 block">
-                Choose Branch for this POS Station:
-              </span>
-              <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-                {availableCommerceBranches.map((b) => {
-                  const isCurrent = commerceBranchLink?.external_branch_id === b.external_branch_id;
-                  return (
-                    <button
-                      key={b.flow_branch_id || b.external_branch_id}
-                      type="button"
-                      onClick={() => handleSelectTerminalBranch(b.flow_branch_name)}
-                      className={`w-full p-3 rounded-xl border text-left transition flex items-center justify-between cursor-pointer ${
-                        isCurrent
-                          ? 'bg-emerald-950/60 border-emerald-500 text-white shadow-md shadow-emerald-950/40 ring-1 ring-emerald-500'
-                          : 'bg-[#0F1115] hover:bg-[#202531] border-[#262D3D] text-slate-300'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <span className="text-lg">📍</span>
-                        <div>
-                          <div className="text-xs font-black text-white">
-                            {b.flow_branch_name}
-                          </div>
-                          <div className="text-[10px] text-slate-400 font-mono">
-                            Branch #{b.external_branch_id} • {b.location_key}
-                          </div>
-                        </div>
-                      </div>
-                      {isCurrent ? (
-                        <span className="text-[10px] font-black uppercase text-emerald-400 bg-emerald-900/40 px-2 py-0.5 rounded">
-                          Active
-                        </span>
-                      ) : (
-                        <span className="text-xs text-slate-400 font-bold">Switch →</span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setIsBranchSwitcherOpen(false)}
-              className="w-full py-2.5 bg-[#262D3D] hover:bg-[#323B4E] text-slate-300 rounded-xl text-xs font-black transition cursor-pointer"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* TERMINAL PAYMENT & DUAL CURRENCY CHANGE MODAL */}
       <TerminalPaymentModal
@@ -4762,7 +4520,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       {/* FEATURES MODAL */}
       {isFeaturesModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#181C24] border border-[#262D3D] rounded-3xl w-full max-w-lg p-6 space-y-5 text-white shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+          <div className="bg-[#181C24] border border-[#262D3D] rounded-3xl w-full max-w-xl p-6 space-y-4 text-white shadow-2xl animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between border-b border-[#262D3D] pb-3">
               <div className="flex items-center gap-2">
                 <span className="text-xl">⚙️</span>
@@ -4777,7 +4535,25 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
               </button>
             </div>
 
-            <div className="grid grid-cols-2 gap-3.5">
+            {/* Terminal Info: Locked Branch, Cashier, Shift Status */}
+            <div className="p-3 bg-[#1F2430] border border-[#2D3548] rounded-2xl flex flex-wrap items-center justify-between gap-2 text-xs">
+              <div className="flex items-center gap-2">
+                <span className="text-emerald-400 font-bold">📍</span>
+                <span className="text-gray-400">Branch:</span>
+                <span className="text-white font-extrabold">{currentBranchName}</span>
+                <span className="text-[10px] text-gray-400 bg-black/50 px-1.5 py-0.5 rounded font-mono border border-white/5">🔒 Fixed</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-gray-400">Cashier: <strong className="text-white">{activeCashier?.name || user?.name || "Staff"}</strong></span>
+                <span className={`px-2 py-0.5 rounded-full font-extrabold text-[10px] ${
+                  isShiftOpen ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                }`}>
+                  {isShiftOpen ? '🟢 SHIFT OPEN' : '🔴 SHIFT CLOSED'}
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
               {/* Order History */}
               <button
                 type="button"
@@ -4786,11 +4562,11 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                   fetchOrderHistory();
                   setActiveTabModal("history");
                 }}
-                className="p-4 rounded-2xl bg-[#222734] hover:bg-[#2c3344] border border-[#2D3548] flex flex-col items-center justify-center gap-2 text-center transition active:scale-95 group cursor-pointer"
+                className="p-3 rounded-2xl bg-[#222734] hover:bg-[#2c3344] border border-[#2D3548] flex flex-col items-center justify-center gap-1 text-center transition active:scale-95 group cursor-pointer"
               >
-                <span className="text-3xl group-hover:scale-110 transition-transform">📜</span>
-                <span className="font-extrabold text-sm text-gray-200 group-hover:text-white">Order History</span>
-                <span className="text-[11px] text-gray-400">View past bills & receipts</span>
+                <span className="text-2xl group-hover:scale-110 transition-transform">📜</span>
+                <span className="font-extrabold text-xs text-gray-200 group-hover:text-white">Order History</span>
+                <span className="text-[10px] text-gray-400">Past bills & receipts</span>
               </button>
 
               {/* Store Control */}
@@ -4800,11 +4576,11 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                   setIsFeaturesModalOpen(false);
                   setIsDailyControlOpen(true);
                 }}
-                className="p-4 rounded-2xl bg-[#222734] hover:bg-[#2c3344] border border-[#2D3548] flex flex-col items-center justify-center gap-2 text-center transition active:scale-95 group cursor-pointer"
+                className="p-3 rounded-2xl bg-[#222734] hover:bg-[#2c3344] border border-[#2D3548] flex flex-col items-center justify-center gap-1 text-center transition active:scale-95 group cursor-pointer"
               >
-                <span className="text-3xl group-hover:scale-110 transition-transform">🏪</span>
-                <span className="font-extrabold text-sm text-gray-200 group-hover:text-white">Store Control</span>
-                <span className="text-[11px] text-gray-400">Branch status, 86 items, channels</span>
+                <span className="text-2xl group-hover:scale-110 transition-transform">🏪</span>
+                <span className="font-extrabold text-xs text-gray-200 group-hover:text-white">Store Control</span>
+                <span className="text-[10px] text-gray-400">Status, 86 items</span>
               </button>
 
               {/* Transfer Table */}
@@ -4819,11 +4595,11 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                   setTransferTargetTableInput("");
                   setIsTransferModalOpen(true);
                 }}
-                className="p-4 rounded-2xl bg-[#222734] hover:bg-[#2c3344] border border-[#2D3548] flex flex-col items-center justify-center gap-2 text-center transition active:scale-95 group cursor-pointer"
+                className="p-3 rounded-2xl bg-[#222734] hover:bg-[#2c3344] border border-[#2D3548] flex flex-col items-center justify-center gap-1 text-center transition active:scale-95 group cursor-pointer"
               >
-                <span className="text-3xl group-hover:scale-110 transition-transform">🔀</span>
-                <span className="font-extrabold text-sm text-gray-200 group-hover:text-white">Transfer Table</span>
-                <span className="text-[11px] text-gray-400">Move current table order to another</span>
+                <span className="text-2xl group-hover:scale-110 transition-transform">🔀</span>
+                <span className="font-extrabold text-xs text-gray-200 group-hover:text-white">Transfer Table</span>
+                <span className="text-[10px] text-gray-400">Move table to another</span>
               </button>
 
               {/* Screen Builder */}
@@ -4833,11 +4609,11 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                   setIsFeaturesModalOpen(false);
                   window.location.hash = '#/pos-screens';
                 }}
-                className="p-4 rounded-2xl bg-[#222734] hover:bg-[#2c3344] border border-[#2D3548] flex flex-col items-center justify-center gap-2 text-center transition active:scale-95 group cursor-pointer"
+                className="p-3 rounded-2xl bg-[#222734] hover:bg-[#2c3344] border border-[#2D3548] flex flex-col items-center justify-center gap-1 text-center transition active:scale-95 group cursor-pointer"
               >
-                <span className="text-3xl group-hover:scale-110 transition-transform">🎨</span>
-                <span className="font-extrabold text-sm text-gray-200 group-hover:text-white">Screen Builder</span>
-                <span className="text-[11px] text-gray-400">Create & customize POS screens</span>
+                <span className="text-2xl group-hover:scale-110 transition-transform">🎨</span>
+                <span className="font-extrabold text-xs text-gray-200 group-hover:text-white">Screen Builder</span>
+                <span className="text-[10px] text-gray-400">Customize POS screens</span>
               </button>
 
               {/* Shift / Drawer */}
@@ -4851,11 +4627,11 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                     setIsCloseShiftModalOpen(true);
                   }
                 }}
-                className="p-4 rounded-2xl bg-[#222734] hover:bg-[#2c3344] border border-[#2D3548] flex flex-col items-center justify-center gap-2 text-center transition active:scale-95 group cursor-pointer"
+                className="p-3 rounded-2xl bg-[#222734] hover:bg-[#2c3344] border border-[#2D3548] flex flex-col items-center justify-center gap-1 text-center transition active:scale-95 group cursor-pointer"
               >
-                <span className="text-3xl group-hover:scale-110 transition-transform">💼</span>
-                <span className="font-extrabold text-sm text-gray-200 group-hover:text-white">Shift / Drawer</span>
-                <span className="text-[11px] text-gray-400">{activeShift ? 'Close Shift / X-Report' : 'Open Shift Float'}</span>
+                <span className="text-2xl group-hover:scale-110 transition-transform">💼</span>
+                <span className="font-extrabold text-xs text-gray-200 group-hover:text-white">Shift / Drawer</span>
+                <span className="text-[10px] text-gray-400">{activeShift ? 'Close / X-Report' : 'Open Shift Float'}</span>
               </button>
 
               {/* Lock Screen / Switch Cashier */}
@@ -4865,12 +4641,72 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                   setIsFeaturesModalOpen(false);
                   setIsPinLockOpen(true);
                 }}
-                className="p-4 rounded-2xl bg-[#222734] hover:bg-[#2c3344] border border-[#2D3548] flex flex-col items-center justify-center gap-2 text-center transition active:scale-95 group cursor-pointer"
+                className="p-3 rounded-2xl bg-[#222734] hover:bg-[#2c3344] border border-[#2D3548] flex flex-col items-center justify-center gap-1 text-center transition active:scale-95 group cursor-pointer"
               >
-                <span className="text-3xl group-hover:scale-110 transition-transform">🔒</span>
-                <span className="font-extrabold text-sm text-gray-200 group-hover:text-white">Lock / Switch PIN</span>
-                <span className="text-[11px] text-gray-400">Active: {activeCashier?.name || user?.name || 'Staff'}</span>
+                <span className="text-2xl group-hover:scale-110 transition-transform">🔒</span>
+                <span className="font-extrabold text-xs text-gray-200 group-hover:text-white">Lock / Switch PIN</span>
+                <span className="text-[10px] text-gray-400">Switch cashier staff</span>
               </button>
+
+              {/* Floor Plan Tables */}
+              {Boolean(branchCapabilities?.table_service) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsFeaturesModalOpen(false);
+                    setPosActiveView('tables');
+                  }}
+                  className="p-3 rounded-2xl bg-[#222734] hover:bg-[#2c3344] border border-[#2D3548] flex flex-col items-center justify-center gap-1 text-center transition active:scale-95 group cursor-pointer"
+                >
+                  <span className="text-2xl group-hover:scale-110 transition-transform">🪑</span>
+                  <span className="font-extrabold text-xs text-gray-200 group-hover:text-white">Floor Tables</span>
+                  <span className="text-[10px] text-gray-400">View dining tables</span>
+                </button>
+              )}
+
+              {/* Orders Hub */}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsFeaturesModalOpen(false);
+                  setPosActiveView('orders');
+                }}
+                className="p-3 rounded-2xl bg-[#222734] hover:bg-[#2c3344] border border-[#2D3548] flex flex-col items-center justify-center gap-1 text-center transition active:scale-95 group cursor-pointer"
+              >
+                <span className="text-2xl group-hover:scale-110 transition-transform">📋</span>
+                <span className="font-extrabold text-xs text-gray-200 group-hover:text-white">Orders Hub</span>
+                <span className="text-[10px] text-gray-400">Online & branch orders</span>
+              </button>
+
+              {/* POS Settings */}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsFeaturesModalOpen(false);
+                  setActiveTabModal("settings");
+                }}
+                className="p-3 rounded-2xl bg-[#222734] hover:bg-[#2c3344] border border-[#2D3548] flex flex-col items-center justify-center gap-1 text-center transition active:scale-95 group cursor-pointer"
+              >
+                <span className="text-2xl group-hover:scale-110 transition-transform">⚙️</span>
+                <span className="font-extrabold text-xs text-gray-200 group-hover:text-white">POS Settings</span>
+                <span className="text-[10px] text-gray-400">Printers & hardware</span>
+              </button>
+
+              {/* Exit POS under Features */}
+              {onExit && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsFeaturesModalOpen(false);
+                    onExit();
+                  }}
+                  className="p-3 rounded-2xl bg-rose-950/40 hover:bg-rose-900/60 border border-rose-500/40 flex flex-col items-center justify-center gap-1 text-center transition active:scale-95 group cursor-pointer sm:col-span-3"
+                >
+                  <span className="text-2xl group-hover:scale-110 transition-transform">🚪</span>
+                  <span className="font-extrabold text-xs text-rose-300 group-hover:text-white">Exit POS</span>
+                  <span className="text-[10px] text-rose-400/80">Return to Admin Operations Portal</span>
+                </button>
+              )}
             </div>
           </div>
         </div>
