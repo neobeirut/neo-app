@@ -2622,10 +2622,11 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         setOrderType("delivery");
         setScheduledOrderTime("");
         setScheduledOrderNote("");
+        setActiveTabModal(null);
         if (wasTable) {
           setPosActiveView('tables');
         } else {
-          setActiveTabModal(["Toters", "NokNok"].includes(effectiveChannel) ? null : "receipt");
+          setPosActiveView('sell');
         }
         fetchOrdersQueue();
       } else if (data && data.error) {
