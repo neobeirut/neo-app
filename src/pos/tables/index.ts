@@ -8,3 +8,4 @@ export * from './OpenTableModal';
 export * from './TableDetailsPanel';
 export * from './SplitBillModal';
 export * from './TablesScreen';
+export * from './TableKeypadModal';
