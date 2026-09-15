@@ -4421,24 +4421,59 @@ export const api = {
     overwriteExistingDrafts: boolean = true
   ) => {
     const rid = getRestaurantId();
-    const srcStart = new Date(sourceStartDate);
-    const srcEnd = new Date(srcStart);
-    srcEnd.setDate(srcEnd.getDate() + 6);
-    const srcEndStr = srcEnd.toISOString().split('T')[0];
 
-    const targetStart = new Date(targetStartDate);
-    const targetEnd = new Date(targetStart);
-    targetEnd.setDate(targetEnd.getDate() + 6);
-    const targetEndStr = targetEnd.toISOString().split('T')[0];
+    const getMonday = (dStr: string): string => {
+      const parts = dStr.split('-').map(Number);
+      const date = new Date(parts[0], parts[1] - 1, parts[2], 12, 0, 0);
+      const day = date.getDay();
+      const diff = day === 0 ? -6 : 1 - day;
+      date.setDate(date.getDate() + diff);
+      const Y = date.getFullYear();
+      const M = String(date.getMonth() + 1).padStart(2, '0');
+      const D = String(date.getDate()).padStart(2, '0');
+      return `${Y}-${M}-${D}`;
+    };
 
-    let query = supabase.from('employee_schedules').select('*').gte('date', sourceStartDate).lte('date', srcEndStr);
+    const addDays = (dStr: string, n: number): string => {
+      const parts = dStr.split('-').map(Number);
+      const date = new Date(parts[0], parts[1] - 1, parts[2], 12, 0, 0);
+      date.setDate(date.getDate() + n);
+      const Y = date.getFullYear();
+      const M = String(date.getMonth() + 1).padStart(2, '0');
+      const D = String(date.getDate()).padStart(2, '0');
+      return `${Y}-${M}-${D}`;
+    };
+
+    const getDayIndex = (dStr: string): number => {
+      const parts = dStr.split('-').map(Number);
+      const d = new Date(parts[0], parts[1] - 1, parts[2], 12, 0, 0);
+      const day = d.getDay();
+      return day === 0 ? 6 : day - 1; // 0=Mon, 1=Tue, ..., 6=Sun
+    };
+
+    let srcMon = getMonday(sourceStartDate);
+    let tgtMon = getMonday(targetStartDate);
+
+    // If source and target resolve to the same Monday (e.g. user entered source 07/09 and target 13/09):
+    if (srcMon === tgtMon) {
+      tgtMon = addDays(srcMon, 7);
+    }
+
+    const srcSunday = addDays(srcMon, 6);
+    const tgtSunday = addDays(tgtMon, 6);
+
+    let query = supabase
+      .from('employee_schedules')
+      .select('*')
+      .gte('date', srcMon)
+      .lte('date', srcSunday);
     if (branch && branch !== 'All') query = query.eq('branch', branch);
     if (rid) query = query.eq('restaurant_id', rid);
 
     const { data: existingSource, error: fetchErr } = await query;
     if (fetchErr) return { success: false, error: fetchErr.message };
     if (!existingSource || existingSource.length === 0) {
-      return { success: false, error: 'No schedules found in the source week to copy.' };
+      return { success: false, error: `No schedules found in source week (${srcMon} to ${srcSunday}) to copy.` };
     }
 
     let empQuery = supabase.from('employees').select('employee_id, status');
@@ -4455,13 +4490,11 @@ export const api = {
       return { success: false, error: 'No schedules for active employees found to copy.' };
     }
 
-    const daysOffset = Math.round((targetStart.getTime() - srcStart.getTime()) / (1000 * 60 * 60 * 24));
-
+    // Map each item by exact Day-of-Week (Monday -> Target Monday, ..., Sunday -> Target Sunday)
     const rawCopied = await Promise.all(
       activeExistingSource.map(async (item: any) => {
-        const origDate = new Date(item.date);
-        origDate.setDate(origDate.getDate() + daysOffset);
-        const newDateStr = origDate.toISOString().split('T')[0];
+        const dayIdx = getDayIndex(item.date);
+        const newDateStr = addDays(tgtMon, dayIdx);
 
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { id, created_at, updated_at, published_at, ...rest } = item;
@@ -4491,8 +4524,8 @@ export const api = {
       let delQuery = supabase
         .from('employee_schedules')
         .delete()
-        .gte('date', targetStartDate)
-        .lte('date', targetEndStr)
+        .gte('date', tgtMon)
+        .lte('date', tgtSunday)
         .eq('status', 'draft');
       if (branch && branch !== 'All') delQuery = delQuery.eq('branch', branch);
       if (rid) delQuery = delQuery.eq('restaurant_id', rid);
@@ -4501,8 +4534,8 @@ export const api = {
       let exTargetQuery = supabase
         .from('employee_schedules')
         .select('employee_id, date, assignment_type, start_time, end_time, shift_name')
-        .gte('date', targetStartDate)
-        .lte('date', targetEndStr);
+        .gte('date', tgtMon)
+        .lte('date', tgtSunday);
       if (branch && branch !== 'All') exTargetQuery = exTargetQuery.eq('branch', branch);
       if (rid) exTargetQuery = exTargetQuery.eq('restaurant_id', rid);
       const { data: existingTarget } = await exTargetQuery;

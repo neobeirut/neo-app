@@ -34,6 +34,13 @@ export const isEmployeeActive = (emp: any): boolean => {
   return true;
 };
 
+export const formatLocalDate = (d: Date): string => {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 export default function ShiftManagementView({
   user: _user,
   permissions: _permissions,
@@ -77,39 +84,44 @@ export default function ShiftManagementView({
   // Compute Date Range depending on viewMode
   const dateRange = useMemo(() => {
     const curr = new Date(currentDate);
+    curr.setHours(12, 0, 0, 0);
+
     if (viewMode === 'weekly') {
       // Find Monday of current week
-      const day = curr.getDay(); // 0 is Sun
-      const diff = curr.getDate() - day + (day === 0 ? -6 : 1);
-      const mon = new Date(curr.setDate(diff));
+      const day = curr.getDay(); // 0 is Sun, 1 is Mon
+      const diff = curr.getDate() - (day === 0 ? 6 : day - 1);
+      const mon = new Date(curr);
+      mon.setDate(diff);
+      mon.setHours(12, 0, 0, 0);
 
       const days: Date[] = [];
       for (let i = 0; i < 7; i++) {
         const d = new Date(mon);
         d.setDate(mon.getDate() + i);
+        d.setHours(12, 0, 0, 0);
         days.push(d);
       }
-      const startStr = days[0].toISOString().split('T')[0];
-      const endStr = days[6].toISOString().split('T')[0];
+      const startStr = formatLocalDate(days[0]);
+      const endStr = formatLocalDate(days[6]);
       return { days, startStr, endStr };
     } else if (viewMode === 'monthly') {
       const year = curr.getFullYear();
       const month = curr.getMonth();
-      const firstDay = new Date(year, month, 1);
-      const lastDay = new Date(year, month + 1, 0);
+      const firstDay = new Date(year, month, 1, 12, 0, 0);
+      const lastDay = new Date(year, month + 1, 0, 12, 0, 0);
 
       const days: Date[] = [];
       for (let d = 1; d <= lastDay.getDate(); d++) {
-        days.push(new Date(year, month, d));
+        days.push(new Date(year, month, d, 12, 0, 0));
       }
       return {
         days,
-        startStr: firstDay.toISOString().split('T')[0],
-        endStr: lastDay.toISOString().split('T')[0]
+        startStr: formatLocalDate(firstDay),
+        endStr: formatLocalDate(lastDay)
       };
     } else {
       // Daily
-      const dayStr = curr.toISOString().split('T')[0];
+      const dayStr = formatLocalDate(curr);
       return { days: [curr], startStr: dayStr, endStr: dayStr };
     }
   }, [currentDate, viewMode]);
@@ -869,8 +881,8 @@ export default function ShiftManagementView({
                     Employee / Position
                   </th>
                   {dateRange.days.map((dayDate, idx) => {
-                    const dateStr = dayDate.toISOString().split('T')[0];
-                    const isToday = dateStr === new Date().toISOString().split('T')[0];
+                    const dateStr = formatLocalDate(dayDate);
+                    const isToday = dateStr === formatLocalDate(new Date());
                     const dayName = dayDate.toLocaleDateString('default', { weekday: 'short' });
                     const dayNum = dayDate.getDate();
 
@@ -962,7 +974,7 @@ export default function ShiftManagementView({
 
                             {/* Days Cells */}
                             {dateRange.days.map((dayDate, dIdx) => {
-                              const dateStr = dayDate.toISOString().split('T')[0];
+                              const dateStr = formatLocalDate(dayDate);
                               const empDaySchedules = schedules.filter(
                                 (s) => s.employee_id === empId && s.date === dateStr
                               );
@@ -1118,9 +1130,9 @@ export default function ShiftManagementView({
             ))}
 
             {dateRange.days.map((dayDate, idx) => {
-              const dateStr = dayDate.toISOString().split('T')[0];
+              const dateStr = formatLocalDate(dayDate);
               const dayNum = dayDate.getDate();
-              const isToday = dateStr === new Date().toISOString().split('T')[0];
+              const isToday = dateStr === formatLocalDate(new Date());
 
               const daySchedules = schedules.filter((s) => s.date === dateStr);
 

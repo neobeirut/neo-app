@@ -29,17 +29,50 @@ export default function CopyScheduleModal({
   const [copying, setCopying] = useState(false);
   const [overwriteDrafts, setOverwriteDrafts] = useState(true);
 
+  const getMonday = (dStr: string): string => {
+    if (!dStr) return '';
+    const parts = dStr.split('-').map(Number);
+    if (parts.length < 3) return dStr;
+    const date = new Date(parts[0], parts[1] - 1, parts[2], 12, 0, 0);
+    const day = date.getDay();
+    const diff = day === 0 ? -6 : 1 - day;
+    date.setDate(date.getDate() + diff);
+    const Y = date.getFullYear();
+    const M = String(date.getMonth() + 1).padStart(2, '0');
+    const D = String(date.getDate()).padStart(2, '0');
+    return `${Y}-${M}-${D}`;
+  };
+
+  const addDays = (dStr: string, n: number): string => {
+    if (!dStr) return '';
+    const parts = dStr.split('-').map(Number);
+    if (parts.length < 3) return dStr;
+    const date = new Date(parts[0], parts[1] - 1, parts[2], 12, 0, 0);
+    date.setDate(date.getDate() + n);
+    const Y = date.getFullYear();
+    const M = String(date.getMonth() + 1).padStart(2, '0');
+    const D = String(date.getDate()).padStart(2, '0');
+    return `${Y}-${M}-${D}`;
+  };
+
+  const srcMon = useMemo(() => getMonday(sourceWeekStart), [sourceWeekStart]);
+  const srcSun = useMemo(() => (srcMon ? addDays(srcMon, 6) : ''), [srcMon]);
+
+  const tgtMon = useMemo(() => getMonday(targetWeekStart), [targetWeekStart]);
+  const tgtSun = useMemo(() => (tgtMon ? addDays(tgtMon, 6) : ''), [tgtMon]);
+
   useEffect(() => {
     if (isOpen) {
-      // Calculate previous week start date
-      const targetDate = new Date(currentStartDate || new Date());
-      const prevWeekDate = new Date(targetDate);
-      prevWeekDate.setDate(prevWeekDate.getDate() - 7);
+      // Calculate target and previous week Monday dates
+      const baseDateStr = currentStartDate || new Date().toISOString().split('T')[0];
+      const targetMon = getMonday(baseDateStr);
+      const prevMon = addDays(targetMon, -7);
 
-      setSourceWeekStart(prevWeekDate.toISOString().split('T')[0]);
-      setTargetWeekStart(targetDate.toISOString().split('T')[0]);
+      setSourceWeekStart(prevMon);
+      setTargetWeekStart(targetMon);
 
       // Calculate previous month string YYYY-MM
+      const targetDate = new Date();
       const currYear = targetDate.getFullYear();
       const currMonth = targetDate.getMonth();
 
@@ -195,10 +228,19 @@ export default function CopyScheduleModal({
           {/* Controls */}
           {mode === 'week' ? (
             <div style={{ padding: '16px', backgroundColor: '#f8fafc', border: '1px solid var(--border)', borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div>
-                <label style={labelStyle}>
-                  <Calendar size={14} /> Source Week Start (Monday)
-                </label>
+              
+              {/* Source Box */}
+              <div style={{ backgroundColor: '#ffffff', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                  <label style={{ ...labelStyle, marginBottom: 0, color: '#334155' }}>
+                    <Calendar size={14} style={{ color: '#8b5cf6' }} /> <strong>1. Copy FROM (Source Week)</strong>
+                  </label>
+                  {srcMon && (
+                    <span style={{ fontSize: '11px', fontWeight: 600, color: '#6d28d9', backgroundColor: '#f5f3ff', padding: '2px 8px', borderRadius: '6px' }}>
+                      {srcMon} to {srcSun}
+                    </span>
+                  )}
+                </div>
                 <input
                   type="date"
                   value={sourceWeekStart}
@@ -206,12 +248,28 @@ export default function CopyScheduleModal({
                   style={inputStyle}
                   required
                 />
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                  Entire 7-day roster (Mon {srcMon} to Sun {srcSun}) will be copied.
+                </div>
               </div>
 
-              <div>
-                <label style={labelStyle}>
-                  <Calendar size={14} /> Target Week Start (Monday)
-                </label>
+              {/* Direction Indicator */}
+              <div style={{ textAlign: 'center', color: '#8b5cf6', fontSize: '12px', fontWeight: 700, margin: '-4px 0' }}>
+                ⬇️ Copy shifts into ⬇️
+              </div>
+
+              {/* Target Box */}
+              <div style={{ backgroundColor: '#ffffff', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                  <label style={{ ...labelStyle, marginBottom: 0, color: '#334155' }}>
+                    <Calendar size={14} style={{ color: '#059669' }} /> <strong>2. Copy INTO (Target Week)</strong>
+                  </label>
+                  {tgtMon && (
+                    <span style={{ fontSize: '11px', fontWeight: 600, color: '#047857', backgroundColor: '#ecfdf5', padding: '2px 8px', borderRadius: '6px' }}>
+                      {tgtMon} to {tgtSun}
+                    </span>
+                  )}
+                </div>
                 <input
                   type="date"
                   value={targetWeekStart}
@@ -219,7 +277,18 @@ export default function CopyScheduleModal({
                   style={inputStyle}
                   required
                 />
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                  Destination week: Mon {tgtMon} to Sun {tgtSun}.
+                </div>
               </div>
+
+              {/* Warning if source and target match */}
+              {srcMon && tgtMon && srcMon === tgtMon && (
+                <div style={{ padding: '8px 12px', backgroundColor: '#fff7ed', border: '1px solid #fdba74', borderRadius: '6px', fontSize: '12px', color: '#c2410c' }}>
+                  ℹ️ Notice: Source and target are in the same week! The target will automatically be set to the following week ({addDays(srcMon, 7)} to {addDays(srcMon, 13)}).
+                </div>
+              )}
+
             </div>
           ) : (
             <div style={{ padding: '16px', backgroundColor: '#f8fafc', border: '1px solid var(--border)', borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
