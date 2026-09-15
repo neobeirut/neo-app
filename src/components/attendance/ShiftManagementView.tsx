@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { api } from '../../api/client';
 import {
   Clock, Plus, Copy, Send, Settings, ChevronLeft, ChevronRight,
-  Building, Search, CheckCircle2, Loader2, Sparkles, CalendarDays, RefreshCw, User, Briefcase, Trash2
+  Building, Search, CheckCircle2, Loader2, Sparkles, CalendarDays, RefreshCw, User, Briefcase, Trash2, AlertTriangle
 } from 'lucide-react';
 import ShiftTemplatesModal from './ShiftTemplatesModal';
 import ScheduleAssignmentModal from './ScheduleAssignmentModal';
@@ -60,6 +60,8 @@ export default function ShiftManagementView({
   const [templates, setTemplates] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [publishing, setPublishing] = useState(false);
+  const [deletingDrafts, setDeletingDrafts] = useState(false);
+  const [cleaningDuplicates, setCleaningDuplicates] = useState(false);
 
   // Modals state
   const [showTemplatesModal, setShowTemplatesModal] = useState(false);
@@ -183,6 +185,101 @@ export default function ShiftManagementView({
     }
 
     alert(`Successfully published ${res.count} shift schedules!`);
+    await loadData();
+  };
+
+  // Count duplicate draft shifts in current view
+  const duplicateDraftCount = useMemo(() => {
+    const keys = new Set<string>();
+    let dups = 0;
+    for (const s of schedules) {
+      if (s.status === 'draft') {
+        const key = `${s.employee_id}_${s.date}_${s.assignment_type}_${s.start_time || ''}_${s.end_time || ''}_${s.shift_name || ''}`;
+        if (keys.has(key)) {
+          dups++;
+        } else {
+          keys.add(key);
+        }
+      }
+    }
+    return dups;
+  }, [schedules]);
+
+  // Handle Delete Draft Shifts (Entire week or period if not submitted)
+  const handleDeleteDrafts = async () => {
+    if (draftCount === 0) {
+      alert('No unsubmitted draft shifts in this period to delete.');
+      return;
+    }
+
+    const periodLabel =
+      viewMode === 'weekly'
+        ? `the entire week (${dateRange.startStr} to ${dateRange.endStr})`
+        : viewMode === 'monthly'
+        ? `the current month (${dateRange.startStr} to ${dateRange.endStr})`
+        : `the day (${dateRange.startStr})`;
+
+    const branchLabel = filterBranch !== 'All' ? ` for branch "${filterBranch}"` : ' for all branches';
+    const empLabel = filterEmployee !== 'All' ? ' (selected employee only)' : '';
+
+    if (
+      !confirm(
+        `Are you sure you want to delete all ${draftCount} unsubmitted draft shift(s) for ${periodLabel}${branchLabel}${empLabel}?\n\n` +
+        `Published shifts will remain completely untouched. This action cannot be undone.`
+      )
+    ) {
+      return;
+    }
+
+    setDeletingDrafts(true);
+    const res = await api.deleteDraftSchedules(dateRange.startStr, dateRange.endStr, filterBranch, filterEmployee);
+    setDeletingDrafts(false);
+
+    if (!res.success) {
+      alert(`Error deleting draft shifts: ${res.error}`);
+      return;
+    }
+
+    // Optimistically update state
+    setSchedules((prev) =>
+      prev.filter((s) => {
+        if (s.status !== 'draft') return true;
+        const inDate = s.date >= dateRange.startStr && s.date <= dateRange.endStr;
+        const inBranch = filterBranch === 'All' || s.branch === filterBranch;
+        const inEmp = filterEmployee === 'All' || s.employee_id === filterEmployee;
+        return !(inDate && inBranch && inEmp);
+      })
+    );
+
+    await loadData(true);
+  };
+
+  // Handle Clean Duplicates
+  const handleCleanDuplicates = async () => {
+    if (duplicateDraftCount === 0) {
+      alert('No duplicate draft shifts detected in this period.');
+      return;
+    }
+
+    if (
+      !confirm(
+        `Found ${duplicateDraftCount} duplicate draft shift assignment(s) in this view.\n\n` +
+        `Would you like to remove the duplicate entries and keep 1 clean shift for each slot?`
+      )
+    ) {
+      return;
+    }
+
+    setCleaningDuplicates(true);
+    const res = await api.deduplicateDraftSchedules(dateRange.startStr, dateRange.endStr, filterBranch);
+    setCleaningDuplicates(false);
+
+    if (!res.success) {
+      alert(`Error removing duplicate shifts: ${res.error}`);
+      return;
+    }
+
+    alert(`Successfully removed ${res.removedCount} duplicate shift assignment(s)!`);
     await loadData();
   };
 
@@ -444,6 +541,31 @@ export default function ShiftManagementView({
               <span>Copy Schedule</span>
             </button>
 
+            {draftCount > 0 && (
+              <button
+                onClick={handleDeleteDrafts}
+                disabled={deletingDrafts}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '8px 14px',
+                  backgroundColor: '#fef2f2',
+                  border: '1px solid #fecaca',
+                  borderRadius: '8px',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  color: '#dc2626',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease'
+                }}
+                title={viewMode === 'weekly' ? 'Delete all unsubmitted draft shifts for this week' : 'Delete unsubmitted draft shifts'}
+              >
+                {deletingDrafts ? <Loader2 size={15} className="spin" /> : <Trash2 size={15} />}
+                <span>{viewMode === 'weekly' ? 'Delete Week Drafts' : 'Delete Drafts'}</span>
+              </button>
+            )}
+
             <button onClick={() => handleOpenAddAssignment()} style={btnPrimaryStyle}>
               <Plus size={16} />
               <span>Assign Shift</span>
@@ -628,7 +750,7 @@ export default function ShiftManagementView({
             <Sparkles size={20} />
           </div>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
               <strong style={{ fontSize: '14px', color: '#92400e' }}>Schedule Status Overview</strong>
               <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '12px', backgroundColor: '#fde68a', color: '#78350f' }}>
                 {draftCount} Draft Shifts
@@ -636,6 +758,12 @@ export default function ShiftManagementView({
               <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '12px', backgroundColor: '#d1fae5', color: '#065f46' }}>
                 {publishedCount} Published
               </span>
+              {duplicateDraftCount > 0 && (
+                <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '12px', backgroundColor: '#ffedd5', color: '#c2410c', border: '1px solid #fed7aa', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                  <AlertTriangle size={12} />
+                  <span>{duplicateDraftCount} Duplicate Drafts</span>
+                </span>
+              )}
             </div>
             <p style={{ fontSize: '12px', color: '#b45309', margin: '2px 0 0 0' }}>
               Draft shifts are visible to managers only. Click "Publish Schedule" to notify employees in the mobile app.
@@ -643,27 +771,82 @@ export default function ShiftManagementView({
           </div>
         </div>
 
-        <button
-          onClick={handlePublish}
-          disabled={publishing || draftCount === 0}
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '8px',
-            padding: '9px 18px',
-            backgroundColor: draftCount > 0 ? '#059669' : '#cbd5e1',
-            color: '#ffffff',
-            border: 'none',
-            borderRadius: '8px',
-            fontSize: '13px',
-            fontWeight: 600,
-            cursor: draftCount > 0 ? 'pointer' : 'not-allowed',
-            boxShadow: draftCount > 0 ? '0 2px 4px rgba(5, 150, 105, 0.2)' : 'none'
-          }}
-        >
-          {publishing ? <Loader2 size={16} className="spin" /> : <Send size={16} />}
-          <span>Publish Schedule ({draftCount})</span>
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          {/* Clean Duplicates Button */}
+          {duplicateDraftCount > 0 && (
+            <button
+              onClick={handleCleanDuplicates}
+              disabled={cleaningDuplicates}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '9px 14px',
+                backgroundColor: '#fff7ed',
+                color: '#c2410c',
+                border: '1px solid #fdba74',
+                borderRadius: '8px',
+                fontSize: '13px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'all 0.15s ease'
+              }}
+              title="Remove duplicate draft assignments and keep 1 clean assignment for each slot"
+            >
+              {cleaningDuplicates ? <Loader2 size={15} className="spin" /> : <AlertTriangle size={15} />}
+              <span>Clean Duplicates ({duplicateDraftCount})</span>
+            </button>
+          )}
+
+          {/* Delete Week Drafts Button */}
+          {draftCount > 0 && (
+            <button
+              onClick={handleDeleteDrafts}
+              disabled={deletingDrafts}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '9px 14px',
+                backgroundColor: '#fef2f2',
+                color: '#dc2626',
+                border: '1px solid #fecaca',
+                borderRadius: '8px',
+                fontSize: '13px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'all 0.15s ease'
+              }}
+              title={viewMode === 'weekly' ? 'Delete all unsubmitted draft shifts for this week' : 'Delete all unsubmitted draft shifts for this period'}
+            >
+              {deletingDrafts ? <Loader2 size={15} className="spin" /> : <Trash2 size={15} />}
+              <span>{viewMode === 'weekly' ? 'Delete Week Drafts' : 'Delete Drafts'} ({draftCount})</span>
+            </button>
+          )}
+
+          {/* Publish Schedule Button */}
+          <button
+            onClick={handlePublish}
+            disabled={publishing || draftCount === 0}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '9px 18px',
+              backgroundColor: draftCount > 0 ? '#059669' : '#cbd5e1',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '8px',
+              fontSize: '13px',
+              fontWeight: 600,
+              cursor: draftCount > 0 ? 'pointer' : 'not-allowed',
+              boxShadow: draftCount > 0 ? '0 2px 4px rgba(5, 150, 105, 0.2)' : 'none'
+            }}
+          >
+            {publishing ? <Loader2 size={16} className="spin" /> : <Send size={16} />}
+            <span>Publish Schedule ({draftCount})</span>
+          </button>
+        </div>
       </div>
 
       {/* Main Schedule Grid */}

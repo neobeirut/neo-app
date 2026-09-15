@@ -27,6 +27,7 @@ export default function CopyScheduleModal({
 
   const [branch, setBranch] = useState('All');
   const [copying, setCopying] = useState(false);
+  const [overwriteDrafts, setOverwriteDrafts] = useState(true);
 
   useEffect(() => {
     if (isOpen) {
@@ -51,11 +52,13 @@ export default function CopyScheduleModal({
       setTargetMonth(targetMonthStr);
 
       setBranch('All');
+      setOverwriteDrafts(true);
     }
   }, [isOpen, currentStartDate]);
 
   const handleCopy = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (copying) return;
     setCopying(true);
 
     let res: any;
@@ -65,14 +68,14 @@ export default function CopyScheduleModal({
         setCopying(false);
         return;
       }
-      res = await api.copyPreviousWeekSchedule(sourceWeekStart, targetWeekStart, branch);
+      res = await api.copyPreviousWeekSchedule(sourceWeekStart, targetWeekStart, branch, overwriteDrafts);
     } else {
       if (!sourceMonth || !targetMonth) {
         alert('Please specify source and target months.');
         setCopying(false);
         return;
       }
-      res = await api.copyPreviousMonthSchedule(sourceMonth, targetMonth, branch);
+      res = await api.copyPreviousMonthSchedule(sourceMonth, targetMonth, branch, overwriteDrafts);
     }
 
     setCopying(false);
@@ -243,6 +246,22 @@ export default function CopyScheduleModal({
               </div>
             </div>
           )}
+
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', padding: '10px 12px', backgroundColor: '#f8fafc', border: '1px solid var(--border)', borderRadius: '8px' }}>
+            <input
+              type="checkbox"
+              id="overwriteDrafts"
+              checked={overwriteDrafts}
+              onChange={(e) => setOverwriteDrafts(e.target.checked)}
+              style={{ marginTop: '2px', cursor: 'pointer' }}
+            />
+            <label htmlFor="overwriteDrafts" style={{ fontSize: '12px', color: 'var(--text-main)', cursor: 'pointer', lineHeight: '1.4' }}>
+              <strong>Overwrite existing draft shifts in target period</strong>
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                Replaces unsubmitted drafts in the target week/month to prevent duplicate shifts if copied again.
+              </div>
+            </label>
+          </div>
 
           <div style={{ padding: '12px', backgroundColor: '#faf5ff', border: '1px solid #e9d5ff', borderRadius: '8px', fontSize: '12px', color: '#6b21a8' }}>
             Copied schedules will be added as <strong>Draft</strong> schedules in the target period so you can review before publishing.

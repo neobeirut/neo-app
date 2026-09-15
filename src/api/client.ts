@@ -4347,13 +4347,89 @@ export const api = {
     return { success: true };
   },
 
-  copyPreviousWeekSchedule: async (sourceStartDate: string, targetStartDate: string, branch?: string) => {
+  deleteDraftSchedules: async (startDate: string, endDate: string, branch?: string, employeeId?: string) => {
+    const rid = getRestaurantId();
+    let query = supabase
+      .from('employee_schedules')
+      .delete()
+      .gte('date', startDate)
+      .lte('date', endDate)
+      .eq('status', 'draft');
+
+    if (branch && branch !== 'All') query = query.eq('branch', branch);
+    if (employeeId && employeeId !== 'All') query = query.eq('employee_id', employeeId);
+    if (rid) query = query.eq('restaurant_id', rid);
+
+    const { error } = await query;
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  },
+
+  deduplicateDraftSchedules: async (startDate: string, endDate: string, branch?: string) => {
+    const rid = getRestaurantId();
+    let query = supabase
+      .from('employee_schedules')
+      .select('id, employee_id, date, assignment_type, start_time, end_time, shift_name, status, created_at')
+      .gte('date', startDate)
+      .lte('date', endDate)
+      .eq('status', 'draft');
+
+    if (branch && branch !== 'All') query = query.eq('branch', branch);
+    if (rid) query = query.eq('restaurant_id', rid);
+
+    const { data: list, error } = await query;
+    if (error) return { success: false, error: error.message };
+    if (!list || list.length === 0) return { success: true, removedCount: 0 };
+
+    // Group by unique key and collect duplicate IDs
+    const seen = new Set<string>();
+    const duplicateIds: string[] = [];
+
+    const sorted = [...list].sort((a, b) => {
+      const tA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const tB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return tA - tB;
+    });
+
+    for (const item of sorted) {
+      const key = `${item.employee_id}_${item.date}_${item.assignment_type}_${item.start_time || ''}_${item.end_time || ''}_${item.shift_name || ''}`;
+      if (seen.has(key)) {
+        duplicateIds.push(item.id);
+      } else {
+        seen.add(key);
+      }
+    }
+
+    if (duplicateIds.length > 0) {
+      for (let i = 0; i < duplicateIds.length; i += 50) {
+        const chunk = duplicateIds.slice(i, i + 50);
+        const { error: delErr } = await supabase
+          .from('employee_schedules')
+          .delete()
+          .in('id', chunk);
+        if (delErr) return { success: false, error: delErr.message };
+      }
+    }
+
+    return { success: true, removedCount: duplicateIds.length };
+  },
+
+  copyPreviousWeekSchedule: async (
+    sourceStartDate: string,
+    targetStartDate: string,
+    branch?: string,
+    overwriteExistingDrafts: boolean = true
+  ) => {
     const rid = getRestaurantId();
     const srcStart = new Date(sourceStartDate);
     const srcEnd = new Date(srcStart);
     srcEnd.setDate(srcEnd.getDate() + 6);
-
     const srcEndStr = srcEnd.toISOString().split('T')[0];
+
+    const targetStart = new Date(targetStartDate);
+    const targetEnd = new Date(targetStart);
+    targetEnd.setDate(targetEnd.getDate() + 6);
+    const targetEndStr = targetEnd.toISOString().split('T')[0];
 
     let query = supabase.from('employee_schedules').select('*').gte('date', sourceStartDate).lte('date', srcEndStr);
     if (branch && branch !== 'All') query = query.eq('branch', branch);
@@ -4379,10 +4455,9 @@ export const api = {
       return { success: false, error: 'No schedules for active employees found to copy.' };
     }
 
-    const targetStart = new Date(targetStartDate);
     const daysOffset = Math.round((targetStart.getTime() - srcStart.getTime()) / (1000 * 60 * 60 * 24));
 
-    const copied = await Promise.all(
+    const rawCopied = await Promise.all(
       activeExistingSource.map(async (item: any) => {
         const origDate = new Date(item.date);
         origDate.setDate(origDate.getDate() + daysOffset);
@@ -4401,33 +4476,69 @@ export const api = {
       })
     );
 
-    const { error: insertErr } = await supabase.from('employee_schedules').insert(copied);
-    if (insertErr) return { success: false, error: insertErr.message };
+    // Deduplicate in-memory to ensure no double-entries
+    const uniqueMap = new Map<string, any>();
+    for (const item of rawCopied) {
+      const key = `${item.employee_id}_${item.date}_${item.assignment_type}_${item.start_time || ''}_${item.end_time || ''}_${item.shift_name || ''}`;
+      if (!uniqueMap.has(key)) {
+        uniqueMap.set(key, item);
+      }
+    }
+    let copied = Array.from(uniqueMap.values());
 
-    // Send targeted schedule update notifications to affected employees
-    try {
-      const targetEmpIds = Array.from(new Set(copied.map((p) => p.employee_id)));
-      const notifications = await Promise.all(
-        targetEmpIds.map((empId) =>
-          injectRestaurantId({
-            title: '📅 Schedule Updated',
-            message: `Your work schedule for week of ${targetStartDate} has been copied and updated.`,
-            type: 'schedule_updated',
-            target_user_id: empId,
-            is_read: false,
-            created_at: new Date().toISOString()
-          })
-        )
-      );
-      await supabase.from('notifications').insert(notifications);
-    } catch (notifErr) {
-      console.error('Error sending copy week notifications:', notifErr);
+    // If overwriteExistingDrafts is enabled, delete existing draft schedules in target range first
+    if (overwriteExistingDrafts) {
+      let delQuery = supabase
+        .from('employee_schedules')
+        .delete()
+        .gte('date', targetStartDate)
+        .lte('date', targetEndStr)
+        .eq('status', 'draft');
+      if (branch && branch !== 'All') delQuery = delQuery.eq('branch', branch);
+      if (rid) delQuery = delQuery.eq('restaurant_id', rid);
+      await delQuery;
+    } else {
+      let exTargetQuery = supabase
+        .from('employee_schedules')
+        .select('employee_id, date, assignment_type, start_time, end_time, shift_name')
+        .gte('date', targetStartDate)
+        .lte('date', targetEndStr);
+      if (branch && branch !== 'All') exTargetQuery = exTargetQuery.eq('branch', branch);
+      if (rid) exTargetQuery = exTargetQuery.eq('restaurant_id', rid);
+      const { data: existingTarget } = await exTargetQuery;
+
+      if (existingTarget && existingTarget.length > 0) {
+        const exKeys = new Set(
+          existingTarget.map(
+            (t: any) => `${t.employee_id}_${t.date}_${t.assignment_type}_${t.start_time || ''}_${t.end_time || ''}_${t.shift_name || ''}`
+          )
+        );
+        copied = copied.filter((c) => {
+          const k = `${c.employee_id}_${c.date}_${c.assignment_type}_${c.start_time || ''}_${c.end_time || ''}_${c.shift_name || ''}`;
+          return !exKeys.has(k);
+        });
+      }
+    }
+
+    if (!copied.length) {
+      return { success: true, count: 0, message: 'All shifts already exist in the target week.' };
+    }
+
+    for (let i = 0; i < copied.length; i += 50) {
+      const batch = copied.slice(i, i + 50);
+      const { error: insertErr } = await supabase.from('employee_schedules').insert(batch);
+      if (insertErr) return { success: false, error: insertErr.message };
     }
 
     return { success: true, count: copied.length };
   },
 
-  copyPreviousMonthSchedule: async (sourceMonthStr: string, targetMonthStr: string, branch?: string) => {
+  copyPreviousMonthSchedule: async (
+    sourceMonthStr: string,
+    targetMonthStr: string,
+    branch?: string,
+    overwriteExistingDrafts: boolean = true
+  ) => {
     const rid = getRestaurantId();
     const [sYear, sMonth] = sourceMonthStr.split('-').map(Number);
     const [tYear, tMonth] = targetMonthStr.split('-').map(Number);
@@ -4435,6 +4546,10 @@ export const api = {
     const sStart = `${sourceMonthStr}-01`;
     const sLastDay = new Date(sYear, sMonth, 0).getDate();
     const sEnd = `${sourceMonthStr}-${String(sLastDay).padStart(2, '0')}`;
+
+    const tStart = `${targetMonthStr}-01`;
+    const tLastDay = new Date(tYear, tMonth, 0).getDate();
+    const tEnd = `${targetMonthStr}-${String(tLastDay).padStart(2, '0')}`;
 
     let query = supabase.from('employee_schedules').select('*').gte('date', sStart).lte('date', sEnd);
     if (branch && branch !== 'All') query = query.eq('branch', branch);
@@ -4460,16 +4575,14 @@ export const api = {
       return { success: false, error: 'No schedules for active employees found to copy.' };
     }
 
-    const tLastDay = new Date(tYear, tMonth, 0).getDate();
-
-    const copied: any[] = [];
+    const rawCopied: any[] = [];
     for (const item of activeExistingSource) {
       const dayNum = parseInt(item.date.split('-')[2], 10);
       if (dayNum <= tLastDay) {
         const newDateStr = `${targetMonthStr}-${String(dayNum).padStart(2, '0')}`;
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { id, created_at, updated_at, published_at, ...rest } = item;
-        copied.push(
+        rawCopied.push(
           await injectRestaurantId({
             ...rest,
             date: newDateStr,
@@ -4482,29 +4595,59 @@ export const api = {
       }
     }
 
-    if (!copied.length) return { success: false, error: 'No valid dates mapped.' };
+    if (!rawCopied.length) return { success: false, error: 'No valid dates mapped.' };
 
-    const { error: insertErr } = await supabase.from('employee_schedules').insert(copied);
-    if (insertErr) return { success: false, error: insertErr.message };
+    // Deduplicate in-memory
+    const uniqueMap = new Map<string, any>();
+    for (const item of rawCopied) {
+      const key = `${item.employee_id}_${item.date}_${item.assignment_type}_${item.start_time || ''}_${item.end_time || ''}_${item.shift_name || ''}`;
+      if (!uniqueMap.has(key)) {
+        uniqueMap.set(key, item);
+      }
+    }
+    let copied = Array.from(uniqueMap.values());
 
-    // Send targeted schedule update notifications to affected employees
-    try {
-      const targetEmpIds = Array.from(new Set(copied.map((p) => p.employee_id)));
-      const notifications = await Promise.all(
-        targetEmpIds.map((empId) =>
-          injectRestaurantId({
-            title: '📅 Schedule Updated',
-            message: `Your work schedule for month ${targetMonthStr} has been copied and updated.`,
-            type: 'schedule_updated',
-            target_user_id: empId,
-            is_read: false,
-            created_at: new Date().toISOString()
-          })
-        )
-      );
-      await supabase.from('notifications').insert(notifications);
-    } catch (notifErr) {
-      console.error('Error sending copy month notifications:', notifErr);
+    if (overwriteExistingDrafts) {
+      let delQuery = supabase
+        .from('employee_schedules')
+        .delete()
+        .gte('date', tStart)
+        .lte('date', tEnd)
+        .eq('status', 'draft');
+      if (branch && branch !== 'All') delQuery = delQuery.eq('branch', branch);
+      if (rid) delQuery = delQuery.eq('restaurant_id', rid);
+      await delQuery;
+    } else {
+      let exTargetQuery = supabase
+        .from('employee_schedules')
+        .select('employee_id, date, assignment_type, start_time, end_time, shift_name')
+        .gte('date', tStart)
+        .lte('date', tEnd);
+      if (branch && branch !== 'All') exTargetQuery = exTargetQuery.eq('branch', branch);
+      if (rid) exTargetQuery = exTargetQuery.eq('restaurant_id', rid);
+      const { data: existingTarget } = await exTargetQuery;
+
+      if (existingTarget && existingTarget.length > 0) {
+        const exKeys = new Set(
+          existingTarget.map(
+            (t: any) => `${t.employee_id}_${t.date}_${t.assignment_type}_${t.start_time || ''}_${t.end_time || ''}_${t.shift_name || ''}`
+          )
+        );
+        copied = copied.filter((c) => {
+          const k = `${c.employee_id}_${c.date}_${c.assignment_type}_${c.start_time || ''}_${c.end_time || ''}_${c.shift_name || ''}`;
+          return !exKeys.has(k);
+        });
+      }
+    }
+
+    if (!copied.length) {
+      return { success: true, count: 0, message: 'All schedules already exist in the target month.' };
+    }
+
+    for (let i = 0; i < copied.length; i += 50) {
+      const batch = copied.slice(i, i + 50);
+      const { error: insertErr } = await supabase.from('employee_schedules').insert(batch);
+      if (insertErr) return { success: false, error: insertErr.message };
     }
 
     return { success: true, count: copied.length };
