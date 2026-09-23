@@ -744,5 +744,30 @@ button[style*="var(--success)"],
   margin-bottom: 2px;
 }
 
+/* ── Square buttons across the Admin app ── */
+button {
+  border-radius: 4px !important;
+}
 
+/* Keep pill badges round (they use span, not button) */
+span[class*="rounded-full"],
+.topbar-branch-badge {
+  border-radius: 9999px !important;
+}
 
+/* ── Remove number-input spinner arrows ── */
+input[type='number']::-webkit-inner-spin-button,
+input[type='number']::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type='number'] {
+  -moz-appearance: textfield !important;
+  appearance: textfield !important;
+}
+
+/* ── Date & Time inputs: ensure native picker is accessible ── */
+input[type='date'],
+input[type='time'] {
+  cursor: pointer;
+}

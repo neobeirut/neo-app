@@ -15,9 +15,10 @@ import StaffDepartmentsScreen from './screens/StaffDepartmentsScreen';
 import SalaryPaymentsScreen from './screens/SalaryPaymentsScreen';
 import SOPsScreen from './screens/SOPsScreen';
 import SOPFormScreen from './screens/SOPFormScreen';
-import { LayoutDashboard, ChefHat, Users, LogOut, DollarSign, Shield, BookOpen, TrendingUp, MessageSquare, Newspaper, AlertTriangle, Sparkles, Trash2, History, Coins, Truck, ShoppingBag, Calendar, ClipboardList, Package, CheckSquare, Receipt, Briefcase, Store, ChevronDown, ChevronRight, Clock, Target, Layers, Download } from 'lucide-react';
+import { LayoutDashboard, ChefHat, Users, LogOut, DollarSign, Shield, BookOpen, TrendingUp, MessageSquare, Newspaper, AlertTriangle, Sparkles, Trash2, History, Coins, Truck, ShoppingBag, Calendar, ClipboardList, Package, CheckSquare, Receipt, Briefcase, Store, ChevronDown, ChevronRight, Clock, Target, Layers, Download, Sliders, FileText, Gift } from 'lucide-react';
 import { api, hasAdminAccess } from './api/client';
 import { usePWA } from './hooks/usePWA';
+import CrmHubScreen from './screens/CrmHubScreen';
 import AssessmentsScreen from './screens/AssessmentsScreen';
 import AssessmentConductWebScreen from './screens/AssessmentConductWebScreen';
 import FinanceDashboardScreen from './screens/FinanceDashboardScreen';
@@ -50,6 +51,7 @@ import BranchManagementScreen from './screens/BranchManagementScreen';
 import ReelCreditScreen from './screens/ReelCreditScreen';
 import SuperAdminScreen from './screens/SuperAdminScreen';
 import InventoryScreen from './screens/InventoryScreen';
+import InventoryIntelligenceDashboardScreen from './screens/InventoryIntelligenceDashboardScreen';
 
   function Sidebar({ onLogout, permissions, user }: { onLogout: () => void; permissions: any; user: any }) {
     const location = useLocation();
@@ -59,7 +61,7 @@ import InventoryScreen from './screens/InventoryScreen';
       Operations: false,
       Inventory: false,
       People: false,
-      Customers: false,
+      'Customers & CRM': false,
       Analytics: false,
       Administration: false,
     });
@@ -73,7 +75,7 @@ import InventoryScreen from './screens/InventoryScreen';
 
     const isSectionEnabled = (key: string) => {
       if (user?.role?.toLowerCase() === 'superadmin') return true;
-      if (key === 'permissions') return true;
+      if (key === 'permissions' || key.startsWith('crm')) return true;
       const enabledSections = user?.restaurants?.settings?.enabled_sections;
       if (!enabledSections) return true; // Default to enabled if not configured
       if (key === 'inventory_reporting') {
@@ -92,6 +94,7 @@ import InventoryScreen from './screens/InventoryScreen';
     };
 
     const canAccess = (moduleKey: string, staffFallback: boolean = false) => {
+      if (moduleKey.startsWith('crm')) return true;
       return hasAdminAccess(user, permissions, moduleKey, staffFallback);
     };
 
@@ -105,6 +108,7 @@ import InventoryScreen from './screens/InventoryScreen';
       {
         name: 'Operations',
         items: [
+          { to: '/pos', label: 'Point of Sale (POS)', icon: <Store size={18} />, key: 'pos_terminal', externalHref: 'http://localhost:4173/#/pos' },
           { to: '/orders', label: 'Branch Orders', icon: <ShoppingBag size={18} />, visible: canAccess('orders', permissions?.can_create_orders !== false || permissions?.can_receive_orders !== false), key: 'orders' },
           { to: '/client-orders', label: 'Client Orders', icon: <Briefcase size={18} />, visible: canAccess('client_orders', !!permissions?.can_view_client_orders), key: 'client_orders' },
           { to: '/reservations', label: 'Table Reservations', icon: <Calendar size={18} />, visible: canAccess('reservations', !!permissions?.can_manage_reservations), key: 'reservations' },
@@ -121,6 +125,7 @@ import InventoryScreen from './screens/InventoryScreen';
           { to: '/price-intelligence', label: 'Supplier Price Intelligence', icon: <TrendingUp size={18} />, visible: canAccess('price_intelligence', permissions?.can_view_price_intelligence !== false), key: 'price_intelligence' },
           { to: '/waste', label: 'Waste Management', icon: <Trash2 size={18} />, visible: canAccess('waste', permissions?.can_view_waste_report !== false || permissions?.can_log_waste !== false), key: 'waste' },
           { to: '/86', label: '86 Missing Items', icon: <AlertTriangle size={18} />, visible: canAccess('missing_items', permissions?.can_view_86 !== false || permissions?.can_manage_86 !== false), key: 'missing_items' },
+          { to: '/inventory-intelligence', label: 'Inventory Intelligence', icon: <TrendingUp size={18} />, visible: canAccess('inventory_reporting', !!permissions?.can_view_inventory || !!permissions?.can_manage_inventory || !!permissions?.can_view_reports), key: 'inventory_reporting' },
           { to: '/inventory-reporting', label: 'Inventory Management', icon: <ClipboardList size={18} />, visible: canAccess('inventory_reporting', !!permissions?.can_view_inventory || !!permissions?.can_manage_inventory), key: 'inventory_reporting' },
           { to: '/voids', label: 'Void Receipts', icon: <Receipt size={18} />, visible: canAccess('voids', !!permissions?.can_view_voids), key: 'voids' }
         ]
@@ -139,10 +144,22 @@ import InventoryScreen from './screens/InventoryScreen';
         ]
       },
       {
-        name: 'Customers',
+        name: 'Menu',
         items: [
-          { to: '/complaints', label: 'Client Complaints', icon: <MessageSquare size={18} />, visible: canAccess('complaints', !!permissions?.can_view_complaints), key: 'complaints' },
+          { to: '/crm/products', label: 'Menu Products', icon: <ShoppingBag size={18} />, key: 'crm_products' },
+          { to: '/crm/modifiers', label: 'Modifiers & Options', icon: <Sliders size={18} />, key: 'crm_modifiers' },
           { to: '/specials', label: 'Specials & Upsell', icon: <Sparkles size={18} />, visible: canAccess('specials', !!permissions?.can_view_upsell), key: 'specials' }
+        ]
+      },
+      {
+        name: 'Customers & CRM',
+        items: [
+          { to: '/crm', label: 'WhatsApp Live Inbox', icon: <MessageSquare size={18} />, key: 'crm_inbox' },
+          { to: '/crm/contacts', label: 'Customer Contacts', icon: <Users size={18} />, key: 'crm_contacts' },
+          { to: '/crm/templates', label: 'Message Templates', icon: <FileText size={18} />, key: 'crm_templates' },
+          { to: '/crm/loyalty', label: 'Loyalty & Promos', icon: <Gift size={18} />, key: 'crm_loyalty' },
+          { to: '/crm/delivery', label: 'Delivery Pricing', icon: <Truck size={18} />, key: 'crm_delivery' },
+          { to: '/complaints', label: 'Client Complaints', icon: <MessageSquare size={18} />, visible: canAccess('complaints', !!permissions?.can_view_complaints), key: 'complaints' }
         ]
       },
       {
@@ -236,16 +253,29 @@ import InventoryScreen from './screens/InventoryScreen';
                 {!isCollapsed && (
                   <div className="sidebar-group-items">
                     {visibleItems.map((item: any) => (
-                      <Link
-                        key={item.to}
-                        to={item.to}
-                        className={`nav-link nav-link-nested ${
-                          isLinkActive(item.to) ? 'active' : ''
-                        }`}
-                        style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
-                      >
-                        {item.icon} {item.label}
-                      </Link>
+                      item.externalHref ? (
+                        <a
+                          key={item.to}
+                          href={item.externalHref}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="nav-link nav-link-nested"
+                          style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+                        >
+                          {item.icon} {item.label}
+                        </a>
+                      ) : (
+                        <Link
+                          key={item.to}
+                          to={item.to}
+                          className={`nav-link nav-link-nested ${
+                            isLinkActive(item.to) ? 'active' : ''
+                          }`}
+                          style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+                        >
+                          {item.icon} {item.label}
+                        </Link>
+                      )
                     ))}
                   </div>
                 )}
@@ -319,6 +349,7 @@ function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () 
   const isSectionEnabled = (key: string) => {
     if (user?.role?.toLowerCase() === 'superadmin') return true;
     if (key === 'permissions') return true;
+    if (key.startsWith('crm') || key === 'crm') return true;
     const enabledSections = user?.restaurants?.settings?.enabled_sections;
     if (!enabledSections) return true; // Default to enabled if not configured
     if (key === 'inventory_reporting') {
@@ -340,6 +371,16 @@ function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () 
   const isPrivileged = roleLower === 'admin' || roleLower === 'manager' || roleLower === 'superadmin';
   const [permissions, setPermissions] = useState<any>(user?.admin_permissions ? { admin_permissions: user.admin_permissions } : null);
   const [branchesList, setBranchesList] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const pathname = window.location.pathname;
+      if (pathname.includes('/crm')) {
+        const crmPath = pathname.substring(pathname.indexOf('/crm'));
+        window.location.replace('/#' + crmPath + window.location.search);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     api.getBranchesList().then(res => {
@@ -545,11 +586,17 @@ function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () 
                 element={<SupplierPriceIntelligenceScreen user={user} permissions={permissions} />} 
               />
             )}
-            {isSectionEnabled('inventory_reporting') && canAccess('inventory_reporting', !!permissions?.can_view_inventory || !!permissions?.can_manage_inventory) && (
-              <Route 
-                path="/inventory-reporting" 
-                element={<InventoryScreen user={user} permissions={permissions} />} 
-              />
+            {isSectionEnabled('inventory_reporting') && canAccess('inventory_reporting', !!permissions?.can_view_inventory || !!permissions?.can_manage_inventory || !!permissions?.can_view_reports) && (
+              <>
+                <Route 
+                  path="/inventory-intelligence" 
+                  element={<InventoryIntelligenceDashboardScreen user={user} permissions={permissions} />} 
+                />
+                <Route 
+                  path="/inventory-reporting" 
+                  element={<InventoryScreen user={user} permissions={permissions} />} 
+                />
+              </>
             )}
             {user.role?.toLowerCase() === 'superadmin' && (
               <Route path="/super-admin" element={<SuperAdminScreen />} />
@@ -557,10 +604,34 @@ function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () 
             {isSectionEnabled('branch_management') && canAccess('branch_management', !!permissions?.can_manage_branches) && (
               <Route path="/branch-management" element={<BranchManagementScreen />} />
             )}
+            <Route path="/crm" element={<CrmHubScreen user={user} />} />
+            <Route path="/crm/products" element={<CrmHubScreen user={user} defaultTab="products" />} />
+            <Route path="/crm/modifiers" element={<CrmHubScreen user={user} defaultTab="modifiers" />} />
+            <Route path="/crm/contacts" element={<CrmHubScreen user={user} defaultTab="contacts" />} />
+            <Route path="/crm/inbox" element={<CrmHubScreen user={user} defaultTab="inbox" />} />
+            <Route path="/crm/templates" element={<CrmHubScreen user={user} defaultTab="templates" />} />
+            <Route path="/crm/campaigns" element={<CrmHubScreen user={user} defaultTab="campaigns" />} />
+            <Route path="/crm/loyalty" element={<CrmHubScreen user={user} defaultTab="loyalty" />} />
+            <Route path="/pos" element={<RedirectToPos />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>
       </div>
+    </div>
+  );
+}
+
+function RedirectToPos() {
+  useEffect(() => {
+    window.location.href = 'http://localhost:4173/#/pos';
+  }, []);
+  return (
+    <div className="flex flex-col items-center justify-center min-h-[60vh] gap-3 text-slate-300">
+      <span className="w-8 h-8 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></span>
+      <p className="text-sm font-bold">Opening FLOW POS Terminal...</p>
+      <a href="http://localhost:4173/#/pos" className="text-xs text-amber-400 underline font-semibold">
+        Click here to open POS directly
+      </a>
     </div>
   );
 }
@@ -635,11 +706,16 @@ function App() {
 
   return (
     <HashRouter>
-      {user ? (
-        <MainLayout user={user} onLogout={handleLogout} onUpdateUser={handleLogin} />
-      ) : (
-        <LoginScreen onLogin={handleLogin} />
-      )}
+      <Routes>
+        <Route path="/pos" element={<RedirectToPos />} />
+        <Route path="*" element={
+          user ? (
+            <MainLayout user={user} onLogout={handleLogout} onUpdateUser={handleLogin} />
+          ) : (
+            <LoginScreen onLogin={handleLogin} />
+          )
+        } />
+      </Routes>
     </HashRouter>
   );
 }

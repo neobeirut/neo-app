@@ -5,6 +5,14 @@ import { resolve } from 'path';
 export default defineConfig({
   plugins: [react()],
   base: '/',
+  server: {
+    port: 4174,
+    host: true
+  },
+  preview: {
+    port: 4174,
+    host: true
+  },
   resolve: {
     alias: {
       '@auth/create/react': '@hono/auth-js/react',

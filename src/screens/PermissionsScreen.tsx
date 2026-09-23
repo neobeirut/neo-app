@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 
 const DEFAULT_PERMISSIONS = {
+  can_access_pos: false,
   can_create_orders: false,
   can_send_orders: false,
   can_receive_orders: false,
@@ -2896,6 +2897,51 @@ export default function PermissionsScreen({ user, onUpdateUser }: { user?: UserP
                   </div>
 
                   <div className="cards-grid">
+
+                    {/* ══════ POS TERMINAL ACCESS ══════ */}
+                    {(!permFilterQuery || 'pos terminal access login cashier'.includes(permFilterQuery.toLowerCase())) && (
+                      <div className="category-card" style={{ border: '2px solid #d97706', background: 'linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)', gridColumn: '1 / -1' }}>
+                        <div className="card-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ fontSize: '20px' }}>🖥️</span>
+                            <div>
+                              <span className="card-title" style={{ color: '#92400e', fontSize: '14px' }}>POS Terminal Access</span>
+                              <div style={{ fontSize: '11px', color: '#b45309', marginTop: '2px', fontWeight: 500 }}>
+                                Controls whether this staff member appears in the POS login screen
+                              </div>
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{
+                              fontSize: '11px',
+                              fontWeight: 700,
+                              padding: '3px 8px',
+                              borderRadius: '6px',
+                              backgroundColor: selectedPermission.can_access_pos ? '#d1fae5' : '#fee2e2',
+                              color: selectedPermission.can_access_pos ? '#065f46' : '#991b1b',
+                              border: `1px solid ${selectedPermission.can_access_pos ? '#6ee7b7' : '#fca5a5'}`
+                            }}>
+                              {selectedPermission.can_access_pos ? '✓ POS Enabled' : '✗ POS Disabled'}
+                            </span>
+                            <label className="custom-switch">
+                              <input
+                                type="checkbox"
+                                checked={!!selectedPermission.can_access_pos}
+                                onChange={(e) => handleToggle('can_access_pos', e.target.checked)}
+                              />
+                              <span className="switch-slider"></span>
+                            </label>
+                          </div>
+                        </div>
+                        <div style={{ padding: '8px 0 0 0', fontSize: '12px', color: '#92400e' }}>
+                          {selectedPermission.can_access_pos
+                            ? '🟢 This user will appear in the POS staff login screen and can sign in with their PIN.'
+                            : '🔴 This user is hidden from the POS login screen and cannot sign in to the terminal.'}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ══════ STANDARD PERMISSIONS ══════ */}
                     {CATEGORIES.map(cat => {
                       const q = permFilterQuery.toLowerCase().trim();
                       const matchingPermissions = q 

@@ -82,7 +82,7 @@ export default function LoginScreen({ onLogin }: { onLogin: (user: any) => void 
           </div>
 
           <div className="form-group">
-            <label htmlFor="password">Password</label>
+            <label htmlFor="password">Password or PIN</label>
             <div className="input-wrapper">
               <Lock size={18} className="input-icon" />
               <input
@@ -91,7 +91,7 @@ export default function LoginScreen({ onLogin }: { onLogin: (user: any) => void 
                 className="auth-input"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
+                placeholder="Enter your password or PIN"
                 required
               />
               <button

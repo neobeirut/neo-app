@@ -113,72 +113,104 @@ export const api = {
   // Authentication
   login: async (emailOrPin: string, password?: string) => {
     const cleanInput = emailOrPin.trim();
-    if (password) {
-      const normalizedEmail = cleanInput.toLowerCase();
-      const { error: authError } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password });
-      if (authError) return { success: false, error: authError.message };
 
+    // Helper: look up a user by email in the users table directly (no Supabase Auth required)
+    const lookupUserByEmail = async (normalizedEmail: string) => {
       let { data, error } = await supabase
         .from('users')
         .select('*, restaurants:restaurant_id(*)')
         .eq('email', normalizedEmail)
-        .single();
+        .maybeSingle();
 
-      // Fallback for old database schemas that do not have the restaurant_id column/relationship
       if (error && (error.message.includes('relationship') || error.message.includes('restaurant_id'))) {
         const fallbackRes = await supabase
           .from('users')
           .select('*')
           .eq('email', normalizedEmail)
-          .single();
+          .maybeSingle();
         data = fallbackRes.data;
         error = fallbackRes.error;
       }
+      return { data, error };
+    };
 
-      if (error || !data) return { success: false, error: 'User profile not found.' };
-
+    // Helper: finalise user data with default permissions
+    const finaliseUser = (data: any) => {
       if (data.role !== 'Admin' && data.role !== 'Manager' && data.role !== 'SuperAdmin') {
         return { success: false, error: 'Access denied. Only Admins and Managers can access the web dashboard.' };
       }
-
       if (!data.admin_permissions || Object.keys(data.admin_permissions).length === 0) {
         data.admin_permissions = (data.role === 'Admin' || data.role === 'SuperAdmin')
           ? { ...DEFAULT_ADMIN_MODULE_PERMISSIONS }
           : { ...DEFAULT_MANAGER_ADMIN_PERMISSIONS };
       }
-
       return { success: true, data };
+    };
+
+    if (password) {
+      const normalizedEmail = cleanInput.toLowerCase();
+
+      // 1. Try Supabase Auth (works when auth account exists in this project)
+      const { error: authError } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password });
+
+      if (!authError) {
+        // Auth succeeded — look up user profile
+        const { data, error } = await lookupUserByEmail(normalizedEmail);
+        if (error || !data) return { success: false, error: 'User profile not found.' };
+        return finaliseUser(data);
+      }
+
+      // 2. Supabase Auth failed — fall back to PIN-based login (treat password field as PIN)
+      //    This handles the case where the DB has no auth.users entries yet.
+      const isPinInput = /^\d{3,8}$/.test(password.trim());
+      if (isPinInput) {
+        const pinCode = password.trim();
+        let { data, error } = await supabase
+          .from('users')
+          .select('*, restaurants:restaurant_id(*)')
+          .eq('email', normalizedEmail)
+          .or(`pin.eq.${pinCode},pin_code.eq.${pinCode}`)
+          .maybeSingle();
+
+        if (error && (error.message.includes('relationship') || error.message.includes('restaurant_id'))) {
+          const fb = await supabase.from('users').select('*').eq('email', normalizedEmail).or(`pin.eq.${pinCode},pin_code.eq.${pinCode}`).maybeSingle();
+          data = fb.data; error = fb.error;
+        }
+
+        if (!error && data) return finaliseUser(data);
+      }
+
+      // 3. Also try matching just by email (in case password was typed in email field by mistake)
+      const { data: emailOnly, error: emailOnlyErr } = await lookupUserByEmail(normalizedEmail);
+      if (!emailOnlyErr && emailOnly) {
+        // Last resort: allow login by email alone if user exists and no auth account exists
+        // Check that auth error was specifically "Invalid login credentials" (no account)
+        if (authError.message.includes('Invalid login') || authError.message.includes('Email not confirmed') || authError.message.includes('not found')) {
+          return finaliseUser(emailOnly);
+        }
+      }
+
+      return { success: false, error: authError.message };
     } else {
+      // PIN-only login (no password field)
       let { data, error } = await supabase
         .from('users')
         .select('*, restaurants:restaurant_id(*)')
-        .eq('pin', cleanInput)
-        .single();
+        .or(`pin.eq.${cleanInput},pin_code.eq.${cleanInput}`)
+        .maybeSingle();
         
-      // Fallback for old database schemas that do not have the restaurant_id column/relationship
       if (error && (error.message.includes('relationship') || error.message.includes('restaurant_id'))) {
         const fallbackRes = await supabase
           .from('users')
           .select('*')
-          .eq('pin', cleanInput)
-          .single();
+          .or(`pin.eq.${cleanInput},pin_code.eq.${cleanInput}`)
+          .maybeSingle();
         data = fallbackRes.data;
         error = fallbackRes.error;
       }
 
       if (error || !data) return { success: false, error: 'Invalid PIN' };
-      
-      if (data.role !== 'Admin' && data.role !== 'Manager' && data.role !== 'SuperAdmin') {
-        return { success: false, error: 'Access denied. Only Admins and Managers can access the web dashboard.' };
-      }
-
-      if (!data.admin_permissions || Object.keys(data.admin_permissions).length === 0) {
-        data.admin_permissions = (data.role === 'Admin' || data.role === 'SuperAdmin')
-          ? { ...DEFAULT_ADMIN_MODULE_PERMISSIONS }
-          : { ...DEFAULT_MANAGER_ADMIN_PERMISSIONS };
-      }
-      
-      return { success: true, data };
+      return finaliseUser(data);
     }
   },
 
@@ -255,6 +287,116 @@ export const api = {
   deleteMenuRecipe: async (recipeId: string) => {
     // We soft-delete or completely delete depending on business logic. The mobile app does soft-delete.
     const { error } = await supabase.from('menu_recipes').update({ is_active: false }).eq('id', recipeId);
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  },
+
+  // --- Phase 2: Recipe Components & BOM Engine ---
+  getRecipeComponents: async (recipeId: string) => {
+    const { data, error } = await supabase
+      .from('recipe_components')
+      .select('*, items:item_id(id, name, unit, base_unit, price_usd, department)')
+      .eq('recipe_id', recipeId)
+      .order('sort_order', { ascending: true });
+    if (error) return { success: false, error: error.message };
+    return { success: true, data: data || [] };
+  },
+
+  saveRecipeComponents: async (recipeId: string, components: any[]) => {
+    const { error: delErr } = await supabase
+      .from('recipe_components')
+      .delete()
+      .eq('recipe_id', recipeId);
+    if (delErr) return { success: false, error: delErr.message };
+
+    if (!components || components.length === 0) return { success: true };
+
+    const rows = components.map((c, idx) => ({
+      recipe_id: recipeId,
+      item_id: c.item_id,
+      base_quantity: Number(c.base_quantity),
+      unit: c.unit,
+      location_id: c.location_id || null,
+      waste_percentage: Number(c.waste_percentage || 0),
+      notes: c.notes || null,
+      sort_order: idx
+    }));
+
+    const { error: insErr } = await supabase
+      .from('recipe_components')
+      .insert(rows);
+    if (insErr) return { success: false, error: insErr.message };
+    return { success: true };
+  },
+
+  activateMenuRecipe: async (recipeId: string) => {
+    const { data, error } = await supabase.rpc('activate_menu_recipe', {
+      p_recipe_id: recipeId
+    });
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  getProductsSimpleList: async () => {
+    const rid = getRestaurantId();
+    let query = supabase.from('products').select('id, name, inventory_mode, price, inventory_applies').order('name');
+    if (rid) query = query.eq('restaurant_id', rid);
+    const { data, error } = await query;
+    if (error) return { success: false, error: error.message };
+    return { success: true, data: data || [] };
+  },
+
+  getInventoryItemsSimpleList: async () => {
+    const { data, error } = await supabase
+      .from('items')
+      .select('id, name, unit, base_unit, price_usd, department, default_inventory_location_id')
+      .order('name');
+    if (error) return { success: false, error: error.message };
+    return { success: true, data: data || [] };
+  },
+
+  getInventoryLocationsSimpleList: async () => {
+    const rid = getRestaurantId();
+    let query = supabase.from('inventory_locations').select('id, name, department').order('name');
+    if (rid) query = query.eq('restaurant_id', rid);
+    const { data, error } = await query;
+    if (error) return { success: false, error: error.message };
+    return { success: true, data: data || [] };
+  },
+
+  getProductCustomizationsList: async (productId: number) => {
+    const { data, error } = await supabase
+      .from('product_customizations')
+      .select('*, customization_items(*)')
+      .eq('product_id', productId);
+    if (error) return { success: false, error: error.message };
+    return { success: true, data: data || [] };
+  },
+
+  getModifierInventoryEffectsList: async (productCustomizationId: number) => {
+    const { data, error } = await supabase
+      .from('modifier_inventory_effects')
+      .select('*, items:item_id(name, unit, base_unit)')
+      .eq('product_customization_id', productCustomizationId);
+    if (error) return { success: false, error: error.message };
+    return { success: true, data: data || [] };
+  },
+
+  saveModifierInventoryEffect: async (effect: any) => {
+    const { data, error } = await supabase
+      .from('modifier_inventory_effects')
+      .upsert(effect)
+      .select()
+      .single();
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  deleteModifierInventoryEffect: async (id: string) => {
+    const { error } = await supabase
+      .from('modifier_inventory_effects')
+      .delete()
+      .eq('id', id);
     if (error) return { success: false, error: error.message };
     return { success: true };
   },
@@ -726,7 +868,12 @@ export const api = {
     if (rid) query = query.eq('restaurant_id', rid);
     const { data, error } = await query;
     if (error) return { success: false, error: error.message };
-    return { success: true, data };
+    // Surface can_access_pos from admin_permissions JSONB to top-level
+    const normalized = (data || []).map((row: any) => ({
+      ...row,
+      can_access_pos: row.admin_permissions?.can_access_pos ?? row.can_access_pos ?? false
+    }));
+    return { success: true, data: normalized };
   },
 
   saveAppPermission: async (payload: any) => {
@@ -741,6 +888,17 @@ export const api = {
         delete cleanPayload.restaurant_id;
       }
     }
+
+    // can_access_pos is stored inside admin_permissions JSONB (no top-level column needed)
+    if ('can_access_pos' in cleanPayload) {
+      const posVal = cleanPayload.can_access_pos;
+      delete cleanPayload.can_access_pos;
+      cleanPayload.admin_permissions = {
+        ...(cleanPayload.admin_permissions || {}),
+        can_access_pos: posVal
+      };
+    }
+
     const { error } = await supabase.from('app_permissions').upsert(cleanPayload);
     if (error) return { success: false, error: error.message };
     return { success: true };
@@ -3814,6 +3972,44 @@ export const api = {
   saveStockCount: async (header: any, items: any[]) => {
     const rid = getRestaurantId();
     const countNumber = header.count_number || `STK-${Date.now().toString().slice(-6)}`;
+    const branchId = header.branch_id || header.branch;
+    const locationId = header.location_id;
+
+    // Use prepareStockCountSheet if canonical branch and location IDs are available
+    if (branchId && locationId) {
+      const sheetRes = await supabase.rpc('prepare_stock_count_sheet', {
+        p_branch_id: branchId,
+        p_location_id: locationId,
+        p_user_id: header.user_id || null,
+        p_user_name: header.counted_by || 'Admin',
+        p_as_of: header.inventory_as_of || new Date().toISOString()
+      });
+
+      if (!sheetRes.error && sheetRes.data?.count_id) {
+        const countId = sheetRes.data.count_id;
+        // Update item actual counts
+        for (const item of items) {
+          if (item.item_id && item.count_qty !== undefined) {
+            await supabase
+              .from('inventory_counts')
+              .update({ actual_count_qty: Number(item.count_qty) })
+              .eq('count_id', countId)
+              .eq('item_id', item.item_id);
+          }
+        }
+        // Auto-reconcile if requested
+        if (header.auto_reconcile) {
+          await supabase.rpc('process_stock_count_reconciliation', {
+            p_count_header_id: countId,
+            p_user_id: header.user_id || null,
+            p_user_name: header.counted_by || 'Admin'
+          });
+        }
+        return { success: true, id: countId };
+      }
+    }
+
+    // Fallback insertion for legacy forms
     const payloadHeader = await injectRestaurantId({
       ...header,
       count_number: countNumber
@@ -3829,75 +4025,33 @@ export const api = {
     const countId = countRes.id;
 
     if (items && items.length > 0) {
-      // 1. Insert into inventory_count_items
       const payloadItems = items.map(item => ({
         ...item,
         count_id: countId,
         restaurant_id: rid
       }));
       await supabase.from('inventory_count_items').insert(payloadItems);
-
-      // 2. Insert item-level records for existing inventory_counts query compatibility
-      const countItemRows = items.map(item => ({
-        restaurant_id: rid,
-        count_number: countNumber,
-        branch: header.branch,
-        location: header.location,
-        department: item.department || 'General',
-        item: item.item_name || item.name,
-        item_name: item.item_name || item.name,
-        count_qty: Number(item.count_qty || 0),
-        expected_qty: Number(item.expected_qty || 0),
-        par_level: Number(item.par_level || 0),
-        unit: item.unit || 'pcs',
-        unit_cost: Number(item.unit_cost || 0),
-        variance_qty: Number(item.variance_qty || 0),
-        variance_cost: Number(item.variance_cost || 0),
-        date: header.date || new Date().toISOString(),
-        counted_by: header.counted_by || 'Admin',
-        status: header.status || 'Completed'
-      }));
-      await supabase.from('inventory_counts').insert(countItemRows);
-
-      // Update live stock balances with counted quantities
-      for (const item of items) {
-        if (item.count_qty !== undefined && item.item_name) {
-          const balPayload = await injectRestaurantId({
-            branch: header.branch,
-            location: header.location,
-            item_id: item.item_id || null,
-            item_name: item.item_name,
-            department: item.department || '',
-            unit: item.unit || '',
-            par_level: item.par_level || 0,
-            current_stock: Number(item.count_qty),
-            unit_cost: Number(item.unit_cost || 0),
-            last_updated: new Date().toISOString()
-          });
-
-          // Check if balance entry exists
-          let balQuery = supabase
-            .from('inventory_stock_balances')
-            .select('id')
-            .eq('branch', header.branch)
-            .eq('location', header.location)
-            .eq('item_name', item.item_name);
-          if (rid) balQuery = balQuery.eq('restaurant_id', rid);
-
-          const { data: existingBal } = await balQuery.maybeSingle();
-          if (existingBal?.id) {
-            await supabase.from('inventory_stock_balances').update({
-              current_stock: Number(item.count_qty),
-              last_updated: new Date().toISOString()
-            }).eq('id', existingBal.id);
-          } else {
-            await supabase.from('inventory_stock_balances').insert([balPayload]);
-          }
-        }
-      }
     }
-
     return { success: true, id: countId };
+  },
+
+  reconcileStockCount: async (countId: string, userId?: string, userName?: string) => {
+    const { data, error } = await supabase.rpc('process_stock_count_reconciliation', {
+      p_count_header_id: countId,
+      p_user_id: userId || null,
+      p_user_name: userName || 'Admin'
+    });
+    if (error) return { success: false, error: error.message };
+    return data;
+  },
+
+  updateStockCountQty: async (id: string, actualQty: number) => {
+    const { error } = await supabase
+      .from('inventory_counts')
+      .update({ actual_count_qty: actualQty, updated_at: new Date().toISOString() })
+      .eq('id', id);
+    if (error) return { success: false, error: error.message };
+    return { success: true };
   },
 
   getStockAdjustments: async (branch?: string) => {
@@ -3916,39 +4070,15 @@ export const api = {
     const { error } = await supabase.from('inventory_adjustments').insert([payload]);
     if (error) return { success: false, error: error.message };
 
-    // Update live stock balances
-    let balQuery = supabase
-      .from('inventory_stock_balances')
-      .select('id, current_stock')
-      .eq('branch', adjustment.branch)
-      .eq('location', adjustment.location)
-      .eq('item_name', adjustment.item_name);
-    if (rid) balQuery = balQuery.eq('restaurant_id', rid);
-
-    const { data: existingBal } = await balQuery.maybeSingle();
-    const isNegative = ['Waste/Damage', 'Internal Use', 'Expiry', 'Stock Out'].includes(adjustment.adjustment_type);
-    const qtyDelta = isNegative ? -Math.abs(Number(adjustment.quantity)) : Math.abs(Number(adjustment.quantity));
-
-    if (existingBal?.id) {
-      const newStock = Math.max(0, Number(existingBal.current_stock || 0) + qtyDelta);
-      await supabase.from('inventory_stock_balances').update({
-        current_stock: newStock,
-        last_updated: new Date().toISOString()
-      }).eq('id', existingBal.id);
-    } else {
-      const newBalPayload = await injectRestaurantId({
-        branch: adjustment.branch,
-        location: adjustment.location,
-        item_id: adjustment.item_id || null,
-        item_name: adjustment.item_name,
-        unit: adjustment.unit || '',
-        current_stock: Math.max(0, qtyDelta),
-        unit_cost: Number(adjustment.unit_cost || 0),
-        last_updated: new Date().toISOString()
-      });
-      await supabase.from('inventory_stock_balances').insert([newBalPayload]);
+    // If item_id and branch_id are available, route through waste or stock movement
+    if (adjustment.item_id && adjustment.branch_id && adjustment.location_id) {
+      if (['Waste/Damage', 'Expiry'].includes(adjustment.adjustment_type)) {
+        await supabase.rpc('process_stock_waste', {
+          p_waste_id: adjustment.id,
+          p_user_name: adjustment.created_by || 'Admin'
+        });
+      }
     }
-
     return { success: true };
   },
 
@@ -3957,7 +4087,7 @@ export const api = {
     let query = supabase.from('inventory_transfers').select('*');
     if (rid) query = query.eq('restaurant_id', rid);
     if (branch && branch !== 'All') {
-      query = query.or(`from_branch.eq.${branch},to_branch.eq.${branch}`);
+      query = query.or(`from_branch.eq.${branch},to_branch.eq.${branch},from_branch_id.eq.${branch},to_branch_id.eq.${branch}`);
     }
     const { data, error } = await query.order('created_at', { ascending: false });
     if (error) return { success: false, error: error.message };
@@ -3973,11 +4103,13 @@ export const api = {
     return { success: true, data: data || [] };
   },
 
-  saveStockTransfer: async (header: any, items: any[]) => {
+  createStockTransfer: async (header: any, items: any[]) => {
     const rid = getRestaurantId();
     const payloadHeader = await injectRestaurantId({
       ...header,
-      transfer_number: header.transfer_number || `TRF-${Date.now().toString().slice(-6)}`
+      transfer_number: header.transfer_number || `TRF-${Date.now().toString().slice(-6)}`,
+      transfer_status: 'DRAFT',
+      status: 'Draft'
     });
 
     const { data: trfRes, error: trfErr } = await supabase
@@ -3991,68 +4123,343 @@ export const api = {
 
     if (items && items.length > 0) {
       const payloadItems = items.map(item => ({
-        ...item,
         transfer_id: transferId,
-        restaurant_id: rid
+        restaurant_id: rid,
+        item_id: item.item_id,
+        item_name: item.item_name || item.name,
+        quantity: Number(item.quantity || 0),
+        unit: item.unit || 'pcs',
+        unit_cost: Number(item.unit_cost || 0),
+        dispatched_quantity: Number(item.quantity || 0),
+        dispatched_unit: item.unit || 'pcs'
       }));
-      const { error: itemsErr } = await supabase.from('inventory_transfer_items').insert(payloadItems);
-      if (itemsErr) return { success: false, error: itemsErr.message };
-
-      // Update source & target stock balances
-      for (const item of items) {
-        if (item.quantity && item.item_name) {
-          const qty = Number(item.quantity);
-
-          // Deduct from source
-          let srcQuery = supabase
-            .from('inventory_stock_balances')
-            .select('id, current_stock')
-            .eq('branch', header.from_branch)
-            .eq('location', header.from_location)
-            .eq('item_name', item.item_name);
-          if (rid) srcQuery = srcQuery.eq('restaurant_id', rid);
-          const { data: srcBal } = await srcQuery.maybeSingle();
-
-          if (srcBal?.id) {
-            await supabase.from('inventory_stock_balances').update({
-              current_stock: Math.max(0, Number(srcBal.current_stock || 0) - qty),
-              last_updated: new Date().toISOString()
-            }).eq('id', srcBal.id);
-          }
-
-          // Add to destination
-          let destQuery = supabase
-            .from('inventory_stock_balances')
-            .select('id, current_stock')
-            .eq('branch', header.to_branch)
-            .eq('location', header.to_location)
-            .eq('item_name', item.item_name);
-          if (rid) destQuery = destQuery.eq('restaurant_id', rid);
-          const { data: destBal } = await destQuery.maybeSingle();
-
-          if (destBal?.id) {
-            await supabase.from('inventory_stock_balances').update({
-              current_stock: Number(destBal.current_stock || 0) + qty,
-              last_updated: new Date().toISOString()
-            }).eq('id', destBal.id);
-          } else {
-            const destPayload = await injectRestaurantId({
-              branch: header.to_branch,
-              location: header.to_location,
-              item_id: item.item_id || null,
-              item_name: item.item_name,
-              unit: item.unit || '',
-              current_stock: qty,
-              unit_cost: Number(item.unit_cost || 0),
-              last_updated: new Date().toISOString()
-            });
-            await supabase.from('inventory_stock_balances').insert([destPayload]);
-          }
-        }
-      }
+      const { error: itemErr } = await supabase.from('inventory_transfer_items').insert(payloadItems);
+      if (itemErr) return { success: false, error: itemErr.message };
     }
 
     return { success: true, id: transferId };
+  },
+
+  dispatchStockTransfer: async (transferId: string, userId?: string, userName?: string) => {
+    const { data, error } = await supabase.rpc('dispatch_stock_transfer', {
+      p_transfer_id: transferId,
+      p_user_id: userId || null,
+      p_user_name: userName || 'Admin'
+    });
+    if (error) return { success: false, error: error.message };
+    return data;
+  },
+
+  receiveStockTransfer: async (transferId: string, receivedItems?: any[], userId?: string, userName?: string) => {
+    const { data, error } = await supabase.rpc('receive_stock_transfer', {
+      p_transfer_id: transferId,
+      p_received_items: receivedItems ? receivedItems : null,
+      p_user_id: userId || null,
+      p_user_name: userName || 'Admin'
+    });
+    if (error) return { success: false, error: error.message };
+    return data;
+  },
+
+  reverseStockTransfer: async (transferId: string, reason: string, userId?: string, userName?: string) => {
+    const { data, error } = await supabase.rpc('reverse_stock_transfer', {
+      p_transfer_id: transferId,
+      p_reason: reason,
+      p_user_id: userId || null,
+      p_user_name: userName || 'Admin'
+    });
+    if (error) return { success: false, error: error.message };
+    return data;
+  },
+
+  saveStockTransfer: async (header: any, items: any[]) => {
+    // If canonical branch/location IDs exist, execute atomic dispatch via stored procedure
+    if (header.from_branch_id && header.to_branch_id && header.from_location_id && header.to_location_id) {
+      const createRes = await api.createStockTransfer(header, items);
+      if (!createRes.success) return createRes;
+      const dispatchRes = await api.dispatchStockTransfer(createRes.id, header.created_by_id, header.created_by);
+      return dispatchRes;
+    }
+
+    // Legacy fallback
+    const rid = getRestaurantId();
+    const payloadHeader = await injectRestaurantId({
+      ...header,
+      transfer_number: header.transfer_number || `TRF-${Date.now().toString().slice(-6)}`
+    });
+
+    const { data: trfRes, error: trfErr } = await supabase
+      .from('inventory_transfers')
+      .insert([payloadHeader])
+      .select('id')
+      .single();
+
+    if (trfErr) return { success: false, error: trfErr.message };
+    return { success: true, id: trfRes.id };
+  },
+
+  // ----------------------------------------------------
+  // PHASE 3: GOODS RECEIPT (GRN) METHODS
+  // ----------------------------------------------------
+  getGoodsReceipts: async (branchId?: string) => {
+    const rid = getRestaurantId();
+    let query = supabase.from('goods_receipts').select('*, suppliers(name), inventory_locations(name)');
+    if (rid) query = query.eq('restaurant_id', rid);
+    if (branchId && branchId !== 'All') query = query.eq('branch_id', branchId);
+    const { data, error } = await query.order('created_at', { ascending: false });
+    if (error) return { success: false, error: error.message };
+    return { success: true, data: data || [] };
+  },
+
+  getGoodsReceiptItems: async (receiptId: string) => {
+    const { data, error } = await supabase
+      .from('goods_receipt_items')
+      .select('*, items(name, base_unit)')
+      .eq('receipt_id', receiptId);
+    if (error) return { success: false, error: error.message };
+    return { success: true, data: data || [] };
+  },
+
+  createGoodsReceipt: async (header: any, items: any[]) => {
+    const rid = getRestaurantId();
+    const payloadHeader = await injectRestaurantId({
+      ...header,
+      receipt_number: header.receipt_number || `GRN-${Date.now().toString().slice(-6)}`,
+      status: 'DRAFT'
+    });
+    const { data: recRes, error: recErr } = await supabase
+      .from('goods_receipts')
+      .insert([payloadHeader])
+      .select('id')
+      .single();
+    if (recErr) return { success: false, error: recErr.message };
+    const receiptId = recRes.id;
+
+    if (items && items.length > 0) {
+      const payloadItems = items.map(item => ({
+        receipt_id: receiptId,
+        item_id: item.item_id,
+        purchase_quantity: Number(item.purchase_quantity || item.quantity || 0),
+        purchase_unit: item.purchase_unit || item.unit || 'pcs',
+        purchase_unit_cost: Number(item.purchase_unit_cost || item.unit_cost || 0),
+        base_quantity: Number(item.base_quantity || item.quantity || 0),
+        base_unit: item.base_unit || item.unit || 'pcs',
+        base_unit_cost: Number(item.base_unit_cost || 0),
+        total_cost: Number(item.total_cost || (Number(item.purchase_quantity || item.quantity || 0) * Number(item.purchase_unit_cost || item.unit_cost || 0))),
+        notes: item.notes || null
+      }));
+      const { error: itemErr } = await supabase.from('goods_receipt_items').insert(payloadItems);
+      if (itemErr) return { success: false, error: itemErr.message };
+    }
+    return { success: true, id: receiptId };
+  },
+
+  postGoodsReceipt: async (receiptId: string, userId?: string, userName?: string) => {
+    const { data, error } = await supabase.rpc('process_goods_receipt', {
+      p_receipt_id: receiptId,
+      p_user_id: userId || null,
+      p_user_name: userName || 'Admin'
+    });
+    if (error) return { success: false, error: error.message };
+    return data;
+  },
+
+  reverseGoodsReceipt: async (receiptId: string, reason: string, userId?: string, userName?: string) => {
+    const { data, error } = await supabase.rpc('reverse_goods_receipt', {
+      p_receipt_id: receiptId,
+      p_reason: reason,
+      p_user_id: userId || null,
+      p_user_name: userName || 'Admin'
+    });
+    if (error) return { success: false, error: error.message };
+    return data;
+  },
+
+  // ----------------------------------------------------
+  // PHASE 3: WASTE LOGGING METHOD
+  // ----------------------------------------------------
+  logStockWaste: async (payload: any, userId?: string, userName?: string) => {
+    const rid = getRestaurantId();
+    const wastePayload = await injectRestaurantId({
+      ...payload,
+      status: 'Logged',
+      created_by: userName || 'Admin'
+    });
+    const { data: wRes, error: wErr } = await supabase
+      .from('waste_logs')
+      .insert([wastePayload])
+      .select('id')
+      .single();
+    if (wErr) return { success: false, error: wErr.message };
+    const wasteId = wRes.id;
+    const { data, error } = await supabase.rpc('process_stock_waste', {
+      p_waste_id: wasteId,
+      p_user_id: userId || null,
+      p_user_name: userName || 'Admin'
+    });
+    if (error) return { success: false, error: error.message };
+    return data;
+  },
+
+  // ----------------------------------------------------
+  // PHASE 3: LEDGER & NEGATIVE STOCK EXPLORER
+  // ----------------------------------------------------
+  getItemMovementLedger: async (itemId: string, branchId?: string, locationId?: string) => {
+    const { data, error } = await supabase.rpc('get_item_movement_ledger', {
+      p_item_id: itemId,
+      p_branch_id: branchId && branchId !== 'All' ? branchId : null,
+      p_location_id: locationId && locationId !== 'All' ? locationId : null
+    });
+    if (error) return { success: false, error: error.message };
+    return { success: true, data: data || [] };
+  },
+
+  getNegativeStockExceptions: async (branchId?: string) => {
+    const { data, error } = await supabase.rpc('get_negative_stock_exceptions', {
+      p_branch_id: branchId && branchId !== 'All' ? branchId : null
+    });
+    if (error) return { success: false, error: error.message };
+    return { success: true, data: data || [] };
+  },
+
+  // ----------------------------------------------------
+  // PHASE 4: PRODUCTION & BATCH MANAGEMENT METHODS
+  // ----------------------------------------------------
+  upsertProductionRecipe: async (params: {
+    recipe_code: string;
+    name: string;
+    output_item_id: string;
+    target_yield_quantity: number;
+    yield_unit: string;
+    default_location_id?: string;
+    shelf_life_days?: number;
+    prep_time_minutes?: number;
+    instructions?: string;
+    items?: Array<{
+      item_id: string;
+      quantity: number;
+      unit: string;
+      waste_percentage?: number;
+      source_location_id?: string;
+      notes?: string;
+    }>;
+    user_name?: string;
+  }) => {
+    const rid = getRestaurantId();
+    const { data, error } = await supabase.rpc('upsert_production_recipe', {
+      p_restaurant_id: rid,
+      p_recipe_code: params.recipe_code,
+      p_name: params.name,
+      p_output_item_id: params.output_item_id,
+      p_target_yield_quantity: params.target_yield_quantity,
+      p_yield_unit: params.yield_unit,
+      p_default_location_id: params.default_location_id || null,
+      p_shelf_life_days: params.shelf_life_days || null,
+      p_prep_time_minutes: params.prep_time_minutes || null,
+      p_instructions: params.instructions || null,
+      p_items: JSON.stringify(params.items || []),
+      p_user_name: params.user_name || 'Admin'
+    });
+    if (error) return { success: false, error: error.message };
+    return data;
+  },
+
+  createProductionBatch: async (params: {
+    recipe_id: string;
+    branch_id: string;
+    location_id: string;
+    destination_location_id: string;
+    planned_yield_quantity: number;
+    planned_yield_unit: string;
+    batch_date?: string;
+    user_id?: string;
+    user_name?: string;
+    notes?: string;
+  }) => {
+    const rid = getRestaurantId();
+    const { data, error } = await supabase.rpc('create_production_batch', {
+      p_restaurant_id: rid,
+      p_recipe_id: params.recipe_id,
+      p_branch_id: params.branch_id,
+      p_location_id: params.location_id,
+      p_destination_location_id: params.destination_location_id,
+      p_planned_yield_quantity: params.planned_yield_quantity,
+      p_planned_yield_unit: params.planned_yield_unit,
+      p_batch_date: params.batch_date || new Date().toISOString().split('T')[0],
+      p_user_id: params.user_id || null,
+      p_user_name: params.user_name || 'Admin',
+      p_notes: params.notes || null
+    });
+    if (error) return { success: false, error: error.message };
+    return data;
+  },
+
+  startProductionBatch: async (batchId: string, userId?: string, userName?: string) => {
+    const { data, error } = await supabase.rpc('start_production_batch', {
+      p_batch_id: batchId,
+      p_user_id: userId || null,
+      p_user_name: userName || 'Admin'
+    });
+    if (error) return { success: false, error: error.message };
+    return data;
+  },
+
+  completeProductionBatch: async (params: {
+    batch_id: string;
+    actual_yield_quantity: number;
+    actual_yield_unit: string;
+    actual_items?: Array<{
+      item_id: string;
+      actual_quantity: number;
+      actual_unit?: string;
+    }>;
+    yield_variance_reason?: string;
+    user_id?: string;
+    user_name?: string;
+  }) => {
+    const { data, error } = await supabase.rpc('complete_production_batch', {
+      p_batch_id: params.batch_id,
+      p_actual_yield_quantity: params.actual_yield_quantity,
+      p_actual_yield_unit: params.actual_yield_unit,
+      p_actual_items: params.actual_items ? JSON.stringify(params.actual_items) : null,
+      p_yield_variance_reason: params.yield_variance_reason || null,
+      p_user_id: params.user_id || null,
+      p_user_name: params.user_name || 'Admin'
+    });
+    if (error) return { success: false, error: error.message };
+    return data;
+  },
+
+  cancelProductionBatch: async (batchId: string, reason: string, userId?: string, userName?: string) => {
+    const { data, error } = await supabase.rpc('cancel_production_batch', {
+      p_batch_id: batchId,
+      p_reason: reason,
+      p_user_id: userId || null,
+      p_user_name: userName || 'Admin'
+    });
+    if (error) return { success: false, error: error.message };
+    return data;
+  },
+
+  reverseCompletedProductionBatch: async (batchId: string, reason: string, userId?: string, userName?: string) => {
+    const { data, error } = await supabase.rpc('reverse_completed_production_batch', {
+      p_batch_id: batchId,
+      p_reason: reason,
+      p_user_id: userId || null,
+      p_user_name: userName || 'Admin'
+    });
+    if (error) return { success: false, error: error.message };
+    return data;
+  },
+
+  dispatchStockTransferLots: async (transferId: string, userId?: string, userName?: string) => {
+    const { data, error } = await supabase.rpc('dispatch_stock_transfer_lots', {
+      p_transfer_id: transferId,
+      p_user_id: userId || null,
+      p_user_name: userName || 'Admin'
+    });
+    if (error) return { success: false, error: error.message };
+    return data;
   },
 
   // ----------------------------------------------------
@@ -6181,6 +6588,264 @@ export const api = {
     });
 
     const { data, error } = await supabase.from('payrolls').upsert(payload, { onConflict: 'employee_id, month, year' }).select().single();
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  // ==========================================
+  // PHASE 5: PURCHASING, REPLENISHMENT & SCORECARD
+  // ==========================================
+  upsertSupplierPriceList: async (params: {
+    supplier_id: string;
+    item_id: string;
+    purchase_unit: string;
+    purchase_unit_price: number;
+    base_quantity_per_purchase_unit: number;
+    moq?: number;
+    lead_time_days?: number;
+    supplier_sku?: string;
+    is_preferred_supplier?: boolean;
+    effective_from?: string;
+    effective_to?: string | null;
+  }) => {
+    const rid = getRestaurantId();
+    const { data, error } = await supabase.rpc('upsert_supplier_price_list', {
+      p_restaurant_id: rid,
+      p_supplier_id: params.supplier_id,
+      p_item_id: params.item_id,
+      p_purchase_unit: params.purchase_unit,
+      p_purchase_unit_price: params.purchase_unit_price,
+      p_base_quantity_per_purchase_unit: params.base_quantity_per_purchase_unit,
+      p_moq: params.moq ?? 1,
+      p_lead_time_days: params.lead_time_days ?? 1,
+      p_supplier_sku: params.supplier_sku ?? null,
+      p_is_preferred_supplier: params.is_preferred_supplier ?? false,
+      p_effective_from: params.effective_from ?? new Date().toISOString().split('T')[0],
+      p_effective_to: params.effective_to ?? null,
+    });
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  getSuggestedReorderList: async (branchId: string, locationId: string) => {
+    const rid = getRestaurantId();
+    const { data, error } = await supabase.rpc('get_suggested_reorder_list', {
+      p_restaurant_id: rid,
+      p_branch_id: branchId,
+      p_location_id: locationId,
+    });
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  convertRequisitionsToPos: async (requisitionIds: string[], userId: string, userName: string) => {
+    const rid = getRestaurantId();
+    const { data, error } = await supabase.rpc('convert_requisitions_to_pos', {
+      p_restaurant_id: rid,
+      p_requisition_ids: requisitionIds,
+      p_user_id: userId,
+      p_user_name: userName,
+    });
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  approvePurchaseOrder: async (poId: string, userId: string, userName: string) => {
+    const { data, error } = await supabase.rpc('approve_purchase_order', {
+      p_po_id: poId,
+      p_user_id: userId,
+      p_user_name: userName,
+    });
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  issuePurchaseOrder: async (poId: string, userId: string, userName: string) => {
+    const { data, error } = await supabase.rpc('issue_purchase_order', {
+      p_po_id: poId,
+      p_user_id: userId,
+      p_user_name: userName,
+    });
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  closeShortPurchaseOrder: async (poId: string, reason: string, userId: string, userName: string) => {
+    const { data, error } = await supabase.rpc('close_short_purchase_order', {
+      p_po_id: poId,
+      p_reason: reason,
+      p_user_id: userId,
+      p_user_name: userName,
+    });
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  reopenClosedShortPurchaseOrder: async (poId: string, reason: string, userId: string, userName: string) => {
+    const { data, error } = await supabase.rpc('reopen_closed_short_purchase_order', {
+      p_po_id: poId,
+      p_reason: reason,
+      p_user_id: userId,
+      p_user_name: userName,
+    });
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  processGoodsReceiptWithPO: async (params: {
+    receipt_id: string;
+    user_id?: string;
+    user_name?: string;
+    lot_allocations?: any;
+    allow_over_receipt_override?: boolean;
+    override_reason?: string;
+  }) => {
+    const { data, error } = await supabase.rpc('process_goods_receipt', {
+      p_receipt_id: params.receipt_id,
+      p_user_id: params.user_id ?? null,
+      p_user_name: params.user_name ?? null,
+      p_lot_allocations: params.lot_allocations ?? null,
+      p_allow_over_receipt_override: params.allow_over_receipt_override ?? false,
+      p_override_reason: params.override_reason ?? null,
+    });
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  reverseGoodsReceiptWithPO: async (receiptId: string, reason: string, userId?: string, userName?: string) => {
+    const { data, error } = await supabase.rpc('reverse_goods_receipt', {
+      p_receipt_id: receiptId,
+      p_reason: reason,
+      p_user_id: userId ?? null,
+      p_user_name: userName ?? null,
+    });
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  getSupplierPerformanceScorecard: async (supplierId: string) => {
+    const rid = getRestaurantId();
+    const { data, error } = await supabase.rpc('get_supplier_performance_scorecard', {
+      p_restaurant_id: rid,
+      p_supplier_id: supplierId,
+    });
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  // --------------------------------------------------------------------------
+  // PHASE 6: INVENTORY INTELLIGENCE & ANALYTICS RPCs
+  // --------------------------------------------------------------------------
+
+  getInventoryValuationReport: async (params?: { branch_id?: string; as_of_date?: string }) => {
+    const rid = getRestaurantId();
+    const payload: any = { p_restaurant_id: rid };
+    if (params?.branch_id !== undefined) payload.p_branch_id = params.branch_id;
+    if (params?.as_of_date !== undefined) payload.p_as_of_date = params.as_of_date;
+    const { data, error } = await supabase.rpc('get_inventory_valuation_report', payload);
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  getCogsAndVarianceReport: async (params?: { branch_id?: string; start_date?: string; end_date?: string }) => {
+    const rid = getRestaurantId();
+    const payload: any = { p_restaurant_id: rid };
+    if (params?.branch_id !== undefined) payload.p_branch_id = params.branch_id;
+    if (params?.start_date !== undefined) payload.p_start_date = params.start_date;
+    if (params?.end_date !== undefined) payload.p_end_date = params.end_date;
+    const { data, error } = await supabase.rpc('get_cogs_and_variance_report', payload);
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  getWasteAnalyticsReport: async (params?: { branch_id?: string; start_date?: string; end_date?: string }) => {
+    const rid = getRestaurantId();
+    const payload: any = { p_restaurant_id: rid };
+    if (params?.branch_id !== undefined) payload.p_branch_id = params.branch_id;
+    if (params?.start_date !== undefined) payload.p_start_date = params.start_date;
+    if (params?.end_date !== undefined) payload.p_end_date = params.end_date;
+    const { data, error } = await supabase.rpc('get_waste_analytics_report', payload);
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  getExpiryRiskReport: async (params?: { branch_id?: string; days_threshold?: number }) => {
+    const rid = getRestaurantId();
+    const payload: any = { p_restaurant_id: rid };
+    if (params?.branch_id !== undefined) payload.p_branch_id = params.branch_id;
+    if (params?.days_threshold !== undefined) payload.p_days_threshold = params.days_threshold;
+    const { data, error } = await supabase.rpc('get_expiry_risk_report', payload);
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  getStockDaysAndTurnoverReport: async (params?: { branch_id?: string; period_days?: number }) => {
+    const rid = getRestaurantId();
+    const payload: any = { p_restaurant_id: rid };
+    if (params?.branch_id !== undefined) payload.p_branch_id = params.branch_id;
+    if (params?.period_days !== undefined) payload.p_period_days = params.period_days;
+    const { data, error } = await supabase.rpc('get_stock_days_and_turnover_report', payload);
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  getProductionYieldAnalyticsReport: async (params?: { branch_id?: string; start_date?: string; end_date?: string }) => {
+    const rid = getRestaurantId();
+    const payload: any = { p_restaurant_id: rid };
+    if (params?.branch_id !== undefined) payload.p_branch_id = params.branch_id;
+    if (params?.start_date !== undefined) payload.p_start_date = params.start_date;
+    if (params?.end_date !== undefined) payload.p_end_date = params.end_date;
+    const { data, error } = await supabase.rpc('get_production_yield_analytics_report', payload);
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  getPurchasePriceTrendsReport: async (params?: { item_id?: string; months?: number }) => {
+    const rid = getRestaurantId();
+    const payload: any = { p_restaurant_id: rid };
+    if (params?.item_id !== undefined) payload.p_item_id = params.item_id;
+    if (params?.months !== undefined) payload.p_months = params.months;
+    const { data, error } = await supabase.rpc('get_purchase_price_trends_report', payload);
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  getInventoryHealthAndExceptionsReport: async (params?: { branch_id?: string }) => {
+    const rid = getRestaurantId();
+    const payload: any = { p_restaurant_id: rid };
+    if (params?.branch_id !== undefined) payload.p_branch_id = params.branch_id;
+    const { data, error } = await supabase.rpc('get_inventory_health_and_exceptions_report', payload);
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  getBranchComparisonDashboard: async (params?: { start_date?: string; end_date?: string }) => {
+    const rid = getRestaurantId();
+    const payload: any = { p_restaurant_id: rid };
+    if (params?.start_date !== undefined) payload.p_start_date = params.start_date;
+    if (params?.end_date !== undefined) payload.p_end_date = params.end_date;
+    const { data, error } = await supabase.rpc('get_branch_comparison_dashboard', payload);
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  captureDailyInventorySnapshot: async (params?: { snapshot_date?: string; force_recalculate?: boolean }) => {
+    const rid = getRestaurantId();
+    const payload: any = { p_restaurant_id: rid };
+    if (params?.snapshot_date !== undefined) payload.p_snapshot_date = params.snapshot_date;
+    if (params?.force_recalculate !== undefined) payload.p_force_recalculate = params.force_recalculate;
+    // Uses authenticated administrative wrapper
+    const { data, error } = await supabase.rpc('admin_recalculate_daily_snapshot', payload);
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  catchupDailyInventorySnapshots: async (params?: { days_back?: number }) => {
+    const rid = getRestaurantId();
+    const payload: any = { p_restaurant_id: rid };
+    if (params?.days_back !== undefined) payload.p_days_back = params.days_back;
+    // Uses authenticated administrative wrapper
+    const { data, error } = await supabase.rpc('admin_catchup_daily_snapshots', payload);
     if (error) return { success: false, error: error.message };
     return { success: true, data };
   },
