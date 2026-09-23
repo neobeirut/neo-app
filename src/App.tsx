@@ -15,7 +15,7 @@ import StaffDepartmentsScreen from './screens/StaffDepartmentsScreen';
 import SalaryPaymentsScreen from './screens/SalaryPaymentsScreen';
 import SOPsScreen from './screens/SOPsScreen';
 import SOPFormScreen from './screens/SOPFormScreen';
-import { LayoutDashboard, ChefHat, Users, LogOut, DollarSign, Shield, BookOpen, TrendingUp, MessageSquare, Newspaper, AlertTriangle, Sparkles, Trash2, History, Coins, Truck, ShoppingBag, Calendar, ClipboardList, Package, CheckSquare, Receipt, Briefcase, Store, ChevronDown, ChevronRight, Clock, Target, Layers, Download, Sliders, FileText, Gift } from 'lucide-react';
+import { LayoutDashboard, ChefHat, Users, LogOut, DollarSign, Shield, BookOpen, TrendingUp, MessageSquare, Newspaper, AlertTriangle, Sparkles, Trash2, History, Coins, Truck, ShoppingBag, ShoppingCart, Calendar, ClipboardList, Package, CheckSquare, Receipt, Briefcase, Store, ChevronDown, ChevronRight, Clock, Target, Layers, Download, Sliders, FileText, Gift } from 'lucide-react';
 import { api, hasAdminAccess } from './api/client';
 import { usePWA } from './hooks/usePWA';
 import CrmHubScreen from './screens/CrmHubScreen';
@@ -52,6 +52,7 @@ import ReelCreditScreen from './screens/ReelCreditScreen';
 import SuperAdminScreen from './screens/SuperAdminScreen';
 import InventoryScreen from './screens/InventoryScreen';
 import InventoryIntelligenceDashboardScreen from './screens/InventoryIntelligenceDashboardScreen';
+import ReplenishmentPlanningScreen from './screens/ReplenishmentPlanningScreen';
 
   function Sidebar({ onLogout, permissions, user }: { onLogout: () => void; permissions: any; user: any }) {
     const location = useLocation();
@@ -126,6 +127,7 @@ import InventoryIntelligenceDashboardScreen from './screens/InventoryIntelligenc
           { to: '/waste', label: 'Waste Management', icon: <Trash2 size={18} />, visible: canAccess('waste', permissions?.can_view_waste_report !== false || permissions?.can_log_waste !== false), key: 'waste' },
           { to: '/86', label: '86 Missing Items', icon: <AlertTriangle size={18} />, visible: canAccess('missing_items', permissions?.can_view_86 !== false || permissions?.can_manage_86 !== false), key: 'missing_items' },
           { to: '/inventory-intelligence', label: 'Inventory Intelligence', icon: <TrendingUp size={18} />, visible: canAccess('inventory_reporting', !!permissions?.can_view_inventory || !!permissions?.can_manage_inventory || !!permissions?.can_view_reports), key: 'inventory_reporting' },
+          { to: '/replenishment-planning', label: 'Replenishment Planning', icon: <ShoppingCart size={18} />, visible: canAccess('inventory_reporting', !!permissions?.can_view_inventory || !!permissions?.can_manage_inventory || !!permissions?.can_view_reports || !!permissions?.can_view_replenishment), key: 'inventory_reporting' },
           { to: '/inventory-reporting', label: 'Inventory Management', icon: <ClipboardList size={18} />, visible: canAccess('inventory_reporting', !!permissions?.can_view_inventory || !!permissions?.can_manage_inventory), key: 'inventory_reporting' },
           { to: '/voids', label: 'Void Receipts', icon: <Receipt size={18} />, visible: canAccess('voids', !!permissions?.can_view_voids), key: 'voids' }
         ]
@@ -591,6 +593,10 @@ function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () 
                 <Route 
                   path="/inventory-intelligence" 
                   element={<InventoryIntelligenceDashboardScreen user={user} permissions={permissions} />} 
+                />
+                <Route 
+                  path="/replenishment-planning" 
+                  element={<ReplenishmentPlanningScreen user={user} permissions={permissions} />} 
                 />
                 <Route 
                   path="/inventory-reporting" 

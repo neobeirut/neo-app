@@ -6849,6 +6849,75 @@ export const api = {
     if (error) return { success: false, error: error.message };
     return { success: true, data };
   },
+
+  // Phase 7: Demand Forecasting & Smart Replenishment
+  generateReplenishmentRecommendations: async (params: { branch_id: string; horizon_days?: number }) => {
+    const rid = getRestaurantId();
+    const payload: any = { p_restaurant_id: rid, p_branch_id: params.branch_id };
+    if (params.horizon_days !== undefined) payload.p_horizon_days = params.horizon_days;
+    const { data, error } = await supabase.rpc('generate_replenishment_recommendations', payload);
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  getReplenishmentPlanningSummary: async (params: { branch_id: string; batch_id?: string }) => {
+    const rid = getRestaurantId();
+    const payload: any = { p_restaurant_id: rid, p_branch_id: params.branch_id };
+    if (params.batch_id !== undefined) payload.p_batch_id = params.batch_id;
+    const { data, error } = await supabase.rpc('get_replenishment_planning_summary', payload);
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  getReplenishmentRecommendationsList: async (params: { branch_id: string; batch_id?: string; status_filter?: string }) => {
+    const rid = getRestaurantId();
+    const payload: any = { p_restaurant_id: rid, p_branch_id: params.branch_id };
+    if (params.batch_id !== undefined) payload.p_batch_id = params.batch_id;
+    if (params.status_filter !== undefined) payload.p_status_filter = params.status_filter;
+    const { data, error } = await supabase.rpc('get_replenishment_recommendations_list', payload);
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  overrideReplenishmentRecommendationItem: async (params: {
+    item_rec_id: string;
+    action: string;
+    override_qty?: number;
+    override_supplier_id?: string;
+    notes?: string;
+  }) => {
+    const rid = getRestaurantId();
+    const payload: any = {
+      p_restaurant_id: rid,
+      p_item_rec_id: params.item_rec_id,
+      p_action: params.action
+    };
+    if (params.override_qty !== undefined) payload.p_override_qty = params.override_qty;
+    if (params.override_supplier_id !== undefined) payload.p_override_supplier_id = params.override_supplier_id;
+    if (params.notes !== undefined) payload.p_notes = params.notes;
+    const { data, error } = await supabase.rpc('override_replenishment_recommendation_item', payload);
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  convertReplenishmentBatchToPurchaseOrders: async (params: { batch_id: string; supplier_ids?: string[] }) => {
+    const rid = getRestaurantId();
+    const payload: any = { p_restaurant_id: rid, p_batch_id: params.batch_id };
+    if (params.supplier_ids !== undefined) payload.p_supplier_ids = params.supplier_ids;
+    const { data, error } = await supabase.rpc('convert_replenishment_batch_to_purchase_orders', payload);
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  getReplenishmentDecisionHistory: async (params?: { batch_id?: string; item_rec_id?: string }) => {
+    const rid = getRestaurantId();
+    const payload: any = { p_restaurant_id: rid };
+    if (params?.batch_id !== undefined) payload.p_batch_id = params.batch_id;
+    if (params?.item_rec_id !== undefined) payload.p_item_rec_id = params.item_rec_id;
+    const { data, error } = await supabase.rpc('get_replenishment_decision_history', payload);
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
 };
 
 
