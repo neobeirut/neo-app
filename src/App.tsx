@@ -53,6 +53,7 @@ import SuperAdminScreen from './screens/SuperAdminScreen';
 import InventoryScreen from './screens/InventoryScreen';
 import InventoryIntelligenceDashboardScreen from './screens/InventoryIntelligenceDashboardScreen';
 import ReplenishmentPlanningScreen from './screens/ReplenishmentPlanningScreen';
+import MenuProfitabilityScreen from './screens/MenuProfitabilityScreen';
 
   function Sidebar({ onLogout, permissions, user }: { onLogout: () => void; permissions: any; user: any }) {
     const location = useLocation();
@@ -150,6 +151,7 @@ import ReplenishmentPlanningScreen from './screens/ReplenishmentPlanningScreen';
         items: [
           { to: '/crm/products', label: 'Menu Products', icon: <ShoppingBag size={18} />, key: 'crm_products' },
           { to: '/crm/modifiers', label: 'Modifiers & Options', icon: <Sliders size={18} />, key: 'crm_modifiers' },
+          { to: '/menu-profitability', label: 'Menu Profitability & Margins', icon: <TrendingUp size={18} />, visible: canAccess('menu', !!permissions?.can_view_profitability || !!permissions?.can_view_reports), key: 'menu_profitability' },
           { to: '/specials', label: 'Specials & Upsell', icon: <Sparkles size={18} />, visible: canAccess('specials', !!permissions?.can_view_upsell), key: 'specials' }
         ]
       },
@@ -597,6 +599,10 @@ function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () 
                 <Route 
                   path="/replenishment-planning" 
                   element={<ReplenishmentPlanningScreen user={user} permissions={permissions} />} 
+                />
+                <Route 
+                  path="/menu-profitability" 
+                  element={<MenuProfitabilityScreen user={user} permissions={permissions} />} 
                 />
                 <Route 
                   path="/inventory-reporting" 
