@@ -54,30 +54,26 @@ export interface RecipeCostAlert {
 
 export const menuProfitabilityApi = {
   getDailySnapshots: async (restaurantId: string, branchId: string, date: string): Promise<MenuProductProfitability[]> => {
-    const { data, error } = await supabase
-      .from('product_daily_profitability_snapshots')
-      .select(`
-        *,
-        product:products (id, name)
-      `)
-      .eq('restaurant_id', restaurantId)
-      .eq('branch_id', branchId)
-      .eq('snapshot_date', date)
-      .order('gross_units_sold', { ascending: false });
+    const { data, error } = await supabase.rpc('get_product_profitability_report', {
+      p_restaurant_id: restaurantId,
+      p_branch_id: branchId,
+      p_start_date: date,
+      p_end_date: date
+    });
 
     if (error) throw error;
     return (data || []).map((row: any) => ({
       ...row,
-      product_name: row.product?.name || `Product #${row.product_id}`
+      id: `${row.product_id}-${row.channel}-${row.snapshot_date}`,
+      product_name: row.product_name || `Product #${row.product_id}`
     }));
   },
 
   getRecipeCostDetails: async (restaurantId: string, branchId: string, productId: number) => {
-    const { data, error } = await supabase.rpc('compute_recipe_theoretical_cost', {
+    const { data, error } = await supabase.rpc('get_product_recipe_cost_detail', {
       p_restaurant_id: restaurantId,
-      p_branch_id: branchId,
       p_product_id: productId,
-      p_as_of: new Date().toISOString()
+      p_branch_id: branchId
     });
     if (error) throw error;
     return data;
