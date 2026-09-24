@@ -55,6 +55,7 @@ import InventoryIntelligenceDashboardScreen from './screens/InventoryIntelligenc
 import ReplenishmentPlanningScreen from './screens/ReplenishmentPlanningScreen';
 import MenuProfitabilityScreen from './screens/MenuProfitabilityScreen';
 import StoreOperatingProfitabilityScreen from './screens/StoreOperatingProfitabilityScreen';
+import CostControlScreen from './screens/CostControlScreen';
 
   function Sidebar({ onLogout, permissions, user }: { onLogout: () => void; permissions: any; user: any }) {
     const location = useLocation();
@@ -81,8 +82,8 @@ import StoreOperatingProfitabilityScreen from './screens/StoreOperatingProfitabi
       if (key === 'permissions' || key.startsWith('crm')) return true;
       const enabledSections = user?.restaurants?.settings?.enabled_sections;
       if (!enabledSections) return true; // Default to enabled if not configured
-      if (key === 'inventory_reporting') {
-        return enabledSections.includes('inventory_reporting') || enabledSections.includes('inventory');
+      if (key === 'inventory_reporting' || key === 'cost_control') {
+        return enabledSections.includes('inventory_reporting') || enabledSections.includes('inventory') || enabledSections.includes('cost_control');
       }
       if (key === 'payment_details' || key === 'reel_credit') {
         return enabledSections.includes(key) || enabledSections.includes('finance');
@@ -126,6 +127,7 @@ import StoreOperatingProfitabilityScreen from './screens/StoreOperatingProfitabi
           { to: '/purchasing', label: 'Purchasing & Procurement', icon: <Truck size={18} />, visible: canAccess('purchasing', permissions?.can_create_purchasing !== false || permissions?.can_receive_purchasing !== false), key: 'purchasing' },
           { to: '/suppliers', label: 'Supplier Management', icon: <Store size={18} />, visible: canAccess('suppliers', permissions?.can_view_suppliers !== false), key: 'suppliers' },
           { to: '/price-intelligence', label: 'Supplier Price Intelligence', icon: <TrendingUp size={18} />, visible: canAccess('price_intelligence', permissions?.can_view_price_intelligence !== false), key: 'price_intelligence' },
+          { to: '/cost-control', label: 'Cost Control & Variance', icon: <Target size={18} />, visible: canAccess('cost_control', !!permissions?.can_view_cost_control || !!permissions?.can_view_variance_financials), key: 'cost_control' },
           { to: '/waste', label: 'Waste Management', icon: <Trash2 size={18} />, visible: canAccess('waste', permissions?.can_view_waste_report !== false || permissions?.can_log_waste !== false), key: 'waste' },
           { to: '/86', label: '86 Missing Items', icon: <AlertTriangle size={18} />, visible: canAccess('missing_items', permissions?.can_view_86 !== false || permissions?.can_manage_86 !== false), key: 'missing_items' },
           { to: '/inventory-intelligence', label: 'Inventory Intelligence', icon: <TrendingUp size={18} />, visible: canAccess('inventory_reporting', !!permissions?.can_view_inventory || !!permissions?.can_manage_inventory || !!permissions?.can_view_reports), key: 'inventory_reporting' },
@@ -609,6 +611,10 @@ function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () 
                 <Route 
                   path="/operating-profitability" 
                   element={<StoreOperatingProfitabilityScreen user={user} permissions={permissions} />} 
+                />
+                <Route 
+                  path="/cost-control" 
+                  element={<CostControlScreen user={user} permissions={permissions} />} 
                 />
                 <Route 
                   path="/inventory-reporting" 
