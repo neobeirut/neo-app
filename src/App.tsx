@@ -54,6 +54,7 @@ import InventoryScreen from './screens/InventoryScreen';
 import InventoryIntelligenceDashboardScreen from './screens/InventoryIntelligenceDashboardScreen';
 import ReplenishmentPlanningScreen from './screens/ReplenishmentPlanningScreen';
 import MenuProfitabilityScreen from './screens/MenuProfitabilityScreen';
+import StoreOperatingProfitabilityScreen from './screens/StoreOperatingProfitabilityScreen';
 
   function Sidebar({ onLogout, permissions, user }: { onLogout: () => void; permissions: any; user: any }) {
     const location = useLocation();
@@ -151,6 +152,7 @@ import MenuProfitabilityScreen from './screens/MenuProfitabilityScreen';
         items: [
           { to: '/crm/products', label: 'Menu Products', icon: <ShoppingBag size={18} />, key: 'crm_products' },
           { to: '/crm/modifiers', label: 'Modifiers & Options', icon: <Sliders size={18} />, key: 'crm_modifiers' },
+          { to: '/operating-profitability', label: 'Store Operating P&L', icon: <DollarSign size={18} />, visible: canAccess('finance', !!permissions?.can_view_operating_profitability || !!permissions?.can_view_finance_dashboard), key: 'operating_profitability' },
           { to: '/menu-profitability', label: 'Menu Profitability & Margins', icon: <TrendingUp size={18} />, visible: canAccess('menu', !!permissions?.can_view_profitability || !!permissions?.can_view_reports), key: 'menu_profitability' },
           { to: '/specials', label: 'Specials & Upsell', icon: <Sparkles size={18} />, visible: canAccess('specials', !!permissions?.can_view_upsell), key: 'specials' }
         ]
@@ -603,6 +605,10 @@ function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () 
                 <Route 
                   path="/menu-profitability" 
                   element={<MenuProfitabilityScreen user={user} permissions={permissions} />} 
+                />
+                <Route 
+                  path="/operating-profitability" 
+                  element={<StoreOperatingProfitabilityScreen user={user} permissions={permissions} />} 
                 />
                 <Route 
                   path="/inventory-reporting" 
