@@ -1,13 +1,8 @@
 import { sendInfobipWhatsAppTemplate, sendInfobipWhatsAppFreeForm } from "@/app/api/utils/infobipWhatsApp";
 
-function formatDriverEtaTime(etaMinutes, baseDate = new Date(), timeZone = "Asia/Beirut") {
-  if (etaMinutes === "Now" || etaMinutes === 0 || etaMinutes === "0") {
-    return { isNow: true, timeText: "Now", phrase: "Now" };
-  }
-  const mins = parseInt(etaMinutes, 10);
-  if (isNaN(mins)) {
-    return { isNow: false, timeText: String(etaMinutes), phrase: `at ${etaMinutes}` };
-  }
+function formatDriverArrivalEta(etaMinutes, baseDate = new Date(), timeZone = "Asia/Beirut") {
+  const isNow = etaMinutes === "Now" || etaMinutes === 0 || etaMinutes === "0";
+  const mins = isNow ? 0 : (parseInt(etaMinutes, 10) || 15);
   const targetDate = new Date(baseDate.getTime() + mins * 60 * 1000);
   const formatter = new Intl.DateTimeFormat("en-US", {
     timeZone,
@@ -15,12 +10,14 @@ function formatDriverEtaTime(etaMinutes, baseDate = new Date(), timeZone = "Asia
     minute: "2-digit",
     hour12: true,
   });
-  const parts = formatter.formatToParts(targetDate);
-  const hour = parts.find((p) => p.type === "hour")?.value || "";
-  const minute = parts.find((p) => p.type === "minute")?.value || "";
-  const dayPeriod = (parts.find((p) => p.type === "dayPeriod")?.value || "").toUpperCase();
-  const formattedTime = minute === "00" ? `${hour}${dayPeriod}` : `${hour}:${minute}${dayPeriod}`;
-  return { isNow: false, timeText: formattedTime, phrase: `at ${formattedTime}` };
+  const timeFormatted = formatter.format(targetDate);
+  const durationLabel = isNow ? "now" : `${mins} min`;
+  return {
+    isNow,
+    timeText: timeFormatted,
+    durationLabel,
+    mins,
+  };
 }
 
 export async function POST(request) {
@@ -29,34 +26,56 @@ export async function POST(request) {
     const { orderId, etaMinutes, phone, targetTime, messageText: clientMessageText } = body;
     const targetPhone = phone || "9613826136";
 
-    const etaInfo = formatDriverEtaTime(etaMinutes || "15");
+    const etaInfo = formatDriverArrivalEta(etaMinutes || "15");
     const resolvedTimeText = targetTime || etaInfo.timeText;
-    const orderText = orderId ? ` for Order #${orderId}` : "";
+    const orderText = orderId ? `#${orderId}` : "";
 
+    // Desired message text requested by user
     const messageText = clientMessageText || (etaInfo.isNow
-      ? `🛵 Hello, need driver Now${orderText}`
-      : `🛵 Hello, need driver at ${resolvedTimeText}${orderText}`);
+      ? `Hello, driver needed for Order ${orderText} — pickup time: Now (${resolvedTimeText})`
+      : `Hello, driver needed for Order ${orderText} — pickup time: ${resolvedTimeText}`);
 
-    const paramText = etaInfo.isNow ? `Now${orderText}` : `at ${resolvedTimeText}${orderText}`;
+    // For current approved Meta template "Hello, need driver in {{1}}":
+    // Sending "{{1}}" = "15 min for Order #2457 — pickup time: 3:50 PM"
+    // Outputs in WhatsApp: "Hello, need driver in 15 min for Order #2457 — pickup time: 3:50 PM"
+    const templateParam = etaInfo.isNow
+      ? `now for Order ${orderText} — pickup time: ${resolvedTimeText}`
+      : `${etaInfo.durationLabel} for Order ${orderText} — pickup time: ${resolvedTimeText}`;
 
     let apiResult = null;
     let templateSuccess = false;
 
-    // 1. Try Approved Template first (bypasses 24-hour session limits)
+    // 1. Try new template 'driver_needed' if user creates it in Meta/Infobip
     try {
       apiResult = await sendInfobipWhatsAppTemplate(
         targetPhone,
-        { templateName: "driver_request", language: "en" },
-        [paramText]
+        { templateName: "driver_needed", language: "en" },
+        [orderId || "", resolvedTimeText]
       );
       if (apiResult && apiResult.id) {
         templateSuccess = true;
       }
-    } catch (templateError) {
-      console.warn("[dispatch-driver] Template dispatch failed, falling back to free-form text:", templateError.message);
+    } catch (_) {
+      // driver_needed not active yet, proceed to driver_request
     }
 
-    // 2. Fallback to free-form text if template is not yet active
+    // 2. Try current approved template 'driver_request' ("Hello, need driver in {{1}}")
+    if (!templateSuccess) {
+      try {
+        apiResult = await sendInfobipWhatsAppTemplate(
+          targetPhone,
+          { templateName: "driver_request", language: "en" },
+          [templateParam]
+        );
+        if (apiResult && apiResult.id) {
+          templateSuccess = true;
+        }
+      } catch (templateError) {
+        console.warn("[dispatch-driver] Template dispatch failed, falling back to free-form text:", templateError.message);
+      }
+    }
+
+    // 3. Fallback to free-form text if template is not yet active
     if (!templateSuccess) {
       apiResult = await sendInfobipWhatsAppFreeForm(targetPhone, messageText);
     }
@@ -66,6 +85,7 @@ export async function POST(request) {
       apiSuccess: true,
       usedTemplate: templateSuccess,
       messageText,
+      templateParamSent: templateParam,
       targetPhone,
       result: apiResult,
     });

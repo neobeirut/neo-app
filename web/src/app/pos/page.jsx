@@ -1290,13 +1290,8 @@ export default function TabletPOSPage() {
   };
 
   const formatDriverArrivalEta = (etaMinutes) => {
-    if (etaMinutes === "Now" || etaMinutes === 0 || etaMinutes === "0") {
-      return { isNow: true, timeText: "Now", phrase: "Now" };
-    }
-    const mins = parseInt(etaMinutes, 10);
-    if (isNaN(mins)) {
-      return { isNow: false, timeText: String(etaMinutes), phrase: `at ${etaMinutes}` };
-    }
+    const isNow = etaMinutes === "Now" || etaMinutes === 0 || etaMinutes === "0";
+    const mins = isNow ? 0 : (parseInt(etaMinutes, 10) || 15);
     const targetDate = new Date(Date.now() + mins * 60 * 1000);
     const formatter = new Intl.DateTimeFormat("en-US", {
       timeZone: "Asia/Beirut",
@@ -1304,15 +1299,13 @@ export default function TabletPOSPage() {
       minute: "2-digit",
       hour12: true,
     });
-    const parts = formatter.formatToParts(targetDate);
-    const hour = parts.find((p) => p.type === "hour")?.value || "";
-    const minute = parts.find((p) => p.type === "minute")?.value || "";
-    const dayPeriod = (parts.find((p) => p.type === "dayPeriod")?.value || "").toUpperCase();
-    const formattedTime = minute === "00" ? `${hour}${dayPeriod}` : `${hour}:${minute}${dayPeriod}`;
+    const timeFormatted = formatter.format(targetDate);
+    const durationLabel = isNow ? "now" : `${mins} min`;
     return {
-      isNow: false,
-      timeText: formattedTime,
-      phrase: `at ${formattedTime}`
+      isNow,
+      timeText: timeFormatted,
+      durationLabel,
+      mins
     };
   };
 
@@ -1323,8 +1316,8 @@ export default function TabletPOSPage() {
     const etaInfo = formatDriverArrivalEta(etaMinutes);
     const orderId = lastCompletedOrder.id;
     const msg = etaInfo.isNow
-      ? `🛵 Hello, need driver Now for Order #${orderId}`
-      : `🛵 Hello, need driver ${etaInfo.phrase} for Order #${orderId}`;
+      ? `Hello, driver needed for Order #${orderId} — pickup time: Now (${etaInfo.timeText})`
+      : `Hello, driver needed for Order #${orderId} — pickup time: ${etaInfo.timeText}`;
 
     // Always copy message to clipboard as fallback
     if (typeof navigator !== "undefined" && navigator.clipboard) {
