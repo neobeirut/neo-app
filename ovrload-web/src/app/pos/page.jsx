@@ -1289,12 +1289,42 @@ export default function TabletPOSPage() {
     }
   };
 
+  const formatDriverArrivalEta = (etaMinutes) => {
+    if (etaMinutes === "Now" || etaMinutes === 0 || etaMinutes === "0") {
+      return { isNow: true, timeText: "Now", phrase: "Now" };
+    }
+    const mins = parseInt(etaMinutes, 10);
+    if (isNaN(mins)) {
+      return { isNow: false, timeText: String(etaMinutes), phrase: `at ${etaMinutes}` };
+    }
+    const targetDate = new Date(Date.now() + mins * 60 * 1000);
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: "Asia/Beirut",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+    const parts = formatter.formatToParts(targetDate);
+    const hour = parts.find((p) => p.type === "hour")?.value || "";
+    const minute = parts.find((p) => p.type === "minute")?.value || "";
+    const dayPeriod = (parts.find((p) => p.type === "dayPeriod")?.value || "").toUpperCase();
+    const formattedTime = minute === "00" ? `${hour}${dayPeriod}` : `${hour}:${minute}${dayPeriod}`;
+    return {
+      isNow: false,
+      timeText: formattedTime,
+      phrase: `at ${formattedTime}`
+    };
+  };
+
   // Send Silent WhatsApp Driver Request via Infobip Backend API (+961 3 826 136)
   const handleSendDeliveryWhatsApp = async (etaMinutes, mode = "silent") => {
     if (!lastCompletedOrder) return;
     const cleanPhone = "9613826136";
-    const timeText = etaMinutes === "Now" ? "Now" : etaMinutes ? `${etaMinutes}'` : "15'";
-    const msg = `🛵 Hello, need driver in ${timeText} for Order #${lastCompletedOrder.id}`;
+    const etaInfo = formatDriverArrivalEta(etaMinutes);
+    const orderId = lastCompletedOrder.id;
+    const msg = etaInfo.isNow
+      ? `🛵 Hello, need driver Now for Order #${orderId}`
+      : `🛵 Hello, need driver ${etaInfo.phrase} for Order #${orderId}`;
 
     // Always copy message to clipboard as fallback
     if (typeof navigator !== "undefined" && navigator.clipboard) {
@@ -1309,7 +1339,7 @@ export default function TabletPOSPage() {
     }
 
     // Silent Background API Send (<0.3s) - 0 Tabs, 0 Popups!
-    setDispatchStatusMsg(`Sending driver request (${timeText})... ⏳`);
+    setDispatchStatusMsg(`Sending driver request (${etaInfo.timeText})... ⏳`);
     try {
       const res = await fetch("/api/pos/dispatch-driver", {
         method: "POST",
@@ -1317,13 +1347,15 @@ export default function TabletPOSPage() {
         body: JSON.stringify({
           orderId: lastCompletedOrder.id,
           etaMinutes: etaMinutes || "15",
+          targetTime: etaInfo.timeText,
+          messageText: msg,
           phone: cleanPhone
         })
       });
       const data = await res.json();
-      setDispatchStatusMsg(`Driver Requested in ${timeText}! ✓`);
+      setDispatchStatusMsg(`Driver Requested for ${etaInfo.timeText}! ✓`);
     } catch (err) {
-      setDispatchStatusMsg(`Request Sent (${timeText}) ✓`);
+      setDispatchStatusMsg(`Request Sent (${etaInfo.timeText}) ✓`);
     }
     // Auto-close after 1.2s so staff sees the confirmation tick
     setTimeout(() => {
@@ -2784,8 +2816,8 @@ export default function TabletPOSPage() {
                 <div className="text-[11px] text-gray-400 font-medium text-left">
                   Select arrival ETA time to send WhatsApp to driver (+961 3 826 136):
                 </div>
-                <div className="grid grid-cols-5 gap-1.5">
-                  {["Now", "15", "20", "30", "45"].map((time) => (
+                <div className="grid grid-cols-6 gap-1.5">
+                  {["Now", "5", "15", "20", "30", "45"].map((time) => (
                     <button
                       key={time}
                       type="button"
