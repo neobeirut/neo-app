@@ -99,6 +99,7 @@ export async function createOrder({
 }
 
 export async function insertOrderItems({ createdOrderId, orderItems }) {
+  const insertedItems = [];
   for (const item of orderItems) {
     const [orderItemRow] = await sql`
       INSERT INTO order_items (
@@ -111,6 +112,16 @@ export async function insertOrderItems({ createdOrderId, orderItems }) {
     `;
 
     const orderItemId = orderItemRow?.id;
+    if (orderItemId) {
+      insertedItems.push({
+        source_line_id: String(orderItemId),
+        product_id: item.product_id,
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        name: item.name,
+        customizations: item.customizations || []
+      });
+    }
 
     if (orderItemId && item.selected_addons.length > 0) {
       const addons = await sql`
@@ -130,6 +141,7 @@ export async function insertOrderItems({ createdOrderId, orderItems }) {
       }
     }
   }
+  return insertedItems;
 }
 
 export async function recordPromoRedemption({

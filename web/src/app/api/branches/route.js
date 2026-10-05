@@ -1,5 +1,10 @@
 import sql from "@/app/api/utils/sql";
 import { corsJson, corsOptions } from "@/app/api/utils/cors";
+import {
+  normalizeWeekdaySchedule,
+  getNextScheduledOpen,
+  evaluateBranchStatus,
+} from "@/app/api/utils/branchScheduleService";
 
 export async function OPTIONS(request) {
   return corsOptions(request);
@@ -8,44 +13,60 @@ export async function OPTIONS(request) {
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
-    const is_active = searchParams.get("is_active");
+    const isActiveFilter = searchParams.get("is_active");
 
-    let branches;
+    const allBranches = await sql`
+      SELECT id, name, address, phone, whatsapp_phone, location, is_active, created_at, discount_percentage, image_url, delivery_radius_km, display_order,
+             opening_time, closing_time, delivery_start_time, delivery_end_time, orders_active,
+             COALESCE(operational_status, 'open') as operational_status, closure_reason, closed_until, weekday_schedule
+      FROM branches 
+      ORDER BY display_order, name
+    `;
 
-    // Filter active branches for customer / POS dropdowns
-    if (is_active !== null) {
-      const isActiveBoolean = is_active === "true";
-      if (isActiveBoolean) {
-        // Active branches must be enabled AND not marked as 'closed'
-        branches = await sql`
-          SELECT id, name, address, phone, whatsapp_phone, location, is_active, created_at, discount_percentage, image_url, delivery_radius_km, display_order,
-                 opening_time, closing_time, delivery_start_time, delivery_end_time, orders_active,
-                 COALESCE(operational_status, 'open') as operational_status, closure_reason, closed_until, weekday_schedule
-          FROM branches 
-          WHERE is_active = true 
-            AND COALESCE(operational_status, 'open') != 'closed'
-            AND COALESCE(orders_active, true) = true
-          ORDER BY display_order, name
-        `;
-      } else {
-        branches = await sql`
-          SELECT id, name, address, phone, whatsapp_phone, location, is_active, created_at, discount_percentage, image_url, delivery_radius_km, display_order,
-                 opening_time, closing_time, delivery_start_time, delivery_end_time, orders_active,
-                 COALESCE(operational_status, 'open') as operational_status, closure_reason, closed_until, weekday_schedule
-          FROM branches 
-          WHERE is_active = false
-          ORDER BY display_order, name
-        `;
+    const now = new Date();
+    const evaluatedBranches = [];
+
+    for (const b of allBranches) {
+      const evalStatus = evaluateBranchStatus(b, now);
+
+      if (evalStatus.needsDbSync) {
+        // Asynchronously sync DB so other services/queries stay fresh
+        sql`
+          UPDATE branches 
+          SET operational_status = ${evalStatus.newOperationalStatus},
+              closed_until = ${evalStatus.newClosedUntil ? evalStatus.newClosedUntil.toISOString() : null},
+              orders_active = ${evalStatus.ordersActive}
+          WHERE id = ${b.id}
+        `.catch((err) => console.error("Error auto-syncing branch in GET:", err));
       }
-    } else {
-      // No filter, get all branches for admin management
-      branches = await sql`
-        SELECT id, name, address, phone, whatsapp_phone, location, is_active, created_at, discount_percentage, image_url, delivery_radius_km, display_order,
-               opening_time, closing_time, delivery_start_time, delivery_end_time, orders_active,
-               COALESCE(operational_status, 'open') as operational_status, closure_reason, closed_until, weekday_schedule
-        FROM branches 
-        ORDER BY display_order, name
-      `;
+
+      const branchWithEval = {
+        ...b,
+        is_open: evalStatus.isOpen,
+        orders_active: evalStatus.ordersActive,
+        operational_status: evalStatus.status,
+        closed_until: evalStatus.closedUntil,
+        status_display: evalStatus.displayText,
+        status_description: evalStatus.description,
+      };
+
+      evaluatedBranches.push(branchWithEval);
+    }
+
+    let branches = evaluatedBranches;
+
+    if (isActiveFilter !== null) {
+      const isActiveBoolean = isActiveFilter === "true";
+      if (isActiveBoolean) {
+        // Customer view: only branches that are active and currently open
+        branches = evaluatedBranches.filter(
+          (b) => b.is_active === true && b.is_open === true,
+        );
+      } else {
+        branches = evaluatedBranches.filter(
+          (b) => b.is_active === false || b.is_open === false,
+        );
+      }
     }
 
     return corsJson(request, { branches });
@@ -67,16 +88,15 @@ export async function POST(request) {
       phone,
       whatsapp_phone,
       location,
-      is_active,
-      discount_percentage,
+      is_active = true,
+      discount_percentage = 0,
       image_url,
       delivery_radius_km,
       display_order,
-      opening_time,
-      closing_time,
-      delivery_start_time,
-      delivery_end_time,
-      orders_active,
+      opening_time = "12:00:00",
+      closing_time = "23:00:00",
+      delivery_start_time = "12:00:00",
+      delivery_end_time = "23:00:00",
       operational_status = "open",
       closure_reason = null,
       weekday_schedule = null,
@@ -106,18 +126,42 @@ export async function POST(request) {
       );
     }
 
-    // Determine derived is_active & orders_active status based on operational_status choice
-    const isClosedIndefinitely = operational_status === "closed";
-    const finalIsActive = isClosedIndefinitely ? false : (is_active ?? true);
-    const finalOrdersActive = operational_status === "open";
-    const jsonSchedule = weekday_schedule ? JSON.stringify(weekday_schedule) : null;
+    // Clean schedule
+    const cleanSchedule = normalizeWeekdaySchedule(
+      weekday_schedule,
+      opening_time,
+      closing_time,
+    );
+    const jsonSchedule = JSON.stringify(cleanSchedule);
+
+    // Calculate closed_until & orders_active
+    const now = new Date();
+    let closed_until = null;
+    let orders_active = true;
+    let finalIsActive = is_active;
+
+    if (operational_status === "closed_hour") {
+      closed_until = new Date(now.getTime() + 60 * 60 * 1000);
+      orders_active = false;
+    } else if (operational_status === "closed_today" || operational_status === "closed") {
+      const nextOpen = getNextScheduledOpen(cleanSchedule, now);
+      closed_until = nextOpen.reopenDate;
+      orders_active = false;
+      if (is_active === false) {
+        finalIsActive = false;
+      }
+    } else if (operational_status === "open") {
+      closed_until = null;
+      orders_active = true;
+      finalIsActive = true;
+    }
 
     // Get max display_order if not provided
     let finalDisplayOrder = display_order;
     if (finalDisplayOrder === null || finalDisplayOrder === undefined) {
       const [maxOrder] =
         await sql`SELECT COALESCE(MAX(display_order), 0) + 1 as next_order FROM branches`;
-      finalDisplayOrder = maxOrder.next_order;
+      finalDisplayOrder = maxOrder?.next_order || 1;
     }
 
     const [branch] = await sql`
@@ -125,17 +169,33 @@ export async function POST(request) {
         name, address, phone, whatsapp_phone, location, is_active, 
         discount_percentage, image_url, delivery_radius_km, display_order,
         opening_time, closing_time, delivery_start_time, delivery_end_time, orders_active,
-        operational_status, closure_reason, weekday_schedule
+        operational_status, closure_reason, closed_until, weekday_schedule
       ) VALUES (
         ${name}, ${address || null}, ${phone || null}, ${whatsapp_phone || null}, ${location || null}, ${finalIsActive},
         ${discount_percentage || 0}, ${image_url || null}, ${parsedRadius}, ${finalDisplayOrder},
-        ${opening_time || "09:00:00"}, ${closing_time || "21:00:00"}, ${delivery_start_time || "11:00:00"}, ${delivery_end_time || "20:00:00"}, ${finalOrdersActive},
-        ${operational_status}, ${closure_reason || null}, ${jsonSchedule}::jsonb
+        ${opening_time}, ${closing_time}, ${delivery_start_time}, ${delivery_end_time}, ${orders_active},
+        ${operational_status}, ${orders_active ? null : (closure_reason || null)}, ${closed_until ? closed_until.toISOString() : null}, ${jsonSchedule}::jsonb
       )
       RETURNING *
     `;
 
-    return corsJson(request, { branch }, { status: 201 });
+    const evalStatus = evaluateBranchStatus(branch);
+
+    return corsJson(
+      request,
+      {
+        branch: {
+          ...branch,
+          is_open: evalStatus.isOpen,
+          orders_active: evalStatus.ordersActive,
+          operational_status: evalStatus.status,
+          status_display: evalStatus.displayText,
+          status_description: evalStatus.description,
+          closed_until: evalStatus.closedUntil,
+        },
+      },
+      { status: 201 },
+    );
   } catch (error) {
     console.error("Error creating branch:", error);
     return corsJson(

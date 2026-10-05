@@ -68,13 +68,14 @@ export async function validateScheduledTime({
   branch_id,
 }) {
   try {
-    // Get branch operational hours
+    // Get branch operational hours and weekday schedule
     const [branch] = await sql`
       SELECT 
         delivery_start_time,
         delivery_end_time,
         opening_time,
-        closing_time
+        closing_time,
+        weekday_schedule
       FROM branches
       WHERE id = ${branch_id}
       LIMIT 1
@@ -91,15 +92,62 @@ export async function validateScheduledTime({
       };
     }
 
+    // Determine day of the week
+    let dayOfWeek = null;
+    if (scheduled_date) {
+      const parts = scheduled_date.split("-").map(Number);
+      if (parts.length === 3) {
+        const d = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2], 12, 0, 0));
+        const dayNames = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+        dayOfWeek = dayNames[d.getUTCDay()];
+      }
+    }
+    if (!dayOfWeek) {
+      const beirutParts = new Intl.DateTimeFormat("en-US", {
+        timeZone: "Asia/Beirut",
+        weekday: "long",
+      }).format(new Date());
+      dayOfWeek = beirutParts.toLowerCase();
+    }
+
+    let dayOpen = branch.opening_time || "12:00:00";
+    let dayClose = branch.closing_time || "23:00:00";
+
+    if (branch.weekday_schedule) {
+      let parsedSched = branch.weekday_schedule;
+      while (typeof parsedSched === "string") {
+        try { parsedSched = JSON.parse(parsedSched); } catch (_) { break; }
+      }
+      if (parsedSched && typeof parsedSched === "object" && parsedSched[dayOfWeek]) {
+        const dayInfo = parsedSched[dayOfWeek];
+        if (dayInfo.active === false) {
+          const capDay = dayOfWeek.charAt(0).toUpperCase() + dayOfWeek.slice(1);
+          return {
+            ok: false,
+            response: corsJson(
+              request,
+              {
+                error: `This branch is closed on ${capDay}s.`,
+                code: "BRANCH_CLOSED_ON_DAY",
+              },
+              { status: 400 },
+            ),
+          };
+        }
+        if (dayInfo.open) dayOpen = dayInfo.open;
+        if (dayInfo.close) dayClose = dayInfo.close;
+      }
+    }
+
     // Determine which time window to use based on order type
     const windowStart =
       order_type === "delivery"
-        ? branch.delivery_start_time
-        : branch.opening_time;
+        ? (branch.delivery_start_time || dayOpen)
+        : dayOpen;
     const windowEnd =
       order_type === "delivery"
-        ? branch.delivery_end_time
-        : branch.closing_time;
+        ? (branch.delivery_end_time || dayClose)
+        : dayClose;
 
     if (!windowStart || !windowEnd || !scheduled_time) {
       // If hours not configured, allow the order (fallback)
