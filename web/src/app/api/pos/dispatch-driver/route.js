@@ -25,59 +25,50 @@ export async function POST(request) {
     const body = await request.json();
     const { orderId, etaMinutes, phone, targetTime, messageText: clientMessageText } = body;
     const targetPhone = phone || "9613826136";
+    // Ovrload sender where driver_request template is registered & approved
+    const ovrloadSender = "96181202607";
 
     const etaInfo = formatDriverArrivalEta(etaMinutes || "15");
     const resolvedTimeText = targetTime || etaInfo.timeText;
-    const orderText = orderId ? `#${orderId}` : "";
+    const orderNum = orderId ? `#${orderId}` : "";
 
-    // Desired message text requested by user
-    const messageText = clientMessageText || (etaInfo.isNow
-      ? `Hello, driver needed for Order ${orderText} — pickup time: Now (${resolvedTimeText})`
-      : `Hello, driver needed for Order ${orderText} — pickup time: ${resolvedTimeText}`);
-
-    // For current approved Meta template "Hello, need driver in {{1}}":
-    // Sending "{{1}}" = "15 min for Order #2457 — pickup time: 3:50 PM"
-    // Outputs in WhatsApp: "Hello, need driver in 15 min for Order #2457 — pickup time: 3:50 PM"
+    // The approved template in Infobip (Sender 96181202607):
+    // "Hello, driver needed for Order {{1}}"
+    // "Thank you"
+    // Setting parameter {{1}} to:
+    // "#2457 — pickup time: 3:50 PM"
+    // Renders the exact desired WhatsApp text:
+    // "Hello, driver needed for Order #2457 — pickup time: 3:50 PM\nThank you"
     const templateParam = etaInfo.isNow
-      ? `now for Order ${orderText} — pickup time: ${resolvedTimeText}`
-      : `${etaInfo.durationLabel} for Order ${orderText} — pickup time: ${resolvedTimeText}`;
+      ? `${orderNum} — pickup time: Now (${resolvedTimeText})`.trim()
+      : `${orderNum} — pickup time: ${resolvedTimeText}`.trim();
+
+    // Desired plain message text for fallback or wa.me
+    const messageText = clientMessageText || (etaInfo.isNow
+      ? `Hello, driver needed for Order ${orderNum} — pickup time: Now (${resolvedTimeText})`
+      : `Hello, driver needed for Order ${orderNum} — pickup time: ${resolvedTimeText}`);
 
     let apiResult = null;
     let templateSuccess = false;
 
-    // 1. Try new template 'driver_needed' if user creates it in Meta/Infobip
+    // Send using approved template 'driver_request' on Ovrload sender
     try {
       apiResult = await sendInfobipWhatsAppTemplate(
         targetPhone,
-        { templateName: "driver_needed", language: "en" },
-        [orderId || "", resolvedTimeText]
+        { templateName: "driver_request", language: "en" },
+        [templateParam],
+        ovrloadSender
       );
       if (apiResult && apiResult.id) {
         templateSuccess = true;
       }
-    } catch (_) {
-      // driver_needed not active yet, proceed to driver_request
+    } catch (templateError) {
+      console.warn("[dispatch-driver] Template dispatch failed, falling back to free-form text:", templateError.message);
     }
 
-    // 2. Try current approved template 'driver_request' ("Hello, need driver in {{1}}")
+    // Fallback to free-form text if template failed
     if (!templateSuccess) {
-      try {
-        apiResult = await sendInfobipWhatsAppTemplate(
-          targetPhone,
-          { templateName: "driver_request", language: "en" },
-          [templateParam]
-        );
-        if (apiResult && apiResult.id) {
-          templateSuccess = true;
-        }
-      } catch (templateError) {
-        console.warn("[dispatch-driver] Template dispatch failed, falling back to free-form text:", templateError.message);
-      }
-    }
-
-    // 3. Fallback to free-form text if template is not yet active
-    if (!templateSuccess) {
-      apiResult = await sendInfobipWhatsAppFreeForm(targetPhone, messageText);
+      apiResult = await sendInfobipWhatsAppFreeForm(targetPhone, messageText, ovrloadSender);
     }
 
     return Response.json({
