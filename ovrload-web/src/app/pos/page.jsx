@@ -134,6 +134,14 @@ export default function TabletPOSPage() {
   const [customerPhone, setCustomerPhone] = useState("");
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [deliveryFee, setDeliveryFee] = useState(0);
+  const [deliveryPricingRules, setDeliveryPricingRules] = useState([
+    { id: 1, min_distance_km: 0, max_distance_km: 3, delivery_cost: 1.67 },
+    { id: 2, min_distance_km: 3, max_distance_km: 4.5, delivery_cost: 2.22 },
+    { id: 3, min_distance_km: 4.5, max_distance_km: 6, delivery_cost: 2.78 },
+    { id: 4, min_distance_km: 6, max_distance_km: 7.5, delivery_cost: 3.33 },
+    { id: 5, min_distance_km: 7.5, max_distance_km: 10, delivery_cost: 5.00 },
+    { id: 6, min_distance_km: 10, max_distance_km: 12.5, delivery_cost: 7.22 },
+  ]);
 
   // Admin Configured Channel Discounts
   const [totersDiscountPercent, setTotersDiscountPercent] = useState(15);
@@ -518,6 +526,20 @@ export default function TabletPOSPage() {
     }
   };
 
+  const fetchDeliveryPricingRules = async () => {
+    try {
+      const res = await fetchWithTimeout("/api/delivery/pricing-rules", {}, 8000);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.rules) && data.rules.length > 0) {
+          setDeliveryPricingRules(data.rules.filter((r) => r.is_active !== false));
+        }
+      }
+    } catch (err) {
+      console.error("Error fetching delivery pricing rules in POS:", err);
+    }
+  };
+
   const playNotificationBeep = () => {
     try {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -784,6 +806,7 @@ export default function TabletPOSPage() {
     fetchProducts();
     fetchOrdersQueue();
     fetchBranchStatusAndPrompt();
+    fetchDeliveryPricingRules();
     const interval = setInterval(fetchOrdersQueue, 10000);
     return () => clearInterval(interval);
   }, []);
@@ -1947,41 +1970,66 @@ export default function TabletPOSPage() {
                 </div>
 
                 {/* Delivery Fee Control (Only for Delivery orders) */}
-                {orderType === "delivery" && (
-                  <div className="space-y-1 pt-1 border-t border-[#262D3D]/40">
-                    <span className="font-bold text-gray-400 text-[11px] block">Delivery Fee:</span>
-                    <div className="flex flex-wrap items-center gap-1">
-                      {[0, 1, 2, 3].map((fee) => (
+                {orderType === "delivery" && (() => {
+                  const currentFeeNum = Number(deliveryFee) || 0;
+                  const matchingRule = deliveryPricingRules.find(
+                    (r) => Math.abs((parseFloat(r.delivery_cost) || 0) - currentFeeNum) < 0.001
+                  );
+                  const isZeroFee = currentFeeNum === 0;
+                  const isCustomFee = !isZeroFee && !matchingRule;
+                  const selectValue = isCustomFee
+                    ? currentFeeNum
+                    : (matchingRule ? (parseFloat(matchingRule.delivery_cost) || 0) : 0);
+
+                  return (
+                    <div className="space-y-1 pt-1 border-t border-[#262D3D]/40">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-gray-400 text-[11px] block">Delivery Fee:</span>
+                        <span className="text-[11px] font-extrabold text-blue-400">
+                          ${currentFeeNum.toFixed(2)}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <select
+                          value={selectValue}
+                          onChange={(e) => setDeliveryFee(parseFloat(e.target.value) || 0)}
+                          className="bg-[#0F1115] border border-[#262D3D] text-white text-[11px] font-extrabold rounded-lg px-2 py-1 focus:border-[#eb660c] outline-none flex-1 truncate"
+                        >
+                          <option value={0}>$0.00 (Free Delivery)</option>
+                          {deliveryPricingRules.map((r) => {
+                            const cost = parseFloat(r.delivery_cost) || 0;
+                            return (
+                              <option key={r.id} value={cost}>
+                                {r.min_distance_km} - {r.max_distance_km} km — ${cost.toFixed(2)}
+                              </option>
+                            );
+                          })}
+                          {isCustomFee && (
+                            <option value={currentFeeNum}>
+                              Custom: ${currentFeeNum.toFixed(2)}
+                            </option>
+                          )}
+                        </select>
                         <button
-                          key={fee}
                           type="button"
-                          onClick={() => setDeliveryFee(fee)}
-                          className={`px-2 py-0.5 rounded text-[11px] font-extrabold transition-all ${
-                            Number(deliveryFee) === fee
-                              ? "bg-[#eb660c] text-white"
+                          onClick={() => {
+                            const val = prompt("Custom Delivery Fee ($ USD):", currentFeeNum);
+                            if (val !== null && val.trim() !== "" && !isNaN(parseFloat(val))) {
+                              setDeliveryFee(parseFloat(val));
+                            }
+                          }}
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-black transition-all shrink-0 ${
+                            isCustomFee
+                              ? "bg-[#eb660c] text-white shadow"
                               : "bg-[#0F1115] border border-[#262D3D] text-gray-300 hover:bg-[#262D3D]"
                           }`}
                         >
-                          ${fee}
+                          Custom
                         </button>
-                      ))}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const val = prompt("Custom Delivery Fee ($ USD):", deliveryFee);
-                          if (val !== null && !isNaN(parseFloat(val))) setDeliveryFee(parseFloat(val));
-                        }}
-                        className={`px-2 py-0.5 rounded text-[11px] font-extrabold transition-all ${
-                          ![0, 1, 2, 3].includes(Number(deliveryFee))
-                            ? "bg-[#eb660c] text-white"
-                            : "bg-[#0F1115] border border-[#262D3D] text-gray-300 hover:bg-[#262D3D]"
-                        }`}
-                      >
-                        Custom
-                      </button>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
               </div>
 
               {/* RIGHT SIDE: Subtotal, Discount, Delivery Fee, TOTAL */}
