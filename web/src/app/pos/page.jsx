@@ -1291,20 +1291,12 @@ export default function TabletPOSPage() {
 
   const formatDriverArrivalEta = (etaMinutes) => {
     const isNow = etaMinutes === "Now" || etaMinutes === 0 || etaMinutes === "0";
-    const mins = isNow ? 0 : (parseInt(etaMinutes, 10) || 15);
-    const targetDate = new Date(Date.now() + mins * 60 * 1000);
-    const formatter = new Intl.DateTimeFormat("en-US", {
-      timeZone: "Asia/Beirut",
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    });
-    const timeFormatted = formatter.format(targetDate);
-    const durationLabel = isNow ? "now" : `${mins} min`;
+    const cleanMins = String(etaMinutes || "").replace(/[^0-9]/g, "");
+    const mins = cleanMins ? parseInt(cleanMins, 10) : 15;
+    const etaText = isNow ? "Now" : `in ${mins}'`;
     return {
       isNow,
-      timeText: timeFormatted,
-      durationLabel,
+      etaText,
       mins
     };
   };
@@ -1315,9 +1307,9 @@ export default function TabletPOSPage() {
     const cleanPhone = "9613826136";
     const etaInfo = formatDriverArrivalEta(etaMinutes);
     const orderId = lastCompletedOrder.id;
-    const msg = etaInfo.isNow
-      ? `Hello, driver needed for Order #${orderId} — pickup time: Now (${etaInfo.timeText})`
-      : `Hello, driver needed for Order #${orderId} — pickup time: ${etaInfo.timeText}`;
+    const orderNum = `#${orderId}`;
+    const templateParam = `${orderNum} ${etaInfo.etaText}`;
+    const msg = `Hello, driver needed for Order ${templateParam}\nThank you`;
 
     // Always copy message to clipboard as fallback
     if (typeof navigator !== "undefined" && navigator.clipboard) {
@@ -1332,7 +1324,7 @@ export default function TabletPOSPage() {
     }
 
     // Silent Background API Send (<0.3s) - 0 Tabs, 0 Popups!
-    setDispatchStatusMsg(`Sending driver request (${etaInfo.timeText})... ⏳`);
+    setDispatchStatusMsg(`Sending driver request (${etaInfo.etaText})... ⏳`);
     try {
       const res = await fetch("/api/pos/dispatch-driver", {
         method: "POST",
@@ -1340,15 +1332,14 @@ export default function TabletPOSPage() {
         body: JSON.stringify({
           orderId: lastCompletedOrder.id,
           etaMinutes: etaMinutes || "15",
-          targetTime: etaInfo.timeText,
           messageText: msg,
           phone: cleanPhone
         })
       });
       const data = await res.json();
-      setDispatchStatusMsg(`Driver Requested for ${etaInfo.timeText}! ✓`);
+      setDispatchStatusMsg(`Driver Requested (${etaInfo.etaText})! ✓`);
     } catch (err) {
-      setDispatchStatusMsg(`Request Sent (${etaInfo.timeText}) ✓`);
+      setDispatchStatusMsg(`Request Sent (${etaInfo.etaText}) ✓`);
     }
     // Auto-close after 1.2s so staff sees the confirmation tick
     setTimeout(() => {
