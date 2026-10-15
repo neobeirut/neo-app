@@ -461,7 +461,7 @@ export async function POST(request) {
     } else {
       const result = await sql`
         INSERT INTO cart_items (user_id, product_id, branch_id, quantity, customizations, comment)
-        VALUES (${Number(userId)}, ${Number(product_id)}, ${Number(branch_id)}, ${Number(quantity)}, ${sql.json(normalizedCustomizations)}, ${normalizedComment})
+        VALUES (${Number(userId)}, ${Number(product_id)}, ${Number(branch_id)}, ${Number(quantity)}, ${JSON.stringify(normalizedCustomizations)}::jsonb, ${normalizedComment})
         RETURNING id
       `;
       cartItemId = result[0].id;
