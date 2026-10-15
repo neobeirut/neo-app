@@ -14,6 +14,42 @@ function normalizePhone(phone) {
   return cleaned || null;
 }
 
+function phonesMatch(phoneA, phoneB) {
+  if (!phoneA || !phoneB) return false;
+  const a = String(phoneA).replace(/[^0-9]/g, "");
+  const b = String(phoneB).replace(/[^0-9]/g, "");
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const cleanA = a.startsWith("961") ? a.slice(3) : a.replace(/^0+/, "");
+  const cleanB = b.startsWith("961") ? b.slice(3) : b.replace(/^0+/, "");
+  if (cleanA && cleanB && cleanA === cleanB) return true;
+  if (cleanA.length >= 7 && cleanB.length >= 7) {
+    return cleanA.endsWith(cleanB) || cleanB.endsWith(cleanA);
+  }
+  return false;
+}
+
+async function findUserByPhone(phone) {
+  if (!phone) return null;
+  const clean = phone.startsWith("961") ? phone.slice(3) : phone.replace(/^0+/, "");
+  const rows = await sql(
+    `SELECT id, regexp_replace(phone, '[^0-9]', '', 'g') as phone_norm 
+     FROM auth_users 
+     WHERE (regexp_replace(phone, '[^0-9]', '', 'g') = $1 
+        OR regexp_replace(phone, '[^0-9]', '', 'g') LIKE '%' || $2)
+       AND is_active = true 
+     ORDER BY id DESC LIMIT 5`,
+    [phone, clean],
+  );
+
+  for (const row of rows) {
+    if (phonesMatch(row.phone_norm, phone)) {
+      return Number(row.id);
+    }
+  }
+  return null;
+}
+
 function getHeaderUserId(request) {
   const raw =
     request.headers.get("x-auth-user-id") ||
@@ -51,11 +87,13 @@ async function resolveUserIdFromHeader(request, phone) {
       return Number(rows[0].id);
     }
 
-    if (dbPhone !== phone) {
+    if (!phonesMatch(dbPhone, phone)) {
       console.warn(
         "[cart/update] Ignoring X-Auth-User-Id because phone mismatch",
         {
           headerUserId,
+          dbPhone,
+          phone,
         },
       );
       return null;
@@ -112,12 +150,9 @@ async function resolveUserId(request, phoneRaw) {
 
   // Phone-auth fallback first (native)
   if (phone) {
-    const user = await sql(
-      "SELECT id FROM auth_users WHERE regexp_replace(phone, '[^0-9]', '', 'g') = $1 AND is_active = true ORDER BY id DESC LIMIT 1",
-      [phone],
-    );
-    if (user.length > 0) {
-      return Number(user[0].id);
+    const user = await findUserByPhone(phone);
+    if (user) {
+      return user;
     }
   }
 
