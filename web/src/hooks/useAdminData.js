@@ -54,6 +54,10 @@ export function useAdminData(activeTab) {
       fetchWebsiteIcon();
     } else if (activeTab === "orders") {
       fetchOrders();
+      const interval = setInterval(() => {
+        fetchOrders(true);
+      }, 15000);
+      return () => clearInterval(interval);
     } else if (activeTab === "customization-items") {
       fetchCustomizationItems();
     }

@@ -72,7 +72,8 @@ export async function createOrder(params = {}) {
       free_delivery_applied,
       free_delivery_period_id,
       delivery_cost_calculation_method,
-      order_number
+      order_number,
+      created_at
     ) VALUES (
       ${userId},
       ${totalAmount},
@@ -101,7 +102,8 @@ export async function createOrder(params = {}) {
       ${deliveryCostCalculationMethod === "free_period"},
       ${freeDeliveryPeriodId},
       ${deliveryCostCalculationMethod},
-      ${orderNumber}
+      ${orderNumber},
+      CURRENT_TIMESTAMP
     ) RETURNING id, order_number
   `;
 

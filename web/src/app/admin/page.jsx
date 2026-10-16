@@ -708,6 +708,8 @@ export default function AdminPage() {
             onStatusChange={handleOrderStatusChange}
             onDelete={handleDeleteOrder}
             onUpdateItems={handleOrderItemsUpdate}
+            onRefresh={() => fetchOrders()}
+            loading={loading}
           />
         )}
 

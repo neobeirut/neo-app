@@ -81,7 +81,7 @@ export async function GET(request) {
       paramIndex++;
     }
 
-    ordersQuery += ` ORDER BY o.created_at DESC`;
+    ordersQuery += ` ORDER BY COALESCE(o.created_at, o.scheduled_date::timestamp) DESC, o.id DESC`;
 
     const orders = await sql(ordersQuery, params);
 

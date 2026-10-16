@@ -163,6 +163,40 @@ export async function OPTIONS(request) {
   return corsOptions(request);
 }
 
+// Get user orders history
+export async function GET(request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const phone = searchParams.get("phone");
+
+    const userId = await resolveUserId(request, phone);
+
+    if (!userId) {
+      return corsJson(
+        request,
+        { error: "Authentication required" },
+        { status: 401 }
+      );
+    }
+
+    const rawOrders = await getUserOrders(userId);
+    const orders = (rawOrders || []).map((order) => ({
+      ...order,
+      id: order.order_number || order.id,
+      order_id: order.id,
+    }));
+
+    return corsJson(request, { orders });
+  } catch (error) {
+    console.error("Error fetching user orders:", error);
+    return corsJson(
+      request,
+      { error: "Failed to fetch orders", details: error?.message },
+      { status: 500 }
+    );
+  }
+}
+
 // Create a new order
 export async function POST(request) {
   let createdOrderId = null;

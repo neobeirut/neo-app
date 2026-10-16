@@ -15,7 +15,8 @@ import {
   Building2,
   DollarSign,
   Tag,
-  Calendar
+  Calendar,
+  RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
 import OrderDetailsModal from "@/components/Admin/OrderDetailsModal";
@@ -35,6 +36,8 @@ export default function OrdersView({
   onStatusChange,
   onDelete,
   onUpdateItems,
+  onRefresh,
+  loading = false,
 }) {
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [filterStatus, setFilterStatus] = useState("");
@@ -228,6 +231,17 @@ export default function OrdersView({
               {btn.label}
             </button>
           ))}
+          {onRefresh && (
+            <button
+              onClick={onRefresh}
+              disabled={loading}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-extrabold bg-[#0F1115] text-gray-300 hover:text-white border border-[#262D3D] transition-all disabled:opacity-50"
+              title="Refresh Orders"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-[#eb660c]" : ""}`} />
+              <span>{loading ? "Refreshing..." : "Refresh"}</span>
+            </button>
+          )}
         </div>
       </div>
 
