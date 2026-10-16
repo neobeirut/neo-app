@@ -19,15 +19,15 @@ function phonesMatch(phoneA, phoneB) {
 async function findUserByPhone(phone) {
   if (!phone) return null;
   const clean = phone.startsWith("961") ? phone.slice(3) : phone.replace(/^0+/, "");
-  const rows = await sql(
-    `SELECT id, regexp_replace(phone, '[^0-9]', '', 'g') as phone_norm 
-     FROM auth_users 
-     WHERE (regexp_replace(phone, '[^0-9]', '', 'g') = $1 
-        OR regexp_replace(phone, '[^0-9]', '', 'g') LIKE '%' || $2)
-       AND is_active = true 
-     ORDER BY id DESC LIMIT 5`,
-    [phone, clean],
-  );
+  const likePattern = "%" + clean;
+  const rows = await sql`
+    SELECT id, regexp_replace(phone, '[^0-9]', '', 'g') as phone_norm 
+    FROM auth_users 
+    WHERE (regexp_replace(phone, '[^0-9]', '', 'g') = ${phone} 
+       OR regexp_replace(phone, '[^0-9]', '', 'g') LIKE ${likePattern})
+      AND is_active = true 
+    ORDER BY id DESC LIMIT 5
+  `;
 
   for (const row of rows) {
     if (phonesMatch(row.phone_norm, phone)) {
@@ -54,10 +54,11 @@ export async function resolveUserIdFromHeader(request, phoneNorm) {
   if (!headerUserId) return null;
 
   if (phoneNorm) {
-    const rows = await sql(
-      "SELECT id, regexp_replace(phone, '[^0-9]', '', 'g') as phone_norm FROM auth_users WHERE id = $1 AND is_active = true",
-      [headerUserId],
-    );
+    const rows = await sql`
+      SELECT id, regexp_replace(phone, '[^0-9]', '', 'g') as phone_norm 
+      FROM auth_users 
+      WHERE id = ${headerUserId} AND is_active = true
+    `;
 
     if (rows.length === 0) return null;
 
