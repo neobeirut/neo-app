@@ -96,7 +96,7 @@ export async function GET(request) {
           oi.order_id,
           oi.id,
           oi.product_id,
-          COALESCE(oi.product_name, p.name, 'Item') as product_name,
+          COALESCE(p.name, 'Item') as product_name,
           p.image_url as product_image,
           oi.quantity,
           oi.unit_price,

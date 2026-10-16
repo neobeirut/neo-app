@@ -48,9 +48,10 @@ async function sendNewOrderWhatsApp({ orderId, orderNumber, branchId }) {
     }
 
     const items = await sql`
-      SELECT product_name, quantity, total_price, unit_price
-      FROM order_items
-      WHERE order_id = ${Number(orderId)}
+      SELECT COALESCE(p.name, 'Item') as product_name, oi.quantity, oi.total_price, oi.unit_price
+      FROM order_items oi
+      LEFT JOIN products p ON oi.product_id::text = p.id::text
+      WHERE oi.order_id = ${Number(orderId)}
     `;
 
     const itemsText = (items || [])
