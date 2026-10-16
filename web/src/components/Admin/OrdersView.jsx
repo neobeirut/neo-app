@@ -427,14 +427,29 @@ export default function OrdersView({
                         </td>
 
                         {/* Status Column */}
-                        <td className="px-4 py-4 whitespace-nowrap">
-                          <span
-                            className={`px-2.5 py-1 inline-flex text-xs leading-5 font-bold rounded-full border capitalize shadow-xs ${
+                        <td className="px-4 py-4 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                          <select
+                            value={order.status || "pending"}
+                            onChange={async (e) => {
+                              const newStatus = e.target.value;
+                              if (newStatus !== order.status) {
+                                await onStatusChange(order.id, newStatus);
+                              }
+                            }}
+                            disabled={isOrderLocked(order.status)}
+                            title={isOrderLocked(order.status) ? "Status is final" : "Click to change order status"}
+                            className={`px-2.5 py-1 text-xs font-bold rounded-full border capitalize shadow-xs cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-indigo-500 transition-colors ${
                               statusColors[order.status] || "bg-slate-100 text-slate-800 border-slate-200"
-                            }`}
+                            } ${isOrderLocked(order.status) ? "cursor-not-allowed opacity-80" : ""}`}
                           >
-                            {(order.status || "pending").replace(/_/g, " ")}
-                          </span>
+                            <option value="pending">Pending</option>
+                            <option value="accepted">Accepted</option>
+                            <option value="preparing">Preparing</option>
+                            <option value="ready">Ready</option>
+                            <option value="out_for_delivery">Out for Delivery</option>
+                            <option value="completed">Completed</option>
+                            <option value="cancelled">Cancelled</option>
+                          </select>
                         </td>
 
                         {/* Action Column (Kept on the far right) */}
@@ -448,6 +463,36 @@ export default function OrdersView({
                                 onClick={() => handleQuickAccept(order.id)}
                                 className="p-1.5 rounded-lg bg-purple-50 text-purple-600 hover:bg-purple-100 transition-colors"
                                 title="Accept Order (Set to Preparing)"
+                              >
+                                <CheckCircle size={18} />
+                              </button>
+                            )}
+
+                            {order.status === "preparing" && (
+                              <button
+                                onClick={() => onStatusChange(order.id, "ready")}
+                                className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition-colors"
+                                title="Mark Order as Ready"
+                              >
+                                <CheckCircle size={18} />
+                              </button>
+                            )}
+
+                            {order.status === "ready" && (
+                              <button
+                                onClick={() => onStatusChange(order.id, order.order_type === "delivery" ? "out_for_delivery" : "completed")}
+                                className="p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
+                                title={order.order_type === "delivery" ? "Mark Out for Delivery" : "Mark as Completed"}
+                              >
+                                <CheckCircle size={18} />
+                              </button>
+                            )}
+
+                            {order.status === "out_for_delivery" && (
+                              <button
+                                onClick={() => onStatusChange(order.id, "completed")}
+                                className="p-1.5 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors"
+                                title="Mark as Completed"
                               >
                                 <CheckCircle size={18} />
                               </button>
@@ -624,7 +669,9 @@ export default function OrdersView({
                                     </div>
                                     <div className="flex justify-between text-slate-600">
                                       <span>Origin Channel:</span>
-                                      <span className="font-semibold capitalize text-slate-800">{originText}</span>
+                                      <span className="font-semibold capitalize text-slate-800">
+                                        {originBadge?.emoji} {originBadge?.label || "App"}
+                                      </span>
                                     </div>
                                     {order.reward_title && (
                                       <div className="flex justify-between text-amber-700 font-semibold bg-amber-50 px-2 py-0.5 rounded">
