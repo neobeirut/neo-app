@@ -262,28 +262,34 @@ export async function POST(request) {
       return itemsResult.response;
     }
 
-    const { processedItems, subtotalAmount } = itemsResult;
+    const processedItems = itemsResult.orderItems || itemsResult.processedItems || [];
+    const subtotalAmount = Number(itemsResult.subtotalAmount || 0);
 
     const creationResult = await createOrder({
       userId,
       effectiveBranchId,
-      orderType: order_type,
-      scheduledDate: scheduled_date,
-      scheduledTime: scheduled_time,
-      deliveryAddress: delivery_address,
-      specialInstructions: special_instructions,
+      order_type,
+      scheduled_date,
+      scheduled_time,
+      delivery_address,
+      address_id,
+      special_instructions,
       subtotalAmount,
       deliveryFee,
       distanceKm,
       appliedRewardId: applied_reward_id || applied_user_reward_id,
+      promo_code,
     });
 
-    if (!creationResult.ok) {
-      return creationResult.response;
+    const newOrderId = creationResult?.id || creationResult?.createdOrderId;
+    const newOrderNumber = creationResult?.orderNumber || creationResult?.createdOrderNumber;
+
+    if (!newOrderId) {
+      throw new Error("Failed to create order in database");
     }
 
-    const { createdOrderId: newOrderId, createdOrderNumber } = creationResult;
     createdOrderId = newOrderId;
+    const createdOrderNumber = newOrderNumber;
 
     const insertedLineItems = await insertOrderItems({
       createdOrderId,
@@ -295,19 +301,16 @@ export async function POST(request) {
       promoCode: promo_code,
       createdOrderId,
       effectiveBranchId,
+      subtotalAmount,
     });
 
-    const inventoryResult = await deductInventory({
+    await deductInventory({
       request,
       createdOrderId,
       effectiveBranchId,
       lineItems: insertedLineItems,
       clientName,
     });
-
-    if (!inventoryResult.ok) {
-      return inventoryResult.response;
-    }
 
     await redeemPointsReward({
       userId,

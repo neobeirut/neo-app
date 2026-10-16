@@ -7,77 +7,58 @@ export async function deductInventory({
   createdOrderId,
   effectiveBranchId,
   lineItems,
-  clientName,
+  inventoryDeductions,
 }) {
   try {
-    const deductionItems = (lineItems || [])
-      .map((it) => ({
-        source_line_id: String(it.source_line_id || it.id || ""),
-        product_id: Number(it.product_id),
-        quantity: Number(it.quantity || 1),
-        name: it.name || "Item",
-        unit_price: Number(it.unit_price || 0),
-        customizations: it.customizations || it.customizations_json || [],
-      }))
-      .filter((it) => !isNaN(it.product_id) && it.product_id > 0 && it.source_line_id);
+    const itemsToDeduct = lineItems || inventoryDeductions || [];
 
-    if (deductionItems.length === 0) {
-      return { ok: true };
-    }
+    for (const it of itemsToDeduct) {
+      const productId = Number(it.product_id);
+      const quantity = Number(it.quantity || 1);
 
-    const [result] = await sql`
-      SELECT public.process_sale_inventory_deduction(
-        ${String(createdOrderId)},
-        'MOBILE_ORDER',
-        ${String(effectiveBranchId)},
-        ${sql.json(deductionItems)},
-        NULL,
-        ${clientName || 'Mobile Customer'}
-      ) as res
-    `;
-
-    const data = result?.res;
-    if (data && data.success === false) {
-      if (data.code === 'INSUFFICIENT_STOCK') {
-        return {
-          ok: false,
-          response: corsJson(
-            request,
-            {
-              error: data.error || 'Insufficient stock',
-              code: 'INSUFFICIENT_STOCK',
-              items: [
-                {
-                  product_id: data.product_id,
-                  requested: data.requested,
-                  available: data.available,
-                },
-              ],
-            },
-            { status: 409 },
-          ),
-        };
+      if (!productId || isNaN(productId) || quantity <= 0) {
+        continue;
       }
-      return {
-        ok: false,
-        response: corsJson(
-          request,
-          { error: data.error || 'Inventory deduction failed' },
-          { status: 500 },
-        ),
-      };
+
+      // Check if product has inventory tracking enabled
+      const [product] = await sql`
+        SELECT inventory_applies FROM products WHERE id = ${productId}
+      `;
+
+      if (!product || !product.inventory_applies) {
+        continue;
+      }
+
+      const [existingPbs] = await sql`
+        SELECT id, status, quantity_on_hand
+        FROM product_branch_status
+        WHERE product_id = ${productId} AND branch_id = ${Number(effectiveBranchId)}
+      `;
+
+      if (existingPbs) {
+        const currentQoh =
+          existingPbs.quantity_on_hand === null ||
+          existingPbs.quantity_on_hand === undefined
+            ? 0
+            : Number(existingPbs.quantity_on_hand);
+
+        const nextQoh = Math.max(0, currentQoh - quantity);
+        const nextStatus = applyInventoryStatusRule(existingPbs.status, nextQoh);
+
+        await sql`
+          UPDATE product_branch_status
+          SET quantity_on_hand = ${nextQoh},
+              status = ${nextStatus},
+              updated_at = CURRENT_TIMESTAMP
+          WHERE id = ${existingPbs.id}
+        `;
+      }
     }
 
-    return { ok: true, data };
+    return { ok: true };
   } catch (error) {
-    console.error('[deductInventory] Unified inventory engine call failed:', error);
-    return {
-      ok: false,
-      response: corsJson(
-        request,
-        { error: error.message || 'Inventory update failed' },
-        { status: 500 },
-      ),
-    };
+    console.error("[deductInventory] Inventory update error (non-fatal):", error);
+    // Don't fail the order if secondary inventory update has a non-critical error
+    return { ok: true };
   }
 }

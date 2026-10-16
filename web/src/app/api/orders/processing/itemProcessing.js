@@ -160,6 +160,7 @@ export async function processOrderItems({ request, items, effectiveBranchId }) {
 
     orderItems.push({
       product_id: productId,
+      name: product.name || "Item",
       quantity: qty,
       unit_price: productPrice,
       total_price: itemTotal,
@@ -169,5 +170,11 @@ export async function processOrderItems({ request, items, effectiveBranchId }) {
     });
   }
 
-  return { ok: true, subtotalAmount, orderItems, inventoryDeductions };
+  return {
+    ok: true,
+    subtotalAmount,
+    orderItems,
+    processedItems: orderItems,
+    inventoryDeductions,
+  };
 }

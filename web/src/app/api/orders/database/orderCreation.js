@@ -2,32 +2,45 @@ import sql from "@/app/api/utils/sql";
 import { normalizePromoCode } from "../utils/promoHelpers";
 import { generateOrderNumber } from "../utils/orderIdResolver";
 
-export async function createOrder({
-  userId,
-  totalAmount,
-  order_type,
-  scheduled_date,
-  scheduled_time,
-  delivery_address,
-  address_id,
-  special_instructions,
-  effectiveBranchId,
-  subtotalAmount,
-  deliveryFee,
-  discountAmount,
-  appliedRewardId,
-  appliedUserRewardId,
-  pointsRedeemed,
-  loyaltyBaseAmount,
-  promo_code,
-  promoDiscount,
-  totalBeforeDiscount,
-  deliveryDistanceKm,
-  deliveryRuleId,
-  freeDeliveryPeriodId,
-  deliveryCostCalculationMethod,
-}) {
+export async function createOrder(params = {}) {
+  const userId = params.userId ?? params.user_id ?? null;
+  const effectiveBranchId = Number(params.effectiveBranchId ?? params.branch_id ?? 1);
+  const order_type = params.order_type ?? params.orderType ?? "pickup";
+  const scheduled_date = params.scheduled_date ?? params.scheduledDate ?? null;
+  const scheduled_time = params.scheduled_time ?? params.scheduledTime ?? null;
+  const delivery_address = params.delivery_address ?? params.deliveryAddress ?? "";
+  const address_id = params.address_id ?? params.addressId ?? null;
+  const special_instructions = params.special_instructions ?? params.specialInstructions ?? "";
+
+  const subtotalAmount = Number(params.subtotalAmount ?? params.subtotal ?? 0);
+  const deliveryFee = Number(params.deliveryFee ?? params.deliveryCost ?? 0);
+  const discountAmount = Number(params.discountAmount ?? params.discount ?? 0);
+  const promoDiscount = Number(params.promoDiscount ?? 0);
+  const pointsRedeemed = Number(params.pointsRedeemed ?? 0);
+
+  const combinedDiscount = Math.min(
+    subtotalAmount,
+    Math.max(discountAmount, 0) + Math.max(promoDiscount, 0),
+  );
+  const loyaltyBaseAmount = Math.max(subtotalAmount - combinedDiscount, 0);
+  const totalAmount = Number(
+    params.totalAmount ?? Math.max(loyaltyBaseAmount + deliveryFee, 0),
+  );
+  const totalBeforeDiscount = Number(
+    params.totalBeforeDiscount ?? Math.max(subtotalAmount + deliveryFee, 0),
+  );
+
+  const appliedRewardId = params.appliedRewardId ?? params.applied_reward_id ?? null;
+  const appliedUserRewardId = params.appliedUserRewardId ?? params.applied_user_reward_id ?? null;
+  const promo_code = params.promo_code ?? params.promoCode ?? null;
   const promoCodeNorm = normalizePromoCode(promo_code);
+
+  const deliveryDistanceKm = params.deliveryDistanceKm ?? params.distanceKm ?? null;
+  const deliveryRuleId = params.deliveryRuleId ?? null;
+  const freeDeliveryPeriodId = params.freeDeliveryPeriodId ?? null;
+  const deliveryCostCalculationMethod =
+    params.deliveryCostCalculationMethod ?? (order_type === "pickup" ? "pickup" : null);
+
   const orderNumber = await generateOrderNumber();
 
   const [orderRow] = await sql`
@@ -67,47 +80,62 @@ export async function createOrder({
       ${order_type},
       ${scheduled_date},
       ${scheduled_time},
-      ${delivery_address || ""},
-      ${address_id || null},
-      ${special_instructions || ""},
+      ${delivery_address},
+      ${address_id},
+      ${special_instructions},
       ${effectiveBranchId},
       ${subtotalAmount},
       ${deliveryFee},
       ${discountAmount},
       ${appliedRewardId},
       ${appliedUserRewardId},
-      ${pointsRedeemed || 0},
+      ${pointsRedeemed},
       ${loyaltyBaseAmount},
-      ${promoCodeNorm || null},
-      ${promoDiscount || 0},
+      ${promoCodeNorm},
+      ${promoDiscount},
       ${totalBeforeDiscount},
       ${totalAmount},
-      ${deliveryDistanceKm || null},
+      ${deliveryDistanceKm ? String(deliveryDistanceKm) : null},
       ${deliveryFee},
-      ${deliveryRuleId || null},
+      ${deliveryRuleId},
       ${deliveryCostCalculationMethod === "free_period"},
-      ${freeDeliveryPeriodId || null},
-      ${deliveryCostCalculationMethod || null},
+      ${freeDeliveryPeriodId},
+      ${deliveryCostCalculationMethod},
       ${orderNumber}
     ) RETURNING id, order_number
   `;
 
   return {
+    ok: true,
     id: orderRow?.id || null,
     orderNumber: orderRow?.order_number || null,
+    createdOrderId: orderRow?.id || null,
+    createdOrderNumber: orderRow?.order_number || null,
   };
 }
 
-export async function insertOrderItems({ createdOrderId, orderItems }) {
+export async function insertOrderItems({ createdOrderId, orderItems, processedItems }) {
+  const items = orderItems || processedItems || [];
   const insertedItems = [];
-  for (const item of orderItems) {
+
+  for (const item of items) {
+    const customizationsVal = item.customizations
+      ? typeof item.customizations === "string"
+        ? item.customizations
+        : JSON.stringify(item.customizations)
+      : null;
+
     const [orderItemRow] = await sql`
       INSERT INTO order_items (
         order_id, product_id, quantity, unit_price, total_price, customizations, comment
       ) VALUES (
-        ${createdOrderId}, ${item.product_id}, ${item.quantity},
-        ${item.unit_price}, ${item.total_price}, ${JSON.stringify(item.customizations)}::jsonb,
-        ${item.comment}
+        ${createdOrderId},
+        ${item.product_id ?? null},
+        ${item.quantity ?? 1},
+        ${item.unit_price ?? 0},
+        ${item.total_price ?? 0},
+        ${customizationsVal},
+        ${item.comment ?? null}
       ) RETURNING id
     `;
 
@@ -119,15 +147,19 @@ export async function insertOrderItems({ createdOrderId, orderItems }) {
         quantity: item.quantity,
         unit_price: item.unit_price,
         name: item.name,
-        customizations: item.customizations || []
+        customizations: item.customizations || [],
       });
     }
 
-    if (orderItemId && item.selected_addons.length > 0) {
+    const addonIds = Array.isArray(item.selected_addons)
+      ? item.selected_addons.map(Number).filter(Number.isFinite)
+      : [];
+
+    if (orderItemId && addonIds.length > 0) {
       const addons = await sql`
         SELECT id, price
         FROM product_addons
-        WHERE id = ANY(${item.selected_addons}) AND product_id = ${item.product_id}
+        WHERE id = ANY(${addonIds}::int[]) AND product_id = ${item.product_id}
       `;
 
       for (const addon of addons) {
@@ -135,25 +167,31 @@ export async function insertOrderItems({ createdOrderId, orderItems }) {
           INSERT INTO order_item_addons (
             order_item_id, product_addon_id, quantity, price
           ) VALUES (
-            ${orderItemId}, ${addon.id}, 1, ${addon.price}
+            ${orderItemId},
+            ${addon.id},
+            1,
+            ${addon.price ?? 0}
           )
         `;
       }
     }
   }
+
   return insertedItems;
 }
 
 export async function recordPromoRedemption({
   promoCodeId,
   promoCodeNorm,
+  promoCode,
   userId,
   createdOrderId,
   effectiveBranchId,
   subtotalAmount,
   promoDiscount,
 }) {
-  if (!promoCodeId || !promoCodeNorm || !promoDiscount || promoDiscount <= 0) {
+  const code = promoCodeNorm || normalizePromoCode(promoCode);
+  if (!code || !promoDiscount || promoDiscount <= 0) {
     return;
   }
 
@@ -169,13 +207,13 @@ export async function recordPromoRedemption({
       currency,
       status
     ) VALUES (
-      ${promoCodeId},
-      ${promoCodeNorm},
-      ${userId},
+      ${promoCodeId ?? null},
+      ${code},
+      ${userId ?? null},
       ${createdOrderId},
-      ${String(effectiveBranchId)},
-      ${subtotalAmount},
-      ${promoDiscount},
+      ${String(effectiveBranchId ?? 1)},
+      ${subtotalAmount ?? 0},
+      ${promoDiscount ?? 0},
       'USD',
       'used'::promo_redemption_status
     )
@@ -188,7 +226,7 @@ export async function redeemPointsReward({
   pointsRedeemed,
   createdOrderId,
 }) {
-  if (!appliedRewardId || !pointsRedeemed || pointsRedeemed <= 0) {
+  if (!appliedRewardId || !pointsRedeemed || pointsRedeemed <= 0 || !userId) {
     return;
   }
 
