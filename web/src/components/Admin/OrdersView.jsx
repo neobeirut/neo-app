@@ -31,6 +31,38 @@ const statusColors = {
   cancelled: "bg-rose-100 text-rose-800 border-rose-200",
 };
 
+function parseItemCustomizations(customizations) {
+  if (!customizations) return [];
+  let parsed = customizations;
+  if (typeof parsed === "string") {
+    try {
+      while (
+        typeof parsed === "string" &&
+        (parsed.startsWith("[") || parsed.startsWith("{") || parsed.startsWith('"'))
+      ) {
+        parsed = JSON.parse(parsed);
+      }
+    } catch {
+      if (!parsed || parsed === "[]") return [];
+      return [{ ingredient: String(parsed) }];
+    }
+  }
+  if (!Array.isArray(parsed)) {
+    return typeof parsed === "object" && parsed !== null ? [parsed] : [];
+  }
+  return parsed
+    .filter(Boolean)
+    .map((c) => {
+      if (typeof c === "string") return { ingredient: c };
+      return {
+        group: c.option_group_name || c.group || "",
+        ingredient: c.ingredient || c.name || "",
+        price: Number(c.price || 0),
+      };
+    })
+    .filter((c) => c.ingredient && c.ingredient !== "[]");
+}
+
 export default function OrdersView({
   orders,
   onStatusChange,
@@ -315,7 +347,7 @@ export default function OrdersView({
           <table className="w-full min-w-[900px] text-left border-collapse">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
-                <th className="px-4 py-3.5 text-xs font-bold text-slate-600 uppercase tracking-wider">
+                <th className="px-4 py-3.5 text-xs font-bold text-slate-600 uppercase tracking-wider sticky left-0 bg-slate-50 z-20 shadow-[2px_0_4px_-1px_rgba(0,0,0,0.06)]">
                   #order
                 </th>
                 <th className="px-4 py-3.5 text-xs font-bold text-slate-600 uppercase tracking-wider">
@@ -333,7 +365,7 @@ export default function OrdersView({
                 <th className="px-4 py-3.5 text-xs font-bold text-slate-600 uppercase tracking-wider">
                   Status
                 </th>
-                <th className="px-4 py-3.5 text-xs font-bold text-slate-600 uppercase tracking-wider sticky right-0 bg-slate-50 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.08)] z-10 text-right">
+                <th className="px-4 py-3.5 text-xs font-bold text-slate-600 uppercase tracking-wider sticky right-0 bg-slate-50 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.08)] z-20 text-right">
                   Action
                 </th>
               </tr>
@@ -355,12 +387,14 @@ export default function OrdersView({
                       {/* Order Main Row */}
                       <tr
                         onClick={(e) => toggleExpand(order.id, e)}
-                        className={`cursor-pointer transition-colors duration-150 ${
+                        className={`group cursor-pointer transition-colors duration-150 ${
                           isExpanded ? "bg-indigo-50/40" : "hover:bg-slate-50"
                         }`}
                       >
                         {/* #order Column with Expand Toggle Indicator */}
-                        <td className="px-4 py-4 whitespace-nowrap">
+                        <td className={`px-4 py-4 whitespace-nowrap sticky left-0 z-10 shadow-[2px_0_4px_-1px_rgba(0,0,0,0.06)] transition-colors ${
+                          isExpanded ? "bg-indigo-50" : "bg-white group-hover:bg-slate-50"
+                        }`}>
                           <div className="flex items-center gap-2">
                             <button
                               type="button"
@@ -428,32 +462,40 @@ export default function OrdersView({
 
                         {/* Status Column */}
                         <td className="px-4 py-4 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                          <select
-                            value={order.status || "pending"}
-                            onChange={async (e) => {
-                              const newStatus = e.target.value;
-                              if (newStatus !== order.status) {
-                                await onStatusChange(order.id, newStatus);
-                              }
-                            }}
-                            disabled={isOrderLocked(order.status)}
-                            title={isOrderLocked(order.status) ? "Status is final" : "Click to change order status"}
-                            className={`px-2.5 py-1 text-xs font-bold rounded-full border capitalize shadow-xs cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-indigo-500 transition-colors ${
-                              statusColors[order.status] || "bg-slate-100 text-slate-800 border-slate-200"
-                            } ${isOrderLocked(order.status) ? "cursor-not-allowed opacity-80" : ""}`}
-                          >
-                            <option value="pending">Pending</option>
-                            <option value="accepted">Accepted</option>
-                            <option value="preparing">Preparing</option>
-                            <option value="ready">Ready</option>
-                            <option value="out_for_delivery">Out for Delivery</option>
-                            <option value="completed">Completed</option>
-                            <option value="cancelled">Cancelled</option>
-                          </select>
+                          <div className="relative inline-flex items-center">
+                            <select
+                              value={order.status || "pending"}
+                              onChange={async (e) => {
+                                const newStatus = e.target.value;
+                                if (newStatus !== order.status) {
+                                  await onStatusChange(order.id, newStatus);
+                                }
+                              }}
+                              disabled={isOrderLocked(order.status)}
+                              title={isOrderLocked(order.status) ? "Status is final" : "Click to change order status"}
+                              className={`appearance-none pl-3 pr-7 py-1 text-xs font-bold rounded-full border capitalize shadow-xs cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-indigo-500 transition-colors ${
+                                statusColors[order.status] || "bg-slate-100 text-slate-800 border-slate-200"
+                              } ${isOrderLocked(order.status) ? "cursor-not-allowed opacity-80" : ""}`}
+                            >
+                              <option value="pending" className="bg-white text-slate-900 font-medium">Pending</option>
+                              <option value="accepted" className="bg-white text-slate-900 font-medium">Accepted</option>
+                              <option value="preparing" className="bg-white text-slate-900 font-medium">Preparing</option>
+                              <option value="ready" className="bg-white text-slate-900 font-medium">Ready</option>
+                              <option value="out_for_delivery" className="bg-white text-slate-900 font-medium">Out for Delivery</option>
+                              <option value="completed" className="bg-white text-slate-900 font-medium">Completed</option>
+                              <option value="cancelled" className="bg-white text-slate-900 font-medium">Cancelled</option>
+                            </select>
+                            <ChevronDown
+                              size={12}
+                              className="pointer-events-none absolute right-2.5 text-current opacity-70"
+                            />
+                          </div>
                         </td>
 
                         {/* Action Column (Kept on the far right) */}
-                        <td className="px-4 py-4 whitespace-nowrap text-sm font-medium sticky right-0 bg-white shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.08)] z-10 text-right">
+                        <td className={`px-4 py-4 whitespace-nowrap text-sm font-medium sticky right-0 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.08)] z-10 text-right transition-colors ${
+                          isExpanded ? "bg-indigo-50" : "bg-white group-hover:bg-slate-50"
+                        }`}>
                           <div
                             className="flex gap-2 items-center justify-end"
                             onClick={(e) => e.stopPropagation()}
@@ -513,8 +555,8 @@ export default function OrdersView({
                               className="p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
                               title={
                                 isOrderLocked(order.status)
-                                  ? "View Details Modal (items locked)"
-                                  : "View / Edit Order Modal"
+                                    ? "View Details Modal (items locked)"
+                                    : "View / Edit Order Modal"
                               }
                             >
                               <Eye size={18} />
@@ -543,7 +585,7 @@ export default function OrdersView({
                       {/* Expandable Order Details Row */}
                       {isExpanded && (
                         <tr className="bg-slate-50/80 border-b border-slate-200">
-                          <td colSpan="7" className="p-4 md:p-6">
+                          <td colSpan="7" className="p-4 md:p-6 max-w-0 w-full">
                             <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm space-y-5">
                               <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-3">
                                 <div className="flex items-center gap-2">
@@ -596,17 +638,30 @@ export default function OrdersView({
                                             </div>
                                           )}
 
-                                          {/* Customizations Text */}
-                                          {item.customizations && (
-                                            <div className="text-xs text-indigo-600 italic pl-8">
-                                              Notes: {typeof item.customizations === "string" ? item.customizations : JSON.stringify(item.customizations)}
-                                            </div>
-                                          )}
+                                          {/* Customizations Badges */}
+                                          {(() => {
+                                            const itemCustoms = parseItemCustomizations(item.customizations);
+                                            if (itemCustoms.length === 0) return null;
+                                            return (
+                                              <div className="flex flex-wrap gap-1.5 pl-8 mt-1">
+                                                {itemCustoms.map((c, i) => (
+                                                  <span
+                                                    key={i}
+                                                    className="inline-flex items-center text-xs bg-indigo-50 border border-indigo-200/80 text-indigo-800 px-2 py-0.5 rounded-md font-medium"
+                                                  >
+                                                    {c.group && <span className="text-indigo-500 mr-1 font-normal">{c.group}:</span>}
+                                                    <span className="font-semibold">{c.ingredient}</span>
+                                                    {c.price > 0 && <span className="ml-1 text-indigo-600 font-normal">(+${c.price.toFixed(2)})</span>}
+                                                  </span>
+                                                ))}
+                                              </div>
+                                            );
+                                          })()}
 
                                           {/* Item Comment */}
                                           {item.comment && (
-                                            <div className="text-xs text-amber-700 bg-amber-50 px-2 py-1 rounded border border-amber-200/60 pl-8 mt-1">
-                                              Instruction: {item.comment}
+                                            <div className="text-xs text-amber-700 bg-amber-50 px-2.5 py-1 rounded-md border border-amber-200/60 pl-8 mt-1.5 inline-flex items-center gap-1.5">
+                                              <span className="font-semibold">Special Instructions:</span> {item.comment}
                                             </div>
                                           )}
                                         </div>
