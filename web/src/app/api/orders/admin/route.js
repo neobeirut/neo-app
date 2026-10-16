@@ -164,6 +164,7 @@ export async function GET(request) {
     const ordersWithItems = orders.map((order) => {
       const mappedOrder = {
         ...order,
+        order_id: order.id,
         items: itemsMap[order.id] || [],
       };
       mappedOrder.id = order.order_number || order.id;

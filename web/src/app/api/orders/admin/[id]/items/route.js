@@ -85,7 +85,8 @@ export async function PUT(request, { params }) {
       );
     }
 
-    const { id } = params;
+    const rawParams = params instanceof Promise ? await params : params;
+    const id = rawParams?.id;
 
     const resolvedId = await resolveOrderId(id);
     if (!resolvedId) {
@@ -325,7 +326,8 @@ export async function DELETE(request, { params }) {
       );
     }
 
-    const { id } = params;
+    const rawParams = params instanceof Promise ? await params : params;
+    const id = rawParams?.id;
 
     const resolvedId = await resolveOrderId(id);
     if (!resolvedId) {
