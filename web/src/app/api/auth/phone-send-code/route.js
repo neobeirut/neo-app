@@ -195,6 +195,7 @@ export async function POST(request) {
         templateConfig = {
           templateName: parsed.template_name,
           language: parsed.language || "en",
+          schema: parsed.schema || null,
         };
       }
 
@@ -479,6 +480,7 @@ export async function POST(request) {
       verificationCode,
       templateConfig.templateName,
       templateConfig.language,
+      { schema: templateConfig.schema },
     );
 
     console.log(
