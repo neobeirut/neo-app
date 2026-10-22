@@ -110,34 +110,34 @@ export function useAdminData(activeTab) {
   };
 
   const fetchProducts = async (silent = false) => {
-    console.log("fetchProducts called - setting loading to true");
+    // fetchProducts called
     if (!silent) setLoading(true);
     try {
-      console.log("Fetching products from /api/products");
+      
       const response = await fetch("/api/products");
-      console.log("Product fetch response status:", response.status);
-      console.log("Product fetch response ok:", response.ok);
+      
+      
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
       const data = await response.json();
-      console.log("Product fetch data:", data);
-      console.log("Products from API:", data.products);
-      console.log("Products array length:", data.products?.length);
-      console.log("Products array type:", Array.isArray(data.products));
+      
+      
+      
+      
 
       // Ensure we have a valid products array
       const products = Array.isArray(data.products) ? data.products : [];
       setProducts(products);
-      console.log("Products state updated with:", products.length, "items");
+      
     } catch (error) {
       console.error("Error fetching products:", error);
       // Set an empty array on error to prevent undefined state
       setProducts([]);
     }
-    console.log("fetchProducts finished - setting loading to false");
+    
     if (!silent) setLoading(false);
   };
 
@@ -182,9 +182,12 @@ export function useAdminData(activeTab) {
     if (!silent) setLoading(true);
     try {
       const response = await fetch("/api/users");
-      if (response.ok) {
+      const contentType = response.headers.get("content-type");
+      if (response.ok && contentType && contentType.includes("application/json")) {
         const data = await response.json();
         setUsers(data.users || []);
+      } else {
+        setUsers([]);
       }
     } catch (error) {
       console.error("Error fetching users:", error);

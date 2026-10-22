@@ -39,6 +39,10 @@ for (const method of ['log', 'info', 'warn', 'error', 'debug'] as const) {
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
 });
+pool.on('error', (err) => {
+  console.error('Unexpected error on idle Neon database client:', err);
+});
+
 const adapter = NeonAdapter(pool);
 
 const app = new Hono();
@@ -56,7 +60,7 @@ app.use('*', (c, next) => {
 app.use(contextStorage());
 
 app.onError((err, c) => {
-  if (c.req.method !== 'GET') {
+  if (c.req.path.startsWith('/api') || c.req.method !== 'GET') {
     return c.json(
       {
         error: 'An error occurred in your app',

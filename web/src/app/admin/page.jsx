@@ -283,10 +283,10 @@ export default function AdminPage() {
   } = useAdminData(activeTab);
 
   // Debug logging for products state
-  console.log("AdminPage - Current activeTab:", activeTab);
-  console.log("AdminPage - Products state:", products);
-  console.log("AdminPage - Loading state:", loading);
-  console.log("AdminPage - Products length:", products?.length);
+  
+  
+  
+  
 
   const {
     handleAddPoints,
