@@ -569,9 +569,12 @@ export async function buildTemplatePayloadFromStatus(
   const placeholders = [];
 
   if (schema.bodyPlaceholderCount > 0) {
-    // Simple extraction: Use orderId if available, empty strings otherwise
-    // Can be enhanced with custom placeholder mapping later
-    if (dynamicData.orderId) {
+    // Extraction based on templateKey:
+    if (templateKey === "preparing" && (dynamicData.totalAmount !== undefined || dynamicData.total !== undefined)) {
+      const numTotal = Number(dynamicData.totalAmount ?? dynamicData.total ?? 0);
+      const formattedTotal = `$${numTotal % 1 === 0 ? numTotal.toFixed(0) : numTotal.toFixed(2)}`;
+      placeholders.push(formattedTotal);
+    } else if (dynamicData.orderId) {
       placeholders.push(String(dynamicData.orderId));
     }
 

@@ -109,6 +109,7 @@ export async function sendWhatsAppNotification(orderId, newStatus) {
         o.created_at,
         o.last_whatsapp_sent_at,
         o.whatsapp_notification_count,
+        o.total_amount,
         b.name as branch_name
       FROM orders o
       LEFT JOIN branches b ON b.id = o.branch_id
@@ -334,6 +335,8 @@ export async function sendWhatsAppNotification(orderId, newStatus) {
           branchName: order.branch_name || "Néo Beirut",
           customerName: customer.name || "",
           orderType: order.order_type,
+          totalAmount: order.total_amount,
+          total: order.total_amount,
           // Add more fields as needed for future templates
         };
 
