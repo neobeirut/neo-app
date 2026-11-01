@@ -2,7 +2,8 @@
 
 // Neo Beirut Storefront - Updated 2026-08-14
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import { HomepageOverview } from "@/components/HomePage/HomepageSeo";
 import { Header } from "@/components/HomePage/Header";
 import { HeroSection } from "@/components/HomePage/HeroSection";
 import { FeaturedSection } from "@/components/HomePage/FeaturedSection";
@@ -18,9 +19,6 @@ import { Footer } from "@/components/HomePage/Footer";
 export default function HomePage() {
   const [currentSlide, setCurrentSlide] = useState(0);
 
-  useEffect(() => {
-    document.title = "Neo Beirut | Artisanal Pastry, Bakery & Bistro";
-  }, []);
 
   const scrollToSection = (id) => {
     if (typeof window === "undefined") return;
@@ -46,6 +44,7 @@ export default function HomePage() {
         <FeaturedSection />
         <ProductsSection />
         <MenuSection />
+        <HomepageOverview />
         <CateringSection />
         <ExperienceSection />
         <AboutSection />

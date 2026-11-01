@@ -48,12 +48,11 @@ export function ContactSection() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-16">
           <h2 className="text-4xl md:text-5xl font-bold text-[#2D5F5D] mb-4">
-            Visit Our Branches
+            Visit NÉO Beirut in Badaro
           </h2>
           <div className="w-24 h-1 bg-[#B8935A] mx-auto mb-6"></div>
           <p className="text-lg text-gray-600 max-w-3xl mx-auto">
-            Find the Neo Beirut location nearest to you and experience our
-            flavors in person
+            Find NÉO Beirut in Badaro, Beirut. Opening hours: 7:30 AM–11 PM.
           </p>
         </div>
 
