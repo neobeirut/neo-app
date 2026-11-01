@@ -1,4 +1,3 @@
-import { openOrderApp } from "@/utils/deviceDetection";
 
 export function FeaturedSection() {
   return (
@@ -22,12 +21,12 @@ export function FeaturedSection() {
                 combine time-honored techniques with the finest ingredients to
                 bring you authentic taste with a contemporary twist.
               </p>
-              <button
-                onClick={(e) => openOrderApp(e)}
+              <a
+                href="/shop"
                 className="inline-block bg-[#2D5F5D] text-white px-8 py-4 rounded-lg font-semibold hover:bg-[#1f4342] transition-colors cursor-pointer"
               >
                 Order Now
-              </button>
+              </a>
             </div>
           </div>
         </div>
