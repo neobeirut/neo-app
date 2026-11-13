@@ -6,9 +6,9 @@
     { "src": "^/new/admin(/.*)?$", "dest": "/new/admin/index.html" },
     { "src": "^/new/pos/assets/(.*)", "dest": "/new/pos/assets/$1" },
     { "src": "^/new/(?:pos|waiter|kds)/assets/(.*)", "dest": "/new/pos/assets/$1" },
+    { "src": "^/new/waiter(/.*)?$", "dest": "/new/waiter/index.html" },
+    { "src": "^/new/kds(/.*)?$", "dest": "/new/kds/index.html" },
     { "src": "^/new/pos(/.*)?$", "dest": "/new/pos/index.html" },
-    { "src": "^/new/waiter(/.*)?$", "dest": "/new/pos/index.html" },
-    { "src": "^/new/kds(/.*)?$", "dest": "/new/pos/index.html" },
     { "src": "^/new/pos/(.*)", "dest": "/new/pos/$1" },
 
     { "src": "^/tablet-punch-pwa$", "dest": "/tablet-punch-pwa/" },
