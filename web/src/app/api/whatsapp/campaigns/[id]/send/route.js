@@ -67,22 +67,24 @@ async function processCampaignBatch(campaignId, adminId) {
 
       await Promise.all(chunk.map(async (rec) => {
         try {
-          const personalizedPlaceholders = templateVariables.map((val) => {
-            if (typeof val === 'string') {
-              let res = val
-                .replace(/\{\{name\}\}/gi, rec.contact_name)
-                .replace(/\{\{contact_name\}\}/gi, rec.contact_name)
-                .replace(/\{\{phone\}\}/gi, rec.phone_e164);
-              if (res === '[contact_name]' || res === 'contact_name') {
-                res = rec.contact_name;
+          let personalizedPlaceholders = templateVariables
+            .map((val) => {
+              if (typeof val === 'string') {
+                let res = val
+                  .replace(/\{\{name\}\}/gi, rec.contact_name)
+                  .replace(/\{\{contact_name\}\}/gi, rec.contact_name)
+                  .replace(/\{\{phone\}\}/gi, rec.phone_e164);
+                if (res === '[contact_name]' || res === 'contact_name') {
+                  res = rec.contact_name;
+                }
+                return res.trim();
               }
-              return res;
-            }
-            return String(val || '');
-          });
+              return String(val || '').trim();
+            })
+            .filter(v => v.length > 0);
 
-          // Ensure new_clients_message receives the contact's name for {{1}}
-          if (campaign.template_name === 'new_clients_message' && personalizedPlaceholders.length === 0) {
+          // Ensure templates requiring a name (plat_dujours_launch, new_clients_message) get contact name
+          if ((campaign.template_name === 'new_clients_message' || campaign.template_name === 'plat_dujours_launch') && personalizedPlaceholders.length === 0) {
             personalizedPlaceholders.push(rec.contact_name || 'there');
           }
 

@@ -5,9 +5,9 @@ import { normalizePhoneE164, toInfobipRecipient } from "./phoneNormalizer.js";
  * Retrieve Infobip credentials and settings safely
  */
 export async function getInfobipConfig() {
-  let apiKey = process.env.INFOBIP_API_KEY || "d42824b2b707759420c14250c320ec7b-449822b8-55e1-4d67-906f-8a19af1d302e";
+  let apiKey = process.env.INFOBIP_API_KEY || "d569f5ccf7830f6b55738b645fced84f-0b8742f1-f729-43c1-9443-592d743afbd2";
   let baseUrl = process.env.INFOBIP_BASE_URL || "https://y4r1q1.api.infobip.com";
-  let sender = process.env.INFOBIP_WHATSAPP_SENDER || "96181202607";
+  let sender = process.env.INFOBIP_WHATSAPP_SENDER || "96176489078";
   let webhookSecret = process.env.INFOBIP_WEBHOOK_SECRET || "";
 
   // Check if overrides exist in app_settings table
@@ -145,9 +145,14 @@ export async function sendInfobipTemplateMessage({
   const recipient = toInfobipRecipient(to);
   const msgId = messageId || `tpl-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
 
+  const sanitizedPlaceholders = (Array.isArray(placeholders) ? placeholders : []).map(p => {
+    const s = String(p ?? "").trim();
+    return s.length > 0 ? s : "there";
+  });
+
   const templateData = {
     body: {
-      placeholders: Array.isArray(placeholders) ? placeholders.map(String) : [],
+      placeholders: sanitizedPlaceholders,
     },
   };
 
@@ -165,7 +170,52 @@ export async function sendInfobipTemplateMessage({
   // Handle WhatsApp Carousel templates (such as new_clients_message)
   const effectiveCards =
     carouselCards ||
-    (templateName === "new_clients_message"
+    (templateName === "plat_dujours_launch"
+      ? [
+          {
+            cardIndex: 0,
+            header: {
+              type: "IMAGE",
+              mediaUrl: "https://app.neobeirut.com/templates/5-Plats-5-Bonnes-Raisons.jpg",
+            },
+          },
+          {
+            cardIndex: 1,
+            header: {
+              type: "IMAGE",
+              mediaUrl: "https://app.neobeirut.com/templates/Le-Boeuf-Bourguignon-aux-Champignons.jpg",
+            },
+          },
+          {
+            cardIndex: 2,
+            header: {
+              type: "IMAGE",
+              mediaUrl: "https://app.neobeirut.com/templates/Escalope-Cordon-Bleu-Poster.jpg",
+            },
+          },
+          {
+            cardIndex: 3,
+            header: {
+              type: "IMAGE",
+              mediaUrl: "https://app.neobeirut.com/templates/Neo-Beirut-Paella-Advertisement.jpg",
+            },
+          },
+          {
+            cardIndex: 4,
+            header: {
+              type: "IMAGE",
+              mediaUrl: "https://app.neobeirut.com/templates/Les-lasagnes-double-sauce-gourmande.jpg",
+            },
+          },
+          {
+            cardIndex: 5,
+            header: {
+              type: "IMAGE",
+              mediaUrl: "https://app.neobeirut.com/templates/La-Dorade-Sweet-Potato-Dish.jpg",
+            },
+          },
+        ]
+      : templateName === "new_clients_message"
       ? [
           {
             cardIndex: 0,

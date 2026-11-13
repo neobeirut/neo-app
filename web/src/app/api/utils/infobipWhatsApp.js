@@ -50,9 +50,9 @@ export function toInfobipRecipient(phone) {
  * Retrieve and normalize Infobip settings from environment variables or database settings
  */
 export function getInfobipConfig() {
-  let apiKey = process.env.INFOBIP_API_KEY || "d42824b2b707759420c14250c320ec7b-449822b8-55e1-4d67-906f-8a19af1d302e";
+  let apiKey = process.env.INFOBIP_API_KEY || "d569f5ccf7830f6b55738b645fced84f-0b8742f1-f729-43c1-9443-592d743afbd2";
   let baseUrl = process.env.INFOBIP_BASE_URL || "https://y4r1q1.api.infobip.com";
-  let sender = process.env.INFOBIP_WHATSAPP_SENDER || "96181202607";
+  let sender = process.env.INFOBIP_WHATSAPP_SENDER || "96176489078";
 
   let normalizedSender = String(sender).trim();
   // Strip '+' prefix if present because Infobip requires sender without '+'

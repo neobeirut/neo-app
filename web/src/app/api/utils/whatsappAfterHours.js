@@ -215,8 +215,8 @@ export async function recordAutoReplySent(phone, periodId) {
 export async function sendClosedAutoReply(toPhone) {
   const apiKey = process.env.INFOBIP_API_KEY;
   const baseUrl = (process.env.INFOBIP_BASE_URL || "").trim().replace(/\/$/, "");
-  const senderEnv = process.env.INFOBIP_WHATSAPP_SENDER || "96181202607";
-  const fromSender = normalizePhoneForInfobip(senderEnv) || "96181202607";
+  const senderEnv = process.env.INFOBIP_WHATSAPP_SENDER || "96176489078";
+  const fromSender = normalizePhoneForInfobip(senderEnv) || "96176489078";
   const recipient = normalizePhoneForInfobip(toPhone);
 
   if (!recipient) {

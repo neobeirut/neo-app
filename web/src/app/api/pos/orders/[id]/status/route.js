@@ -101,7 +101,7 @@ export async function PATCH(request, { params }) {
           const target = (normPhone.length === 7 || normPhone.length === 8) ? "961" + normPhone : normPhone;
           const apiKey = process.env.INFOBIP_API_KEY || "d42824b2b707759420c14250c320ec7b-449822b8-55e1-4d67-906f-8a19af1d302e";
           const baseUrl = (process.env.INFOBIP_BASE_URL || "https://y4r1q1.api.infobip.com").replace(/\/$/, "");
-          const sender = "96181202607";
+          const sender = "96176489078";
 
           console.log(`[pos-status] Sending order_preparing template to ${target} for order #${id}`);
           const prepRes = await fetch(`${baseUrl}/whatsapp/1/message/template`, {
@@ -140,7 +140,7 @@ export async function PATCH(request, { params }) {
           const target = normPhone.length === 8 ? "961" + normPhone : normPhone;
           const apiKey = process.env.INFOBIP_API_KEY || "d42824b2b707759420c14250c320ec7b-449822b8-55e1-4d67-906f-8a19af1d302e";
           const baseUrl = (process.env.INFOBIP_BASE_URL || "https://y4r1q1.api.infobip.com").replace(/\/$/, "");
-          const sender = "96181202607";
+          const sender = "96176489078";
           const orderTag = `#${id}`;
 
           console.log(`[pos-status] Sending out_for_delivery template to ${target} for order ${orderTag}`);
@@ -178,7 +178,7 @@ export async function PATCH(request, { params }) {
         const target = normPhone.length === 8 ? "961" + normPhone : normPhone;
         const apiKey = process.env.INFOBIP_API_KEY || "d42824b2b707759420c14250c320ec7b-449822b8-55e1-4d67-906f-8a19af1d302e";
         const baseUrl = (process.env.INFOBIP_BASE_URL || "https://y4r1q1.api.infobip.com").replace(/\/$/, "");
-        const sender = "96181202607";
+        const sender = "96176489078";
 
           console.log(`[pos-status] Sending rejected_order template to ${target} for order #${id}`);
           const res = await fetch(`${baseUrl}/whatsapp/1/message/template`, {
