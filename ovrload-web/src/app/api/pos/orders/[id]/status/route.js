@@ -24,7 +24,7 @@ export async function PATCH(request, { params }) {
     }
 
     const [existingOrder] = await sql`
-      SELECT id, status, customer_phone FROM orders WHERE id = ${id} LIMIT 1
+      SELECT id, status, customer_phone, total_amount FROM orders WHERE id = ${id} LIMIT 1
     `;
     if (!existingOrder) {
       return Response.json({ error: "Order not found" }, { status: 404 });
@@ -104,8 +104,12 @@ export async function PATCH(request, { params }) {
           const baseUrl = (process.env.INFOBIP_BASE_URL || "https://y4r1q1.api.infobip.com").replace(/\/$/, "");
           const sender = "96181202607";
 
-          console.log(`[pos-status] Sending order_preparing template to ${target} for order #${id}`);
-          const prepRes = await fetch(`${baseUrl}/whatsapp/1/message/template`, {
+          const effectiveTotal = (total !== undefined && total !== null) ? total : (existingOrder?.total_amount || 0);
+          const numTotal = Number(effectiveTotal || 0);
+          const formattedTotal = `$${numTotal % 1 === 0 ? numTotal.toFixed(0) : numTotal.toFixed(2)}`;
+
+          console.log(`[pos-status] Sending order_preparing template to ${target} for order #${id} (Total: ${formattedTotal})`);
+          let prepRes = await fetch(`${baseUrl}/whatsapp/1/message/template`, {
             method: "POST",
             headers: {
               "Authorization": `App ${apiKey}`,
@@ -118,13 +122,39 @@ export async function PATCH(request, { params }) {
                 to: target,
                 content: {
                   templateName: "order_preparing",
-                  templateData: { body: { placeholders: [] } },
+                  templateData: { body: { placeholders: [formattedTotal] } },
                   language: "en"
                 }
               }]
             })
           });
-          const prepData = await prepRes.json().catch(() => ({}));
+          let prepData = await prepRes.json().catch(() => ({}));
+          if (!prepRes.ok && prepRes.status === 400) {
+            console.warn(`[pos-status] order_preparing failed with 'en' (status: ${prepRes.status}), trying 'en_US' fallback:`, prepData);
+            const retryRes = await fetch(`${baseUrl}/whatsapp/1/message/template`, {
+              method: "POST",
+              headers: {
+                "Authorization": `App ${apiKey}`,
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+              },
+              body: JSON.stringify({
+                messages: [{
+                  from: sender,
+                  to: target,
+                  content: {
+                    templateName: "order_preparing",
+                    templateData: { body: { placeholders: [formattedTotal] } },
+                    language: "en_US"
+                  }
+                }]
+              })
+            });
+            if (retryRes.ok) {
+              prepRes = retryRes;
+              prepData = await retryRes.json().catch(() => ({}));
+            }
+          }
           console.log(`[pos-status] order_preparing response status: ${prepRes.status}`, JSON.stringify(prepData));
         } catch (e) {
           console.error("Failed to send order_preparing notification from POS:", e);

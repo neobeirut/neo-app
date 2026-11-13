@@ -1,0 +1,905 @@
+import { supabase, getGlobalRestaurantId } from '../../api/supabase';
+
+export interface PosPrinter {
+  id: string;
+  restaurant_id: string;
+  branch_id: string;
+  name: string;
+  printer_role: string;
+  connection_type: string;
+  windows_printer_name?: string | null;
+  ip_address: string;
+  port: number;
+  is_active: boolean;
+  is_receipt_printer: boolean;
+  is_fallback: boolean;
+  paper_width_mm: number;
+  status: 'online' | 'offline' | 'unknown' | 'error';
+}
+
+export interface PosPrinterSectionRoute {
+  id: string;
+  restaurant_id: string;
+  branch_id: string;
+  section_key: string;
+  print_preparation_ticket: boolean;
+  printer_id: string | null;
+  is_default: boolean;
+  printer?: PosPrinter | null;
+}
+
+export interface ExpandedPrepItem {
+  id: string | number;
+  name: string;
+  quantity: number;
+  qty: number;
+  preparation_section: string;
+  print_preparation_ticket: boolean;
+  is_bundle_component: boolean;
+  bundle_parent_name?: string;
+  modifiers: any[];
+  notes?: string;
+  note?: string;
+  original_item_id?: string | number;
+  line_item_id?: string;
+}
+
+export interface OrderPrintMetadata {
+  order_id: number | string;
+  table_label?: string;
+  table_code?: string;
+  guest_count?: number;
+  waiter_name?: string;
+  cashier_name?: string;
+  service_type?: string;
+  timestamp?: string;
+  fire_round?: number;
+  total_holds?: number;
+  is_reprint?: boolean;
+}
+
+export interface PhysicalPrinterTicketJob {
+  printer: PosPrinter;
+  section_key: string;
+  ticket_type: 'prep_ticket' | 'modification' | 'cancellation' | 'reprint' | 'receipt' | 'pre_check';
+  ticket_payload: any;
+  items: ExpandedPrepItem[];
+  idempotency_key: string;
+}
+
+// In-memory cache for printer config per branch
+interface CachedBranchConfig {
+  printers: PosPrinter[];
+  routes: PosPrinterSectionRoute[];
+  mainBillPrinter: PosPrinter | null;
+  fallbackPrepPrinter: PosPrinter | null;
+  timestamp: number;
+}
+const configCache = new Map<string, CachedBranchConfig>();
+const CACHE_TTL_MS = 60 * 1000; // 1 minute TTL
+
+/**
+ * Loads and caches active printer configurations and section routes for a branch.
+ */
+export async function loadBranchPrinterConfig(branchId?: string, restaurantId?: string): Promise<{
+  printers: PosPrinter[];
+  routes: PosPrinterSectionRoute[];
+  mainBillPrinter: PosPrinter | null;
+  fallbackPrepPrinter: PosPrinter | null;
+}> {
+  const rId = restaurantId || getGlobalRestaurantId() || '79256f11-a9f8-4fec-901d-69baf929762d';
+  const targetBranch = branchId || '9c214659-9cc7-4f33-b115-cbbb8a823a94';
+  const cacheKey = `${rId}_${targetBranch}`;
+
+  const cached = configCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+    return {
+      printers: cached.printers,
+      routes: cached.routes,
+      mainBillPrinter: cached.mainBillPrinter,
+      fallbackPrepPrinter: cached.fallbackPrepPrinter
+    };
+  }
+
+  try {
+    const [printersRes, routesRes] = await Promise.all([
+      supabase
+        .from('pos_printers')
+        .select('*')
+        .eq('restaurant_id', rId)
+        .eq('branch_id', targetBranch)
+        .eq('is_active', true)
+        .order('name'),
+      supabase
+        .from('pos_printer_section_routes')
+        .select('*, printer:pos_printers(*)')
+        .eq('restaurant_id', rId)
+        .eq('branch_id', targetBranch)
+    ]);
+
+    const printers = (printersRes.data || []) as PosPrinter[];
+    const routes = (routesRes.data || []) as PosPrinterSectionRoute[];
+
+    // Identify Main Bill Printer: marked with is_receipt_printer = true or named 'Main'
+    const mainBillPrinter = printers.find(p => p.is_receipt_printer) || printers.find(p => p.name.toLowerCase() === 'main') || printers[0] || null;
+
+    // Identify Preparation Fallback Printer: marked with is_fallback = true or named 'Kitchen Printer'
+    const fallbackPrepPrinter = printers.find(p => p.is_fallback) || printers.find(p => p.name.toLowerCase().includes('kitchen')) || printers[0] || null;
+
+    const result = { printers, routes, mainBillPrinter, fallbackPrepPrinter, timestamp: Date.now() };
+    configCache.set(cacheKey, result);
+    return result;
+  } catch (err) {
+    console.warn('Could not load branch printer config, falling back to local defaults:', err);
+    // Safe hardcoded fallback for offline mode
+    const defaultKitchen: PosPrinter = {
+      id: 'default-kitchen',
+      restaurant_id: rId,
+      branch_id: targetBranch,
+      name: 'Kitchen Printer',
+      printer_role: 'kitchen',
+      connection_type: 'network_raw',
+      ip_address: '192.168.18.11',
+      port: 9100,
+      is_active: true,
+      is_receipt_printer: false,
+      is_fallback: true,
+      paper_width_mm: 80,
+      status: 'online'
+    };
+    const defaultMain: PosPrinter = {
+      id: 'default-main',
+      restaurant_id: rId,
+      branch_id: targetBranch,
+      name: 'Main',
+      printer_role: 'main_bill',
+      connection_type: 'network_raw',
+      ip_address: '192.168.18.10',
+      port: 9100,
+      is_active: true,
+      is_receipt_printer: true,
+      is_fallback: false,
+      paper_width_mm: 80,
+      status: 'online'
+    };
+    return {
+      printers: [defaultMain, defaultKitchen],
+      routes: [
+        { id: 'r1', restaurant_id: rId, branch_id: targetBranch, section_key: 'Kitchen', print_preparation_ticket: true, printer_id: 'default-kitchen', is_default: true, printer: defaultKitchen },
+        { id: 'r2', restaurant_id: rId, branch_id: targetBranch, section_key: 'Store', print_preparation_ticket: false, printer_id: null, is_default: true, printer: null },
+        { id: 'r3', restaurant_id: rId, branch_id: targetBranch, section_key: 'Retail', print_preparation_ticket: false, printer_id: null, is_default: true, printer: null }
+      ],
+      mainBillPrinter: defaultMain,
+      fallbackPrepPrinter: defaultKitchen
+    };
+  }
+}
+
+/**
+ * Resolves the preparation section and ticket eligibility for an item.
+ * Supports explicit product overrides, categories, and heuristics.
+ */
+export function resolveItemPreparationSection(
+  item: any,
+  productsCatalog?: any[],
+  routes?: PosPrinterSectionRoute[]
+): {
+  section_key: string;
+  print_preparation_ticket: boolean;
+  is_override: boolean;
+} {
+  const pName = String(item.product_name_snapshot || item.product_name || item.name || '').trim();
+  const cName = String(item.category_name || item.category || '').trim();
+
+  // 1. Check if item has explicit properties directly
+  let section = item.preparation_section || '';
+  let override = item.prep_print_override || null;
+
+  // 2. Check catalog if not present on item
+  if ((!section || !override) && productsCatalog && productsCatalog.length > 0) {
+    const matched = productsCatalog.find(p => (
+      (item.product_id && String(p.id) === String(item.product_id)) ||
+      (p.name && p.name.toLowerCase() === pName.toLowerCase())
+    ));
+    if (matched) {
+      if (!section && matched.preparation_section) section = matched.preparation_section;
+      if (!override && matched.prep_print_override) override = matched.prep_print_override;
+    }
+  }
+
+  // 3. Heuristic resolution if still not set
+  if (!section) {
+    const combined = (pName + ' ' + cName).toLowerCase();
+    if (cName.toLowerCase() === 'store' || cName.toLowerCase() === 'retail' || /\b(store|retail|merch|packaged|grocery)\b/i.test(combined)) {
+      section = 'Store';
+    } else if (/\b(coffee|espresso|latte|cappuccino|tea|teas|juice|juices|drinks|beverage|cocktail|beer|wine|vodka|gin|whisky|mocktail|tonic|water|soda|lemonade)\b/i.test(combined)) {
+      section = 'Bar';
+    } else if (/\b(cake|cakes|pastry|croissant|croissants|cookie|cookies|brownie|eclair|tart|tarte|dessert|bakery)\b/i.test(combined)) {
+      section = 'Pastry';
+    } else {
+      section = 'Kitchen';
+    }
+  }
+
+  // 4. Resolve print_preparation_ticket rule
+  let printPrep = true;
+  if (override === 'NO_PRINT') {
+    printPrep = false;
+  } else if (override === 'PRINT') {
+    printPrep = true;
+  } else {
+    // Check section route configuration
+    const route = routes?.find(r => r.section_key.toLowerCase() === section.toLowerCase());
+    if (route) {
+      printPrep = route.print_preparation_ticket !== false;
+    } else {
+      // Default rule: Store / Retail are NO_PRINT
+      const lower = section.toLowerCase();
+      if (lower === 'store' || lower === 'retail') {
+        printPrep = false;
+      } else {
+        printPrep = true;
+      }
+    }
+  }
+
+  return {
+    section_key: section,
+    print_preparation_ticket: printPrep,
+    is_override: Boolean(override)
+  };
+}
+
+/**
+ * Checks whether an item represents a course HOLD divider separator.
+ */
+export function isCourseHoldItem(item: any): boolean {
+  if (!item) return false;
+  const name = String(item.product_name_snapshot || item.product_name || item.name || '').trim().toUpperCase();
+  const idStr = String(item.order_item_id || item.product_id || item.id || '');
+  return (
+    name === 'HOLD' ||
+    name === '--- HOLD ---' ||
+    name === 'HOLD FOR NEXT COURSE' ||
+    name.includes('HOLD (KITCHEN') ||
+    idStr.startsWith('hold_') ||
+    item.isHoldSeparator === true
+  );
+}
+
+/**
+ * Checks if a product is a bundle/combo.
+ */
+export function isBundleProduct(item: any, productsCatalog?: any[]): boolean {
+  if (!item) return false;
+  if (item.is_bundle === true || item.isBundle === true) return true;
+  const cName = String(item.category_name || item.category || '').toLowerCase();
+  const pName = String(item.product_name || item.name || '').toLowerCase();
+  if (cName.includes('bundle') || cName.includes('combo') || pName.includes('bundle') || pName.includes('combo')) {
+    return true;
+  }
+  // Check if matched catalog item has bundle properties or category_id 30
+  if (productsCatalog && item.product_id) {
+    const matched = productsCatalog.find(p => String(p.id) === String(item.product_id));
+    if (matched && (matched.category_id === 30 || String(matched.name).toLowerCase().includes('bundle'))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Expands order items into individual components for preparation ticket generation.
+ * Follows Phase 4 rules:
+ * - Bundle parent is expanded into individual components
+ * - Each component inherits effective quantity = bundle.qty * component.quantity
+ * - Component-specific customizations and notes are attached
+ * - Preparation section is resolved per component
+ * - Components belonging to No-Print sections (e.g. Store) are excluded from preparation tickets
+ * - Bundle parent is preserved in commercial records, NOT printed as an extra shell item
+ */
+export function expandOrderItemsForPreparation(
+  items: any[],
+  productsCatalog?: any[],
+  routes?: PosPrinterSectionRoute[]
+): ExpandedPrepItem[] {
+  const result: ExpandedPrepItem[] = [];
+
+  for (const item of items) {
+    if (isCourseHoldItem(item)) {
+      continue; // Hold dividers do not route to station printers as food items
+    }
+
+    const bundle = isBundleProduct(item, productsCatalog);
+    const itemQty = Number(item.qty || item.quantity || 1);
+
+    if (bundle) {
+      // Find components selected within the bundle
+      const custs = item.selectedCustomizations || item.customizations || [];
+      
+      // Separate top-level choices (products selected in groups like "Your Eggs", "Your Coffee")
+      // from child modifiers (like "Oat Milk" on Coffee)
+      const topLevelChoices = custs.filter((c: any) => !c.parent_option_id);
+      const childModifiers = custs.filter((c: any) => Boolean(c.parent_option_id));
+
+      if (topLevelChoices.length > 0) {
+        for (const choice of topLevelChoices) {
+          const compName = choice.name || choice.ingredient || 'Component';
+          const compQty = itemQty * Number(choice.quantity || 1);
+
+          // Find any sub-modifiers that belong to this choice
+          const relevantMods = childModifiers.filter((m: any) => 
+            m.parent_option_id === choice.id || 
+            (choice.original_id && m.parent_option_id === choice.original_id) ||
+            m.parent_option_name === compName
+          );
+
+          // Resolve preparation section for this bundle component
+          const resolution = resolveItemPreparationSection(
+            { name: compName, product_id: choice.original_id || choice.id },
+            productsCatalog,
+            routes
+          );
+
+          // Exclude component if its section is marked No-Print (e.g. packaged Store snack)
+          if (!resolution.print_preparation_ticket) {
+            continue;
+          }
+
+          result.push({
+            id: `comp_${item.id || item.line_item_id}_${choice.id}`,
+            name: compName,
+            quantity: compQty,
+            qty: compQty,
+            preparation_section: resolution.section_key,
+            print_preparation_ticket: true,
+            is_bundle_component: true,
+            bundle_parent_name: item.name || 'Combo',
+            modifiers: relevantMods,
+            notes: choice.note || '',
+            note: choice.note || '',
+            original_item_id: item.id || item.product_id,
+            line_item_id: item.line_item_id
+          });
+        }
+      } else {
+        // Fallback if bundle had no explicit customization items expanded
+        const resolution = resolveItemPreparationSection(item, productsCatalog, routes);
+        if (resolution.print_preparation_ticket) {
+          result.push({
+            id: item.id || item.line_item_id || Math.random().toString(),
+            name: item.name,
+            quantity: itemQty,
+            qty: itemQty,
+            preparation_section: resolution.section_key,
+            print_preparation_ticket: true,
+            is_bundle_component: false,
+            modifiers: custs,
+            notes: item.note || item.comment || '',
+            note: item.note || item.comment || '',
+            original_item_id: item.id || item.product_id,
+            line_item_id: item.line_item_id
+          });
+        }
+      }
+    } else {
+      // Regular standalone product
+      const resolution = resolveItemPreparationSection(item, productsCatalog, routes);
+
+      // Exclude if No-Print (Store / Retail)
+      if (!resolution.print_preparation_ticket) {
+        continue;
+      }
+
+      result.push({
+        id: item.id || item.line_item_id || Math.random().toString(),
+        name: item.name,
+        quantity: itemQty,
+        qty: itemQty,
+        preparation_section: resolution.section_key,
+        print_preparation_ticket: true,
+        is_bundle_component: false,
+        modifiers: item.selectedCustomizations || item.customizations || [],
+        notes: item.note || item.comment || '',
+        note: item.note || item.comment || '',
+        original_item_id: item.id || item.product_id,
+        line_item_id: item.line_item_id
+      });
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Core Routing Function:
+ * Takes order items, expands bundles, filters by printing eligibility,
+ * groups by physical destination printer, and returns ticket dispatch jobs.
+ */
+export async function buildPreparationPrintJobs(params: {
+  orderMetadata: OrderPrintMetadata;
+  items: any[];
+  branchId?: string;
+  restaurantId?: string;
+  productsCatalog?: any[];
+}): Promise<{
+  jobs: PhysicalPrinterTicketJob[];
+  unroutedCount: number;
+  excludedNoPrintCount: number;
+}> {
+  const branchId = params.branchId || '9c214659-9cc7-4f33-b115-cbbb8a823a94';
+  const config = await loadBranchPrinterConfig(branchId, params.restaurantId);
+
+  // 1. Expand items and filter out intentional No-Print items
+  const expandedItems = expandOrderItemsForPreparation(
+    params.items,
+    params.productsCatalog,
+    config.routes
+  );
+
+  let unroutedCount = 0;
+  const excludedNoPrintCount = params.items.length - expandedItems.length;
+
+  if (expandedItems.length === 0) {
+    return { jobs: [], unroutedCount: 0, excludedNoPrintCount };
+  }
+
+  // 2. Resolve destination printer for each expanded item and group by physical printer
+  const itemsByPrinterId = new Map<string, { printer: PosPrinter; section: string; items: ExpandedPrepItem[] }>();
+
+  for (const prepItem of expandedItems) {
+    const route = config.routes.find(r => r.section_key.toLowerCase() === prepItem.preparation_section.toLowerCase());
+    let targetPrinter: PosPrinter | null = null;
+
+    if (route && route.printer_id) {
+      targetPrinter = config.printers.find(p => p.id === route.printer_id) || null;
+    }
+
+    if (!targetPrinter) {
+      // Apply configured fallback printer with warning
+      targetPrinter = config.fallbackPrepPrinter;
+      unroutedCount++;
+    }
+
+    if (!targetPrinter) {
+      console.warn(`No printer found for item "${prepItem.name}" in section "${prepItem.preparation_section}".`);
+      continue;
+    }
+
+    const groupKey = targetPrinter.id;
+    if (!itemsByPrinterId.has(groupKey)) {
+      itemsByPrinterId.set(groupKey, {
+        printer: targetPrinter,
+        section: prepItem.preparation_section,
+        items: []
+      });
+    }
+    itemsByPrinterId.get(groupKey)!.items.push(prepItem);
+  }
+
+  // 3. Generate structured preparation ticket payload for each physical printer
+  const jobs: PhysicalPrinterTicketJob[] = [];
+  const meta = params.orderMetadata;
+
+  for (const [printerId, group] of itemsByPrinterId.entries()) {
+    const ticketPayload = {
+      isKitchenTicket: true,
+      title: meta.is_reprint ? '*** REPRINT PREPARATION TICKET ***' : '*** PREPARATION TICKET ***',
+      printer_name: group.printer.name,
+      printer_ip: group.printer.ip_address,
+      printer_port: group.printer.port,
+      order_id: meta.order_id,
+      table_label: meta.table_label || meta.table_code || 'N/A',
+      guest_count: meta.guest_count || 1,
+      waiter_name: meta.waiter_name || 'Staff',
+      service_type: meta.service_type || 'dine_in',
+      timestamp: meta.timestamp || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      fire_round: meta.fire_round || 1,
+      is_reprint: Boolean(meta.is_reprint),
+      // Items grouped with parent bundle headers
+      items: group.items.map(it => ({
+        name: it.name,
+        qty: it.quantity,
+        quantity: it.quantity,
+        is_bundle_component: it.is_bundle_component,
+        bundle_parent_name: it.bundle_parent_name || null,
+        note: it.note || it.notes || '',
+        modifiers: (it.modifiers || []).map((m: any) => typeof m === 'string' ? m : (m.name || m.ingredient || ''))
+      }))
+    };
+
+    const idempotencyKey = `order_${meta.order_id}_fire_${meta.fire_round || 1}_printer_${printerId}${meta.is_reprint ? '_reprint_' + Date.now() : ''}`;
+
+    jobs.push({
+      printer: group.printer,
+      section_key: group.section,
+      ticket_type: meta.is_reprint ? 'reprint' : 'prep_ticket',
+      ticket_payload: ticketPayload,
+      items: group.items,
+      idempotency_key: idempotencyKey
+    });
+  }
+
+  return { jobs, unroutedCount, excludedNoPrintCount };
+}
+
+/**
+ * Builds the customer bill / receipt print job payload.
+ * Dispatched EXCLUSIVELY to the branch's designated Main bill printer.
+ * Contains the complete commercial order (all items including Store/Retail).
+ */
+export async function buildMainBillPrintJob(params: {
+  order: any;
+  isPreCheck: boolean;
+  branchId?: string;
+  restaurantId?: string;
+  conceptBranding?: {
+    conceptName?: string;
+    receiptPrefix?: string;
+    customFooter?: string;
+  };
+  footerText?: string;
+  printRequestId?: string;
+}): Promise<PhysicalPrinterTicketJob | null> {
+  const branchId = params.branchId || '9c214659-9cc7-4f33-b115-cbbb8a823a94';
+  const config = await loadBranchPrinterConfig(branchId, params.restaurantId);
+
+  const mainPrinter = config.mainBillPrinter;
+  if (!mainPrinter) {
+    console.warn('No Main Bill Printer designated for this branch.');
+    return null;
+  }
+
+  const ord = params.order;
+  const isPre = params.isPreCheck;
+  const items = (ord.items || []).map((it: any) => ({
+    name: it.name || it.product_name,
+    qty: it.qty || it.quantity || 1,
+    unit_price: Number(it.unit_price || it.price || 0),
+    total_price: Number(it.total_price !== undefined ? it.total_price : (Number(it.unit_price || 0) * Number(it.qty || 1))),
+    modifiers: it.selectedCustomizations || it.customizations || [],
+    note: it.note || it.comment || ''
+  }));
+
+  const conceptTitle = params.conceptBranding?.conceptName 
+    ? `*** ${params.conceptBranding.conceptName.toUpperCase()} ***`
+    : (isPre ? '*** GUEST CHECK / PRE-CHECK ***' : '*** TAX INVOICE / RECEIPT ***');
+
+  const conceptFooter = params.conceptBranding?.customFooter 
+    || params.footerText 
+    || 'Thank you for dining with us! Come back soon.';
+
+  const payload = {
+    isPreCheck: isPre,
+    isCustomerBill: true,
+    title: conceptTitle,
+    concept_id: ord.concept_id,
+    receipt_prefix: params.conceptBranding?.receiptPrefix,
+    printer_name: mainPrinter.name,
+    printer_ip: mainPrinter.ip_address,
+    printer_port: mainPrinter.port,
+    order_id: ord.id || ord.order_id,
+    table_label: ord.table_label || ord.table_code || 'N/A',
+    guest_count: ord.guest_count || 1,
+    waiter_name: ord.waiter_name || ord.waiter_reference || 'Staff',
+    cashier_name: ord.cashier_name || 'Cashier',
+    timestamp: new Date().toLocaleString(),
+    subtotal: ord.subtotal || ord.subtotal_amount || 0,
+    discount_amount: ord.discount_amount || ord.discountAmount || 0,
+    delivery_fee: ord.delivery_fee || ord.deliveryFee || 0,
+    vat_amount: ord.vat_amount || 0,
+    total: ord.total || ord.total_amount || 0,
+    currency: ord.currency || 'USD',
+    exchange_rate: ord.exchange_rate || 90000,
+    items,
+    footer: conceptFooter
+  };
+
+  const actionUuid = params.printRequestId || ord.print_request_id || ord.bill_request_id || `${ord.id || ord.order_id}_${isPre ? 'precheck' : 'settled'}`;
+  const idempotencyKey = `bill_order_${ord.id || ord.order_id}_${isPre ? 'precheck' : 'settled'}_${actionUuid}`;
+
+  return {
+    printer: mainPrinter,
+    section_key: 'Customer Receipt',
+    ticket_type: isPre ? 'pre_check' : 'receipt',
+    ticket_payload: payload,
+    items: [],
+    idempotency_key: idempotencyKey
+  };
+}
+
+/**
+ * Builds a cancellation ticket job dispatched to the ORIGINAL printer that printed the item.
+ */
+export function buildCancellationJob(params: {
+  cancelledItem: any;
+  originalPrinter: PosPrinter;
+  orderMetadata: OrderPrintMetadata;
+  reason?: string;
+}): PhysicalPrinterTicketJob {
+  const meta = params.orderMetadata;
+  const it = params.cancelledItem;
+
+  const payload = {
+    isKitchenTicket: true,
+    isCancellation: true,
+    title: '*** ITEM VOID / CANCELLED ***',
+    printer_name: params.originalPrinter.name,
+    printer_ip: params.originalPrinter.ip_address,
+    printer_port: params.originalPrinter.port,
+    order_id: meta.order_id,
+    table_label: meta.table_label || 'N/A',
+    waiter_name: meta.waiter_name || 'Staff',
+    timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    reason: params.reason || 'Manager void authorization',
+    items: [
+      {
+        name: `[CANCELLED] ${it.name}`,
+        qty: it.qty || it.quantity || 1,
+        note: `VOID: ${params.reason || 'Customer request'}`,
+        modifiers: it.selectedCustomizations || it.modifiers || []
+      }
+    ]
+  };
+
+  const actionId = (meta as any).action_id || `${it.id || it.line_item_id}`;
+  const idempotencyKey = `void_order_${meta.order_id}_item_${it.id || it.line_item_id}_${actionId}`;
+
+  return {
+    printer: params.originalPrinter,
+    section_key: it.preparation_section || 'Kitchen',
+    ticket_type: 'cancellation',
+    ticket_payload: payload,
+    items: [it],
+    idempotency_key: idempotencyKey
+  };
+}
+
+/**
+ * Builds cancellation ticket jobs for one or multiple items or whole bundles.
+ * Resolves destination printers per preparation section and expands combos if cancelled.
+ */
+export async function buildCancellationPrintJobs(params: {
+  orderMetadata: OrderPrintMetadata;
+  cancelledItems: any[];
+  branchId?: string;
+  restaurantId?: string;
+  productsCatalog?: any[];
+  reason?: string;
+}): Promise<PhysicalPrinterTicketJob[]> {
+  const branchId = params.branchId || '9c214659-9cc7-4f33-b115-cbbb8a823a94';
+  const config = await loadBranchPrinterConfig(branchId, params.restaurantId);
+
+  // Expand combos if whole combos were cancelled
+  const expandedItems = expandOrderItemsForPreparation(
+    params.cancelledItems,
+    params.productsCatalog,
+    config.routes
+  );
+
+  if (expandedItems.length === 0) return [];
+
+  // Group by destination printer
+  const itemsByPrinter = new Map<string, { printer: PosPrinter; section: string; items: ExpandedPrepItem[] }>();
+
+  for (const item of expandedItems) {
+    const route = config.routes.find(r => r.section_key.toLowerCase() === item.preparation_section.toLowerCase());
+    let targetPrinter = route?.printer_id ? config.printers.find(p => p.id === route.printer_id) : null;
+    if (!targetPrinter) targetPrinter = config.fallbackPrepPrinter;
+    if (!targetPrinter) continue;
+
+    if (!itemsByPrinter.has(targetPrinter.id)) {
+      itemsByPrinter.set(targetPrinter.id, {
+        printer: targetPrinter,
+        section: item.preparation_section,
+        items: []
+      });
+    }
+    itemsByPrinter.get(targetPrinter.id)!.items.push(item);
+  }
+
+  const jobs: PhysicalPrinterTicketJob[] = [];
+  const meta = params.orderMetadata;
+
+  for (const [printerId, group] of itemsByPrinter.entries()) {
+    const payload = {
+      isKitchenTicket: true,
+      isCancellation: true,
+      title: '*** ITEM VOID / CANCELLED ***',
+      printer_name: group.printer.name,
+      printer_ip: group.printer.ip_address,
+      printer_port: group.printer.port,
+      order_id: meta.order_id,
+      table_label: meta.table_label || 'N/A',
+      waiter_name: meta.waiter_name || 'Staff',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      reason: params.reason || 'Item void / cancellation',
+      items: group.items.map(it => ({
+        name: `[CANCELLED] ${it.name}`,
+        qty: it.quantity,
+        is_bundle_component: it.is_bundle_component,
+        bundle_parent_name: it.bundle_parent_name || null,
+        note: `VOID: ${params.reason || 'Item cancelled'}`,
+        modifiers: (it.modifiers || []).map((m: any) => typeof m === 'string' ? m : (m.name || m.ingredient || ''))
+      }))
+    };
+
+    const actionId = (meta as any).action_id || 'void';
+    const idempotencyKey = `void_order_${meta.order_id}_printer_${printerId}_${actionId}`;
+
+    jobs.push({
+      printer: group.printer,
+      section_key: group.section,
+      ticket_type: 'cancellation',
+      ticket_payload: payload,
+      items: group.items,
+      idempotency_key: idempotencyKey
+    });
+  }
+
+  return jobs;
+}
+
+/**
+ * Dispatches physical printer ticket jobs to the local print bridge server
+ * and records jobs into the database `pos_print_jobs` table.
+ * Isolates printer errors: failure of one printer does not block other printers.
+ */
+export async function dispatchPhysicalPrintJobs(jobs: PhysicalPrinterTicketJob[]): Promise<{
+  success: boolean;
+  dispatchedCount: number;
+  failedCount: number;
+  results: Array<{ printer: string; success: boolean; error?: string }>;
+}> {
+  if (jobs.length === 0) {
+    return { success: true, dispatchedCount: 0, failedCount: 0, results: [] };
+  }
+
+  const defaultHost = (typeof window !== 'undefined' && window.location.hostname && window.location.hostname !== '192.168.18.195') ? window.location.hostname : '127.0.0.1';
+  let storedIp = localStorage.getItem('flow_pos_print_server_ip');
+  if (storedIp === '192.168.18.195') storedIp = null;
+  const bridgeIp = storedIp || defaultHost;
+  const bridgePort = localStorage.getItem('flow_pos_print_server_port') || '9191';
+  const bridgeUrl = `http://${bridgeIp}:${bridgePort}/print`;
+
+  const results: Array<{ printer: string; success: boolean; error?: string }> = [];
+  let dispatchedCount = 0;
+  let failedCount = 0;
+
+  for (const job of jobs) {
+    const printerName = job.printer.name;
+    const orderIdNum = /^\d+$/.test(String(job.ticket_payload.order_id)) ? Number(job.ticket_payload.order_id) : null;
+
+    // 1. Record job in database (status: pending)
+    let dbJobId: string | null = null;
+    try {
+      const { data: dbJob } = await supabase
+        .from('pos_print_jobs')
+        .insert({
+          restaurant_id: job.printer.restaurant_id || getGlobalRestaurantId(),
+          branch_id: job.printer.branch_id,
+          order_id: orderIdNum,
+          printer_id: job.printer.id,
+          section_key: job.section_key,
+          job_type: job.ticket_type,
+          status: 'pending',
+          payload: job.ticket_payload,
+          idempotency_key: job.idempotency_key
+        })
+        .select('id')
+        .single();
+
+      if (dbJob) dbJobId = dbJob.id;
+    } catch (dbErr) {
+      console.warn('Could not record pos_print_job in DB (non-fatal):', dbErr);
+    }
+
+    // 2. Dispatch to local print server bridge
+    const dispatchPayload = {
+      destination: job.printer.name,
+      printer: {
+        name: job.printer.name,
+        host: job.printer.ip_address,
+        port: job.printer.port || 9100,
+        connection_type: job.printer.connection_type,
+        windows_printer_name: (job.printer as any).windows_printer_name || job.printer.name
+      },
+      content: job.ticket_payload,
+      job_type: job.ticket_type,
+      idempotency_key: job.idempotency_key
+    };
+
+    let printSuccess = false;
+    let printError: string | undefined = undefined;
+
+    try {
+      const res = await fetch(bridgeUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(dispatchPayload),
+        signal: AbortSignal.timeout(3000)
+      });
+
+      if (res.ok) {
+        printSuccess = true;
+        dispatchedCount++;
+      } else {
+        printError = `Print server status: ${res.status}`;
+        failedCount++;
+      }
+    } catch (fetchErr: any) {
+      // Secondary fallback via hidden iframe form if browser CORS blocks
+      try {
+        let iframe = document.getElementById("print_iframe") as HTMLIFrameElement;
+        if (!iframe) {
+          iframe = document.createElement("iframe") as HTMLIFrameElement;
+          iframe.id = "print_iframe";
+          iframe.name = "print_iframe";
+          iframe.style.display = "none";
+          document.body.appendChild(iframe);
+        }
+
+        const form = document.createElement("form");
+        form.method = "POST";
+        form.action = bridgeUrl;
+        form.target = "print_iframe";
+
+        const input = document.createElement("input");
+        input.type = "hidden";
+        input.name = "payload";
+        input.value = JSON.stringify(dispatchPayload);
+        form.appendChild(input);
+
+        document.body.appendChild(form);
+        form.submit();
+        setTimeout(() => {
+          try { document.body.removeChild(form); } catch (e) {}
+        }, 1000);
+
+        printSuccess = true;
+        dispatchedCount++;
+      } catch (fallbackErr: any) {
+        printError = fetchErr.message || fallbackErr.message;
+        failedCount++;
+      }
+    }
+
+    // 3. Update database job status with capability-based reporting
+    let finalStatus: string = 'sent';
+    if (printSuccess) {
+      if (job.printer.connection_type === 'windows_driver') {
+        finalStatus = 'accepted';
+      } else {
+        finalStatus = 'sent';
+      }
+    } else {
+      finalStatus = 'failed';
+    }
+
+    if (dbJobId) {
+      try {
+        await supabase
+          .from('pos_print_jobs')
+          .update({
+            status: finalStatus,
+            error_message: printError || null,
+            completed_at: printSuccess ? new Date().toISOString() : null
+          })
+          .eq('id', dbJobId);
+      } catch (e) {}
+    }
+
+    results.push({
+      printer: printerName,
+      success: printSuccess,
+      error: printError
+    });
+  }
+
+  return {
+    success: failedCount === 0,
+    dispatchedCount,
+    failedCount,
+    results
+  };
+}

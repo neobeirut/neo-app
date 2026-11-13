@@ -160,7 +160,8 @@ export async function PATCH(request, { params }) {
       );
     }
 
-    const { id } = params;
+    const rawParams = params instanceof Promise ? await params : params;
+    const id = rawParams?.id;
     const { status } = await request.json();
 
     const resolvedId = await resolveOrderId(id);
@@ -329,7 +330,8 @@ export async function DELETE(request, { params }) {
       );
     }
 
-    const { id } = params;
+    const rawParams = params instanceof Promise ? await params : params;
+    const id = rawParams?.id;
 
     const resolvedId = await resolveOrderId(id);
     if (!resolvedId) {

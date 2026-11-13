@@ -16,6 +16,12 @@ export default function CrmModifiersTab() {
   // Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<CustomizationItem | null>(null);
+  const [deleteUsageModal, setDeleteUsageModal] = useState<{
+    item: CustomizationItem;
+    products: Array<{ id: number; name: string; option_group_name?: string; price: number }>;
+  } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [cleaningOrphans, setCleaningOrphans] = useState(false);
   const [formData, setFormData] = useState<Partial<CustomizationItem>>({
     name: '',
     customization_type: 'addon',
@@ -58,13 +64,55 @@ export default function CrmModifiersTab() {
     }
   };
 
-  const handleDelete = async (id: number) => {
-    if (!window.confirm('Are you sure you want to delete this customization option?')) return;
+  const handleDelete = async (item: CustomizationItem) => {
     try {
-      await crmService.deleteCustomizationItem(id);
-      setItems(prev => prev.filter(i => i.id !== id));
+      const usage = await crmService.getCustomizationItemUsage(item.id);
+      if (usage.count > 0) {
+        setDeleteUsageModal({
+          item,
+          products: usage.products
+        });
+      } else {
+        if (!window.confirm(`Are you sure you want to delete "${item.name}"? It is not currently linked to any products.`)) return;
+        await executeDelete(item.id);
+      }
     } catch (err: any) {
-      alert('Failed to delete: ' + err.message);
+      alert('Failed to check modifier usage: ' + err.message);
+    }
+  };
+
+  const executeDelete = async (id: number) => {
+    setIsDeleting(true);
+    try {
+      const res = await crmService.deleteCustomizationItem(id);
+      setItems(prev => prev.filter(i => i.id !== id));
+      setDeleteUsageModal(null);
+      loadData();
+      if (res.deletedLinksCount > 0) {
+        alert(`Modifier deleted and unlinked from ${res.deletedLinksCount} product assignment(s).`);
+      }
+    } catch (err: any) {
+      alert('Failed to delete modifier: ' + err.message);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleCleanupOrphans = async () => {
+    if (!window.confirm('This will audit all products and remove any modifier assignments that were previously deleted from the master library. Continue?')) return;
+    setCleaningOrphans(true);
+    try {
+      const res = await crmService.cleanupOrphanedCustomizations();
+      if (res.cleanedCount > 0) {
+        alert(`Successfully cleaned up ${res.cleanedCount} orphaned product modifier assignment(s).`);
+        loadData();
+      } else {
+        alert('All product modifiers are clean and in sync with the master library.');
+      }
+    } catch (e: any) {
+      alert('Failed to clean orphans: ' + e.message);
+    } finally {
+      setCleaningOrphans(false);
     }
   };
 
@@ -150,37 +198,62 @@ export default function CrmModifiersTab() {
           </div>
         </div>
 
-        <button
-          onClick={() => {
-            setEditingItem(null);
-            setFormData({
-              name: '',
-              customization_type: 'addon',
-              default_price: 0,
-              option_group_name: 'Add-ons',
-              is_required: false,
-              is_multi_select: false,
-              is_active: true,
-              display_order: items.length + 1
-            });
-            setIsModalOpen(true);
-          }}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            padding: '8px 14px',
-            borderRadius: '8px',
-            backgroundColor: 'var(--primary)',
-            color: '#ffffff',
-            border: 'none',
-            fontSize: '13px',
-            fontWeight: 600,
-            cursor: 'pointer'
-          }}
-        >
-          <Plus size={16} /> New Modifier Item
-        </button>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <button
+            type="button"
+            onClick={handleCleanupOrphans}
+            disabled={cleaningOrphans}
+            title="Audit and remove any product modifier assignments pointing to deleted master items"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '8px 12px',
+              backgroundColor: '#fff',
+              color: '#475569',
+              border: '1px solid var(--border)',
+              borderRadius: '8px',
+              fontSize: '12px',
+              fontWeight: 600,
+              cursor: 'pointer'
+            }}
+          >
+            <RefreshCw size={13} className={cleaningOrphans ? 'animate-spin' : ''} />
+            {cleaningOrphans ? 'Auditing...' : 'Clean Orphan Links'}
+          </button>
+
+          <button
+            onClick={() => {
+              setEditingItem(null);
+              setFormData({
+                name: '',
+                customization_type: 'addon',
+                default_price: 0,
+                option_group_name: 'Add-ons',
+                is_required: false,
+                is_multi_select: false,
+                is_active: true,
+                display_order: items.length + 1
+              });
+              setIsModalOpen(true);
+            }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '8px 14px',
+              borderRadius: '8px',
+              backgroundColor: 'var(--primary)',
+              color: '#ffffff',
+              border: 'none',
+              fontSize: '13px',
+              fontWeight: 600,
+              cursor: 'pointer'
+            }}
+          >
+            <Plus size={16} /> New Modifier Item
+          </button>
+        </div>
       </div>
 
       {loading ? (
@@ -290,8 +363,9 @@ export default function CrmModifiersTab() {
                               <Edit2 size={13} color="var(--text-muted)" />
                             </button>
                             <button
-                              onClick={() => handleDelete(item.id)}
+                              onClick={() => handleDelete(item)}
                               style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #fee2e2', background: '#fff', cursor: 'pointer' }}
+                              title="Delete modifier"
                             >
                               <Trash2 size={13} color="#ef4444" />
                             </button>
@@ -459,6 +533,87 @@ export default function CrmModifiersTab() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal with Product Usage List */}
+      {deleteUsageModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1000,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px'
+        }}>
+          <div style={{
+            backgroundColor: '#fff', borderRadius: '12px', width: '100%', maxWidth: '520px',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+            overflow: 'hidden'
+          }}>
+            {/* Modal Header */}
+            <div style={{ padding: '16px 20px', background: '#fef2f2', borderBottom: '1px solid #fee2e2', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: '#fee2e2', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Trash2 size={18} color="#dc2626" />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: '#991b1b' }}>
+                    Delete Used Modifier?
+                  </h3>
+                  <span style={{ fontSize: '12px', color: '#b91c1c' }}>
+                    "{deleteUsageModal.item.name}" is currently active on menu products
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDeleteUsageModal(null)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#991b1b' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ padding: '20px' }}>
+              <p style={{ margin: '0 0 12px', fontSize: '13px', color: '#374151', lineHeight: '1.5' }}>
+                This modifier belongs to group <strong>{deleteUsageModal.item.option_group_name || 'Add On'}</strong> and is currently assigned to <strong>{deleteUsageModal.products.length} product(s)</strong>:
+              </p>
+
+              <div style={{ maxHeight: '180px', overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: '8px', background: '#f9fafb', padding: '8px 12px', marginBottom: '16px' }}>
+                {deleteUsageModal.products.map(p => (
+                  <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid #f3f4f6', fontSize: '13px' }}>
+                    <span style={{ fontWeight: 600, color: '#111827' }}>{p.name}</span>
+                    <span style={{ fontSize: '11px', color: '#6b7280', background: '#ede9fe', padding: '2px 8px', borderRadius: '12px' }}>
+                      {p.option_group_name || 'Option'} {p.price > 0 ? `(+$${p.price})` : ''}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ padding: '10px 14px', background: '#fffbeb', border: '1px solid #fef3c7', borderRadius: '8px', fontSize: '12px', color: '#92400e', marginBottom: '16px' }}>
+                ⚠️ <strong>What happens when you delete:</strong> This modifier will be permanently unlinked from all {deleteUsageModal.products.length} products above, removed from their POS modifier screens and recipes, and any linked inventory effects will be deleted.
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => setDeleteUsageModal(null)}
+                  disabled={isDeleting}
+                  style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid var(--border)', background: '#fff', fontSize: '13px', cursor: 'pointer' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => executeDelete(deleteUsageModal.item.id)}
+                  disabled={isDeleting}
+                  style={{ padding: '8px 18px', borderRadius: '6px', backgroundColor: '#dc2626', color: '#fff', border: 'none', fontSize: '13px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+                >
+                  <Trash2 size={14} />
+                  {isDeleting ? 'Deleting Everywhere...' : `Delete & Remove from ${deleteUsageModal.products.length} Products`}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

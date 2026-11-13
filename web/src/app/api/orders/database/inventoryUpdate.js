@@ -4,75 +4,61 @@ import { applyInventoryStatusRule } from "../utils/inventoryHelpers";
 
 export async function deductInventory({
   request,
-  inventoryDeductions,
+  createdOrderId,
   effectiveBranchId,
+  lineItems,
+  inventoryDeductions,
 }) {
-  for (const d of inventoryDeductions) {
-    const [existingPbs] = await sql`
-      SELECT id, status, quantity_on_hand
-      FROM product_branch_status
-      WHERE product_id = ${d.product_id} AND branch_id = ${effectiveBranchId}
-    `;
+  try {
+    const itemsToDeduct = lineItems || inventoryDeductions || [];
 
-    if (!existingPbs) {
-      return {
-        ok: false,
-        response: corsJson(
-          request,
-          {
-            error: "Insufficient stock",
-            code: "INSUFFICIENT_STOCK",
-            items: [
-              {
-                product_id: d.product_id,
-                requested: d.quantity,
-                available: 0,
-              },
-            ],
-          },
-          { status: 409 },
-        ),
-      };
+    for (const it of itemsToDeduct) {
+      const productId = Number(it.product_id);
+      const quantity = Number(it.quantity || 1);
+
+      if (!productId || isNaN(productId) || quantity <= 0) {
+        continue;
+      }
+
+      // Check if product has inventory tracking enabled
+      const [product] = await sql`
+        SELECT inventory_applies FROM products WHERE id = ${productId}
+      `;
+
+      if (!product || !product.inventory_applies) {
+        continue;
+      }
+
+      const [existingPbs] = await sql`
+        SELECT id, status, quantity_on_hand
+        FROM product_branch_status
+        WHERE product_id = ${productId} AND branch_id = ${Number(effectiveBranchId)}
+      `;
+
+      if (existingPbs) {
+        const currentQoh =
+          existingPbs.quantity_on_hand === null ||
+          existingPbs.quantity_on_hand === undefined
+            ? 0
+            : Number(existingPbs.quantity_on_hand);
+
+        const nextQoh = Math.max(0, currentQoh - quantity);
+        const nextStatus = applyInventoryStatusRule(existingPbs.status, nextQoh);
+
+        await sql`
+          UPDATE product_branch_status
+          SET quantity_on_hand = ${nextQoh},
+              status = ${nextStatus},
+              updated_at = CURRENT_TIMESTAMP
+          WHERE id = ${existingPbs.id}
+        `;
+      }
     }
 
-    const currentQoh =
-      existingPbs.quantity_on_hand === null ||
-      existingPbs.quantity_on_hand === undefined
-        ? 0
-        : Number(existingPbs.quantity_on_hand);
-
-    if (d.quantity > currentQoh) {
-      return {
-        ok: false,
-        response: corsJson(
-          request,
-          {
-            error: "Insufficient stock",
-            code: "INSUFFICIENT_STOCK",
-            items: [
-              {
-                product_id: d.product_id,
-                requested: d.quantity,
-                available: currentQoh,
-              },
-            ],
-          },
-          { status: 409 },
-        ),
-      };
-    }
-
-    const nextQoh = currentQoh - d.quantity;
-    const nextStatus = applyInventoryStatusRule(existingPbs.status, nextQoh);
-
-    await sql`
-      UPDATE product_branch_status
-      SET quantity_on_hand = ${nextQoh},
-          status = ${nextStatus},
-          updated_at = CURRENT_TIMESTAMP
-      WHERE id = ${existingPbs.id}
-    `;
+    return { ok: true };
+  } catch (error) {
+    console.error("[deductInventory] Inventory update error (non-fatal):", error);
+    // Don't fail the order if secondary inventory update has a non-critical error
+    return { ok: true };
   }
-
-  return { ok: true };
 }

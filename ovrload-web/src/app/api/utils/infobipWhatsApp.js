@@ -262,9 +262,10 @@ export async function sendInfobipOTP(to, code) {
 /**
  * Send order status updates using template registry payload structures
  */
-export async function sendInfobipWhatsAppTemplate(toPhone, templateConfig, parameters = []) {
+export async function sendInfobipWhatsAppTemplate(toPhone, templateConfig, parameters = [], senderOverride = null) {
   const cfg = getInfobipConfig();
   const to = toInfobipRecipient(toPhone);
+  const sender = senderOverride || cfg.sender;
 
   const registry = await import("./whatsappTemplateRegistry.js");
   let schema = null;
@@ -296,7 +297,7 @@ export async function sendInfobipWhatsAppTemplate(toPhone, templateConfig, param
     schema,
     templateConfig,
     { placeholders: parameters },
-    cfg.sender,
+    sender,
     to
   );
 
@@ -316,12 +317,13 @@ export async function sendInfobipWhatsAppTemplate(toPhone, templateConfig, param
 /**
  * Send free-form WhatsApp reply message
  */
-export async function sendInfobipWhatsAppFreeForm(toPhone, messageText) {
+export async function sendInfobipWhatsAppFreeForm(toPhone, messageText, senderOverride = null) {
   const cfg = getInfobipConfig();
   const to = toInfobipRecipient(toPhone);
+  const sender = senderOverride || cfg.sender;
 
   const payload = {
-    from: cfg.sender,
+    from: sender,
     to,
     messageId: `freeform-${Date.now()}`,
     content: {

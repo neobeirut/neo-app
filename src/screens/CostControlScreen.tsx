@@ -30,8 +30,9 @@ export default function CostControlScreen({ user, permissions }: { user: any; pe
   useEffect(() => {
     async function loadBranches() {
       try {
-        const bList = await api.getBranches();
-        setBranches(bList || []);
+        const res = await api.getBranches();
+        const bList = Array.isArray(res) ? res : (res?.data || []);
+        setBranches(bList);
         if (bList && bList.length > 0) {
           const defaultB = user?.branch_id || bList[0].id;
           setSelectedBranch(defaultB);
@@ -123,7 +124,7 @@ export default function CostControlScreen({ user, permissions }: { user: any; pe
             onChange={e => setSelectedBranch(e.target.value)}
             className="bg-slate-800 text-slate-100 border border-slate-700 rounded-xl px-3 py-2 text-sm font-medium focus:ring-2 focus:ring-amber-500 outline-none"
           >
-            {branches.map(b => (
+            {Array.isArray(branches) && branches.map(b => (
               <option key={b.id} value={b.id}>{b.name}</option>
             ))}
           </select>

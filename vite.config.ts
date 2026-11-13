@@ -1,23 +1,63 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { resolve } from 'path';
+import { handleReplenishmentAiRequest } from './api/replenishment-ai.js';
+
+function replenishmentAiBackendPlugin() {
+  const attachMiddleware = (middlewares: any) => {
+    middlewares.use('/api/replenishment-ai', (req: any, res: any) => {
+      if (req.method !== 'POST') {
+        res.statusCode = 405;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ error: 'Method not allowed' }));
+        return;
+      }
+      let raw = '';
+      req.on('data', (chunk: any) => {
+        raw += chunk;
+      });
+      req.on('end', async () => {
+        try {
+          const body = raw ? JSON.parse(raw) : {};
+          const result = await handleReplenishmentAiRequest(body);
+          res.statusCode = 200;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ success: true, data: result }));
+        } catch (err: any) {
+          res.statusCode = 500;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ success: false, error: err?.message || 'Backend AI error' }));
+        }
+      });
+    });
+  };
+
+  return {
+    name: 'replenishment-ai-backend',
+    configureServer(server: any) {
+      attachMiddleware(server.middlewares);
+    },
+    configurePreviewServer(server: any) {
+      attachMiddleware(server.middlewares);
+    },
+  };
+}
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), replenishmentAiBackendPlugin()],
   base: '/',
   server: {
-    port: 4174,
+    port: 5173,
     host: true
   },
   preview: {
-    port: 4174,
+    port: 5173,
     host: true
   },
   resolve: {
     alias: {
       '@auth/create/react': '@hono/auth-js/react',
       '@auth/create': resolve(__dirname, 'web/src/__create/@auth/create.js'),
-      '@/auth.js': resolve(__dirname, 'web/src/auth.js'),
       '@/auth.js': resolve(__dirname, 'web/src/auth.js'),
       '@': resolve(__dirname, 'web/src'),
     },
@@ -27,7 +67,9 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'index.html'),
-        admin: resolve(__dirname, 'admin/index.html')
+        admin: resolve(__dirname, 'admin/index.html'),
+        newLanding: resolve(__dirname, 'new/index.html'),
+        newAdmin: resolve(__dirname, 'new/admin/index.html')
       }
     }
   }

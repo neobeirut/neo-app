@@ -48,9 +48,10 @@ async function sendNewOrderWhatsApp({ orderId, orderNumber, branchId }) {
     }
 
     const items = await sql`
-      SELECT product_name, quantity, total_price, unit_price
-      FROM order_items
-      WHERE order_id = ${Number(orderId)}
+      SELECT COALESCE(p.name, 'Item') as product_name, oi.quantity, oi.total_price, oi.unit_price
+      FROM order_items oi
+      LEFT JOIN products p ON oi.product_id::text = p.id::text
+      WHERE oi.order_id = ${Number(orderId)}
     `;
 
     const itemsText = (items || [])
@@ -163,6 +164,40 @@ export async function OPTIONS(request) {
   return corsOptions(request);
 }
 
+// Get user orders history
+export async function GET(request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const phone = searchParams.get("phone");
+
+    const userId = await resolveUserId(request, phone);
+
+    if (!userId) {
+      return corsJson(
+        request,
+        { error: "Authentication required" },
+        { status: 401 }
+      );
+    }
+
+    const rawOrders = await getUserOrders(userId);
+    const orders = (rawOrders || []).map((order) => ({
+      ...order,
+      id: order.order_number || order.id,
+      order_id: order.id,
+    }));
+
+    return corsJson(request, { orders });
+  } catch (error) {
+    console.error("Error fetching user orders:", error);
+    return corsJson(
+      request,
+      { error: "Failed to fetch orders", details: error?.message },
+      { status: 500 }
+    );
+  }
+}
+
 // Create a new order
 export async function POST(request) {
   let createdOrderId = null;
@@ -262,32 +297,38 @@ export async function POST(request) {
       return itemsResult.response;
     }
 
-    const { processedItems, subtotalAmount } = itemsResult;
+    const processedItems = itemsResult.orderItems || itemsResult.processedItems || [];
+    const subtotalAmount = Number(itemsResult.subtotalAmount || 0);
 
     const creationResult = await createOrder({
       userId,
       effectiveBranchId,
-      orderType: order_type,
-      scheduledDate: scheduled_date,
-      scheduledTime: scheduled_time,
-      deliveryAddress: delivery_address,
-      specialInstructions: special_instructions,
+      order_type,
+      scheduled_date,
+      scheduled_time,
+      delivery_address,
+      address_id,
+      special_instructions,
       subtotalAmount,
       deliveryFee,
       distanceKm,
       appliedRewardId: applied_reward_id || applied_user_reward_id,
+      promo_code,
     });
 
-    if (!creationResult.ok) {
-      return creationResult.response;
+    const newOrderId = creationResult?.id || creationResult?.createdOrderId;
+    const newOrderNumber = creationResult?.orderNumber || creationResult?.createdOrderNumber;
+
+    if (!newOrderId) {
+      throw new Error("Failed to create order in database");
     }
 
-    const { createdOrderId: newOrderId, createdOrderNumber } = creationResult;
     createdOrderId = newOrderId;
+    const createdOrderNumber = newOrderNumber;
 
-    await insertOrderItems({
+    const insertedLineItems = await insertOrderItems({
       createdOrderId,
-      processedItems,
+      orderItems: processedItems,
     });
 
     await recordPromoRedemption({
@@ -295,16 +336,16 @@ export async function POST(request) {
       promoCode: promo_code,
       createdOrderId,
       effectiveBranchId,
+      subtotalAmount,
     });
 
-    const inventoryResult = await deductInventory({
-      processedItems,
+    await deductInventory({
+      request,
+      createdOrderId,
       effectiveBranchId,
+      lineItems: insertedLineItems,
+      clientName,
     });
-
-    if (!inventoryResult.ok) {
-      return inventoryResult.response;
-    }
 
     await redeemPointsReward({
       userId,

@@ -17,6 +17,9 @@ import {
 } from 'lucide-react';
 import { supabase } from '../api/supabase';
 import './DashboardScreen.css';
+import { useActiveConcept } from '../context/ConceptContext';
+import DeliveryConceptDashboard from '../components/dashboard/DeliveryConceptDashboard';
+import CompanyOverviewDashboard from '../components/dashboard/CompanyOverviewDashboard';
 
 interface DashboardScreenProps {
   user: {
@@ -33,6 +36,7 @@ export default function DashboardScreen({
   permissions
 }: DashboardScreenProps) {
   const navigate = useNavigate();
+  const { activeConcept, activeProfile } = useActiveConcept();
   const isAdmin = user.role === 'Admin' || user.role === 'Super Admin' || user.role === 'SuperAdmin' || user.role === 'Owner' || user.role === 'Manager' || user.role?.toLowerCase()?.includes('admin');
 
   // Filters State
@@ -308,6 +312,28 @@ export default function DashboardScreen({
         return 'kpi-status-neutral';
     }
   };
+
+  // Concept-Specific Dashboard Delegation
+  if (activeConcept === 'ALL') {
+    return (
+      <div className="dashboard-container">
+        <CompanyOverviewDashboard user={user} permissions={permissions} />
+      </div>
+    );
+  }
+
+  if (activeConcept === 'OVRLOAD' || activeConcept === 'WICKD') {
+    return (
+      <div className="dashboard-container">
+        <DeliveryConceptDashboard 
+          conceptCode={activeConcept} 
+          branchId={selectedBranch} 
+          user={user} 
+          permissions={permissions} 
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="dashboard-container">

@@ -54,7 +54,17 @@ export async function resolveOrderId(idOrNumber) {
     return null;
   }
   
-  // If it's a pure integer
+  // 1. Check if it matches an order_number (e.g. "261016-7084" or "261016-9943")
+  const [byOrderNumber] = await sql`
+    SELECT id FROM orders 
+    WHERE order_number = ${str}
+    LIMIT 1
+  `;
+  if (byOrderNumber?.id) {
+    return Number(byOrderNumber.id);
+  }
+
+  // 2. If it's a pure integer, check by primary key id
   if (/^\d+$/.test(str)) {
     const num = Number(str);
     const [row] = await sql`
@@ -62,7 +72,9 @@ export async function resolveOrderId(idOrNumber) {
       WHERE id = ${num}
       LIMIT 1
     `;
-    return row?.id || null;
+    if (row?.id) {
+      return Number(row.id);
+    }
   }
   
   return null;

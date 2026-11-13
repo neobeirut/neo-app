@@ -53,19 +53,46 @@ export interface RecipeCostAlert {
 }
 
 export const menuProfitabilityApi = {
-  getDailySnapshots: async (restaurantId: string, branchId: string, date: string): Promise<MenuProductProfitability[]> => {
-    const { data, error } = await supabase.rpc('get_product_profitability_report', {
+  getDailySnapshots: async (
+    restaurantId: string, 
+    branchId?: string | null, 
+    startDate?: string, 
+    endDate?: string
+  ): Promise<MenuProductProfitability[]> => {
+    const params: any = {
       p_restaurant_id: restaurantId,
-      p_branch_id: branchId,
-      p_start_date: date,
-      p_end_date: date
-    });
+      p_branch_id: branchId || null
+    };
+    if (startDate) params.p_start_date = startDate;
+    if (endDate) params.p_end_date = endDate;
+
+    const { data, error } = await supabase.rpc('get_product_profitability_report', params);
 
     if (error) throw error;
     return (data || []).map((row: any) => ({
       ...row,
       id: `${row.product_id}-${row.channel}-${row.snapshot_date}`,
-      product_name: row.product_name || `Product #${row.product_id}`
+      product_name: row.product_name || `Product #${row.product_id}`,
+      gross_units_sold: Number(row.gross_units_sold || 0),
+      units_returned: Number(row.units_returned || 0),
+      net_units: Number(row.net_units || 0),
+      gross_sales_revenue: Number(row.gross_sales_revenue || 0),
+      total_discounts: Number(row.total_discounts || 0),
+      net_sales_revenue: Number(row.net_sales_revenue || 0),
+      average_net_unit_price: Number(row.average_net_unit_price || 0),
+      theoretical_total_food_cost: row.theoretical_total_food_cost !== null && row.theoretical_total_food_cost !== undefined ? Number(row.theoretical_total_food_cost) : null,
+      theoretical_unit_food_cost: row.theoretical_unit_food_cost !== null && row.theoretical_unit_food_cost !== undefined ? Number(row.theoretical_unit_food_cost) : null,
+      theoretical_food_cost_pct: row.theoretical_food_cost_pct !== null && row.theoretical_food_cost_pct !== undefined ? Number(row.theoretical_food_cost_pct) : null,
+      realized_total_food_cost: Number(row.realized_total_food_cost || 0),
+      realized_unit_food_cost: Number(row.realized_unit_food_cost || 0),
+      realized_food_cost_pct: row.realized_food_cost_pct !== null && row.realized_food_cost_pct !== undefined ? Number(row.realized_food_cost_pct) : null,
+      total_cost_variance: row.total_cost_variance !== null && row.total_cost_variance !== undefined ? Number(row.total_cost_variance) : 0,
+      total_packaging_cost: Number(row.total_packaging_cost || 0),
+      unit_packaging_cost: Number(row.unit_packaging_cost || 0),
+      realized_total_variable_cost: Number(row.realized_total_variable_cost || 0),
+      realized_contribution_margin: Number(row.realized_contribution_margin || 0),
+      unit_contribution_margin: row.unit_contribution_margin !== null && row.unit_contribution_margin !== undefined ? Number(row.unit_contribution_margin) : null,
+      contribution_margin_pct: row.contribution_margin_pct !== null && row.contribution_margin_pct !== undefined ? Number(row.contribution_margin_pct) : null
     }));
   },
 
@@ -100,26 +127,54 @@ export const menuProfitabilityApi = {
   },
 
   getActiveAlerts: async (restaurantId: string, branchId?: string): Promise<RecipeCostAlert[]> => {
+    try {
+      let query = supabase
+        .from('recipe_cost_alerts')
+        .select(`
+          *,
+          product:products (name)
+        `)
+        .eq('restaurant_id', restaurantId)
+        .eq('status', 'ACTIVE')
+        .order('created_at', { ascending: false });
+
+      if (branchId) {
+        query = query.eq('branch_id', branchId);
+      }
+
+      const { data, error } = await query;
+      if (error) {
+        console.warn('getActiveAlerts warning:', error.message);
+        return [];
+      }
+      return (data || []).map((row: any) => ({
+        ...row,
+        product_name: row.product?.name || `Product #${row.product_id}`
+      }));
+    } catch (e) {
+      console.warn('getActiveAlerts error:', e);
+      return [];
+    }
+  },
+
+  getPackagingSpecifications: async (restaurantId: string, productId?: number) => {
     let query = supabase
-      .from('recipe_cost_alerts')
+      .from('product_packaging_specifications')
       .select(`
         *,
+        packaging_material:packaging_materials (name, unit, current_cost_usd),
         product:products (name)
       `)
       .eq('restaurant_id', restaurantId)
-      .eq('status', 'ACTIVE')
+      .is('effective_to', null)
       .order('created_at', { ascending: false });
 
-    if (branchId) {
-      query = query.eq('branch_id', branchId);
+    if (productId) {
+      query = query.eq('product_id', productId);
     }
-
     const { data, error } = await query;
     if (error) throw error;
-    return (data || []).map((row: any) => ({
-      ...row,
-      product_name: row.product?.name || `Product #${row.product_id}`
-    }));
+    return data || [];
   },
 
   getPackagingMaterials: async (restaurantId: string) => {

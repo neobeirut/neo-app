@@ -8,7 +8,9 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build:admin": "vite build",
+    "build:pos": "vite build pos-app --base /new/pos/ --outDir ../dist/new/pos",
+    "build": "npm run build:admin && npm run build:pos",
     "preview": "vite preview",
     "lint": "eslint ."
   },

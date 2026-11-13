@@ -285,9 +285,9 @@ export async function POST(request) {
     const { createdOrderId: newOrderId, createdOrderNumber } = creationResult;
     createdOrderId = newOrderId;
 
-    await insertOrderItems({
+    const insertedLineItems = await insertOrderItems({
       createdOrderId,
-      processedItems,
+      orderItems: processedItems,
     });
 
     await recordPromoRedemption({
@@ -298,8 +298,11 @@ export async function POST(request) {
     });
 
     const inventoryResult = await deductInventory({
-      processedItems,
+      request,
+      createdOrderId,
       effectiveBranchId,
+      lineItems: insertedLineItems,
+      clientName,
     });
 
     if (!inventoryResult.ok) {

@@ -1,5 +1,6 @@
 // vite-react-hierarchical-layouts.ts
 import fs from 'node:fs';
+import ts from 'typescript';
 import path from 'node:path';
 import type { PluginContext } from 'rollup';
 import { normalizePath, transformWithEsbuild, type Plugin } from 'vite';
@@ -133,6 +134,27 @@ export function layoutWrapperPlugin(userOpts: HierarchicalLayoutOptions = {}): P
       }
     });
 
+    // Preserve only exports actually present in the source. React Router needs
+    // explicit exports to discover metadata and strip server loaders from clients.
+    const source = ts.createSourceFile(pagePath, fs.readFileSync(pagePath, 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.JSX);
+    const names = new Set<string>();
+    for (const statement of source.statements) {
+      if (ts.isExportDeclaration(statement) && statement.exportClause && ts.isNamedExports(statement.exportClause)) {
+        for (const element of statement.exportClause.elements) names.add(element.name.text);
+      }
+      const exported = ts.canHaveModifiers(statement) && ts.getModifiers(statement)?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword);
+      if (!exported) continue;
+      if (ts.isVariableStatement(statement)) {
+        for (const declaration of statement.declarationList.declarations) {
+          if (ts.isIdentifier(declaration.name)) names.add(declaration.name.text);
+        }
+      } else if (ts.isFunctionDeclaration(statement) && statement.name) {
+        names.add(statement.name.text);
+      }
+    }
+    const routeExports = ['meta', 'links', 'loader', 'action', 'headers', 'handle', 'shouldRevalidate', 'clientLoader', 'clientAction', 'ErrorBoundary', 'HydrateFallback'].filter((name) => names.has(name));
+    const forwardExports = routeExports.length ? 'export { ' + routeExports.join(', ') + ' } from ' + JSON.stringify(pagePath + NO_LAYOUT_QUERY) + ';' : '';
+
     // import the actual page with a flag to skip re-wrapping
     imports.push(`import Page from ${JSON.stringify(pagePath + NO_LAYOUT_QUERY)};`);
 
@@ -145,6 +167,7 @@ export function layoutWrapperPlugin(userOpts: HierarchicalLayoutOptions = {}): P
     /* ---------- module body ---------- */
     return `
 ${imports.join('\n')}
+${forwardExports}
 
 export default function WrappedPage(props) {
   ${routeParams.length > 0 ? 'const params = useParams();' : ''}

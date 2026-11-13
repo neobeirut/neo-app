@@ -81,7 +81,7 @@ export async function GET(request) {
       paramIndex++;
     }
 
-    ordersQuery += ` ORDER BY o.created_at DESC`;
+    ordersQuery += ` ORDER BY COALESCE(o.created_at, o.scheduled_date::timestamp) DESC, o.id DESC`;
 
     const orders = await sql(ordersQuery, params);
 
@@ -96,7 +96,7 @@ export async function GET(request) {
           oi.order_id,
           oi.id,
           oi.product_id,
-          COALESCE(oi.product_name, p.name, 'Item') as product_name,
+          COALESCE(p.name, 'Item') as product_name,
           p.image_url as product_image,
           oi.quantity,
           oi.unit_price,
@@ -164,6 +164,7 @@ export async function GET(request) {
     const ordersWithItems = orders.map((order) => {
       const mappedOrder = {
         ...order,
+        order_id: order.id,
         items: itemsMap[order.id] || [],
       };
       mappedOrder.id = order.order_number || order.id;

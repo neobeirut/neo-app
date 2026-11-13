@@ -1,4 +1,4 @@
-const CACHE_NAME = 'flow-admin-cache-v1';
+const CACHE_NAME = 'flow-admin-cache-v3';
 
 const PRECACHE_ASSETS = [
   '/',

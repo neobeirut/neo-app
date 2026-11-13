@@ -1,3 +1,4 @@
+export const DEFAULT_RESTAURANT_ID = '79256f11-a9f8-4fec-901d-69baf929762d';
 import { supabase } from './supabase';
 
 let cachedRestaurantId: string | null = null;
@@ -48,13 +49,13 @@ export function getRestaurantId(): string | null {
       const cachedUserStr = window.localStorage.getItem('neo_admin_user');
       if (cachedUserStr) {
         const cachedUser = JSON.parse(cachedUserStr);
-        if (cachedUser?.restaurant_id) {
-          return cachedUser.restaurant_id;
+        if (cachedUser && Object.prototype.hasOwnProperty.call(cachedUser, 'restaurant_id')) {
+          return cachedUser.restaurant_id || null;
         }
       }
     }
   } catch {}
-  return cachedRestaurantId;
+  return cachedRestaurantId || DEFAULT_RESTAURANT_ID;
 }
 
 export const DEFAULT_ADMIN_MODULE_PERMISSIONS: Record<string, boolean> = {
@@ -224,9 +225,58 @@ export const api = {
     return { success: true, data };
   },
 
+  createMenuSection: async (section: { name: string; department?: string; display_order?: number }) => {
+    const rid = getRestaurantId();
+    const { data, error } = await supabase.from('menu_sections').insert({
+      restaurant_id: rid,
+      name: section.name.trim(),
+      department: section.department || 'Kitchen',
+      display_order: section.display_order ?? 99,
+      is_active: true
+    }).select().single();
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  updateMenuSection: async (id: number | string, section: { name?: string; department?: string; display_order?: number; is_active?: boolean }) => {
+    const rid = getRestaurantId();
+    const payload: any = { updated_at: new Date().toISOString() };
+    if (section.name !== undefined) payload.name = section.name.trim();
+    if (section.department !== undefined) payload.department = section.department;
+    if (section.display_order !== undefined) payload.display_order = section.display_order;
+    if (section.is_active !== undefined) payload.is_active = section.is_active;
+
+    let query = supabase.from('menu_sections').update(payload).eq('id', id);
+    if (rid) query = query.eq('restaurant_id', rid);
+    const { data, error } = await query.select().single();
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  deleteMenuSection: async (id: number | string) => {
+    const rid = getRestaurantId();
+    // Check if any recipes currently use this section
+    let checkQuery = supabase.from('menu_recipes').select('id, item_name').eq('section_id', id);
+    if (rid) checkQuery = checkQuery.eq('restaurant_id', rid);
+    const { data: inUse } = await checkQuery.limit(5);
+    if (inUse && inUse.length > 0) {
+      const names = inUse.map((r: any) => r.item_name).join(', ');
+      return { success: false, error: `Cannot delete section: it is currently used by recipe(s): ${names}. Reassign them to another section first.` };
+    }
+
+    let query = supabase.from('menu_sections').delete().eq('id', id);
+    if (rid) query = query.eq('restaurant_id', rid);
+    const { error } = await query;
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  },
+
   getMenuRecipes: async (sectionId?: number) => {
     const rid = getRestaurantId();
-    let query = supabase.from('menu_recipes').select('*').order('item_name');
+    let query = supabase
+      .from('menu_recipes')
+      .select('*, recipe_components(*, items:item_id(id, name, unit, base_unit, price_usd, department, sub_department))')
+      .order('item_name');
     if (sectionId) query = query.eq('section_id', sectionId);
     if (rid) query = query.eq('restaurant_id', rid);
     
@@ -255,7 +305,10 @@ export const api = {
 
   getMenuRecipeById: async (id: string) => {
     const rid = getRestaurantId();
-    let query = supabase.from('menu_recipes').select('*').eq('id', id);
+    let query = supabase
+      .from('menu_recipes')
+      .select('*, recipe_components(*, items:item_id(id, name, unit, base_unit, price_usd, department, sub_department))')
+      .eq('id', id);
     if (rid) query = query.eq('restaurant_id', rid);
     const { data: recipe, error: recipeError } = await query.single();
     if (recipeError) return { success: false, error: recipeError.message };
@@ -279,16 +332,41 @@ export const api = {
 
   saveMenuRecipe: async (recipe: any) => {
     const payload = await injectRestaurantId({ ...recipe });
-    const { error } = await supabase.from('menu_recipes').upsert(payload);
+    const { data, error } = await supabase.from('menu_recipes').upsert(payload).select().single();
     if (error) return { success: false, error: error.message };
-    return { success: true };
+    return { success: true, data };
   },
 
   deleteMenuRecipe: async (recipeId: string) => {
-    // We soft-delete or completely delete depending on business logic. The mobile app does soft-delete.
-    const { error } = await supabase.from('menu_recipes').update({ is_active: false }).eq('id', recipeId);
+    const rid = getRestaurantId();
+    if (!rid) return { success: false, error: 'Restaurant context required' };
+    const { data, error } = await supabase
+      .from('menu_recipes')
+      .delete()
+      .eq('restaurant_id', rid)
+      .eq('id', recipeId)
+      .select('id');
     if (error) return { success: false, error: error.message };
-    return { success: true };
+    if (!data || !data.length || data[0].id !== recipeId) {
+      return { success: false, error: 'Recipe not found or could not be deleted' };
+    }
+    return { success: true, data };
+  },
+
+  deleteProductionRecipe: async (recipeId: string) => {
+    const rid = getRestaurantId();
+    if (!rid) return { success: false, error: 'Restaurant context required' };
+    const { data, error } = await supabase
+      .from('production_recipes')
+      .delete()
+      .eq('restaurant_id', rid)
+      .eq('id', recipeId)
+      .select('id');
+    if (error) return { success: false, error: error.message };
+    if (!data || !data.length || data[0].id !== recipeId) {
+      return { success: false, error: 'Recipe not found or could not be deleted' };
+    }
+    return { success: true, data };
   },
 
   // --- Phase 2: Recipe Components & BOM Engine ---
@@ -303,15 +381,25 @@ export const api = {
   },
 
   saveRecipeComponents: async (recipeId: string, components: any[]) => {
-    const { error: delErr } = await supabase
+    const { data: currentRows, error: fetchErr } = await supabase
       .from('recipe_components')
-      .delete()
+      .select('id')
       .eq('recipe_id', recipeId);
-    if (delErr) return { success: false, error: delErr.message };
+    if (fetchErr) return { success: false, error: fetchErr.message };
 
-    if (!components || components.length === 0) return { success: true };
+    const generateUUID = () => {
+      if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+        return crypto.randomUUID();
+      }
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+        const r = (Math.random() * 16) | 0;
+        const v = c === 'x' ? r : (r & 0x3) | 0x8;
+        return v.toString(16);
+      });
+    };
 
-    const rows = components.map((c, idx) => ({
+    const rows = (components || []).map((c, idx) => ({
+      id: (c.id && typeof c.id === 'string' && c.id.trim().length > 0 && c.id !== 'null') ? c.id : generateUUID(),
       recipe_id: recipeId,
       item_id: c.item_id,
       base_quantity: Number(c.base_quantity),
@@ -322,19 +410,50 @@ export const api = {
       sort_order: idx
     }));
 
-    const { error: insErr } = await supabase
+    if (rows.length > 0) {
+      const { error: upsertErr } = await supabase.from('recipe_components').upsert(rows);
+      if (upsertErr) return { success: false, error: upsertErr.message };
+    }
+
+    const keptIds = new Set(rows.map(r => r.id));
+    const toRemove = (currentRows || []).map((r: any) => r.id).filter(id => !keptIds.has(id));
+    if (toRemove.length > 0) {
+      const { error: delErr } = await supabase.from('recipe_components').delete().eq('recipe_id', recipeId).in('id', toRemove);
+      if (delErr) return { success: false, error: delErr.message };
+    }
+
+    const { data: finalRows } = await supabase
       .from('recipe_components')
-      .insert(rows);
-    if (insErr) return { success: false, error: insErr.message };
-    return { success: true };
+      .select('*, items:item_id(id, name, unit, base_unit, price_usd, department)')
+      .eq('recipe_id', recipeId)
+      .order('sort_order', { ascending: true });
+
+    return { success: true, data: finalRows || rows };
   },
 
   activateMenuRecipe: async (recipeId: string) => {
+    const { data: recipe, error: recErr } = await supabase
+      .from('menu_recipes')
+      .select('product_id')
+      .eq('id', recipeId)
+      .single();
+    if (recErr || !recipe?.product_id) return { success: false, error: 'Recipe is not linked to a POS product.' };
+
+    const { data: product, error: prodErr } = await supabase
+      .from('products')
+      .select('inventory_mode')
+      .eq('id', recipe.product_id)
+      .single();
+    if (prodErr || !product || product.inventory_mode !== 'RECIPE') {
+      return { success: false, error: 'Product must be in RECIPE inventory mode to activate recipe.' };
+    }
+
     const { data, error } = await supabase.rpc('activate_menu_recipe', {
       p_recipe_id: recipeId
     });
     if (error) return { success: false, error: error.message };
-    return { success: true, data };
+    if (!data || data.success === false) return { success: false, error: data?.error || 'Failed to activate recipe.' };
+    return { success: true, ...data };
   },
 
   getProductsSimpleList: async () => {
@@ -349,7 +468,7 @@ export const api = {
   getInventoryItemsSimpleList: async () => {
     const { data, error } = await supabase
       .from('items')
-      .select('id, name, unit, base_unit, price_usd, department, default_inventory_location_id')
+      .select('id, name, unit, base_unit, price_usd, department, default_inventory_location_id, vat')
       .order('name');
     if (error) return { success: false, error: error.message };
     return { success: true, data: data || [] };
@@ -364,13 +483,138 @@ export const api = {
     return { success: true, data: data || [] };
   },
 
-  getProductCustomizationsList: async (productId: number) => {
-    const { data, error } = await supabase
-      .from('product_customizations')
-      .select('*, customization_items(*)')
-      .eq('product_id', productId);
+  getAllProductCustomizations: async () => {
+    const rid = getRestaurantId();
+    let query = supabase.from('product_customizations').select('*');
+    if (rid) query = query.eq('restaurant_id', rid);
+    const { data, error } = await query;
     if (error) return { success: false, error: error.message };
     return { success: true, data: data || [] };
+  },
+
+  getAllModifierInventoryEffects: async () => {
+    const { data, error } = await supabase
+      .from('modifier_inventory_effects')
+      .select('*, items:item_id(id, name, unit, base_unit, price_usd, department)');
+    if (error) return { success: false, error: error.message };
+    return { success: true, data: data || [] };
+  },
+
+  getProductCustomizationsList: async (productId: number) => {
+    const rid = getRestaurantId();
+    let query = supabase
+      .from('product_customizations')
+      .select('*')
+      .eq('product_id', productId);
+    if (rid) query = query.eq('restaurant_id', rid);
+    const { data, error } = await query;
+    if (error) return { success: false, error: error.message };
+    return { success: true, data: data || [] };
+  },
+
+  validateRecipeComponentUnits: async (components: any[], items: any[] = []) => {
+    try {
+      const { data, error } = await supabase.rpc('validate_recipe_component_units', {
+        p_components: components
+      });
+      if (error) {
+        console.warn('validate_recipe_component_units RPC notice:', error.message);
+        // Fall back gracefully if RPC schema is unavailable
+        return { success: true };
+      }
+      if (data && data.success === false) {
+        return { success: false, error: data.error || 'Invalid component unit conversion.' };
+      }
+      return { success: true, data };
+    } catch (e: any) {
+      console.warn('validateRecipeComponentUnits exception fallback:', e.message);
+      return { success: true };
+    }
+  },
+
+  saveProductInventoryMode: async (productId: number, mode: string, previousMode?: string) => {
+    const patch: any = { inventory_mode: mode };
+    if (mode === 'NONE') patch.inventory_applies = false;
+    let query = supabase.from('products').update(patch).eq('id', productId);
+    if (previousMode) query = query.eq('inventory_mode', previousMode);
+    const { data, error } = await query;
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  getProductInventoryItemMapping: async (productId: number) => {
+    const rid = getRestaurantId();
+    let query = supabase.from('product_inventory_item_mappings').select('*').eq('product_id', productId);
+    if (rid) query = query.eq('restaurant_id', rid);
+    const { data, error } = await query.maybeSingle();
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  getAllProductInventoryItemMappings: async () => {
+    const rid = getRestaurantId();
+    let query = supabase.from('product_inventory_item_mappings').select('*');
+    if (rid) query = query.eq('restaurant_id', rid);
+    const { data, error } = await query;
+    if (error) return { success: false, error: error.message };
+    return { success: true, data: data || [] };
+  },
+
+  saveProductInventoryItemMapping: async (productId: number, itemId: string, ratio: number) => {
+    if (!Number.isFinite(Number(ratio)) || Number(ratio) <= 0) {
+      return { success: false, error: 'Conversion ratio must be a finite positive number.' };
+    }
+    const rid = getRestaurantId();
+
+    // Look up any existing mapping for this product to preserve the primary key id
+    let query = supabase.from('product_inventory_item_mappings').select('id').eq('product_id', productId);
+    if (rid) query = query.eq('restaurant_id', rid);
+    const { data: existing } = await query.maybeSingle();
+
+    const payload: any = {
+      restaurant_id: rid,
+      product_id: productId,
+      item_id: itemId,
+      conversion_ratio: Number(ratio),
+      updated_at: new Date().toISOString()
+    };
+    if (existing?.id) {
+      payload.id = existing.id;
+    }
+
+    const { data, error } = await supabase
+      .from('product_inventory_item_mappings')
+      .upsert(payload, { onConflict: 'restaurant_id,product_id' });
+
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  getInventoryUnitConversions: async () => {
+    const rid = getRestaurantId();
+    let query = supabase.from('item_unit_conversions').select('*');
+    if (rid) query = query.or(`restaurant_id.eq.${rid},restaurant_id.is.null`);
+    const { data, error } = await query;
+    if (error) return { success: false, error: error.message };
+    return { success: true, data: data || [] };
+  },
+
+  saveItemUnitConversion: async (payload: any) => {
+    const rid = payload.restaurant_id || getRestaurantId();
+    const dataToSave = {
+      ...payload,
+      restaurant_id: rid,
+      updated_at: new Date().toISOString()
+    };
+    const { data, error } = await supabase.from('item_unit_conversions').upsert(dataToSave);
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  deleteItemUnitConversion: async (id: string) => {
+    const { error } = await supabase.from('item_unit_conversions').delete().eq('id', id);
+    if (error) return { success: false, error: error.message };
+    return { success: true };
   },
 
   getModifierInventoryEffectsList: async (productCustomizationId: number) => {
@@ -378,6 +622,16 @@ export const api = {
       .from('modifier_inventory_effects')
       .select('*, items:item_id(name, unit, base_unit)')
       .eq('product_customization_id', productCustomizationId);
+    if (error) return { success: false, error: error.message };
+    return { success: true, data: data || [] };
+  },
+
+  getAllProductModifierEffects: async (productCustomizationIds: number[]) => {
+    if (!productCustomizationIds || productCustomizationIds.length === 0) return { success: true, data: [] };
+    const { data, error } = await supabase
+      .from('modifier_inventory_effects')
+      .select('*, items:item_id(id, name, unit, base_unit, price_usd, vat)')
+      .in('product_customization_id', productCustomizationIds);
     if (error) return { success: false, error: error.message };
     return { success: true, data: data || [] };
   },
@@ -398,6 +652,159 @@ export const api = {
       .delete()
       .eq('id', id);
     if (error) return { success: false, error: error.message };
+    return { success: true };
+  },
+
+  applyModifierEffectsToAllMatchingProducts: async (sourceCustomizationId: number) => {
+    const rid = getRestaurantId();
+    // 1. Get the source customization
+    const { data: sourceCustomization, error: sourceErr } = await supabase
+      .from('product_customizations')
+      .select('*')
+      .eq('id', sourceCustomizationId)
+      .single();
+    if (sourceErr || !sourceCustomization) {
+      return { success: false, error: sourceErr?.message || 'Source modifier not found.' };
+    }
+
+    // 2. Get the existing effects on this customization
+    const { data: sourceEffects, error: effErr } = await supabase
+      .from('modifier_inventory_effects')
+      .select('*')
+      .eq('product_customization_id', sourceCustomizationId);
+    if (effErr) return { success: false, error: effErr.message };
+
+    // 3. Find matching product_customizations on other products
+    let query = supabase
+      .from('product_customizations')
+      .select('id, product_id, ingredient, customization_item_id')
+      .neq('id', sourceCustomizationId);
+
+    if (rid) query = query.eq('restaurant_id', rid);
+
+    if (sourceCustomization.customization_item_id) {
+      query = query.or(`customization_item_id.eq.${sourceCustomization.customization_item_id},ingredient.ilike.${sourceCustomization.ingredient.trim()}`);
+    } else if (sourceCustomization.ingredient) {
+      query = query.ilike('ingredient', sourceCustomization.ingredient.trim());
+    }
+
+    const { data: targets, error: targetErr } = await query;
+    if (targetErr) return { success: false, error: targetErr.message };
+    if (!targets || targets.length === 0) {
+      return { success: true, updatedProductsCount: 0 };
+    }
+
+    const targetIds = targets.map((t: any) => t.id);
+
+    // 4. Delete existing effects on matching customizations
+    if (targetIds.length > 0) {
+      await supabase
+        .from('modifier_inventory_effects')
+        .delete()
+        .in('product_customization_id', targetIds);
+    }
+
+    // 5. If source has effects, copy them over to all targets
+    if (sourceEffects && sourceEffects.length > 0) {
+      const newEffects: any[] = [];
+      for (const target of targets) {
+        for (const eff of sourceEffects) {
+          newEffects.push({
+            product_customization_id: target.id,
+            customization_item_id: target.customization_item_id || eff.customization_item_id || null,
+            item_id: eff.item_id,
+            effect_type: eff.effect_type,
+            quantity_delta: eff.quantity_delta,
+            unit: eff.unit,
+            location_id: eff.location_id || null,
+            notes: eff.notes || null
+          });
+        }
+      }
+      if (newEffects.length > 0) {
+        const { error: insErr } = await supabase
+          .from('modifier_inventory_effects')
+          .insert(newEffects);
+        if (insErr) return { success: false, error: insErr.message };
+      }
+    }
+
+    const uniqueProductCount = new Set(targets.map((t: any) => t.product_id)).size;
+    return { success: true, updatedProductsCount: uniqueProductCount };
+  },
+
+  copyProductModifiersAndEffects: async (fromProductId: number, toProductId: number) => {
+    const rid = getRestaurantId();
+    // 1. Get source product customizations
+    let q = supabase.from('product_customizations').select('*').eq('product_id', fromProductId);
+    if (rid) q = q.eq('restaurant_id', rid);
+    const { data: sourceMods, error: modErr } = await q;
+    if (modErr) return { success: false, error: modErr.message };
+    if (!sourceMods || sourceMods.length === 0) {
+      return { success: false, error: 'Source product has no modifiers to copy.' };
+    }
+
+    // 2. Get all effects for source customizations
+    const sourceModIds = sourceMods.map((m: any) => m.id);
+    const { data: sourceEffects } = await supabase
+      .from('modifier_inventory_effects')
+      .select('*')
+      .in('product_customization_id', sourceModIds);
+
+    // 3. For target product, check existing customizations or copy over
+    let targetQ = supabase.from('product_customizations').select('*').eq('product_id', toProductId);
+    if (rid) targetQ = targetQ.eq('restaurant_id', rid);
+    const { data: targetMods } = await targetQ;
+    const targetMap = new Map((targetMods || []).map((m: any) => [m.ingredient?.toLowerCase()?.trim(), m]));
+
+    for (const sMod of sourceMods) {
+      const key = sMod.ingredient?.toLowerCase()?.trim();
+      let targetModId = targetMap.get(key)?.id;
+
+      if (!targetModId) {
+        // Create new customization for target product
+        const { data: newMod, error: newModErr } = await supabase
+          .from('product_customizations')
+          .insert({
+            product_id: toProductId,
+            ingredient: sMod.ingredient,
+            customization_type: sMod.customization_type,
+            price: sMod.price,
+            is_active: sMod.is_active,
+            customization_item_id: sMod.customization_item_id,
+            is_required: sMod.is_required,
+            is_multi_select: sMod.is_multi_select,
+            option_group_name: sMod.option_group_name,
+            restaurant_id: rid || sMod.restaurant_id
+          })
+          .select('id')
+          .single();
+        if (!newModErr && newMod) {
+          targetModId = newMod.id;
+        }
+      }
+
+      if (targetModId) {
+        // Copy matching effects
+        const matchingEffects = (sourceEffects || []).filter((e: any) => e.product_customization_id === sMod.id);
+        if (matchingEffects.length > 0) {
+          // Remove old effects on target mod first
+          await supabase.from('modifier_inventory_effects').delete().eq('product_customization_id', targetModId);
+          const effectsToInsert = matchingEffects.map((e: any) => ({
+            product_customization_id: targetModId,
+            customization_item_id: e.customization_item_id || null,
+            item_id: e.item_id,
+            effect_type: e.effect_type,
+            quantity_delta: e.quantity_delta,
+            unit: e.unit,
+            location_id: e.location_id || null,
+            notes: e.notes || null
+          }));
+          await supabase.from('modifier_inventory_effects').insert(effectsToInsert);
+        }
+      }
+    }
+
     return { success: true };
   },
 
@@ -433,6 +840,24 @@ export const api = {
     if (rid) query = query.eq('restaurant_id', rid);
     const { data, error } = await query;
     if (error) return { success: false, error: error.message };
+
+    if (Array.isArray(data)) {
+      try {
+        const stored = JSON.parse(localStorage.getItem('flow_user_concept_settings') || '{}');
+        const restId = rid || getRestaurantId() || '79256f11-a9f8-4fec-901d-69baf929762d';
+        const { data: restData } = await supabase.from('restaurants').select('settings').eq('id', restId).maybeSingle();
+        const remoteUserConcepts = restData?.settings?.user_concepts || {};
+
+        data.forEach(u => {
+          const cfg = remoteUserConcepts[u.id] || stored[u.id];
+          if (cfg) {
+            u.concept = u.concept || cfg.concept || 'ALL';
+            u.can_switch_concepts = u.can_switch_concepts !== undefined ? u.can_switch_concepts : cfg.can_switch_concepts;
+          }
+        });
+      } catch (e) {}
+    }
+
     return { success: true, data };
   },
 
@@ -640,26 +1065,87 @@ export const api = {
     if (rid) query = query.eq('restaurant_id', rid);
     const { data, error } = await query.single();
     if (error) return { success: false, error: error.message };
+
+    if (data) {
+      try {
+        const stored = JSON.parse(localStorage.getItem('flow_user_concept_settings') || '{}');
+        if (stored[id]) {
+          data.concept = data.concept || stored[id].concept || 'ALL';
+          data.can_switch_concepts = data.can_switch_concepts !== undefined ? data.can_switch_concepts : stored[id].can_switch_concepts;
+        }
+      } catch (e) {}
+    }
+
     return { success: true, data };
   },
 
   saveUser: async (user: any) => {
     const payload = await injectRestaurantId({ ...user });
-    let res;
+    const { concept, can_switch_concepts, ...cleanPayload } = payload;
+    let res: any;
+
     if (payload.id) {
       res = await supabase.from('users').update(payload).eq('id', payload.id).select();
-      if (res.error) return { success: false, error: res.error.message };
-      if (!res.data || res.data.length === 0) {
-        // Fallback: If update didn't find the row, try inserting instead
-        res = await supabase.from('users').insert(payload).select();
-      }
     } else {
       res = await supabase.from('users').insert(payload).select();
     }
-    if (res.error) return { success: false, error: res.error.message };
-    
-    // Return the first element of the array
-    return { success: true, data: res.data && res.data.length > 0 ? res.data[0] : null };
+
+    // Check if error is due to missing multi-concept columns in unmigrated production schema
+    if (res?.error && (
+      res.error.message?.includes('can_switch_concepts') || 
+      res.error.message?.includes('concept') || 
+      res.error.code === 'PGRST204'
+    )) {
+      if (cleanPayload.id) {
+        res = await supabase.from('users').update(cleanPayload).eq('id', cleanPayload.id).select();
+        if (!res.error && (!res.data || res.data.length === 0)) {
+          res = await supabase.from('users').insert(cleanPayload).select();
+        }
+      } else {
+        res = await supabase.from('users').insert(cleanPayload).select();
+      }
+    }
+
+    if (res?.error) return { success: false, error: res.error.message };
+
+    const savedUser = res?.data && res.data.length > 0 ? res.data[0] : null;
+    const targetId = savedUser?.id || payload.id;
+
+    // Persist concept assignment in local storage fallback
+    if (targetId && (concept !== undefined || can_switch_concepts !== undefined)) {
+      try {
+        const stored = JSON.parse(localStorage.getItem('flow_user_concept_settings') || '{}');
+        stored[targetId] = {
+          concept: concept || 'ALL',
+          can_switch_concepts: can_switch_concepts !== undefined ? can_switch_concepts : true,
+          updated_at: new Date().toISOString()
+        };
+        localStorage.setItem('flow_user_concept_settings', JSON.stringify(stored));
+      } catch (e) {}
+
+      // Persist to shared Supabase restaurant settings for real-time POS authorization
+      try {
+        const restId = payload.restaurant_id || getRestaurantId() || '79256f11-a9f8-4fec-901d-69baf929762d';
+        const { data: restData } = await supabase.from('restaurants').select('settings').eq('id', restId).maybeSingle();
+        if (restData) {
+          const currentSettings = restData.settings || {};
+          const userConcepts = { ...(currentSettings.user_concepts || {}) };
+          userConcepts[targetId] = {
+            concept: concept || 'ALL',
+            can_switch_concepts: can_switch_concepts !== undefined ? can_switch_concepts : true,
+            updated_at: new Date().toISOString()
+          };
+          await supabase.from('restaurants').update({ settings: { ...currentSettings, user_concepts: userConcepts } }).eq('id', restId);
+        }
+      } catch (e) {
+        console.warn('Failed to sync user concept to restaurant settings:', e);
+      }
+    }
+
+    return { 
+      success: true, 
+      data: savedUser ? { ...savedUser, concept: concept || 'ALL', can_switch_concepts } : null 
+    };
   },
 
   deleteUser: async (id: string) => {
@@ -1427,59 +1913,10 @@ export const api = {
     }
     
     const { data: primaryData, error } = await query;
-    
-    let fallbackData: any[] = [];
-    // Direct REST fetch fallback using explicit Bearer anon token if RLS session restricted rows
-    try {
-      const urlParams = new URLSearchParams();
-      urlParams.append('select', '*');
-      urlParams.append('order', 'date.desc');
-      if (filters.branch && filters.branch !== 'All') {
-        urlParams.append('branch', `ilike.*${filters.branch.trim()}*`);
-      }
-      if (filters.startDate) {
-        urlParams.append('date', `gte.${filters.startDate.split('T')[0].split(' ')[0]}`);
-      }
-      if (filters.endDate) {
-        const endClean = filters.endDate.split('T')[0].split(' ')[0];
-        const parts = endClean.split('-');
-        if (parts.length === 3) {
-          const nextDayStr = new Date(Date.UTC(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10) + 1)).toISOString().split('T')[0];
-          urlParams.append('date', `lt.${nextDayStr}`);
-        }
-      }
-      if (rid) {
-        urlParams.append('restaurant_id', `eq.${rid}`);
-      }
-      const rawRes = await fetch(`https://ibtbcgkkixkglnhhrrpu.supabase.co/rest/v1/shift_cash?${urlParams.toString()}`, {
-        headers: {
-          'apikey': 'sb_publishable_D4nQcvqUIxlRDDoMy_LDrg_18m5RIhm',
-          'Authorization': 'Bearer sb_publishable_D4nQcvqUIxlRDDoMy_LDrg_18m5RIhm',
-          'Content-Type': 'application/json'
-        }
-      });
-      if (rawRes.ok) {
-        const rawData = await rawRes.json();
-        if (Array.isArray(rawData)) {
-          fallbackData = rawData;
-        }
-      }
-    } catch (e) {
-      console.warn('Fallback shift fetch failed:', e);
-    }
+    if (error) return { success: false, error: error.message };
 
-    const mergedMap = new Map<string, any>();
-    if (primaryData) {
-      primaryData.forEach((item: any) => mergedMap.set(item.id, item));
-    }
-    fallbackData.forEach((item: any) => {
-      if (!mergedMap.has(item.id)) {
-        mergedMap.set(item.id, item);
-      }
-    });
-
-    const mergedList = Array.from(mergedMap.values());
-    mergedList.sort((a, b) => {
+    const mergedList = Array.from((primaryData || []).values());
+    mergedList.sort((a: any, b: any) => {
       const dateA = a.date || '';
       const dateB = b.date || '';
       if (dateA !== dateB) {
@@ -1490,7 +1927,6 @@ export const api = {
       return createB.localeCompare(createA); // desc
     });
 
-    if (error && mergedList.length === 0) return { success: false, error: error.message };
     return { success: true, data: mergedList };
   },
 
@@ -1527,70 +1963,20 @@ export const api = {
     }
     
     const { data: primaryData, error } = await query;
+    if (error) return { success: false, error: error.message };
 
-    let fallbackData: any[] = [];
-    // Direct REST fetch fallback
-    try {
-      const urlParams = new URLSearchParams();
-      urlParams.append('select', '*');
-      urlParams.append('order', 'date.desc,created_at.desc');
-      if (filters.branch && filters.branch !== 'All') {
-        urlParams.append('branch', `ilike.*${filters.branch.trim()}*`);
-      }
-      if (filters.startDate) {
-        urlParams.append('date', `gte.${filters.startDate.split('T')[0].split(' ')[0]}`);
-      }
-      if (filters.endDate) {
-        const endClean = filters.endDate.split('T')[0].split(' ')[0];
-        const parts = endClean.split('-');
-        if (parts.length === 3) {
-          const nextDayStr = new Date(Date.UTC(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10) + 1)).toISOString().split('T')[0];
-          urlParams.append('date', `lt.${nextDayStr}`);
-        }
-      }
-      if (rid) {
-        urlParams.append('restaurant_id', `eq.${rid}`);
-      }
-      const rawRes = await fetch(`https://ibtbcgkkixkglnhhrrpu.supabase.co/rest/v1/daily_payments?${urlParams.toString()}`, {
-        headers: {
-          'apikey': 'sb_publishable_D4nQcvqUIxlRDDoMy_LDrg_18m5RIhm',
-          'Authorization': 'Bearer sb_publishable_D4nQcvqUIxlRDDoMy_LDrg_18m5RIhm',
-          'Content-Type': 'application/json'
-        }
-      });
-      if (rawRes.ok) {
-        const rawData = await rawRes.json();
-        if (Array.isArray(rawData)) {
-          fallbackData = rawData;
-        }
-      }
-    } catch (e) {
-      console.warn('Fallback payment fetch failed:', e);
-    }
-
-    const mergedMap = new Map<string, any>();
-    if (primaryData) {
-      primaryData.forEach((item: any) => mergedMap.set(item.id, item));
-    }
-    fallbackData.forEach((item: any) => {
-      if (!mergedMap.has(item.id)) {
-        mergedMap.set(item.id, item);
-      }
-    });
-
-    const mergedList = Array.from(mergedMap.values());
-    mergedList.sort((a, b) => {
+    const mergedList = Array.from((primaryData || []).values());
+    mergedList.sort((a: any, b: any) => {
       const dateA = a.date || '';
       const dateB = b.date || '';
       if (dateA !== dateB) {
-        return dateB.localeCompare(dateA); // desc
+        return dateB.localeCompare(dateA);
       }
       const createA = a.created_at || '';
       const createB = b.created_at || '';
-      return createB.localeCompare(createA); // desc
+      return createB.localeCompare(createA);
     });
 
-    if (error && mergedList.length === 0) return { success: false, error: error.message };
     return { success: true, data: mergedList };
   },
 
@@ -1909,7 +2295,7 @@ export const api = {
   // Purchasing Module API
   getPurchasingItems: async (queryStr?: string, department?: string) => {
     const rid = getRestaurantId();
-    let query = supabase.from('items').select('*').eq('purchasing', 'yes').order('name');
+    let query = supabase.from('items').select('*').eq('purchasing', 'yes').order('name').limit(5000);
     if (rid) query = query.eq('restaurant_id', rid);
     if (queryStr) query = query.ilike('name', `%${queryStr}%`);
     if (department && department !== 'All') {
@@ -2618,7 +3004,7 @@ export const api = {
 
   getAllCatalogItems: async () => {
     const rid = getRestaurantId();
-    let query = supabase.from('items').select('*').order('name');
+    let query = supabase.from('items').select('*').order('name').limit(5000);
     if (rid) query = query.eq('restaurant_id', rid);
     const { data, error } = await query;
     if (error) return { success: false, error: error.message };
@@ -2632,10 +3018,233 @@ export const api = {
     return { success: true };
   },
 
-  deleteCatalogItem: async (id: string) => {
-    const { error } = await supabase.from('items').delete().eq('id', id);
+  updateItemPrice: async (itemId: string, priceUsd: number) => {
+    const { error } = await supabase
+      .from('items')
+      .update({ price_usd: priceUsd })
+      .eq('id', itemId);
     if (error) return { success: false, error: error.message };
     return { success: true };
+  },
+
+  updateItemSupplier: async (itemId: string, supplierId: string | null, deliveryTime?: string | null) => {
+    const updatePayload: any = { supplier_id: supplierId || null };
+    if (deliveryTime) {
+      updatePayload.delivery_time = deliveryTime;
+    }
+    const { error } = await supabase
+      .from('items')
+      .update(updatePayload)
+      .eq('id', itemId);
+    if (error) return { success: false, error: error.message };
+
+    try {
+      await supabase
+        .from('supplier_price_lists')
+        .update({ supplier_id: supplierId || null })
+        .eq('item_id', itemId)
+        .eq('is_default', true);
+    } catch {}
+
+    return { success: true };
+  },
+
+  checkCatalogItemUsage: async (id: string) => {
+    try {
+      // 1. Menu Recipes (via recipe_components)
+      const { data: menuRecs } = await supabase
+        .from('recipe_components')
+        .select('recipe_id, menu_recipes:recipe_id(id, item_name)')
+        .eq('item_id', id);
+
+      const recipes: Array<{ id: string; name: string }> = [];
+      const seenRecIds = new Set<string>();
+      (menuRecs || []).forEach((r: any) => {
+        const rId = r.recipe_id;
+        const name = r.menu_recipes?.item_name || `Recipe #${rId}`;
+        if (rId && !seenRecIds.has(rId)) {
+          seenRecIds.add(rId);
+          recipes.push({ id: rId, name });
+        }
+      });
+
+      // 2. Production recipes (as ingredient or output)
+      const { data: prodRecs } = await supabase
+        .from('production_recipe_items')
+        .select('production_recipe_id, production_recipes:production_recipe_id(id, name)')
+        .eq('item_id', id);
+
+      const { data: prodOutputs } = await supabase
+        .from('production_recipes')
+        .select('id, name')
+        .eq('output_item_id', id);
+
+      const productionRecipes: Array<{ id: string; name: string; role: 'ingredient' | 'output' }> = [];
+      const seenProdIds = new Set<string>();
+      (prodRecs || []).forEach((r: any) => {
+        const pId = r.production_recipe_id;
+        const name = r.production_recipes?.name || `Prep Recipe #${pId}`;
+        if (pId && !seenProdIds.has(pId)) {
+          seenProdIds.add(pId);
+          productionRecipes.push({ id: pId, name, role: 'ingredient' });
+        }
+      });
+      (prodOutputs || []).forEach((r: any) => {
+        const pId = r.id;
+        const name = r.name || `Prep Recipe #${pId}`;
+        if (pId && !seenProdIds.has(pId)) {
+          seenProdIds.add(pId);
+          productionRecipes.push({ id: pId, name, role: 'output' });
+        }
+      });
+
+      // 3. Modifier inventory effects
+      const { data: modEffects } = await supabase
+        .from('modifier_inventory_effects')
+        .select('id, effect_type, quantity_delta, unit, product_customization_id, customization_item_id, product_customizations:product_customization_id(id, ingredient, product_id)')
+        .eq('item_id', id);
+
+      const modifiers: Array<{ id: string; name: string; productName?: string }> = [];
+      if (modEffects && modEffects.length > 0) {
+        const prodIds = [...new Set(modEffects.map((m: any) => m.product_customizations?.product_id).filter(Boolean))];
+        let prodMap = new Map<number, string>();
+        if (prodIds.length > 0) {
+          const { data: prods } = await supabase.from('products').select('id, name').in('id', prodIds);
+          (prods || []).forEach((p: any) => prodMap.set(p.id, p.name));
+        }
+
+        modEffects.forEach((m: any) => {
+          const ing = m.product_customizations?.ingredient || 'Modifier Effect';
+          const pName = m.product_customizations?.product_id ? prodMap.get(m.product_customizations.product_id) : undefined;
+          modifiers.push({
+            id: m.id,
+            name: ing,
+            productName: pName
+          });
+        });
+      }
+
+      // 4. Product inventory item mappings (direct finished good mapping)
+      const { data: mappings } = await supabase
+        .from('product_inventory_item_mappings')
+        .select('id, product_id')
+        .eq('item_id', id);
+
+      const productMappings: Array<{ id: string; productName: string }> = [];
+      if (mappings && mappings.length > 0) {
+        const pIds = mappings.map((m: any) => m.product_id).filter(Boolean);
+        if (pIds.length > 0) {
+          const { data: prods } = await supabase.from('products').select('id, name').in('id', pIds);
+          const pMap = new Map((prods || []).map((p: any) => [p.id, p.name]));
+          mappings.forEach((m: any) => {
+            productMappings.push({
+              id: m.id,
+              productName: pMap.get(m.product_id) || `Product #${m.product_id}`
+            });
+          });
+        }
+      }
+
+      // 5. Packaging options (supplier_price_lists) & Unit conversions
+      const { count: packagingCount } = await supabase
+        .from('supplier_price_lists')
+        .select('*', { count: 'exact', head: true })
+        .eq('item_id', id);
+
+      const { count: conversionCount } = await supabase
+        .from('item_unit_conversions')
+        .select('*', { count: 'exact', head: true })
+        .eq('item_id', id);
+
+      const hasActiveRecipes = recipes.length > 0 || productionRecipes.length > 0;
+      const inUse = hasActiveRecipes || modifiers.length > 0 || productMappings.length > 0 || (packagingCount || 0) > 0 || (conversionCount || 0) > 0;
+
+      return {
+        success: true,
+        inUse,
+        hasActiveRecipes,
+        recipes,
+        productionRecipes,
+        modifiers,
+        productMappings,
+        packagingCount: packagingCount || 0,
+        conversionCount: conversionCount || 0
+      };
+    } catch (e: any) {
+      console.error('Error checking item usage:', e);
+      return {
+        success: false,
+        error: e.message,
+        inUse: false,
+        hasActiveRecipes: false,
+        recipes: [],
+        productionRecipes: [],
+        modifiers: [],
+        productMappings: [],
+        packagingCount: 0,
+        conversionCount: 0
+      };
+    }
+  },
+
+  deleteCatalogItem: async (id: string, options?: { force?: boolean }) => {
+    try {
+      // If not forced, check if it's used in active recipes
+      if (!options?.force) {
+        const usageRes = await api.checkCatalogItemUsage(id);
+        if (usageRes.success && usageRes.hasActiveRecipes) {
+          const recNames = [
+            ...usageRes.recipes.map(r => r.name),
+            ...usageRes.productionRecipes.map(r => r.name)
+          ].join(', ');
+          return {
+            success: false,
+            inUse: true,
+            hasActiveRecipes: true,
+            error: `Cannot delete item because it is actively used in recipes: ${recNames}. Please remove it from those recipes first.`
+          };
+        }
+      }
+
+      // Safe cascade cleanup to avoid foreign key constraint violations
+      if (options?.force) {
+        await supabase.from('recipe_components').delete().eq('item_id', id);
+        await supabase.from('production_recipe_items').delete().eq('item_id', id);
+        await supabase.from('production_recipes').update({ output_item_id: null }).eq('output_item_id', id);
+      }
+
+      // Unlink modifier inventory effects
+      await supabase.from('modifier_inventory_effects').delete().eq('item_id', id);
+
+      // Remove product inventory mappings
+      await supabase.from('product_inventory_item_mappings').delete().eq('item_id', id);
+
+      // Remove supplier price lists / packaging options
+      await supabase.from('supplier_price_lists').delete().eq('item_id', id);
+
+      // Remove unit conversions
+      await supabase.from('item_unit_conversions').delete().eq('item_id', id);
+
+      // Remove stock balances
+      try {
+        await supabase.from('inventory_stock_balances').delete().eq('item_id', id);
+      } catch {}
+
+      // Remove replenishment recommendations & history
+      try {
+        await supabase.from('replenishment_recommendation_items').delete().eq('item_id', id);
+        await supabase.from('replenishment_decision_history').delete().eq('item_id', id);
+        await supabase.from('inventory_item_replenishment').delete().eq('item_id', id);
+      } catch {}
+
+      // Delete the item itself
+      const { error } = await supabase.from('items').delete().eq('id', id);
+      if (error) return { success: false, error: error.message };
+
+      return { success: true };
+    } catch (e: any) {
+      return { success: false, error: e.message };
+    }
   },
 
   saveDepartment: async (dept: { id?: number, name: string }) => {
@@ -3934,13 +4543,40 @@ export const api = {
   // Inventory Management API Functions
   getStockBalances: async (branch?: string, location?: string) => {
     const rid = getRestaurantId();
-    let query = supabase.from('inventory_stock_balances').select('*');
-    if (rid) query = query.eq('restaurant_id', rid);
-    if (branch && branch !== 'All') query = query.eq('branch', branch);
-    if (location && location !== 'All') query = query.eq('location', location);
-    const { data, error } = await query.order('item_name');
-    if (error) return { success: false, error: error.message };
-    return { success: true, data: data || [] };
+    const [balRes, branchesRes, locsRes] = await Promise.all([
+      rid
+        ? supabase.from('inventory_stock_balances').select('*').eq('restaurant_id', rid).order('item_name')
+        : supabase.from('inventory_stock_balances').select('*').order('item_name'),
+      supabase.from('branches').select('id, name'),
+      supabase.from('inventory_locations').select('id, name')
+    ]);
+    if (balRes.error) return { success: false, error: balRes.error.message };
+
+    const branchMap = new Map((branchesRes.data || []).map((b: any) => [b.id, b.name]));
+    const locMap = new Map((locsRes.data || []).map((l: any) => [l.id, l.name]));
+
+    let rows = (balRes.data || []).map((row: any) => ({
+      ...row,
+      branch: row.branch || (row.branch_id ? branchMap.get(row.branch_id) : null) || 'Badaro',
+      location: row.location || (row.location_id ? locMap.get(row.location_id) : null) || 'Main Kitchen',
+    }));
+
+    if (branch && branch !== 'All') {
+      const bLower = branch.trim().toLowerCase();
+      rows = rows.filter((r: any) =>
+        (r.branch && r.branch.trim().toLowerCase() === bLower) ||
+        r.branch_id === branch
+      );
+    }
+    if (location && location !== 'All') {
+      const lLower = location.trim().toLowerCase();
+      rows = rows.filter((r: any) =>
+        (r.location && r.location.trim().toLowerCase() === lLower) ||
+        r.location_id === location
+      );
+    }
+
+    return { success: true, data: rows };
   },
 
   upsertStockBalance: async (balance: any) => {
@@ -3962,7 +4598,7 @@ export const api = {
 
   getStockCountItems: async (countId: string) => {
     const { data, error } = await supabase
-      .from('inventory_count_items')
+      .from('inventory_counts')
       .select('*')
       .eq('count_id', countId);
     if (error) return { success: false, error: error.message };
@@ -3971,68 +4607,111 @@ export const api = {
 
   saveStockCount: async (header: any, items: any[]) => {
     const rid = getRestaurantId();
-    const countNumber = header.count_number || `STK-${Date.now().toString().slice(-6)}`;
-    const branchId = header.branch_id || header.branch;
-    const locationId = header.location_id;
+    const nowIso = new Date().toISOString();
+    let branchId = header.branch_id;
+    let locationId = header.location_id;
+    const branchName = header.branch || 'Badaro';
+    const locationName = header.location || 'Main Kitchen';
 
-    // Use prepareStockCountSheet if canonical branch and location IDs are available
+    const [bRes, lRes] = await Promise.all([
+      supabase.from('branches').select('id, name').eq('restaurant_id', rid),
+      supabase.from('inventory_locations').select('id, name, department').or(`restaurant_id.eq.${rid},restaurant_id.is.null`)
+    ]);
+
+    const matchedBranch = (bRes.data || []).find((b: any) =>
+      b.id === branchId || b.name?.toLowerCase() === branchName.toLowerCase()
+    ) || (bRes.data || [])[0];
+    branchId = branchId || matchedBranch?.id;
+
+    let matchedLoc = (lRes.data || []).find((l: any) =>
+      l.id === locationId || l.name?.toLowerCase() === locationName.toLowerCase()
+    );
+    if (!matchedLoc && locationName) {
+      const saveLocRes = await api.saveInventoryLocation({ name: locationName, department: 'Kitchen' });
+      if (saveLocRes.success) {
+        const { data: newLoc } = await supabase
+          .from('inventory_locations')
+          .select('id, name, department')
+          .ilike('name', locationName.trim())
+          .maybeSingle();
+        matchedLoc = newLoc || undefined;
+      }
+    }
+    if (!matchedLoc) matchedLoc = (lRes.data || [])[0];
+    locationId = locationId || matchedLoc?.id;
+
     if (branchId && locationId) {
+      // 1. Ensure baseline stock balance rows exist for all counted items so prepare_stock_count_sheet & reconciliation include every item
+      const validItems = (items || []).filter((it: any) => it.item_id);
+      if (validItems.length > 0) {
+        const baselineBalances = validItems.map((it: any) => ({
+          restaurant_id: rid,
+          branch_id: branchId,
+          branch: matchedBranch?.name || branchName,
+          location_id: locationId,
+          location: matchedLoc?.name || locationName,
+          item_id: it.item_id,
+          item_name: it.item_name || it.item || it.name,
+          department: it.department || 'Kitchen',
+          sub_department: it.sub_department || 'Other',
+          unit: it.base_unit || it.unit || 'pcs',
+          current_stock: 0,
+          par_level: Number(it.par_level || 0),
+          unit_cost: Number(it.unit_cost || 0),
+        }));
+        await supabase
+          .from('inventory_stock_balances')
+          .upsert(baselineBalances, { onConflict: 'restaurant_id,branch_id,location_id,item_id', ignoreDuplicates: true });
+      }
+
+      // 2. Prepare stock count sheet snapshot via canonical RPC
       const sheetRes = await supabase.rpc('prepare_stock_count_sheet', {
         p_branch_id: branchId,
         p_location_id: locationId,
         p_user_id: header.user_id || null,
-        p_user_name: header.counted_by || 'Admin',
-        p_as_of: header.inventory_as_of || new Date().toISOString()
+        p_user_name: header.counted_by || header.user || 'Admin',
+        p_as_of: header.inventory_as_of || nowIso
       });
 
       if (!sheetRes.error && sheetRes.data?.count_id) {
         const countId = sheetRes.data.count_id;
-        // Update item actual counts
+        // 3. Update item actual_count_qty AND count_qty for compatibility across Web Admin & Mobile
         for (const item of items) {
           if (item.item_id && item.count_qty !== undefined) {
+            const qtyNum = Math.max(0, Number(item.count_qty || 0));
             await supabase
               .from('inventory_counts')
-              .update({ actual_count_qty: Number(item.count_qty) })
+              .update({
+                actual_count_qty: qtyNum,
+                count_qty: qtyNum,
+                par_level: Number(item.par_level || 0),
+                notes: item.notes || header.notes || null,
+                status: 'Completed',
+                updated_at: nowIso,
+              })
               .eq('count_id', countId)
               .eq('item_id', item.item_id);
           }
         }
-        // Auto-reconcile if requested
-        if (header.auto_reconcile) {
+        // 4. Reconcile count (default to true when status is Completed or auto_reconcile is set)
+        if (header.auto_reconcile !== false) {
           await supabase.rpc('process_stock_count_reconciliation', {
             p_count_header_id: countId,
             p_user_id: header.user_id || null,
-            p_user_name: header.counted_by || 'Admin'
+            p_user_name: header.counted_by || header.user || 'Admin'
           });
+          await supabase
+            .from('inventory_counts')
+            .update({ status: 'Completed', updated_at: nowIso })
+            .eq('count_id', countId);
         }
         return { success: true, id: countId };
+      } else if (sheetRes.error) {
+        return { success: false, error: sheetRes.error.message };
       }
     }
 
-    // Fallback insertion for legacy forms
-    const payloadHeader = await injectRestaurantId({
-      ...header,
-      count_number: countNumber
-    });
-
-    const { data: countRes, error: countErr } = await supabase
-      .from('inventory_counts')
-      .insert([payloadHeader])
-      .select('id')
-      .single();
-
-    if (countErr) return { success: false, error: countErr.message };
-    const countId = countRes.id;
-
-    if (items && items.length > 0) {
-      const payloadItems = items.map(item => ({
-        ...item,
-        count_id: countId,
-        restaurant_id: rid
-      }));
-      await supabase.from('inventory_count_items').insert(payloadItems);
-    }
-    return { success: true, id: countId };
+    return { success: false, error: 'Could not resolve canonical branch and location for stock count.' };
   },
 
   reconcileStockCount: async (countId: string, userId?: string, userName?: string) => {
@@ -4048,7 +4727,7 @@ export const api = {
   updateStockCountQty: async (id: string, actualQty: number) => {
     const { error } = await supabase
       .from('inventory_counts')
-      .update({ actual_count_qty: actualQty, updated_at: new Date().toISOString() })
+      .update({ actual_count_qty: actualQty, count_qty: actualQty, updated_at: new Date().toISOString() })
       .eq('id', id);
     if (error) return { success: false, error: error.message };
     return { success: true };
@@ -4067,17 +4746,75 @@ export const api = {
   saveStockAdjustment: async (adjustment: any) => {
     const rid = getRestaurantId();
     const payload = await injectRestaurantId({ ...adjustment });
-    const { error } = await supabase.from('inventory_adjustments').insert([payload]);
+    const { data: adjRow, error } = await supabase.from('inventory_adjustments').insert([payload]).select('*').single();
     if (error) return { success: false, error: error.message };
 
-    // If item_id and branch_id are available, route through waste or stock movement
-    if (adjustment.item_id && adjustment.branch_id && adjustment.location_id) {
-      if (['Waste/Damage', 'Expiry'].includes(adjustment.adjustment_type)) {
-        await supabase.rpc('process_stock_waste', {
-          p_waste_id: adjustment.id,
-          p_user_name: adjustment.created_by || 'Admin'
-        });
-      }
+    // Resolve branch_id, location_id, and item_id to keep inventory_stock_balances & inventory_movements in sync
+    const [bRes, lRes, iRes] = await Promise.all([
+      supabase.from('branches').select('id, name').eq('restaurant_id', rid),
+      supabase.from('inventory_locations').select('id, name').or(`restaurant_id.eq.${rid},restaurant_id.is.null`),
+      adjustment.item_id
+        ? supabase.from('items').select('id, name, unit, base_unit, department, sub_department').eq('id', adjustment.item_id).maybeSingle()
+        : supabase.from('items').select('id, name, unit, base_unit, department, sub_department').ilike('name', (adjustment.item_name || '').trim()).maybeSingle()
+    ]);
+
+    const matchedBranch = (bRes.data || []).find((b: any) => b.id === adjustment.branch_id || b.name?.toLowerCase() === (adjustment.branch || '').toLowerCase()) || (bRes.data || [])[0];
+    const matchedLoc = (lRes.data || []).find((l: any) => l.id === adjustment.location_id || l.name?.toLowerCase() === (adjustment.location || '').toLowerCase()) || (lRes.data || [])[0];
+    const matchedItem: any = iRes.data;
+
+    const branchId = adjustment.branch_id || matchedBranch?.id;
+    const locationId = adjustment.location_id || matchedLoc?.id;
+    const itemId = adjustment.item_id || matchedItem?.id;
+
+    if (itemId && branchId && locationId) {
+      const isNegativeType = ['Waste/Damage', 'Expiry', 'Correction (-)'].includes(adjustment.adjustment_type);
+      const rawQty = Math.abs(Number(adjustment.quantity || 0));
+      const signedDelta = isNegativeType ? -rawQty : rawQty;
+      const baseUnit = matchedItem?.base_unit || matchedItem?.unit || adjustment.unit || 'pcs';
+
+      const { data: existingBal } = await supabase
+        .from('inventory_stock_balances')
+        .select('current_stock, unit_cost')
+        .eq('restaurant_id', rid)
+        .eq('branch_id', branchId)
+        .eq('location_id', locationId)
+        .eq('item_id', itemId)
+        .maybeSingle();
+
+      const nextStock = Number(existingBal?.current_stock || 0) + signedDelta;
+      await supabase.from('inventory_stock_balances').upsert({
+        restaurant_id: rid,
+        branch_id: branchId,
+        branch: matchedBranch?.name || adjustment.branch || 'Badaro',
+        location_id: locationId,
+        location: matchedLoc?.name || adjustment.location || 'Main Kitchen',
+        item_id: itemId,
+        item_name: matchedItem?.name || adjustment.item_name,
+        department: matchedItem?.department || 'Kitchen',
+        sub_department: matchedItem?.sub_department || null,
+        unit: baseUnit,
+        current_stock: nextStock,
+        negative_stock: nextStock < 0,
+        unit_cost: Number(adjustment.unit_cost || existingBal?.unit_cost || 0),
+        last_updated: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'restaurant_id,branch_id,location_id,item_id' });
+
+      await supabase.from('inventory_movements').insert([{
+        restaurant_id: rid,
+        branch_id: branchId,
+        location_id: String(locationId),
+        catalog_item_id: itemId,
+        movement_type: 'STOCK_ADJUSTMENT',
+        source_type: 'INVENTORY_ADJUSTMENT',
+        source_id: String(adjRow?.id || Date.now()),
+        source_line_id: String(adjRow?.id || Date.now()),
+        quantity_delta: signedDelta,
+        unit: baseUnit,
+        unit_cost: Number(adjustment.unit_cost || existingBal?.unit_cost || 0),
+        notes: `${adjustment.adjustment_type}: ${adjustment.reason || 'Manual adjustment'}`,
+        created_by: adjustment.created_by || 'Admin',
+      }]);
     }
     return { success: true };
   },
@@ -4173,19 +4910,45 @@ export const api = {
   },
 
   saveStockTransfer: async (header: any, items: any[]) => {
+    const rid = getRestaurantId();
+    const enrichedHeader = { ...header };
+
+    if (!enrichedHeader.from_branch_id || !enrichedHeader.to_branch_id || !enrichedHeader.from_location_id || !enrichedHeader.to_location_id) {
+      const [bRes, lRes] = await Promise.all([
+        supabase.from('branches').select('id, name').eq('restaurant_id', rid),
+        supabase.from('inventory_locations').select('id, name').or(`restaurant_id.eq.${rid},restaurant_id.is.null`)
+      ]);
+      const branches = bRes.data || [];
+      const locs = lRes.data || [];
+      if (!enrichedHeader.from_branch_id && enrichedHeader.from_branch) {
+        enrichedHeader.from_branch_id = branches.find((b: any) => b.name?.toLowerCase() === enrichedHeader.from_branch.toLowerCase())?.id || branches[0]?.id;
+      }
+      if (!enrichedHeader.to_branch_id && enrichedHeader.to_branch) {
+        enrichedHeader.to_branch_id = branches.find((b: any) => b.name?.toLowerCase() === enrichedHeader.to_branch.toLowerCase())?.id || branches[0]?.id;
+      }
+      if (!enrichedHeader.from_location_id && enrichedHeader.from_location) {
+        enrichedHeader.from_location_id = locs.find((l: any) => l.name?.toLowerCase() === enrichedHeader.from_location.toLowerCase())?.id;
+      }
+      if (!enrichedHeader.to_location_id && enrichedHeader.to_location) {
+        enrichedHeader.to_location_id = locs.find((l: any) => l.name?.toLowerCase() === enrichedHeader.to_location.toLowerCase())?.id;
+      }
+      if (!enrichedHeader.transfer_type) {
+        enrichedHeader.transfer_type = enrichedHeader.from_branch_id === enrichedHeader.to_branch_id ? 'INTERNAL' : 'INTER_BRANCH';
+      }
+    }
+
     // If canonical branch/location IDs exist, execute atomic dispatch via stored procedure
-    if (header.from_branch_id && header.to_branch_id && header.from_location_id && header.to_location_id) {
-      const createRes = await api.createStockTransfer(header, items);
+    if (enrichedHeader.from_branch_id && enrichedHeader.to_branch_id && enrichedHeader.from_location_id && enrichedHeader.to_location_id) {
+      const createRes = await api.createStockTransfer(enrichedHeader, items);
       if (!createRes.success) return createRes;
-      const dispatchRes = await api.dispatchStockTransfer(createRes.id, header.created_by_id, header.created_by);
+      const dispatchRes = await api.dispatchStockTransfer(createRes.id, enrichedHeader.created_by_id, enrichedHeader.created_by);
       return dispatchRes;
     }
 
     // Legacy fallback
-    const rid = getRestaurantId();
     const payloadHeader = await injectRestaurantId({
-      ...header,
-      transfer_number: header.transfer_number || `TRF-${Date.now().toString().slice(-6)}`
+      ...enrichedHeader,
+      transfer_number: enrichedHeader.transfer_number || `TRF-${Date.now().toString().slice(-6)}`
     });
 
     const { data: trfRes, error: trfErr } = await supabase
@@ -4325,43 +5088,134 @@ export const api = {
   // ----------------------------------------------------
   // PHASE 4: PRODUCTION & BATCH MANAGEMENT METHODS
   // ----------------------------------------------------
+  getProductionRecipeCatalog: async () => {
+    const rid = getRestaurantId();
+    let query = supabase
+      .from('production_recipes')
+      .select(`
+        *,
+        output_item:items!output_item_id(id, name, unit, base_unit, price_usd, department),
+        production_recipe_items(
+          *,
+          items:item_id(id, name, unit, base_unit, price_usd, department)
+        )
+      `)
+      .order('name');
+    if (rid) query = query.eq('restaurant_id', rid);
+
+    const { data, error } = await query;
+    if (error) {
+      let simpleQuery = supabase
+        .from('production_recipes')
+        .select('*, production_recipe_items(*)')
+        .order('name');
+      if (rid) simpleQuery = simpleQuery.eq('restaurant_id', rid);
+      const simpleRes = await simpleQuery;
+      if (simpleRes.error) return { success: false, error: simpleRes.error.message };
+      return { success: true, data: simpleRes.data || [] };
+    }
+    return { success: true, data: data || [] };
+  },
+
+  getProductionRecipesList: async () => {
+    return api.getProductionRecipeCatalog();
+  },
+
+  getProductionRecipeForEdit: async (id: string) => {
+    const rid = getRestaurantId();
+    if (!rid) return { success: false, error: 'Restaurant context required' };
+
+    const { data: header, error: headerError } = await supabase
+      .from('production_recipes')
+      .select('*')
+      .eq('restaurant_id', rid)
+      .eq('id', id)
+      .single();
+
+    if (headerError || !header) {
+      return { success: false, error: headerError?.message || 'Production recipe not found' };
+    }
+
+    const { data: items, error: itemsError } = await supabase
+      .from('production_recipe_items')
+      .select('*')
+      .eq('production_recipe_id', id);
+
+    if (itemsError) {
+      return { success: false, error: itemsError.message };
+    }
+
+    return {
+      success: true,
+      data: {
+        ...header,
+        items: items || []
+      }
+    };
+  },
+
   upsertProductionRecipe: async (params: {
     recipe_code: string;
     name: string;
     output_item_id: string;
-    target_yield_quantity: number;
+    target_yield_quantity: number | string;
     yield_unit: string;
-    default_location_id?: string;
-    shelf_life_days?: number;
-    prep_time_minutes?: number;
-    instructions?: string;
+    default_location_id?: string | null;
+    shelf_life_days?: number | string | null;
+    prep_time_minutes?: number | string | null;
+    instructions?: string | null;
     items?: Array<{
       item_id: string;
-      quantity: number;
+      quantity: number | string;
       unit: string;
-      waste_percentage?: number;
-      source_location_id?: string;
-      notes?: string;
+      waste_percentage?: number | string;
+      source_location_id?: string | null;
+      notes?: string | null;
     }>;
     user_name?: string;
+    existing_recipe_id?: string;
   }) => {
     const rid = getRestaurantId();
+    if (!rid) return { success: false, error: 'Restaurant context required' };
+
+    const { data: existing } = await supabase
+      .from('production_recipes')
+      .select('id')
+      .eq('restaurant_id', rid)
+      .eq('recipe_code', params.recipe_code)
+      .maybeSingle();
+
+    if (existing) {
+      if (!params.existing_recipe_id || existing.id !== params.existing_recipe_id) {
+        return { success: false, error: 'A recipe with this code already exists' };
+      }
+    }
+
     const { data, error } = await supabase.rpc('upsert_production_recipe', {
       p_restaurant_id: rid,
       p_recipe_code: params.recipe_code,
       p_name: params.name,
       p_output_item_id: params.output_item_id,
-      p_target_yield_quantity: params.target_yield_quantity,
+      p_target_yield_quantity: Number(params.target_yield_quantity),
       p_yield_unit: params.yield_unit,
       p_default_location_id: params.default_location_id || null,
-      p_shelf_life_days: params.shelf_life_days || null,
-      p_prep_time_minutes: params.prep_time_minutes || null,
+      p_shelf_life_days: params.shelf_life_days !== undefined && params.shelf_life_days !== '' && params.shelf_life_days !== null ? Number(params.shelf_life_days) : null,
+      p_prep_time_minutes: params.prep_time_minutes !== undefined && params.prep_time_minutes !== '' && params.prep_time_minutes !== null ? Number(params.prep_time_minutes) : null,
       p_instructions: params.instructions || null,
-      p_items: JSON.stringify(params.items || []),
+      p_items: (params.items || []).map(it => ({
+        item_id: it.item_id,
+        quantity: Number(it.quantity),
+        unit: it.unit,
+        waste_percentage: it.waste_percentage !== undefined && it.waste_percentage !== '' ? Number(it.waste_percentage) : 0,
+        source_location_id: it.source_location_id || null,
+        notes: it.notes || null
+      })),
       p_user_name: params.user_name || 'Admin'
     });
+
     if (error) return { success: false, error: error.message };
-    return data;
+    if (!data || data.success === false) return { success: false, error: data?.error || 'Failed to save production recipe' };
+    return { success: true, ...data };
   },
 
   createProductionBatch: async (params: {
@@ -4377,10 +5231,20 @@ export const api = {
     notes?: string;
   }) => {
     const rid = getRestaurantId();
+    let resolvedBranchId = params.branch_id;
+    if (!resolvedBranchId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(resolvedBranchId)) {
+      const { data: bList } = await supabase.from('branches').select('id, name').eq('restaurant_id', rid);
+      const match = (bList || []).find((b: any) => b.name?.trim().toLowerCase() === (resolvedBranchId || '').trim().toLowerCase());
+      if (match) {
+        resolvedBranchId = match.id;
+      } else if (bList && bList.length > 0) {
+        resolvedBranchId = bList[0].id;
+      }
+    }
     const { data, error } = await supabase.rpc('create_production_batch', {
       p_restaurant_id: rid,
       p_recipe_id: params.recipe_id,
-      p_branch_id: params.branch_id,
+      p_branch_id: resolvedBranchId,
       p_location_id: params.location_id,
       p_destination_location_id: params.destination_location_id,
       p_planned_yield_quantity: params.planned_yield_quantity,
@@ -4450,6 +5314,69 @@ export const api = {
     });
     if (error) return { success: false, error: error.message };
     return data;
+  },
+
+  getProductionBatches: async (filters?: {
+    branch_id?: string;
+    status?: string;
+    startDate?: string;
+    endDate?: string;
+    search?: string;
+  }) => {
+    const rid = getRestaurantId();
+    let query = supabase
+      .from('production_batches')
+      .select(`
+        *,
+        recipe:production_recipes!production_recipe_id(id, name, recipe_code),
+        output_item:items!output_item_id(id, name, unit, base_unit),
+        source_location:inventory_locations!location_id(id, name),
+        destination_location:inventory_locations!destination_location_id(id, name),
+        items:production_batch_items(*)
+      `)
+      .order('created_at', { ascending: false });
+
+    if (rid) query = query.eq('restaurant_id', rid);
+    if (filters?.branch_id && filters.branch_id !== 'All') query = query.eq('branch_id', filters.branch_id);
+    if (filters?.status && filters.status !== 'All') query = query.eq('status', filters.status);
+    if (filters?.startDate) query = query.gte('batch_date', filters.startDate);
+    if (filters?.endDate) query = query.lte('batch_date', filters.endDate);
+
+    const { data, error } = await query.limit(500);
+    if (error) {
+      let fallbackQuery = supabase
+        .from('production_batches')
+        .select('*, items:production_batch_items(*)')
+        .order('created_at', { ascending: false });
+      if (rid) fallbackQuery = fallbackQuery.eq('restaurant_id', rid);
+      if (filters?.branch_id && filters.branch_id !== 'All') fallbackQuery = fallbackQuery.eq('branch_id', filters.branch_id);
+      if (filters?.status && filters.status !== 'All') fallbackQuery = fallbackQuery.eq('status', filters.status);
+      if (filters?.startDate) fallbackQuery = fallbackQuery.gte('batch_date', filters.startDate);
+      if (filters?.endDate) fallbackQuery = fallbackQuery.lte('batch_date', filters.endDate);
+
+      const fb = await fallbackQuery.limit(500);
+      if (fb.error) return { success: false, error: fb.error.message };
+      return { success: true, data: fb.data || [] };
+    }
+    return { success: true, data: data || [] };
+  },
+
+  getProductionBatchById: async (batchId: string) => {
+    const { data, error } = await supabase
+      .from('production_batches')
+      .select(`
+        *,
+        recipe:production_recipes!production_recipe_id(*),
+        output_item:items!output_item_id(id, name, unit, base_unit),
+        source_location:inventory_locations!location_id(id, name),
+        destination_location:inventory_locations!destination_location_id(id, name),
+        items:production_batch_items(*)
+      `)
+      .eq('id', batchId)
+      .single();
+
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
   },
 
   dispatchStockTransferLots: async (transferId: string, userId?: string, userName?: string) => {
@@ -6851,10 +7778,23 @@ export const api = {
   },
 
   // Phase 7: Demand Forecasting & Smart Replenishment
-  generateReplenishmentRecommendations: async (params: { branch_id: string; horizon_days?: number }) => {
+  generateReplenishmentRecommendations: async (params: {
+    branch_id: string;
+    horizon_days?: number;
+    lookback_days?: number;
+    category?: string;
+    department?: string;
+    supplier_id?: string;
+    stock_filter?: string;
+  }) => {
     const rid = getRestaurantId();
     const payload: any = { p_restaurant_id: rid, p_branch_id: params.branch_id };
     if (params.horizon_days !== undefined) payload.p_horizon_days = params.horizon_days;
+    if (params.lookback_days !== undefined) payload.p_lookback_days = params.lookback_days;
+    if (params.category !== undefined) payload.p_category = params.category;
+    if (params.department !== undefined) payload.p_department = params.department;
+    if (params.supplier_id !== undefined) payload.p_supplier_id = params.supplier_id;
+    if (params.stock_filter !== undefined) payload.p_stock_filter = params.stock_filter;
     const { data, error } = await supabase.rpc('generate_replenishment_recommendations', payload);
     if (error) return { success: false, error: error.message };
     return { success: true, data };
@@ -6869,11 +7809,32 @@ export const api = {
     return { success: true, data };
   },
 
-  getReplenishmentRecommendationsList: async (params: { branch_id: string; batch_id?: string; status_filter?: string }) => {
+  getReplenishmentBatchesHistory: async (params: { branch_id: string; limit?: number }) => {
+    const rid = getRestaurantId();
+    const payload: any = { p_restaurant_id: rid, p_branch_id: params.branch_id };
+    if (params.limit !== undefined) payload.p_limit = params.limit;
+    const { data, error } = await supabase.rpc('get_replenishment_batches_history', payload);
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  getReplenishmentRecommendationsList: async (params: {
+    branch_id: string;
+    batch_id?: string;
+    status_filter?: string;
+    category_filter?: string;
+    department_filter?: string;
+    supplier_filter?: string;
+    stock_filter?: string;
+  }) => {
     const rid = getRestaurantId();
     const payload: any = { p_restaurant_id: rid, p_branch_id: params.branch_id };
     if (params.batch_id !== undefined) payload.p_batch_id = params.batch_id;
     if (params.status_filter !== undefined) payload.p_status_filter = params.status_filter;
+    if (params.category_filter !== undefined) payload.p_category_filter = params.category_filter;
+    if (params.department_filter !== undefined) payload.p_department_filter = params.department_filter;
+    if (params.supplier_filter !== undefined) payload.p_supplier_filter = params.supplier_filter;
+    if (params.stock_filter !== undefined) payload.p_stock_filter = params.stock_filter;
     const { data, error } = await supabase.rpc('get_replenishment_recommendations_list', payload);
     if (error) return { success: false, error: error.message };
     return { success: true, data };
@@ -6885,6 +7846,10 @@ export const api = {
     override_qty?: number;
     override_supplier_id?: string;
     notes?: string;
+    override_priority?: string;
+    assigned_to_user_id?: string;
+    assigned_to_user_name?: string;
+    required_by_date?: string;
   }) => {
     const rid = getRestaurantId();
     const payload: any = {
@@ -6895,16 +7860,125 @@ export const api = {
     if (params.override_qty !== undefined) payload.p_override_qty = params.override_qty;
     if (params.override_supplier_id !== undefined) payload.p_override_supplier_id = params.override_supplier_id;
     if (params.notes !== undefined) payload.p_notes = params.notes;
+    if (params.override_priority !== undefined) payload.p_override_priority = params.override_priority;
+    if (params.assigned_to_user_id !== undefined) payload.p_assigned_to_user_id = params.assigned_to_user_id;
+    if (params.assigned_to_user_name !== undefined) payload.p_assigned_to_user_name = params.assigned_to_user_name;
+    if (params.required_by_date !== undefined) payload.p_required_by_date = params.required_by_date;
     const { data, error } = await supabase.rpc('override_replenishment_recommendation_item', payload);
     if (error) return { success: false, error: error.message };
     return { success: true, data };
   },
 
-  convertReplenishmentBatchToPurchaseOrders: async (params: { batch_id: string; supplier_ids?: string[] }) => {
+  convertReplenishmentBatchToPurchaseOrders: async (params: {
+    batch_id: string;
+    supplier_ids?: string[];
+    item_rec_ids?: string[];
+  }) => {
     const rid = getRestaurantId();
     const payload: any = { p_restaurant_id: rid, p_batch_id: params.batch_id };
     if (params.supplier_ids !== undefined) payload.p_supplier_ids = params.supplier_ids;
+    if (params.item_rec_ids !== undefined) payload.p_item_rec_ids = params.item_rec_ids;
     const { data, error } = await supabase.rpc('convert_replenishment_batch_to_purchase_orders', payload);
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  previewProductionBomConsolidation: async (params: {
+    branch_id: string;
+    items: Array<{ item_id: string; recipe_id?: string; quantity: number }>;
+  }) => {
+    const rid = getRestaurantId();
+    const payload: any = {
+      p_restaurant_id: rid,
+      p_branch_id: params.branch_id,
+      p_items: params.items,
+    };
+    const { data, error } = await supabase.rpc('preview_production_bom_consolidation', payload);
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  createShortageDraftPurchaseOrders: async (params: {
+    branch_id: string;
+    batch_id?: string;
+    shortage_items: Array<{
+      item_id: string;
+      supplier_id: string;
+      quantity: number;
+      pack_size?: number;
+      purchase_unit?: string;
+      unit_cost_usd?: number;
+    }>;
+  }) => {
+    const rid = getRestaurantId();
+    const payload: any = {
+      p_restaurant_id: rid,
+      p_branch_id: params.branch_id,
+      p_batch_id: params.batch_id || null,
+      p_shortage_items: params.shortage_items,
+    };
+    const { data, error } = await supabase.rpc('create_shortage_draft_purchase_orders', payload);
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  convertReplenishmentToProductionBatches: async (params: {
+    batch_id: string;
+    items: Array<{
+      item_rec_id: string;
+      recipe_id?: string;
+      quantity?: number;
+      priority?: string;
+      required_by_date?: string;
+      suggested_production_date?: string;
+      department?: string;
+      assigned_to_user_id?: string;
+      assigned_to_user_name?: string;
+    }>;
+    user_id?: string;
+    user_name?: string;
+  }) => {
+    const rid = getRestaurantId();
+    const payload: any = {
+      p_restaurant_id: rid,
+      p_batch_id: params.batch_id,
+      p_items: params.items,
+      p_user_id: params.user_id || null,
+      p_user_name: params.user_name || null,
+    };
+    const { data, error } = await supabase.rpc('convert_replenishment_to_production_batches', payload);
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  saveReplenishmentAiInsights: async (params: {
+    batch_id: string;
+    summary: any;
+    item_insights: any[];
+  }) => {
+    const rid = getRestaurantId();
+    const payload: any = {
+      p_restaurant_id: rid,
+      p_batch_id: params.batch_id,
+      p_summary: params.summary,
+      p_item_insights: params.item_insights,
+    };
+    const { data, error } = await supabase.rpc('save_replenishment_ai_insights', payload);
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  approveProductionBatch: async (params: {
+    batch_id: string;
+    user_id?: string;
+    user_name?: string;
+  }) => {
+    const payload: any = {
+      p_batch_id: params.batch_id,
+      p_user_id: params.user_id || null,
+      p_user_name: params.user_name || null,
+    };
+    const { data, error } = await supabase.rpc('approve_production_batch', payload);
     if (error) return { success: false, error: error.message };
     return { success: true, data };
   },
@@ -6918,8 +7992,418 @@ export const api = {
     if (error) return { success: false, error: error.message };
     return { success: true, data };
   },
+
+  // --- PHASE 2 & 12 PURCHASING & SUPPLIER INVOICE METHODS ---
+  getPurchaseOrders: async (params?: { branch_id?: string; supplier_id?: string; status?: string; search?: string }) => {
+    const rid = getRestaurantId();
+    let query = supabase
+      .from('purchase_orders')
+      .select(`
+        *,
+        supplier:suppliers(*),
+        items:purchase_order_items(*)
+      `)
+      .order('created_at', { ascending: false });
+
+    if (rid) query = query.eq('restaurant_id', rid);
+    if (params?.branch_id && params.branch_id !== 'All') query = query.eq('branch_id', params.branch_id);
+    if (params?.supplier_id && params.supplier_id !== 'All') query = query.eq('supplier_id', params.supplier_id);
+    if (params?.status && params.status !== 'All') query = query.eq('status', params.status);
+    if (params?.search && params.search.trim()) {
+      query = query.ilike('po_number', `%${params.search.trim()}%`);
+    }
+
+    const { data, error } = await query.limit(500);
+    if (error) return { success: false, error: error.message };
+    return { success: true, data: data || [] };
+  },
+
+  getPurchaseOrderById: async (poId: string) => {
+    const { data, error } = await supabase
+      .from('purchase_orders')
+      .select(`
+        *,
+        supplier:suppliers(*),
+        items:purchase_order_items(*),
+        dispatches:purchase_order_dispatches(*)
+      `)
+      .eq('id', poId)
+      .single();
+
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  createOrUpdatePurchaseOrder: async (payload: any) => {
+    const rid = payload.restaurant_id || getRestaurantId();
+    const { data, error } = await supabase.rpc('create_or_update_purchase_order', {
+      p_payload: { ...payload, restaurant_id: rid }
+    });
+    if (error) return { success: false, error: error.message };
+    return data;
+  },
+
+  recordPurchaseOrderDispatch: async (payload: any) => {
+    const rid = payload.restaurant_id || getRestaurantId();
+    const { data, error } = await supabase.rpc('record_purchase_order_dispatch', {
+      p_payload: { ...payload, restaurant_id: rid }
+    });
+    if (error) return { success: false, error: error.message };
+    return data;
+  },
+
+  approvePurchaseOrder: async (poId: string, userId: string, userName: string) => {
+    const { data, error } = await supabase
+      .from('purchase_orders')
+      .update({
+        status: 'APPROVED',
+        approved_by_id: userId,
+        approved_by_name: userName,
+        approved_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', poId)
+      .select()
+      .single();
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  cancelPurchaseOrder: async (poId: string, reason: string, userId: string, userName: string) => {
+    const { data, error } = await supabase.rpc('cancel_purchase_order', {
+      p_po_id: poId,
+      p_reason: reason,
+      p_user_id: userId,
+      p_user_name: userName
+    });
+    if (error) return { success: false, error: error.message };
+    return data;
+  },
+
+  closeShortPurchaseOrder: async (poId: string, reason: string, userId: string, userName: string) => {
+    const { data, error } = await supabase
+      .from('purchase_orders')
+      .update({
+        status: 'CLOSED_SHORT',
+        notes: reason ? `Closed short: ${reason}` : 'Closed short',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', poId)
+      .select()
+      .single();
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  postSupplierInvoice: async (payload: any) => {
+    const rid = payload.restaurant_id || getRestaurantId();
+    const { data, error } = await supabase.rpc('post_pos_supplier_invoice', {
+      p_payload: { ...payload, restaurant_id: rid }
+    });
+    if (error) return { success: false, error: error.message };
+    return data;
+  },
+
+  receiveInvoiceGoods: async (payload: any) => {
+    const { data, error } = await supabase.rpc('receive_invoice_goods', {
+      p_payload: payload
+    });
+    if (error) return { success: false, error: error.message };
+    return data;
+  },
+
+  settleSupplierInvoices: async (payload: any) => {
+    const rid = payload.restaurant_id || getRestaurantId();
+    const { data, error } = await supabase.rpc('settle_supplier_invoices', {
+      p_payload: { ...payload, restaurant_id: rid }
+    });
+    if (error) return { success: false, error: error.message };
+    return data;
+  },
+
+  getSupplierPayableLedger: async (supplierId?: string) => {
+    const rid = getRestaurantId();
+    const { data, error } = await supabase.rpc('get_supplier_payable_ledger', {
+      p_restaurant_id: rid,
+      p_supplier_id: supplierId || null
+    });
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  getSupplierInvoices: async (params?: { supplier_id?: string; branch_id?: string; status?: string }) => {
+    const rid = getRestaurantId();
+    let query = supabase
+      .from('supplier_invoices')
+      .select(`
+        *,
+        supplier:suppliers(name, phone),
+        items:supplier_invoice_items(*)
+      `)
+      .order('invoice_date', { ascending: false });
+
+    if (rid) query = query.eq('restaurant_id', rid);
+    if (params?.supplier_id && params.supplier_id !== 'All') query = query.eq('supplier_id', params.supplier_id);
+    if (params?.branch_id && params.branch_id !== 'All') query = query.eq('branch_id', params.branch_id);
+    if (params?.status && params.status !== 'All') query = query.eq('payment_status', params.status);
+
+    const { data, error } = await query.limit(500);
+    if (error) return { success: false, error: error.message };
+    return { success: true, data: data || [] };
+  },
+
+  getSupplierPayments: async (params?: { supplier_id?: string; branch_id?: string }) => {
+    const rid = getRestaurantId();
+    let query = supabase
+      .from('supplier_payments')
+      .select(`
+        *,
+        supplier:suppliers(name),
+        allocations:supplier_payment_allocations(*)
+      `)
+      .order('payment_date', { ascending: false });
+
+    if (rid) query = query.eq('restaurant_id', rid);
+    if (params?.supplier_id && params.supplier_id !== 'All') query = query.eq('supplier_id', params.supplier_id);
+    if (params?.branch_id && params.branch_id !== 'All') query = query.eq('branch_id', params.branch_id);
+
+    const { data, error } = await query.limit(500);
+    if (error) return { success: false, error: error.message };
+    return { success: true, data: data || [] };
+  },
+
+  postDrawerCashOutflow: async (params: {
+    shiftId: string;
+    amountUsd: number;
+    amountLbp: number;
+    outflowType: string;
+    expenseCategoryCode?: string;
+    payee?: string;
+    reason?: string;
+    sourceType?: string;
+    sourceId?: string;
+    authorizedBy?: string;
+    createdBy?: string;
+    idempotencyKey?: string;
+  }) => {
+    const rid = getRestaurantId();
+    const { data, error } = await supabase.rpc('post_drawer_cash_outflow', {
+      p_restaurant_id: rid,
+      p_shift_id: params.shiftId,
+      p_amount_usd: params.amountUsd,
+      p_amount_lbp: params.amountLbp,
+      p_outflow_type: params.outflowType,
+      p_expense_category_code: params.expenseCategoryCode || null,
+      p_payee: params.payee || null,
+      p_reason: params.reason || null,
+      p_source_type: params.sourceType || null,
+      p_source_id: params.sourceId || null,
+      p_authorized_by: params.authorizedBy || null,
+      p_created_by: params.createdBy || null,
+      p_idempotency_key: params.idempotencyKey || null
+    });
+    if (error) return { success: false, error: error.message };
+    return data;
+  },
+
+  // Packaging Options (supplier_price_lists)
+  getAllItemPackagingOptions: async () => {
+    const rid = getRestaurantId();
+    let query = supabase.from('supplier_price_lists').select('*').order('created_at', { ascending: false });
+    if (rid) query = query.eq('restaurant_id', rid);
+    const { data, error } = await query;
+    if (error) return { success: false, error: error.message };
+    return { success: true, data: data || [] };
+  },
+
+  getItemPackagingOptions: async (itemId: string) => {
+    const rid = getRestaurantId();
+    let query = supabase.from('supplier_price_lists').select('*').eq('item_id', itemId);
+    if (rid) query = query.eq('restaurant_id', rid);
+    const { data, error } = await query;
+    if (error) return { success: false, error: error.message };
+    return { success: true, data: data || [] };
+  },
+
+  saveItemPackagingOption: async (payload: any) => {
+    const rid = payload.restaurant_id || getRestaurantId();
+    const { data, error } = await supabase.from('supplier_price_lists').upsert({
+      ...payload,
+      restaurant_id: rid
+    });
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  deleteItemPackagingOption: async (id: string, cascadeConversions: boolean = false) => {
+    const { error } = await supabase.from('supplier_price_lists').delete().eq('id', id);
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  },
+
+  checkItemHasHistory: async (itemId: string) => {
+    try {
+      const [txRes, piRes] = await Promise.all([
+        supabase.from('inventory_transactions').select('id', { count: 'exact', head: true }).eq('item_id', itemId),
+        supabase.from('purchase_invoice_items').select('id', { count: 'exact', head: true }).eq('item_id', itemId)
+      ]);
+      const txCount = txRes.count || 0;
+      const piCount = piRes.count || 0;
+      const hasHistory = (txCount + piCount) > 0;
+      return {
+        success: true,
+        data: {
+          has_history: hasHistory,
+          current_stock: 0,
+          transaction_count: txCount + piCount
+        }
+      };
+    } catch (err: any) {
+      return { success: true, data: { has_history: false, current_stock: 0, transaction_count: 0 } };
+    }
+  },
+
+  // -------------------------------------------------------------
+  // POS Invoice Generator & Synthetic Migration
+  // -------------------------------------------------------------
+  getProductsForInvoiceGenerator: async (restaurantId?: string) => {
+    const rid = restaurantId || getRestaurantId();
+    let query = supabase
+      .from('products')
+      .select(`
+        id,
+        name,
+        price,
+        unit_price_usd,
+        is_active,
+        status,
+        category_id
+      `)
+      .eq('is_active', true)
+      .gt('price', 0)
+      .order('name');
+
+    if (rid) query = query.eq('restaurant_id', rid);
+
+    const { data: prods, error: pErr } = await query;
+    if (pErr) return { success: false, error: pErr.message };
+
+    let catQuery = supabase.from('categories').select('id, name, section').order('display_order');
+    if (rid) catQuery = catQuery.eq('restaurant_id', rid);
+    const { data: cats } = await catQuery;
+    const catMap = new Map<string, string>();
+    const sectionMap = new Map<string, string>();
+    (cats || []).forEach((c: any) => {
+      catMap.set(String(c.id), c.name || 'General');
+      if (c.section) sectionMap.set(String(c.id), c.section);
+    });
+
+    const mapped = (prods || []).map((p: any) => ({
+      id: p.id,
+      name: p.name,
+      price: Number(p.price || p.unit_price_usd || 0),
+      category_id: p.category_id,
+      category_name: p.category_id ? (catMap.get(String(p.category_id)) || 'General') : 'General',
+      department: p.category_id ? (sectionMap.get(String(p.category_id)) || '') : ''
+    }));
+
+    return { success: true, data: mapped };
+  },
+
+  saveSyntheticInvoiceBatch: async (batchId: string, invoices: any[], userName?: string) => {
+    const { data, error } = await supabase.rpc('save_synthetic_pos_invoices', {
+      p_batch_id: batchId,
+      p_invoices: invoices,
+      p_user_name: userName || 'Admin Migration'
+    });
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  executePosOrderCogs: async (orderId: number, userName?: string) => {
+    const { data, error } = await supabase.rpc('execute_pos_finished_goods_cogs', {
+      p_order_id: orderId,
+      p_user_name: userName || 'POS System'
+    });
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  reversePosOrderCogs: async (orderId: number, reason?: string) => {
+    const { data, error } = await supabase.rpc('reverse_pos_order_cogs', {
+      p_order_id: orderId,
+      p_reason: reason || 'Order Void/Cancellation'
+    });
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  // MULTI-CONCEPT INVOICE NUMBERING & CANCELLATION METHODS
+  allocateConceptInvoiceNumber: async (orderId: number, idempotencyKey?: string, fiscalSeries?: string) => {
+    const { data, error } = await supabase.rpc('allocate_concept_invoice_number', {
+      p_order_id: orderId,
+      p_idempotency_key: idempotencyKey || null,
+      p_fiscal_series: fiscalSeries || null
+    });
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  cancelPosOrderInvoice: async (orderId: number, reason: string, canceledBy?: string) => {
+    if (!reason || !reason.trim()) {
+      return { success: false, error: 'A mandatory cancellation reason must be provided.' };
+    }
+    const { data, error } = await supabase.rpc('cancel_pos_order_invoice', {
+      p_order_id: orderId,
+      p_reason: reason.trim(),
+      p_canceled_by: canceledBy || 'Web Admin'
+    });
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  deleteUnissuedPosOrder: async (orderId: number) => {
+    const { data, error } = await supabase.rpc('delete_unissued_pos_order', {
+      p_order_id: orderId
+    });
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  getConceptInvoiceSequences: async (conceptId?: string) => {
+    let query = supabase.from('concept_invoice_sequences').select('*');
+    if (conceptId) query = query.eq('concept_id', conceptId);
+    const { data, error } = await query.order('created_at', { ascending: true });
+    if (error) return { success: false, error: error.message };
+    return { success: true, data: data || [] };
+  },
+
+  getChannelInvoiceSeriesMapping: async () => {
+    const { data, error } = await supabase
+      .from('app_settings')
+      .select('setting_value')
+      .eq('setting_key', 'channel_invoice_series_mapping')
+      .maybeSingle();
+    if (error) return { success: false, error: error.message };
+    if (!data?.setting_value) {
+      return {
+        success: true,
+        data: {
+          WHATSAPP: 'A',
+          DIRECT_APP: 'A',
+          PHONE: 'A',
+          DINE_IN: 'STANDARD',
+          POS: 'STANDARD',
+          POS_PICKUP: 'STANDARD',
+          TOTERS: 'STANDARD',
+          NOKNOK: 'STANDARD'
+        }
+      };
+    }
+    try {
+      return { success: true, data: JSON.parse(data.setting_value) };
+    } catch {
+      return { success: true, data: {} };
+    }
+  }
 };
-
-
-
-

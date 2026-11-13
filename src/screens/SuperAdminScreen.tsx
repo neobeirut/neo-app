@@ -110,6 +110,8 @@ export default function SuperAdminScreen() {
   const [editUPin, setEditUPin] = useState('');
   const [editUPassword, setEditUPassword] = useState('');
   const [editRIsVatSubscribed, setEditRIsVatSubscribed] = useState(true);
+  const [editRCompanyLegalName, setEditRCompanyLegalName] = useState('');
+  const [editRMofNumber, setEditRMofNumber] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
   const [editErr, setEditErr] = useState('');
 
@@ -164,6 +166,8 @@ export default function SuperAdminScreen() {
     setEditRLogo(r.logo_url || '');
     setEditRColor(r.primary_color || '#1e5c4f');
     setEditRIsVatSubscribed(r.settings?.is_vat_subscribed !== false);
+    setEditRCompanyLegalName(r.settings?.company_legal_name || '');
+    setEditRMofNumber(r.settings?.mof_number || '');
     setEditUId('');
     setEditUName('');
     setEditUEmail('');
@@ -206,7 +210,9 @@ export default function SuperAdminScreen() {
     if (res.success) {
       const newSettings = {
         ...(editModalResto.settings || {}),
-        is_vat_subscribed: editRIsVatSubscribed
+        is_vat_subscribed: editRIsVatSubscribed,
+        company_legal_name: editRCompanyLegalName.trim(),
+        mof_number: editRMofNumber.trim()
       };
       await api.updateRestaurantSettings(editModalResto.id, newSettings);
     }
@@ -1385,6 +1391,28 @@ export default function SuperAdminScreen() {
                       style={{ flex: 1, padding: '10px 12px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '14px', outline: 'none' }}
                     />
                   </div>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px' }}>Company Legal Name</label>
+                  <input
+                    type="text"
+                    value={editRCompanyLegalName}
+                    onChange={e => setEditRCompanyLegalName(e.target.value)}
+                    placeholder="e.g. Neo Beirut S.A.L."
+                    style={{ width: '100%', padding: '10px 12px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '14px', outline: 'none' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px' }}>Ministry of Finance (MOF) Number</label>
+                  <input
+                    type="text"
+                    value={editRMofNumber}
+                    onChange={e => setEditRMofNumber(e.target.value)}
+                    placeholder="e.g. 382910-601"
+                    style={{ width: '100%', padding: '10px 12px', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '14px', outline: 'none' }}
+                  />
                 </div>
 
                 <div style={{ gridColumn: 'span 2', display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>

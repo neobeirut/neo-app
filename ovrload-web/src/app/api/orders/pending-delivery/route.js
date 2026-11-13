@@ -9,6 +9,7 @@ export async function GET(request) {
         o.id,
         o.status,
         o.order_type,
+        o.order_source,
         o.delivery_address,
         o.total_amount,
         o.created_at,
@@ -31,6 +32,11 @@ export async function GET(request) {
         )
         AND o.status NOT IN ('cancelled', 'completed')
         AND o.created_at >= NOW() - INTERVAL '24 hours'
+        AND COALESCE(o.order_source, '') NOT ILIKE '%toter%'
+        AND COALESCE(o.order_source, '') NOT ILIKE '%noknok%'
+        AND COALESCE(o.order_source, '') NOT ILIKE '%nok_nok%'
+        AND COALESCE(o.customer_name, '') NOT ILIKE '%toters%'
+        AND COALESCE(o.customer_name, '') NOT ILIKE '%noknok%'
       GROUP BY o.id, au.name, au.phone
       ORDER BY o.created_at DESC
     `;

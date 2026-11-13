@@ -21,22 +21,27 @@ export function OrderItem({
         parsed = JSON.parse(parsed);
       }
       if (Array.isArray(parsed)) itemCustomizations = parsed;
-      else if (typeof parsed === "string")
+      else if (typeof parsed === "string" && parsed.trim() && parsed !== "[]")
         itemCustomizations = parsed.split(",").map((s) => ({ ingredient: s.trim() }));
     } catch {
-      itemCustomizations = (item.customizations || "").split(",").map((s) => ({ ingredient: s.trim() }));
+      if (item.customizations && item.customizations !== "[]") {
+        itemCustomizations = item.customizations.split(",").map((s) => ({ ingredient: s.trim() }));
+      }
     }
   }
 
   // Normalize items to ensure each has customization_type and ingredient
-  itemCustomizations = itemCustomizations.map((c) => {
-    if (typeof c === "string") return { ingredient: c, customization_type: "addon" };
-    return {
-      ...c,
-      ingredient: c.ingredient || c.name || "",
-      customization_type: c.customization_type || (c.option_group_name ? "option" : "addon"),
-    };
-  });
+  itemCustomizations = itemCustomizations
+    .filter(Boolean)
+    .map((c) => {
+      if (typeof c === "string") return { ingredient: c, customization_type: "addon" };
+      return {
+        ...c,
+        ingredient: c.ingredient || c.name || "",
+        customization_type: c.customization_type || (c.option_group_name ? "option" : "addon"),
+      };
+    })
+    .filter((c) => c.ingredient && c.ingredient !== "[]");
 
   const options = itemCustomizations.filter(
     (c) => c.customization_type === "option",

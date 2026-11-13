@@ -1,5 +1,8 @@
 "use client";
 
+import { publicPageMeta } from "@/utils/seo";
+export const meta = () => publicPageMeta({"title":"Contact NÉO Beirut | Visit Badaro, Beirut","description":"Visit NÉO Beirut in Badaro for French-inspired cuisine, artisan bread, pastries and specialty coffee. Contact us about corporate catering and lunch boxes.","path":"/contact"});
+
 import { useState, useEffect } from "react";
 import { MapPin, Phone, Clock } from "lucide-react";
 import { openOrderApp } from "@/utils/deviceDetection";
@@ -178,11 +181,10 @@ export default function ContactPage() {
       <section className="relative pt-32 pb-20 px-4 bg-gradient-to-br from-[#2D5F5D] to-[#1f4342]">
         <div className="max-w-7xl mx-auto text-center">
           <h1 className="text-5xl md:text-7xl font-bold text-white mb-6">
-            Visit Our Branches
+            Visit NÉO Beirut in Badaro
           </h1>
           <p className="text-xl md:text-2xl text-white/90 max-w-3xl mx-auto">
-            Find the Neo Beirut location nearest to you and experience our
-            flavors in person
+            Find NÉO Beirut in Badaro, Beirut. Opening hours: 7:30 AM–11 PM.
           </p>
         </div>
       </section>

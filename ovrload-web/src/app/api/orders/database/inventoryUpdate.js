@@ -4,75 +4,80 @@ import { applyInventoryStatusRule } from "../utils/inventoryHelpers";
 
 export async function deductInventory({
   request,
-  inventoryDeductions,
+  createdOrderId,
   effectiveBranchId,
+  lineItems,
+  clientName,
 }) {
-  for (const d of inventoryDeductions) {
-    const [existingPbs] = await sql`
-      SELECT id, status, quantity_on_hand
-      FROM product_branch_status
-      WHERE product_id = ${d.product_id} AND branch_id = ${effectiveBranchId}
+  try {
+    const deductionItems = (lineItems || [])
+      .map((it) => ({
+        source_line_id: String(it.source_line_id || it.id || ""),
+        product_id: Number(it.product_id),
+        quantity: Number(it.quantity || 1),
+        name: it.name || "Item",
+        unit_price: Number(it.unit_price || 0),
+        customizations: it.customizations || it.customizations_json || [],
+      }))
+      .filter((it) => !isNaN(it.product_id) && it.product_id > 0 && it.source_line_id);
+
+    if (deductionItems.length === 0) {
+      return { ok: true };
+    }
+
+    const [result] = await sql`
+      SELECT public.process_sale_inventory_deduction(
+        ${String(createdOrderId)},
+        'MOBILE_ORDER',
+        ${String(effectiveBranchId)},
+        ${sql.json(deductionItems)},
+        NULL,
+        ${clientName || 'Mobile Customer'}
+      ) as res
     `;
 
-    if (!existingPbs) {
+    const data = result?.res;
+    if (data && data.success === false) {
+      if (data.code === 'INSUFFICIENT_STOCK') {
+        return {
+          ok: false,
+          response: corsJson(
+            request,
+            {
+              error: data.error || 'Insufficient stock',
+              code: 'INSUFFICIENT_STOCK',
+              items: [
+                {
+                  product_id: data.product_id,
+                  requested: data.requested,
+                  available: data.available,
+                },
+              ],
+            },
+            { status: 409 },
+          ),
+        };
+      }
       return {
         ok: false,
         response: corsJson(
           request,
-          {
-            error: "Insufficient stock",
-            code: "INSUFFICIENT_STOCK",
-            items: [
-              {
-                product_id: d.product_id,
-                requested: d.quantity,
-                available: 0,
-              },
-            ],
-          },
-          { status: 409 },
+          { error: data.error || 'Inventory deduction failed' },
+          { status: 500 },
         ),
       };
     }
 
-    const currentQoh =
-      existingPbs.quantity_on_hand === null ||
-      existingPbs.quantity_on_hand === undefined
-        ? 0
-        : Number(existingPbs.quantity_on_hand);
-
-    if (d.quantity > currentQoh) {
-      return {
-        ok: false,
-        response: corsJson(
-          request,
-          {
-            error: "Insufficient stock",
-            code: "INSUFFICIENT_STOCK",
-            items: [
-              {
-                product_id: d.product_id,
-                requested: d.quantity,
-                available: currentQoh,
-              },
-            ],
-          },
-          { status: 409 },
-        ),
-      };
-    }
-
-    const nextQoh = currentQoh - d.quantity;
-    const nextStatus = applyInventoryStatusRule(existingPbs.status, nextQoh);
-
-    await sql`
-      UPDATE product_branch_status
-      SET quantity_on_hand = ${nextQoh},
-          status = ${nextStatus},
-          updated_at = CURRENT_TIMESTAMP
-      WHERE id = ${existingPbs.id}
-    `;
+    return { ok: true, data };
+  } catch (error) {
+    console.error('[deductInventory] Unified inventory engine call failed:', error);
+    return {
+      ok: false,
+      response: corsJson(
+        request,
+        { error: error.message || 'Inventory update failed' },
+        { status: 500 },
+      ),
+    };
   }
-
-  return { ok: true };
 }

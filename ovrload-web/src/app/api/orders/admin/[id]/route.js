@@ -183,7 +183,7 @@ export async function PATCH(request, { params }) {
     }
 
     const [currentOrder] = await sql`
-      SELECT status, customer_phone, customer_name FROM orders WHERE id = ${resolvedId}
+      SELECT status, customer_phone, customer_name, total_amount FROM orders WHERE id = ${resolvedId}
     `;
 
     if (!currentOrder) {
@@ -219,11 +219,13 @@ export async function PATCH(request, { params }) {
 
     if (isPreparingOrAccepted && !wasPreparingOrAccepted && phoneToNotify) {
       try {
-        console.log(`[admin-order-update] Sending order_preparing WhatsApp to ${phoneToNotify} for order #${resolvedId}`);
+        const numTotal = Number(currentOrder?.total_amount || 0);
+        const formattedTotal = `$${numTotal % 1 === 0 ? numTotal.toFixed(0) : numTotal.toFixed(2)}`;
+        console.log(`[admin-order-update] Sending order_preparing WhatsApp to ${phoneToNotify} for order #${resolvedId} (Total: ${formattedTotal})`);
         const prepRes = await sendInfobipTemplateMessage({
           to: phoneToNotify,
           templateName: "order_preparing",
-          placeholders: [],
+          placeholders: [formattedTotal],
         });
         whatsappResult.attempted = true;
         whatsappResult.sent = !prepRes?.error;

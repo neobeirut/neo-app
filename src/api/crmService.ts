@@ -114,7 +114,7 @@ export interface WhatsAppCampaign {
 export interface CustomizationItem {
   id: number;
   name: string;
-  customization_type: 'addon' | 'option' | 'removal';
+  customization_type: 'addon' | 'option' | 'removal' | 'remove';
   default_price: number;
   is_active: boolean;
   is_default: boolean;
@@ -203,6 +203,7 @@ export interface Category {
 export interface Product {
   id: number;
   name: string;
+  concept_id?: string | null;
   description?: string | null;
   price: number;
   original_price?: string | null;
@@ -215,6 +216,10 @@ export interface Product {
   is_featured: boolean;
   is_special: boolean;
   status: string;
+  is_active?: boolean;
+  show_in_mobile?: boolean;
+  preparation_section?: string | null;
+  prep_print_override?: 'PRINT' | 'NO_PRINT' | null;
   sort_order: number;
   inventory_applies: boolean;
   restaurant_id: string;
@@ -494,7 +499,7 @@ export const crmService = {
       .select('*')
       .eq('restaurant_id', restaurantId)
       .order('option_group_name', { ascending: true })
-      .order('display_order', { ascending: true });
+      .order('name', { ascending: true });
 
     if (error) {
       console.error('Failed to get customization items:', error);
@@ -528,15 +533,146 @@ export const crmService = {
       .single();
 
     if (error) throw error;
+
+    // Cascade changes to existing linked product_customizations
+    const linkUpdates: any = {};
+    if (updates.option_group_name !== undefined) {
+      const rawG = updates.option_group_name.trim();
+      const lower = rawG.toLowerCase();
+      let normalized = rawG;
+      if (!rawG || lower === 'general' || lower === 'add on' || lower === 'add-on' || lower === 'addon' || lower === 'add-ons' || lower === 'addons' || lower === 'add ons' || lower === 'add_on' || lower === 'add_ons') {
+        normalized = 'Add On';
+      } else if (lower === 'remove' || lower === 'removal' || lower === 'removals' || lower.startsWith('remove ingredient')) {
+        normalized = 'Remove';
+      }
+      linkUpdates.option_group_name = normalized;
+    }
+    if (updates.name !== undefined) {
+      linkUpdates.ingredient = updates.name;
+    }
+    if (updates.customization_type !== undefined) {
+      linkUpdates.customization_type = updates.customization_type;
+    }
+
+    if (Object.keys(linkUpdates).length > 0) {
+      await supabase
+        .from('product_customizations')
+        .update(linkUpdates)
+        .eq('customization_item_id', id);
+    }
+
     return data as CustomizationItem;
   },
 
-  async deleteCustomizationItem(id: number): Promise<void> {
+  async getCustomizationItemUsage(id: number): Promise<{
+    count: number;
+    products: Array<{ id: number; name: string; option_group_name?: string; price: number }>;
+  }> {
+    const restaurantId = getActiveRestaurantId();
+    const { data: links, error } = await supabase
+      .from('product_customizations')
+      .select('id, product_id, ingredient, option_group_name, price')
+      .eq('customization_item_id', id)
+      .eq('restaurant_id', restaurantId);
+
+    if (error) throw error;
+    if (!links || links.length === 0) {
+      return { count: 0, products: [] };
+    }
+
+    const prodIds = Array.from(new Set(links.map(l => l.product_id).filter(Boolean)));
+    const { data: prods } = await supabase
+      .from('products')
+      .select('id, name')
+      .in('id', prodIds);
+
+    const prodMap = new Map((prods || []).map(p => [p.id, p.name]));
+    const products = links.map(l => ({
+      id: l.product_id,
+      name: prodMap.get(l.product_id) || `Product #${l.product_id}`,
+      option_group_name: l.option_group_name,
+      price: Number(l.price) || 0
+    }));
+
+    return {
+      count: products.length,
+      products
+    };
+  },
+
+  async deleteCustomizationItem(id: number): Promise<{ deletedItem: boolean; deletedLinksCount: number }> {
+    const restaurantId = getActiveRestaurantId();
+
+    // 1. Find all product_customizations linked to this customization_item
+    const { data: links } = await supabase
+      .from('product_customizations')
+      .select('id')
+      .eq('customization_item_id', id)
+      .eq('restaurant_id', restaurantId);
+
+    const linkIds = (links || []).map(l => l.id);
+
+    // 2. Cascade delete modifier_inventory_effects linked to these product_customizations
+    if (linkIds.length > 0) {
+      await supabase
+        .from('modifier_inventory_effects')
+        .delete()
+        .in('product_customization_id', linkIds);
+
+      // 3. Cascade delete the product_customizations assignments
+      await supabase
+        .from('product_customizations')
+        .delete()
+        .in('id', linkIds);
+    }
+
+    // 4. Delete the customization_item itself
     const { error } = await supabase
       .from('customization_items')
       .delete()
       .eq('id', id);
+
     if (error) throw error;
+
+    return {
+      deletedItem: true,
+      deletedLinksCount: linkIds.length
+    };
+  },
+
+  async cleanupOrphanedCustomizations(): Promise<{ cleanedCount: number }> {
+    const restaurantId = getActiveRestaurantId();
+
+    const { data: globalItems } = await supabase
+      .from('customization_items')
+      .select('id')
+      .eq('restaurant_id', restaurantId);
+
+    const validIds = new Set((globalItems || []).map(g => g.id));
+
+    const { data: allCusts } = await supabase
+      .from('product_customizations')
+      .select('id, customization_item_id')
+      .eq('restaurant_id', restaurantId)
+      .not('customization_item_id', 'is', null);
+
+    const orphanIds = (allCusts || [])
+      .filter(c => c.customization_item_id && !validIds.has(c.customization_item_id))
+      .map(c => c.id);
+
+    if (orphanIds.length > 0) {
+      await supabase
+        .from('modifier_inventory_effects')
+        .delete()
+        .in('product_customization_id', orphanIds);
+
+      await supabase
+        .from('product_customizations')
+        .delete()
+        .in('id', orphanIds);
+    }
+
+    return { cleanedCount: orphanIds.length };
   },
 
   // --------------------------------------------------------------------------
@@ -547,7 +683,9 @@ export const crmService = {
     let query = supabase
       .from('product_customizations')
       .select('*')
-      .eq('restaurant_id', restaurantId);
+      .eq('restaurant_id', restaurantId)
+      .order('product_id', { ascending: true })
+      .order('ingredient', { ascending: true });
 
     if (productId !== undefined) {
       query = query.eq('product_id', productId);
@@ -558,12 +696,39 @@ export const crmService = {
     return (data || []) as ProductCustomization[];
   },
 
-  async linkModifierToProduct(productId: number, item: CustomizationItem): Promise<ProductCustomization> {
+  async linkModifierToProduct(productId: number, item: CustomizationItem, overridePrice?: number): Promise<ProductCustomization> {
     const restaurantId = getActiveRestaurantId();
-    // Normalize group name: blank/General → "Add On" (must match what updateProductModifierGroupSettings queries by)
+    // Normalize group name: blank/General/Add-ons → "Add On", Remove variations → "Remove"
     const rawGroup = (item.option_group_name || '').trim();
-    const normalizedGroup =
-      !rawGroup || rawGroup.toLowerCase() === 'general' ? 'Add On' : rawGroup;
+    const lower = rawGroup.toLowerCase();
+    const tLower = (item.customization_type || '').toLowerCase();
+    let normalizedGroup = rawGroup;
+    if (lower === 'remove' || lower === 'removal' || lower === 'removals' || lower.startsWith('remove ingredient') || tLower === 'remove' || tLower === 'removal') {
+      normalizedGroup = 'Remove';
+    } else if (!rawGroup || lower === 'general' || lower === 'add on' || lower === 'add-on' || lower === 'addon' || lower === 'add-ons' || lower === 'addons' || lower === 'add ons' || lower === 'add_on' || lower === 'add_ons' || tLower === 'addon') {
+      if (!rawGroup || lower === 'general' || lower === 'add on' || lower === 'add-on' || lower === 'addon' || lower === 'add-ons' || lower === 'addons' || lower === 'add ons' || lower === 'add_on' || lower === 'add_ons') {
+        normalizedGroup = 'Add On';
+      }
+    }
+
+    // Check if this group already has an explicit screen order marker on this product
+    let groupCreatedAt = new Date().toISOString();
+    try {
+      const { data: existingGroupRows } = await supabase
+        .from('product_customizations')
+        .select('created_at')
+        .eq('restaurant_id', restaurantId)
+        .eq('product_id', productId)
+        .eq('option_group_name', normalizedGroup);
+      const orderRow = (existingGroupRows || []).find((r: any) => /^2020-01-01T00:\d{2}:/.test(String(r?.created_at || '')));
+      if (orderRow?.created_at) {
+        groupCreatedAt = orderRow.created_at;
+      }
+    } catch {
+      // ignore
+    }
+
+    const finalPrice = overridePrice !== undefined ? overridePrice : (item.default_price || 0);
 
     const { data, error } = await supabase
       .from('product_customizations')
@@ -571,26 +736,85 @@ export const crmService = {
         product_id: productId,
         ingredient: item.name,
         customization_type: item.customization_type,
-        price: item.default_price || 0,
+        price: finalPrice,
         is_active: true,
         customization_item_id: item.id,
         restaurant_id: restaurantId,
         option_group_name: normalizedGroup,
         is_required: false,    // always defaults to false — user sets per product
         is_multi_select: false, // always defaults to false — user sets per product
-        created_at: new Date().toISOString(),
+        created_at: groupCreatedAt,
       })
       .select()
       .single();
     if (error) throw error;
+
+    // Automatically inherit modifier_inventory_effects if this modifier was already configured on another product
+    try {
+      const { data: siblingMods } = await supabase
+        .from('product_customizations')
+        .select('id')
+        .eq('restaurant_id', restaurantId)
+        .neq('id', data.id)
+        .or(item.id ? `customization_item_id.eq.${item.id},ingredient.ilike.${item.name}` : `ingredient.ilike.${item.name}`);
+
+      if (siblingMods && siblingMods.length > 0) {
+        const siblingIds = siblingMods.map(s => s.id);
+        const { data: existingEffects } = await supabase
+          .from('modifier_inventory_effects')
+          .select('*')
+          .in('product_customization_id', siblingIds);
+
+        if (existingEffects && existingEffects.length > 0) {
+          // Group by product_customization_id and pick the most complete/recent template
+          const byCustId = new Map<number, any[]>();
+          existingEffects.forEach(eff => {
+            const list = byCustId.get(eff.product_customization_id) || [];
+            list.push(eff);
+            byCustId.set(eff.product_customization_id, list);
+          });
+          const bestTemplate = Array.from(byCustId.values()).sort((a, b) => b.length - a.length)[0];
+          if (bestTemplate && bestTemplate.length > 0) {
+            const toInsert = bestTemplate.map(eff => ({
+              product_customization_id: data.id,
+              item_id: eff.item_id,
+              effect_type: eff.effect_type,
+              quantity_delta: eff.quantity_delta,
+              unit: eff.unit,
+              location_id: eff.location_id || null
+            }));
+            await supabase.from('modifier_inventory_effects').insert(toInsert);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Could not auto-copy modifier inventory effects:', e);
+    }
+
     return data as ProductCustomization;
   },
 
   async unlinkModifierFromProduct(productCustomizationId: number): Promise<void> {
+    // Delete any associated modifier inventory effects first
+    await supabase
+      .from('modifier_inventory_effects')
+      .delete()
+      .eq('product_customization_id', productCustomizationId);
+
     const { error } = await supabase
       .from('product_customizations')
       .delete()
       .eq('id', productCustomizationId);
+    if (error) throw error;
+  },
+
+  async zeroOutProductCustomizationPrices(productId: number): Promise<void> {
+    const restaurantId = getActiveRestaurantId();
+    const { error } = await supabase
+      .from('product_customizations')
+      .update({ price: 0 })
+      .eq('restaurant_id', restaurantId)
+      .eq('product_id', productId);
     if (error) throw error;
   },
 
@@ -601,6 +825,17 @@ export const crmService = {
     settings: { is_required?: boolean; is_multi_select?: boolean }
   ): Promise<void> {
     const restaurantId = getActiveRestaurantId();
+    const gLower = (groupName || '').toLowerCase();
+    if (gLower === 'remove' || gLower === 'removal' || gLower === 'removals' || gLower.startsWith('remove ingredient')) {
+      const { error } = await supabase
+        .from('product_customizations')
+        .update({ ...settings, option_group_name: 'Remove' })
+        .eq('product_id', productId)
+        .eq('restaurant_id', restaurantId)
+        .or('option_group_name.ilike.remove,option_group_name.ilike.removal,customization_type.ilike.remove,customization_type.ilike.removal');
+      if (error) throw error;
+      return;
+    }
     const { error } = await supabase
       .from('product_customizations')
       .update(settings)
@@ -800,6 +1035,54 @@ export const crmService = {
     return (data || []) as Category[];
   },
 
+  async createCategory(name: string, section: string = 'Bistro'): Promise<Category> {
+    const restaurantId = getActiveRestaurantId();
+    const { data: existing } = await supabase
+      .from('categories')
+      .select('display_order')
+      .eq('restaurant_id', restaurantId)
+      .order('display_order', { ascending: false })
+      .limit(1);
+
+    const maxOrder = existing?.[0]?.display_order ?? 0;
+
+    const { data, error } = await supabase
+      .from('categories')
+      .insert({
+        name: name.trim(),
+        section,
+        restaurant_id: restaurantId,
+        display_order: maxOrder + 1,
+        is_active: true,
+        created_at: new Date().toISOString()
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data as Category;
+  },
+
+  async updateCategory(id: number, updates: { name?: string; section?: string; is_active?: boolean; display_order?: number }): Promise<Category> {
+    const { data, error } = await supabase
+      .from('categories')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data as Category;
+  },
+
+  async deleteCategory(id: number): Promise<void> {
+    const { error } = await supabase
+      .from('categories')
+      .delete()
+      .eq('id', id);
+    if (error) throw error;
+  },
+
   async getProducts(categoryId?: number, search: string = ''): Promise<Product[]> {
     const restaurantId = getActiveRestaurantId();
     let query = supabase
@@ -839,11 +1122,49 @@ export const crmService = {
       custCountMap.set(c.product_id, (custCountMap.get(c.product_id) || 0) + 1);
     });
 
+    let localConceptMap: Record<number, string> = {};
+    try {
+      const stored = localStorage.getItem('flow_product_concept_map');
+      if (stored) localConceptMap = JSON.parse(stored);
+    } catch (e) {}
+
+    // Hydrate concept mapping from shared restaurant settings in Supabase
+    let remoteConceptMap: Record<string, string> = {};
+    try {
+      if (restaurantId) {
+        const { data: restData } = await supabase
+          .from('restaurants')
+          .select('settings')
+          .eq('id', restaurantId)
+          .maybeSingle();
+        if (restData?.settings?.concept_products) {
+          remoteConceptMap = restData.settings.concept_products;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to load concept_products from restaurant settings:', e);
+    }
+
     products.forEach(p => {
+      let cat: Category | null = null;
       if (p.category_id) {
-        p.category = catMap.get(p.category_id) || null;
+        cat = catMap.get(p.category_id) || null;
+        p.category = cat;
       }
       p.customization_count = custCountMap.get(p.id) || 0;
+      const catName = (cat?.name || '').toUpperCase();
+      const isCatOvr = catName.includes('OVRLOAD') || catName.includes('OVR');
+      const isCatWck = catName.includes('WICKD') || catName.includes('WCK');
+      const mappedConcept = remoteConceptMap[String(p.id)] || localConceptMap[p.id];
+      const isDefaultOrEmpty = !p.concept_id || p.concept_id === '00000000-0000-0000-0000-000000000001';
+
+      p.concept_id = (isDefaultOrEmpty && mappedConcept)
+        ? mappedConcept
+        : (isDefaultOrEmpty && isCatOvr)
+          ? '00000000-0000-0000-0000-000000000002'
+          : (isDefaultOrEmpty && isCatWck)
+            ? '00000000-0000-0000-0000-000000000003'
+            : (p.concept_id || '00000000-0000-0000-0000-000000000001');
     });
 
     return products;
@@ -851,32 +1172,96 @@ export const crmService = {
 
   async createProduct(product: Partial<Product>): Promise<Product> {
     const restaurantId = getActiveRestaurantId();
-    const { data, error } = await supabase
+    const insertPayload: any = {
+      show_in_mobile: product.show_in_mobile !== undefined ? product.show_in_mobile : true,
+      ...product,
+      restaurant_id: restaurantId,
+      created_at: new Date().toISOString()
+    };
+
+    let { data, error } = await supabase
       .from('products')
-      .insert({
-        ...product,
-        restaurant_id: restaurantId,
-        created_at: new Date().toISOString()
-      })
+      .insert(insertPayload)
       .select()
       .single();
 
-    if (error) throw error;
-    return data as Product;
+    if (error && (error.message?.includes('concept_id') || (error as any).code === 'PGRST204')) {
+      const { concept_id, ...fallbackPayload } = insertPayload;
+      const res = await supabase.from('products').insert(fallbackPayload).select().single();
+      if (res.error) throw res.error;
+      data = res.data;
+    } else if (error) {
+      throw error;
+    }
+
+    if (product.concept_id && data?.id) {
+      try {
+        const map = JSON.parse(localStorage.getItem('flow_product_concept_map') || '{}');
+        map[data.id] = product.concept_id;
+        localStorage.setItem('flow_product_concept_map', JSON.stringify(map));
+      } catch (e) {}
+
+      // Persist to shared Supabase restaurant settings for real-time POS synchronization
+      try {
+        const restId = restaurantId || '79256f11-a9f8-4fec-901d-69baf929762d';
+        const { data: restData } = await supabase.from('restaurants').select('settings').eq('id', restId).maybeSingle();
+        if (restData) {
+          const currentSettings = restData.settings || {};
+          const conceptProducts = { ...(currentSettings.concept_products || {}) };
+          conceptProducts[String(data.id)] = product.concept_id;
+          await supabase.from('restaurants').update({ settings: { ...currentSettings, concept_products: conceptProducts } }).eq('id', restId);
+        }
+      } catch (e) {
+        console.warn('Failed to sync concept to restaurant settings:', e);
+      }
+    }
+
+    return { ...data, concept_id: product.concept_id || '00000000-0000-0000-0000-000000000001' } as Product;
   },
 
   async updateProduct(id: number, updates: Partial<Product>): Promise<Product> {
+    const restaurantId = getActiveRestaurantId();
     // Strip computed/joined fields that are not real DB columns
     const { category, customization_count, ...dbUpdates } = updates as any;
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('products')
       .update(dbUpdates)
       .eq('id', id)
       .select()
       .single();
 
-    if (error) throw error;
-    return data as Product;
+    if (error && (error.message?.includes('concept_id') || (error as any).code === 'PGRST204')) {
+      const { concept_id, ...fallbackUpdates } = dbUpdates;
+      const res = await supabase.from('products').update(fallbackUpdates).eq('id', id).select().single();
+      if (res.error) throw res.error;
+      data = res.data;
+    } else if (error) {
+      throw error;
+    }
+
+    if (updates.concept_id && id) {
+      try {
+        const map = JSON.parse(localStorage.getItem('flow_product_concept_map') || '{}');
+        map[id] = updates.concept_id;
+        localStorage.setItem('flow_product_concept_map', JSON.stringify(map));
+      } catch (e) {}
+
+      // Persist to shared Supabase restaurant settings for real-time POS synchronization
+      try {
+        const restId = restaurantId || '79256f11-a9f8-4fec-901d-69baf929762d';
+        const { data: restData } = await supabase.from('restaurants').select('settings').eq('id', restId).maybeSingle();
+        if (restData) {
+          const currentSettings = restData.settings || {};
+          const conceptProducts = { ...(currentSettings.concept_products || {}) };
+          conceptProducts[String(id)] = updates.concept_id;
+          await supabase.from('restaurants').update({ settings: { ...currentSettings, concept_products: conceptProducts } }).eq('id', restId);
+        }
+      } catch (e) {
+        console.warn('Failed to sync concept to restaurant settings:', e);
+      }
+    }
+
+    return { ...data, concept_id: updates.concept_id || (data as any)?.concept_id } as Product;
   },
 
   async deleteProduct(id: number): Promise<void> {

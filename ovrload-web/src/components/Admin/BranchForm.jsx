@@ -31,16 +31,32 @@ export function BranchForm({ editingItem, onSave, onCancel }) {
   const [isSaving, setIsSaving] = useState(false);
 
   const initialSchedule = (() => {
-    if (editingItem?.weekday_schedule) {
-      if (typeof editingItem.weekday_schedule === "string") {
-        try {
-          return JSON.parse(editingItem.weekday_schedule);
-        } catch (e) {}
-      } else if (typeof editingItem.weekday_schedule === "object") {
-        return editingItem.weekday_schedule;
+    let s = editingItem?.weekday_schedule;
+    while (typeof s === "string") {
+      try {
+        s = JSON.parse(s);
+      } catch (e) {
+        break;
       }
     }
-    return DEFAULT_SCHEDULE;
+    const result = {};
+    for (const d of DAYS_OF_WEEK) {
+      const existing = (s && typeof s === "object") ? s[d.id] : null;
+      if (existing && typeof existing === "object") {
+        result[d.id] = {
+          active: existing.active !== false,
+          open: formatTimeHHMM(existing.open || editingItem?.opening_time || "12:00"),
+          close: formatTimeHHMM(existing.close || editingItem?.closing_time || "23:00"),
+        };
+      } else {
+        result[d.id] = {
+          active: d.id !== "sunday",
+          open: formatTimeHHMM(editingItem?.opening_time || "12:00"),
+          close: formatTimeHHMM(editingItem?.closing_time || "23:00"),
+        };
+      }
+    }
+    return result;
   })();
 
   const initialStatus = editingItem?.operational_status || (editingItem?.orders_active === false ? "closed" : "open");
@@ -59,10 +75,10 @@ export function BranchForm({ editingItem, onSave, onCancel }) {
       editingItem?.delivery_radius_km === undefined
         ? 10
         : Number(editingItem.delivery_radius_km),
-    opening_time: formatTimeHHMM(editingItem?.opening_time || "09:00"),
-    closing_time: formatTimeHHMM(editingItem?.closing_time || "21:00"),
-    delivery_start_time: formatTimeHHMM(editingItem?.delivery_start_time || "11:00"),
-    delivery_end_time: formatTimeHHMM(editingItem?.delivery_end_time || "20:00"),
+    opening_time: formatTimeHHMM(editingItem?.opening_time || "12:00"),
+    closing_time: formatTimeHHMM(editingItem?.closing_time || "23:00"),
+    delivery_start_time: formatTimeHHMM(editingItem?.delivery_start_time || "12:00"),
+    delivery_end_time: formatTimeHHMM(editingItem?.delivery_end_time || "23:00"),
     orders_active: editingItem?.orders_active ?? true,
     operational_status: initialStatus,
     closure_reason: editingItem?.closure_reason || "Overloaded",
@@ -88,16 +104,35 @@ export function BranchForm({ editingItem, onSave, onCancel }) {
   };
 
   const handleWeekdayChange = (dayId, field, value) => {
-    setFormData((prev) => ({
-      ...prev,
-      weekday_schedule: {
-        ...prev.weekday_schedule,
-        [dayId]: {
-          ...(prev.weekday_schedule[dayId] || { active: true, open: "09:00", close: "23:00" }),
-          [field]: value,
+    setFormData((prev) => {
+      let currentSched = prev.weekday_schedule;
+      while (typeof currentSched === "string") {
+        try {
+          currentSched = JSON.parse(currentSched);
+        } catch (e) {
+          currentSched = {};
+          break;
+        }
+      }
+      if (!currentSched || typeof currentSched !== "object") {
+        currentSched = {};
+      }
+      const dayData = currentSched[dayId] || {
+        active: true,
+        open: formatTimeHHMM(prev.opening_time || "12:00"),
+        close: formatTimeHHMM(prev.closing_time || "23:00"),
+      };
+      return {
+        ...prev,
+        weekday_schedule: {
+          ...currentSched,
+          [dayId]: {
+            ...dayData,
+            [field]: value,
+          },
         },
-      },
-    }));
+      };
+    });
   };
 
   const handleSubmit = async () => {
@@ -124,20 +159,33 @@ export function BranchForm({ editingItem, onSave, onCancel }) {
     const finalIsActive = formData.operational_status !== "closed";
     const finalReason = formData.operational_status !== "open" ? (formData.closure_reason || "Overloaded") : null;
 
-    const dataToSave = editingItem
-      ? { 
-          ...formData, 
-          id: editingItem.id,
-          orders_active: finalOrdersActive,
-          is_active: finalIsActive,
-          closure_reason: finalReason
-        }
-      : {
-          ...formData,
-          orders_active: finalOrdersActive,
-          is_active: finalIsActive,
-          closure_reason: finalReason
-        };
+    const cleanSchedule = {};
+    let currentSched = formData.weekday_schedule;
+    while (typeof currentSched === "string") {
+      try {
+        currentSched = JSON.parse(currentSched);
+      } catch (e) {
+        currentSched = {};
+        break;
+      }
+    }
+    for (const d of DAYS_OF_WEEK) {
+      const entry = (currentSched && typeof currentSched === "object") ? currentSched[d.id] : null;
+      cleanSchedule[d.id] = {
+        active: entry ? entry.active !== false : d.id !== "sunday",
+        open: formatTimeHHMM(entry?.open || formData.opening_time || "12:00"),
+        close: formatTimeHHMM(entry?.close || formData.closing_time || "23:00"),
+      };
+    }
+
+    const dataToSave = {
+      ...(editingItem ? { id: editingItem.id } : {}),
+      ...formData,
+      weekday_schedule: cleanSchedule,
+      orders_active: finalOrdersActive,
+      is_active: finalIsActive,
+      closure_reason: finalReason,
+    };
 
     setIsSaving(true);
     try {

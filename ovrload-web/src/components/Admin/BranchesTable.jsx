@@ -112,34 +112,31 @@ export function BranchesTable({ branches, onEdit, onDelete, onReorder }) {
               </td>
               <td className="px-6 py-4 whitespace-nowrap">
                 {(() => {
-                  const status = branch.operational_status || (branch.orders_active === false ? "closed" : (branch.is_active ? "open" : "closed"));
-                  const reason = branch.closure_reason ? ` (${branch.closure_reason})` : "";
+                  const isOpen = branch.is_open ?? (branch.operational_status === "open" && branch.orders_active !== false);
+                  const displayBadge = branch.status_display || (isOpen ? "🟢 Open" : "🔴 Closed");
                   
-                  if (status === "open") {
-                    return (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
-                        🟢 Open / Active
-                      </span>
-                    );
+                  let badgeStyle = "bg-emerald-100 text-emerald-800 border-emerald-300";
+                  if (!isOpen) {
+                    if (branch.operational_status === "closed_hour") {
+                      badgeStyle = "bg-amber-100 text-amber-900 border-amber-300";
+                    } else if (branch.operational_status === "closed_today") {
+                      badgeStyle = "bg-purple-100 text-purple-900 border-purple-300";
+                    } else {
+                      badgeStyle = "bg-rose-100 text-rose-800 border-rose-300";
+                    }
                   }
-                  if (status === "closed_hour") {
-                    return (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-full bg-amber-100 text-amber-900 border border-amber-300">
-                        ⏳ Closed 1 Hour{reason}
-                      </span>
-                    );
-                  }
-                  if (status === "closed_today") {
-                    return (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-full bg-purple-100 text-purple-900 border border-purple-300">
-                        🌙 Closed Today{reason}
-                      </span>
-                    );
-                  }
+
                   return (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-full bg-rose-100 text-rose-800 border border-rose-300">
-                      🔴 Closed (Hidden){reason}
-                    </span>
+                    <div className="flex flex-col gap-1">
+                      <span className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-full border w-fit ${badgeStyle}`}>
+                        {displayBadge}
+                      </span>
+                      {branch.closure_reason && !isOpen && (
+                        <span className="text-xs text-gray-500 italic pl-1">
+                          Reason: {branch.closure_reason}
+                        </span>
+                      )}
+                    </div>
                   );
                 })()}
               </td>

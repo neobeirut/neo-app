@@ -198,9 +198,31 @@ export async function fetchInfobipTemplateSchema(templateName, language = "en") 
 /**
  * Send an OTP verification code template message
  */
-export async function sendInfobipOTPTemplate(to, code, templateName, language = "en") {
+export async function sendInfobipOTPTemplate(to, code, templateName, language = "en", options = {}) {
   const cfg = getInfobipConfig();
   const normalizedTo = toInfobipRecipient(to);
+
+  const templateData = {
+    body: {
+      placeholders: [String(code)],
+    },
+  };
+
+  // WhatsApp AUTHENTICATION templates (such as neo_login_code_2026) require a button parameter for the Copy Code / URL button.
+  // Include buttons unless explicitly disabled in options/schema.
+  const hasButtons = options.hasButtons !== undefined
+    ? options.hasButtons
+    : (options.schema?.hasButtons !== undefined ? options.schema.hasButtons : true);
+
+  if (hasButtons) {
+    const buttonType = options.buttonType || options.schema?.buttonType || "URL";
+    templateData.buttons = [
+      {
+        type: buttonType,
+        parameter: String(code),
+      },
+    ];
+  }
 
   // Build OTP template payload
   const payload = {
@@ -211,12 +233,7 @@ export async function sendInfobipOTPTemplate(to, code, templateName, language = 
         messageId: `otp-template-${Date.now()}`,
         content: {
           templateName,
-          templateData: {
-            body: {
-              placeholders: [String(code)],
-            },
-            
-          },
+          templateData,
           language,
         },
       },
@@ -242,6 +259,7 @@ export async function sendInfobipOTPTemplate(to, code, templateName, language = 
 export async function sendInfobipOTP(to, code) {
   let templateName = "neo_login_code_2026";
   let language = "en_US";
+  let schema = null;
 
   try {
     const [row] = await sql`
@@ -251,20 +269,22 @@ export async function sendInfobipOTP(to, code) {
       const config = JSON.parse(row.setting_value);
       templateName = config.template_name || config.templateName || templateName;
       language = config.language || config.locale || language;
+      schema = config.schema || null;
     }
   } catch (e) {
     console.error("[sendInfobipOTP] Failed to load OTP template config from DB, using fallback defaults", e);
   }
 
-  return await sendInfobipOTPTemplate(to, code, templateName, language);
+  return await sendInfobipOTPTemplate(to, code, templateName, language, { schema });
 }
 
 /**
  * Send order status updates using template registry payload structures
  */
-export async function sendInfobipWhatsAppTemplate(toPhone, templateConfig, parameters = []) {
+export async function sendInfobipWhatsAppTemplate(toPhone, templateConfig, parameters = [], senderOverride = null) {
   const cfg = getInfobipConfig();
   const to = toInfobipRecipient(toPhone);
+  const sender = senderOverride || cfg.sender;
 
   const registry = await import("./whatsappTemplateRegistry.js");
   let schema = null;
@@ -296,7 +316,7 @@ export async function sendInfobipWhatsAppTemplate(toPhone, templateConfig, param
     schema,
     templateConfig,
     { placeholders: parameters },
-    cfg.sender,
+    sender,
     to
   );
 
@@ -316,12 +336,13 @@ export async function sendInfobipWhatsAppTemplate(toPhone, templateConfig, param
 /**
  * Send free-form WhatsApp reply message
  */
-export async function sendInfobipWhatsAppFreeForm(toPhone, messageText) {
+export async function sendInfobipWhatsAppFreeForm(toPhone, messageText, senderOverride = null) {
   const cfg = getInfobipConfig();
   const to = toInfobipRecipient(toPhone);
+  const sender = senderOverride || cfg.sender;
 
   const payload = {
-    from: cfg.sender,
+    from: sender,
     to,
     messageId: `freeform-${Date.now()}`,
     content: {

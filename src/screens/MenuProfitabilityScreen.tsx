@@ -10,12 +10,39 @@ import type {
   MarginScenarioResult, 
   RecipeCostAlert 
 } from '../api/menuProfitabilityApi';
-import { api } from '../api/client';
+import { api, getRestaurantId } from '../api/client';
 
 export default function MenuProfitabilityScreen({ user, permissions }: { user: any; permissions: any }) {
+  const restaurantId = user?.restaurant_id || getRestaurantId();
   const [branches, setBranches] = useState<any[]>([]);
   const [selectedBranch, setSelectedBranch] = useState<string>('');
-  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
+
+  const getPastDate = (days: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() - days);
+    return d.toISOString().split('T')[0];
+  };
+
+  const todayStr = new Date().toISOString().split('T')[0];
+  const [datePreset, setDatePreset] = useState<'30d' | '7d' | 'today' | 'custom'>('30d');
+  const [startDate, setStartDate] = useState<string>(getPastDate(30));
+  const [endDate, setEndDate] = useState<string>(todayStr);
+
+  const handlePresetChange = (preset: '30d' | '7d' | 'today' | 'custom') => {
+    setDatePreset(preset);
+    const today = new Date().toISOString().split('T')[0];
+    if (preset === 'today') {
+      setStartDate(today);
+      setEndDate(today);
+    } else if (preset === '7d') {
+      setStartDate(getPastDate(7));
+      setEndDate(today);
+    } else if (preset === '30d') {
+      setStartDate(getPastDate(30));
+      setEndDate(today);
+    }
+  };
+
   const [activeTab, setActiveTab] = useState<'matrix' | 'products' | 'simulator' | 'packaging' | 'alerts'>('matrix');
   
   const [loading, setLoading] = useState<boolean>(true);
@@ -38,16 +65,84 @@ export default function MenuProfitabilityScreen({ user, permissions }: { user: a
   const [simResult, setSimResult] = useState<MarginScenarioResult | null>(null);
   const [simLoading, setSimLoading] = useState<boolean>(false);
 
-  const restaurantId = user?.restaurant_id;
+  // Packaging specifications state
+  const [packagingSpecs, setPackagingSpecs] = useState<any[]>([]);
+  const [packagingMaterials, setPackagingMaterials] = useState<any[]>([]);
+  const [pkgProduct, setPkgProduct] = useState<number | ''>('');
+  const [pkgChannel, setPkgChannel] = useState<string>('DINE_IN');
+  const [pkgMaterialId, setPkgMaterialId] = useState<string>('');
+  const [pkgQty, setPkgQty] = useState<number>(1);
+  const [pkgSaving, setPkgSaving] = useState<boolean>(false);
+  const [pkgLoading, setPkgLoading] = useState<boolean>(false);
+
+  const loadPackagingData = async () => {
+    if (!restaurantId) return;
+    setPkgLoading(true);
+    try {
+      const [mats, specs] = await Promise.all([
+        menuProfitabilityApi.getPackagingMaterials(restaurantId),
+        menuProfitabilityApi.getPackagingSpecifications(restaurantId)
+      ]);
+      setPackagingMaterials(mats);
+      setPackagingSpecs(specs);
+      if (mats && mats.length > 0 && !pkgMaterialId) {
+        setPkgMaterialId(mats[0].id);
+      }
+    } catch (err) {
+      console.error('Failed to load packaging data:', err);
+    } finally {
+      setPkgLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'packaging') {
+      loadPackagingData();
+    }
+  }, [restaurantId, activeTab]);
+
+  const handleSavePackaging = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!restaurantId || !pkgProduct || !pkgMaterialId || pkgQty <= 0) {
+      alert('Please select a product, packaging material, and specify a quantity greater than 0.');
+      return;
+    }
+    setPkgSaving(true);
+    try {
+      await menuProfitabilityApi.savePackagingSpecification(
+        restaurantId,
+        Number(pkgProduct),
+        pkgChannel,
+        pkgMaterialId,
+        pkgQty
+      );
+      await loadPackagingData();
+      alert('Packaging specification saved successfully!');
+    } catch (err: any) {
+      alert(err.message || 'Failed to save packaging specification');
+    } finally {
+      setPkgSaving(false);
+    }
+  };
 
   useEffect(() => {
     async function loadBranches() {
       try {
-        const bList = await api.getBranches();
-        setBranches(bList || []);
-        if (bList && bList.length > 0) {
-          const defaultB = user?.branch_id || bList[0].id;
-          setSelectedBranch(defaultB);
+        const res = await api.getBranches();
+        const bList = Array.isArray(res) ? res : (res?.data || []);
+        setBranches(bList);
+        if (user?.branch_id) {
+          setSelectedBranch(user.branch_id);
+        } else if (user?.branch && user.branch !== 'All') {
+          const match = bList.find((b: any) => b.name === user.branch || b.id === user.branch);
+          if (match) {
+            setSelectedBranch(match.id);
+          } else {
+            setSelectedBranch('');
+          }
+        } else {
+          // Default to all branches so cross-branch menu performance is immediately visible
+          setSelectedBranch('');
         }
       } catch (err) {
         console.error('Failed to load branches:', err);
@@ -57,12 +152,17 @@ export default function MenuProfitabilityScreen({ user, permissions }: { user: a
   }, [user]);
 
   const loadData = async () => {
-    if (!restaurantId || !selectedBranch) return;
+    if (!restaurantId) return;
     setLoading(true);
     try {
       const [snapData, alertData] = await Promise.all([
-        menuProfitabilityApi.getDailySnapshots(restaurantId, selectedBranch, selectedDate),
-        menuProfitabilityApi.getActiveAlerts(restaurantId, selectedBranch)
+        menuProfitabilityApi.getDailySnapshots(
+          restaurantId, 
+          selectedBranch || null, 
+          startDate || undefined, 
+          endDate || undefined
+        ),
+        menuProfitabilityApi.getActiveAlerts(restaurantId, selectedBranch || undefined)
       ]);
       setProducts(snapData);
       setAlerts(alertData);
@@ -75,14 +175,20 @@ export default function MenuProfitabilityScreen({ user, permissions }: { user: a
 
   useEffect(() => {
     loadData();
-  }, [restaurantId, selectedBranch, selectedDate]);
+  }, [restaurantId, selectedBranch, startDate, endDate]);
 
   const handleRebuild = async () => {
-    if (!restaurantId || !selectedBranch) return;
+    if (!restaurantId) return;
+    const targetBranch = selectedBranch || (branches.length > 0 ? branches[0].id : '');
+    if (!targetBranch) {
+      alert('Please select a specific branch from the dropdown to rebuild snapshots.');
+      return;
+    }
     setRebuilding(true);
     try {
-      await menuProfitabilityApi.rebuildDailySnapshots(restaurantId, selectedBranch, selectedDate);
+      await menuProfitabilityApi.rebuildDailySnapshots(restaurantId, targetBranch, endDate || todayStr);
       await loadData();
+      alert('Profitability snapshots updated!');
     } catch (err: any) {
       alert(err.message || 'Failed to rebuild profitability snapshots');
     } finally {
@@ -154,23 +260,46 @@ export default function MenuProfitabilityScreen({ user, permissions }: { user: a
             Real-time recipe theoretical costing, realized movement costing, and Menu Engineering Intelligence
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
           <select 
             value={selectedBranch} 
             onChange={e => setSelectedBranch(e.target.value)}
-            style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '14px' }}
+            style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '14px', backgroundColor: '#fff' }}
           >
-            {branches.map(b => (
+            <option value="">All Branches</option>
+            {Array.isArray(branches) && branches.map(b => (
               <option key={b.id} value={b.id}>{b.name || b.branch_name || b.id}</option>
             ))}
           </select>
 
-          <input 
-            type="date" 
-            value={selectedDate} 
-            onChange={e => setSelectedDate(e.target.value)}
-            style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '14px' }}
-          />
+          <select
+            value={datePreset}
+            onChange={e => handlePresetChange(e.target.value as any)}
+            style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '14px', backgroundColor: '#fff' }}
+          >
+            <option value="30d">Last 30 Days</option>
+            <option value="7d">Last 7 Days</option>
+            <option value="today">Today</option>
+            <option value="custom">Custom Date</option>
+          </select>
+
+          {datePreset === 'custom' && (
+            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+              <input 
+                type="date" 
+                value={startDate} 
+                onChange={e => setStartDate(e.target.value)}
+                style={{ padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '14px', backgroundColor: '#fff' }}
+              />
+              <span style={{ color: '#64748b' }}>to</span>
+              <input 
+                type="date" 
+                value={endDate} 
+                onChange={e => setEndDate(e.target.value)}
+                style={{ padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '14px', backgroundColor: '#fff' }}
+              />
+            </div>
+          )}
 
           <button
             onClick={handleRebuild}
@@ -249,6 +378,7 @@ export default function MenuProfitabilityScreen({ user, permissions }: { user: a
           { key: 'matrix', label: 'Menu Engineering Matrix' },
           { key: 'products', label: 'Product Profitability Table' },
           { key: 'simulator', label: 'Margin Scenario Simulator' },
+          { key: 'packaging', label: 'Channel Packaging Specifications' },
           { key: 'alerts', label: `Cost Alerts (${alerts.length})` }
         ].map(tab => (
           <button
@@ -294,7 +424,7 @@ export default function MenuProfitabilityScreen({ user, permissions }: { user: a
                 {products.filter(p => p.menu_engineering_category === 'STAR').map(p => (
                   <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #a7f3d0', fontSize: '13px' }}>
                     <span>{p.product_name}</span>
-                    <span><strong>{p.gross_units_sold} sold</strong> | ${p.unit_contribution_margin?.toFixed(2)} CM</span>
+                    <span><strong>{p.gross_units_sold} sold</strong> | {p.unit_contribution_margin !== null && p.unit_contribution_margin !== undefined ? `$${Number(p.unit_contribution_margin).toFixed(2)}` : '$0.00'} CM</span>
                   </div>
                 ))}
               </div>
@@ -313,7 +443,7 @@ export default function MenuProfitabilityScreen({ user, permissions }: { user: a
                 {products.filter(p => p.menu_engineering_category === 'PLOWHORSE').map(p => (
                   <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #bfdbfe', fontSize: '13px' }}>
                     <span>{p.product_name}</span>
-                    <span><strong>{p.gross_units_sold} sold</strong> | ${p.unit_contribution_margin?.toFixed(2)} CM</span>
+                    <span><strong>{p.gross_units_sold} sold</strong> | {p.unit_contribution_margin !== null && p.unit_contribution_margin !== undefined ? `$${Number(p.unit_contribution_margin).toFixed(2)}` : '$0.00'} CM</span>
                   </div>
                 ))}
               </div>
@@ -332,7 +462,7 @@ export default function MenuProfitabilityScreen({ user, permissions }: { user: a
                 {products.filter(p => p.menu_engineering_category === 'PUZZLE').map(p => (
                   <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #fde68a', fontSize: '13px' }}>
                     <span>{p.product_name}</span>
-                    <span><strong>{p.gross_units_sold} sold</strong> | ${p.unit_contribution_margin?.toFixed(2)} CM</span>
+                    <span><strong>{p.gross_units_sold} sold</strong> | {p.unit_contribution_margin !== null && p.unit_contribution_margin !== undefined ? `$${Number(p.unit_contribution_margin).toFixed(2)}` : '$0.00'} CM</span>
                   </div>
                 ))}
               </div>
@@ -351,7 +481,7 @@ export default function MenuProfitabilityScreen({ user, permissions }: { user: a
                 {products.filter(p => p.menu_engineering_category === 'DOG').map(p => (
                   <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #fecaca', fontSize: '13px' }}>
                     <span>{p.product_name}</span>
-                    <span><strong>{p.gross_units_sold} sold</strong> | ${p.unit_contribution_margin?.toFixed(2)} CM</span>
+                    <span><strong>{p.gross_units_sold} sold</strong> | {p.unit_contribution_margin !== null && p.unit_contribution_margin !== undefined ? `$${Number(p.unit_contribution_margin).toFixed(2)}` : '$0.00'} CM</span>
                   </div>
                 ))}
               </div>
@@ -422,6 +552,13 @@ export default function MenuProfitabilityScreen({ user, permissions }: { user: a
                 </tr>
               </thead>
               <tbody>
+                {filteredProducts.length === 0 && (
+                  <tr>
+                    <td colSpan={13} style={{ padding: '32px', textAlign: 'center', color: '#64748b' }}>
+                      {loading ? 'Loading profitability snapshots...' : 'No profitability records found for the selected branch and date range. Try switching to "Last 30 Days" or "All Branches".'}
+                    </td>
+                  </tr>
+                )}
                 {filteredProducts.map(p => (
                   <tr key={p.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
                     <td style={{ padding: '10px 12px', fontWeight: 600 }}>{p.product_name}</td>
@@ -435,17 +572,19 @@ export default function MenuProfitabilityScreen({ user, permissions }: { user: a
                       {p.units_returned}
                     </td>
                     <td style={{ padding: '10px 12px', fontWeight: 600 }}>{p.net_units}</td>
-                    <td style={{ padding: '10px 12px' }}>${p.net_sales_revenue.toFixed(2)}</td>
-                    <td style={{ padding: '10px 12px' }}>${p.theoretical_unit_food_cost.toFixed(2)}</td>
-                    <td style={{ padding: '10px 12px', color: p.total_cost_variance > 0 ? '#ef4444' : '#1e293b' }}>
-                      ${p.realized_unit_food_cost.toFixed(2)}
+                    <td style={{ padding: '10px 12px' }}>${Number(p.net_sales_revenue || 0).toFixed(2)}</td>
+                    <td style={{ padding: '10px 12px' }}>
+                      {p.theoretical_unit_food_cost !== null && p.theoretical_unit_food_cost !== undefined ? `$${Number(p.theoretical_unit_food_cost).toFixed(2)}` : 'N/A'}
                     </td>
-                    <td style={{ padding: '10px 12px' }}>${p.unit_packaging_cost.toFixed(2)}</td>
+                    <td style={{ padding: '10px 12px', color: (p.total_cost_variance || 0) > 0 ? '#ef4444' : '#1e293b' }}>
+                      ${Number(p.realized_unit_food_cost || 0).toFixed(2)}
+                    </td>
+                    <td style={{ padding: '10px 12px' }}>${Number(p.unit_packaging_cost || 0).toFixed(2)}</td>
                     <td style={{ padding: '10px 12px', fontWeight: 600, color: (p.unit_contribution_margin || 0) > 0 ? '#10b981' : '#ef4444' }}>
-                      {p.unit_contribution_margin !== null ? `$${p.unit_contribution_margin.toFixed(2)}` : 'N/A'}
+                      {p.unit_contribution_margin !== null && p.unit_contribution_margin !== undefined ? `$${Number(p.unit_contribution_margin).toFixed(2)}` : 'N/A'}
                     </td>
                     <td style={{ padding: '10px 12px' }}>
-                      {p.contribution_margin_pct !== null ? `${(p.contribution_margin_pct * 100).toFixed(1)}%` : 'N/A'}
+                      {p.contribution_margin_pct !== null && p.contribution_margin_pct !== undefined ? `${(Number(p.contribution_margin_pct) * 100).toFixed(1)}%` : 'N/A'}
                     </td>
                     <td style={{ padding: '10px 12px' }}>
                       <span style={{
@@ -591,6 +730,193 @@ export default function MenuProfitabilityScreen({ user, permissions }: { user: a
                 <p style={{ color: '#94a3b8', fontSize: '13px' }}>Select a product and price to model simulated profitability.</p>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tab: Channel Packaging Specifications */}
+      {activeTab === 'packaging' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          <div style={{ backgroundColor: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0', padding: '20px' }}>
+            <h2 style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '8px', color: '#0f172a' }}>
+              Configure Channel Packaging Specification
+            </h2>
+            <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '16px' }}>
+              Define packaging materials automatically consumed when a product is sold across Dine-In, Takeaway, or Delivery channels.
+            </p>
+
+            <form onSubmit={handleSavePackaging} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', alignItems: 'end' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                  Product
+                </label>
+                <select
+                  value={pkgProduct}
+                  onChange={(e) => setPkgProduct(e.target.value ? Number(e.target.value) : '')}
+                  required
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px' }}
+                >
+                  <option value="">-- Select Product --</option>
+                  {products.map((p) => (
+                    <option key={p.product_id} value={p.product_id}>
+                      {p.product_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                  Sales Channel
+                </label>
+                <select
+                  value={pkgChannel}
+                  onChange={(e) => setPkgChannel(e.target.value)}
+                  required
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px' }}
+                >
+                  <option value="DINE_IN">DINE_IN (In-Store / On-Premise)</option>
+                  <option value="TAKEAWAY">TAKEAWAY (Counter / Pickup)</option>
+                  <option value="DELIVERY">DELIVERY (Direct & Aggregators)</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                  Packaging Material
+                </label>
+                <select
+                  value={pkgMaterialId}
+                  onChange={(e) => setPkgMaterialId(e.target.value)}
+                  required
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px' }}
+                >
+                  <option value="">-- Select Material --</option>
+                  {packagingMaterials.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name} (${Number(m.current_cost_usd || 0).toFixed(3)} / {m.unit || 'pcs'})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                  Quantity per Sale
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  value={pkgQty}
+                  onChange={(e) => setPkgQty(parseFloat(e.target.value) || 0)}
+                  required
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px' }}
+                />
+              </div>
+
+              <div>
+                <button
+                  type="submit"
+                  disabled={pkgSaving}
+                  style={{
+                    width: '100%',
+                    padding: '9px 16px',
+                    borderRadius: '6px',
+                    border: 'none',
+                    backgroundColor: '#2563eb',
+                    color: '#fff',
+                    fontWeight: 600,
+                    fontSize: '13px',
+                    cursor: pkgSaving ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  {pkgSaving ? 'Saving...' : 'Save Specification'}
+                </button>
+              </div>
+            </form>
+          </div>
+
+          {/* Active Packaging Specifications List */}
+          <div style={{ backgroundColor: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0', padding: '20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ fontSize: '16px', fontWeight: 'bold', margin: 0, color: '#0f172a' }}>
+                Active Channel Packaging Specifications ({packagingSpecs.length})
+              </h3>
+              <button
+                onClick={loadPackagingData}
+                disabled={pkgLoading}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', border: '1px solid #cbd5e1', borderRadius: '6px', background: '#fff', fontSize: '12px', cursor: 'pointer' }}
+              >
+                <RefreshCw size={14} className={pkgLoading ? 'animate-spin' : ''} /> Refresh
+              </button>
+            </div>
+
+            {packagingSpecs.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '32px', color: '#64748b', fontSize: '14px' }}>
+                No channel packaging specifications defined yet. Configure packaging rules above for automated sales deductions.
+              </div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                  <thead>
+                    <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0', textAlign: 'left' }}>
+                      <th style={{ padding: '10px 14px', fontWeight: 600, color: '#475569' }}>Product</th>
+                      <th style={{ padding: '10px 14px', fontWeight: 600, color: '#475569' }}>Channel</th>
+                      <th style={{ padding: '10px 14px', fontWeight: 600, color: '#475569' }}>Packaging Material</th>
+                      <th style={{ padding: '10px 14px', fontWeight: 600, color: '#475569' }}>Quantity</th>
+                      <th style={{ padding: '10px 14px', fontWeight: 600, color: '#475569' }}>Material Cost</th>
+                      <th style={{ padding: '10px 14px', fontWeight: 600, color: '#475569' }}>Cost per Sale</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {packagingSpecs.map((spec) => {
+                      const costPerUnit = Number(spec.packaging_material?.current_cost_usd || 0);
+                      const extCost = costPerUnit * Number(spec.quantity || 0);
+                      const channelColor = spec.channel === 'DINE_IN' 
+                        ? { bg: '#eff6ff', text: '#1d4ed8', border: '#bfdbfe' }
+                        : spec.channel === 'TAKEAWAY'
+                          ? { bg: '#ecfdf5', text: '#047857', border: '#a7f3d0' }
+                          : { bg: '#f5f3ff', text: '#6d28d9', border: '#ddd6fe' };
+
+                      return (
+                        <tr key={spec.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '10px 14px', fontWeight: 600, color: '#0f172a' }}>
+                            {spec.product?.name || `Product #${spec.product_id}`}
+                          </td>
+                          <td style={{ padding: '10px 14px' }}>
+                            <span style={{
+                              display: 'inline-block',
+                              padding: '2px 8px',
+                              borderRadius: '12px',
+                              fontSize: '11px',
+                              fontWeight: 700,
+                              backgroundColor: channelColor.bg,
+                              color: channelColor.text,
+                              border: `1px solid ${channelColor.border}`
+                            }}>
+                              {spec.channel}
+                            </span>
+                          </td>
+                          <td style={{ padding: '10px 14px', color: '#334155' }}>
+                            {spec.packaging_material?.name || spec.packaging_material_id}
+                          </td>
+                          <td style={{ padding: '10px 14px', color: '#0f172a', fontWeight: 600 }}>
+                            {spec.quantity} {spec.packaging_material?.unit || 'pcs'}
+                          </td>
+                          <td style={{ padding: '10px 14px', color: '#64748b' }}>
+                            ${costPerUnit.toFixed(3)}
+                          </td>
+                          <td style={{ padding: '10px 14px', fontWeight: 600, color: '#10b981' }}>
+                            ${extCost.toFixed(3)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -1,3 +1,7 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 :root {
   --primary: #2563eb;
   --primary-hover: #1d4ed8;
@@ -441,9 +445,17 @@ input[type="date"],
 input[type="number"],
 input[type="password"],
 input[type="email"],
+select {
+  height: 40px !important;
+}
+
+input[type="text"],
+input[type="date"],
+input[type="number"],
+input[type="password"],
+input[type="email"],
 select,
 textarea {
-  height: 40px !important;
   padding: 8px 12px !important;
   border: 1px solid var(--border) !important;
   border-radius: 8px !important;
@@ -455,6 +467,11 @@ textarea {
   outline: none !important;
   box-shadow: none !important;
   transition: border-color 0.15s ease, box-shadow 0.15s ease !important;
+}
+
+textarea {
+  min-height: 80px;
+  resize: vertical;
 }
 
 input:focus,

@@ -15,9 +15,17 @@ import {
   Calendar,
   MapPin,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  Plus,
+  Trash2
 } from 'lucide-react';
 import { api } from '../api/client';
+import { 
+  calculateMixedCount, 
+  conversionFactor, 
+  getConvertibleUnits, 
+  formatConversionPreview 
+} from '../utils/inventoryConfiguration';
 import './InventoryScreen.css';
 
 interface InventoryScreenProps {
@@ -32,6 +40,8 @@ export default function InventoryScreen({ user }: InventoryScreenProps) {
   const [branches, setBranches] = useState<any[]>([]);
   const [locations, setLocations] = useState<any[]>([]);
   const [catalogItems, setCatalogItems] = useState<any[]>([]);
+  const [conversions, setConversions] = useState<any[]>([]);
+  const [packagingOptions, setPackagingOptions] = useState<any[]>([]);
   const [stockBalances, setStockBalances] = useState<any[]>([]);
   const [stockCounts, setStockCounts] = useState<any[]>([]);
   const [stockAdjustments, setStockAdjustments] = useState<any[]>([]);
@@ -125,14 +135,18 @@ export default function InventoryScreen({ user }: InventoryScreenProps) {
   const loadInitialData = async () => {
     setLoading(true);
     try {
-      const [branchesRes, locsRes, itemsRes] = await Promise.all([
+      const [branchesRes, locsRes, itemsRes, convsRes, packsRes] = await Promise.all([
         api.getBranchesList(),
         api.getInventoryLocationsList(),
-        api.getAllCatalogItems()
+        api.getAllCatalogItems(),
+        api.getInventoryUnitConversions(),
+        api.getAllItemPackagingOptions()
       ]);
 
       if (branchesRes.data) setBranches(branchesRes.data);
       if (itemsRes.data) setCatalogItems(itemsRes.data);
+      if (convsRes.data) setConversions(convsRes.data);
+      if (packsRes.data) setPackagingOptions(packsRes.data);
 
       const DEFAULT_LOCATIONS = [
         { id: 'loc-1', name: 'Main Kitchen' },
@@ -249,14 +263,20 @@ export default function InventoryScreen({ user }: InventoryScreenProps) {
   const openNewStocktakeModal = () => {
     const matchedItems = catalogItems.map(item => {
       const itemName = item.name || item.item_name || item.title || item.item || 'Item';
+      const baseUnit = item.base_unit || item.unit || 'pcs';
       return {
         item_id: item.id || null,
         item_name: itemName,
         department: item.department || 'General',
-        unit: item.unit || 'pcs',
+        base_unit: baseUnit,
+        unit: baseUnit,
         par_level: item.par_level || 0,
         count_qty: '0',
-        unit_cost: item.price_usd || item.unit_cost || 0
+        unit_cost: item.price_usd || item.unit_cost || 0,
+        show_mixed: false,
+        mixed_entries: [{ quantity: '0', unit: baseUnit }],
+        calculated_base_qty: 0,
+        breakdown_text: `0 ${baseUnit}`
       };
     });
 
@@ -267,9 +287,90 @@ export default function InventoryScreen({ user }: InventoryScreenProps) {
   const handleStocktakeQtyChange = (index: number, val: string) => {
     setCountItemsForm(prev => {
       const updated = [...prev];
+      const item = updated[index];
+      const numVal = Number(val) || 0;
       updated[index] = {
-        ...updated[index],
-        count_qty: val
+        ...item,
+        count_qty: val,
+        calculated_base_qty: numVal,
+        breakdown_text: `${numVal} ${item.base_unit || item.unit}`,
+        mixed_entries: [{ quantity: val, unit: item.base_unit || item.unit }]
+      };
+      return updated;
+    });
+  };
+
+  const handleToggleMixedCount = (index: number) => {
+    setCountItemsForm(prev => {
+      const updated = [...prev];
+      const item = updated[index];
+      const nextShowMixed = !item.show_mixed;
+      const initialEntries = item.mixed_entries && item.mixed_entries.length > 0
+        ? item.mixed_entries
+        : [{ quantity: item.count_qty || '0', unit: item.base_unit || item.unit }];
+      const res = calculateMixedCount(initialEntries, item.item_id, item.base_unit || item.unit, conversions, packagingOptions);
+      updated[index] = {
+        ...item,
+        show_mixed: nextShowMixed,
+        mixed_entries: initialEntries,
+        calculated_base_qty: res.totalBaseQty,
+        breakdown_text: res.breakdownText,
+        count_qty: String(res.totalBaseQty)
+      };
+      return updated;
+    });
+  };
+
+  const handleUpdateMixedEntry = (itemIndex: number, entryIndex: number, field: 'quantity' | 'unit', value: string) => {
+    setCountItemsForm(prev => {
+      const updated = [...prev];
+      const item = updated[itemIndex];
+      const entries = [...(item.mixed_entries || [])];
+      entries[entryIndex] = { ...entries[entryIndex], [field]: value };
+      const res = calculateMixedCount(entries, item.item_id, item.base_unit || item.unit, conversions, packagingOptions);
+      updated[itemIndex] = {
+        ...item,
+        mixed_entries: entries,
+        calculated_base_qty: res.totalBaseQty,
+        breakdown_text: res.breakdownText,
+        count_qty: String(res.totalBaseQty)
+      };
+      return updated;
+    });
+  };
+
+  const handleAddMixedEntry = (itemIndex: number) => {
+    setCountItemsForm(prev => {
+      const updated = [...prev];
+      const item = updated[itemIndex];
+      const convertible = getConvertibleUnits(item, conversions, packagingOptions);
+      const nextUnit = convertible.find((u: string) => !item.mixed_entries?.some((e: any) => e.unit === u)) || convertible[0] || item.base_unit || item.unit;
+      const entries = [...(item.mixed_entries || []), { quantity: '', unit: nextUnit }];
+      const res = calculateMixedCount(entries, item.item_id, item.base_unit || item.unit, conversions, packagingOptions);
+      updated[itemIndex] = {
+        ...item,
+        mixed_entries: entries,
+        calculated_base_qty: res.totalBaseQty,
+        breakdown_text: res.breakdownText,
+        count_qty: String(res.totalBaseQty)
+      };
+      return updated;
+    });
+  };
+
+  const handleRemoveMixedEntry = (itemIndex: number, entryIndex: number) => {
+    setCountItemsForm(prev => {
+      const updated = [...prev];
+      const item = updated[itemIndex];
+      const entries = (item.mixed_entries || []).filter((_: any, i: number) => i !== entryIndex);
+      const safeEntries = entries.length > 0 ? entries : [{ quantity: '0', unit: item.base_unit || item.unit }];
+      const res = calculateMixedCount(safeEntries, item.item_id, item.base_unit || item.unit, conversions, packagingOptions);
+      updated[itemIndex] = {
+        ...item,
+        mixed_entries: safeEntries,
+        calculated_base_qty: res.totalBaseQty,
+        breakdown_text: res.breakdownText,
+        count_qty: String(res.totalBaseQty)
       };
       return updated;
     });
@@ -287,10 +388,16 @@ export default function InventoryScreen({ user }: InventoryScreenProps) {
       date: new Date().toISOString()
     };
 
-    const formattedItems = countItemsForm.map(item => ({
-      ...item,
-      count_qty: Number(item.count_qty || 0)
-    }));
+    const formattedItems = countItemsForm.map(item => {
+      const finalQty = item.show_mixed ? item.calculated_base_qty : Number(item.count_qty || 0);
+      const notes = item.show_mixed ? `[Mixed Physical Count: ${item.breakdown_text}]` : undefined;
+      return {
+        ...item,
+        count_qty: finalQty,
+        unit: item.base_unit || item.unit,
+        notes
+      };
+    });
 
     setLoading(true);
     const res = await api.saveStockCount(headerPayload, formattedItems);
@@ -312,13 +419,29 @@ export default function InventoryScreen({ user }: InventoryScreenProps) {
       return;
     }
 
-    const qty = Number(adjustmentForm.quantity);
+    const selectedItem = catalogItems.find(i => i.id === adjustmentForm.item_id || i.name === adjustmentForm.item_name);
+    const baseUnit = selectedItem?.base_unit || selectedItem?.unit || adjustmentForm.unit;
+    const factor = selectedItem ? conversionFactor(selectedItem.id, adjustmentForm.unit, baseUnit, conversions, packagingOptions) : 1.0;
+    const conversionValid = factor !== null;
+
+    if (!conversionValid) {
+      alert(`Cannot convert unit "${adjustmentForm.unit}" to item base unit "${baseUnit}".`);
+      return;
+    }
+
+    const rawQty = Number(adjustmentForm.quantity);
+    const baseQty = rawQty * (factor || 1.0);
     const cost = Number(adjustmentForm.unit_cost || 0);
+
     const payload = {
       ...adjustmentForm,
-      quantity: qty,
+      quantity: Number(baseQty.toFixed(4)),
+      unit: baseUnit,
       unit_cost: cost,
-      total_value: qty * cost
+      total_value: baseQty * cost,
+      reason: adjustmentForm.unit && adjustmentForm.unit.toLowerCase() !== baseUnit.toLowerCase()
+        ? `[Input: ${rawQty} ${adjustmentForm.unit} -> ${Number(baseQty.toFixed(4))} ${baseUnit}] ${adjustmentForm.reason || ''}`.trim()
+        : adjustmentForm.reason
     };
 
     setLoading(true);
@@ -381,7 +504,7 @@ export default function InventoryScreen({ user }: InventoryScreenProps) {
       const existingBal = balMap[nameKey];
       const latestCount = latestCountMap[nameKey];
 
-      const stockQty = existingBal?.current_stock ?? latestCount?.count_qty ?? latestCount?.quantity ?? 0;
+      const stockQty = existingBal?.current_stock ?? latestCount?.count_qty ?? latestCount?.actual_count_qty ?? latestCount?.quantity ?? 0;
       const unitCost = Number(catItem.price_usd || existingBal?.unit_cost || latestCount?.unit_cost || 0);
       const par = Number(catItem.par_level || existingBal?.par_level || 0);
       const lastDate = existingBal?.last_updated || latestCount?.date || latestCount?.created_at || null;
@@ -451,7 +574,7 @@ export default function InventoryScreen({ user }: InventoryScreenProps) {
       const loc = sc.location || 'General Storage';
       const locKey = `${dateKey}__${loc}`;
       const branch = sc.branch || 'Main Branch';
-      const varCost = Number(sc.total_variance_cost || 0);
+      const varCost = Number(sc.variance_cost ?? sc.total_variance_cost ?? 0);
 
       if (!datesMap[dateKey]) {
         datesMap[dateKey] = {
@@ -521,7 +644,7 @@ export default function InventoryScreen({ user }: InventoryScreenProps) {
       const itemName = sc.item || sc.item_name || sc.name || sc.count_number || 'Unnamed Item';
       const itemKey = `${dateKey}__${itemName}`;
       const varCost = Number(sc.variance_cost ?? sc.total_variance_cost ?? 0);
-      const qty = Number(sc.count_qty ?? sc.quantity ?? 0);
+      const qty = Number(sc.count_qty ?? sc.actual_count_qty ?? sc.quantity ?? 0);
 
       if (!datesMap[dateKey]) {
         datesMap[dateKey] = {
@@ -912,8 +1035,10 @@ export default function InventoryScreen({ user }: InventoryScreenProps) {
                                     {locGroup.sheets.map((sc, sIdx) => {
                                       const itemName = sc.item || sc.item_name || sc.name;
                                       const titleDisplay = itemName || sc.count_number || `Count Entry #${sIdx + 1}`;
-                                      const qtyDisplay = sc.count_qty !== undefined ? `${sc.count_qty} ${sc.unit || 'pcs'}` : '-';
+                                      const rawCountVal = sc.count_qty ?? sc.actual_count_qty;
+                                      const qtyDisplay = rawCountVal !== undefined && rawCountVal !== null ? `${rawCountVal} ${sc.unit || 'pcs'}` : '-';
                                       const statusText = sc.status || 'Draft';
+                                      const isComplete = ['completed', 'submitted', 'reconciled'].includes(statusText.toLowerCase());
                                       const countedBy = sc.counted_by || sc.user || sc.created_by || 'Staff';
                                       const timeStr = new Date(sc.date || sc.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
@@ -933,8 +1058,8 @@ export default function InventoryScreen({ user }: InventoryScreenProps) {
                                           <td>{timeStr}</td>
                                           <td>{countedBy}</td>
                                           <td>
-                                            <span className={`inv-badge ${statusText.toLowerCase() === 'completed' ? 'inv-badge-green' : 'inv-badge-yellow'}`}>
-                                              <CheckCircle2 size={12} /> {statusText}
+                                            <span className={`inv-badge ${isComplete ? 'inv-badge-green' : 'inv-badge-yellow'}`}>
+                                              <CheckCircle2 size={12} /> {isComplete ? 'Completed' : statusText}
                                             </span>
                                           </td>
                                           <td>
@@ -944,12 +1069,12 @@ export default function InventoryScreen({ user }: InventoryScreenProps) {
                                               onClick={async () => {
                                                 if (itemName) {
                                                   setViewDetailsModal({ 
-                                                    header: { count_number: sc.count_number || titleDisplay }, 
+                                                    header: { count_number: sc.count_id || sc.count_number || titleDisplay }, 
                                                     items: [sc], 
                                                     type: 'stocktake' 
                                                   });
                                                 } else {
-                                                  const res = await api.getStockCountItems(sc.id);
+                                                  const res = await api.getStockCountItems(sc.count_id || sc.id);
                                                   setViewDetailsModal({ header: sc, items: res.data || [], type: 'stocktake' });
                                                 }
                                               }}
@@ -1064,14 +1189,14 @@ export default function InventoryScreen({ user }: InventoryScreenProps) {
                                           </td>
                                           <td>{rec.branch || 'Main Branch'}</td>
                                           <td style={{ fontWeight: 700 }}>
-                                            {rec.count_qty ?? rec.quantity ?? 0} {rec.unit || 'pcs'}
+                                            {rec.count_qty ?? rec.actual_count_qty ?? rec.quantity ?? 0} {rec.unit || 'pcs'}
                                           </td>
                                           <td style={{ fontWeight: 600, color: '#475569' }}>{rec.par_level ?? '-'} {rec.unit || 'pcs'}</td>
                                           <td>{timeStr}</td>
                                           <td>{rec.counted_by || rec.user || 'Staff'}</td>
                                           <td>
-                                            <span className={`inv-badge ${statusText.toLowerCase() === 'completed' ? 'inv-badge-green' : 'inv-badge-yellow'}`}>
-                                              <CheckCircle2 size={12} /> {statusText}
+                                            <span className={`inv-badge ${['completed', 'submitted', 'reconciled'].includes(statusText.toLowerCase()) ? 'inv-badge-green' : 'inv-badge-yellow'}`}>
+                                              <CheckCircle2 size={12} /> {['completed', 'submitted', 'reconciled'].includes(statusText.toLowerCase()) ? 'Completed' : statusText}
                                             </span>
                                           </td>
                                         </tr>
@@ -1216,14 +1341,19 @@ export default function InventoryScreen({ user }: InventoryScreenProps) {
         </div>
       )}
 
-      {/* MODAL 1: Physical Stock Count (Stocktake Entry Sheet) */}
+      {/* MODAL 1: Physical Stock Count (Total Stock On Hand) */}
       {showStocktakeModal && (
         <div className="inv-modal-overlay">
-          <div className="inv-modal-content">
+          <div className="inv-modal-content" style={{ maxWidth: '900px' }}>
             <div className="inv-modal-header">
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <ClipboardList color="#3b82f6" size={24} />
-                <h3>New Physical Stock Count Sheet (Stocktake Data Entry)</h3>
+                <div>
+                  <h3 style={{ margin: 0 }}>Physical Stock Count (Total Stock On Hand)</h3>
+                  <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: '#64748b' }}>
+                    Replaces current inventory balance. Variance = Physical Count - Theoretical Stock.
+                  </p>
+                </div>
               </div>
               <X size={20} style={{ cursor: 'pointer' }} onClick={() => setShowStocktakeModal(false)} />
             </div>
@@ -1271,11 +1401,10 @@ export default function InventoryScreen({ user }: InventoryScreenProps) {
                 <table className="inventory-table">
                   <thead>
                     <tr>
-                      <th>Item Name</th>
+                      <th>Item Name & Base Unit</th>
                       <th>Dept</th>
-                      <th>Unit</th>
-                      <th>Min Par Level</th>
-                      <th>Actual Physical Count</th>
+                      <th>Min Par</th>
+                      <th style={{ minWidth: '280px' }}>Actual Physical Count</th>
                       <th>Par Status</th>
                     </tr>
                   </thead>
@@ -1283,24 +1412,107 @@ export default function InventoryScreen({ user }: InventoryScreenProps) {
                     {Object.keys(groupedCountItemsForm).map((dept) => (
                       <Fragment key={dept}>
                         <tr className="inv-dept-header-row">
-                          <td colSpan={6}>📂 {dept}</td>
+                          <td colSpan={5}>📂 {dept}</td>
                         </tr>
                         {groupedCountItemsForm[dept].map((item) => {
                           const idx = item.originalIndex;
-                          const isBelowPar = Number(item.count_qty || 0) < Number(item.par_level || 0);
+                          const effectiveQty = item.show_mixed ? item.calculated_base_qty : Number(item.count_qty || 0);
+                          const isBelowPar = effectiveQty < Number(item.par_level || 0);
+                          const baseUnitName = item.base_unit || item.unit;
+                          const catalogMatch = catalogItems.find(c => c.id === item.item_id) || item;
+
                           return (
                             <tr key={item.item_id || idx}>
-                              <td style={{ fontWeight: 600, paddingLeft: '24px' }}>{item.item_name}</td>
+                              <td style={{ fontWeight: 600, paddingLeft: '24px' }}>
+                                <div>{item.item_name}</div>
+                                <span style={{ fontSize: '10px', color: '#0284c7', background: '#e0f2fe', padding: '1px 5px', borderRadius: '4px', fontWeight: 700 }}>
+                                  Base Unit: {baseUnitName}
+                                </span>
+                              </td>
                               <td>{item.department}</td>
-                              <td>{item.unit}</td>
                               <td style={{ fontWeight: 600, color: '#475569' }}>{item.par_level || 0}</td>
                               <td>
-                                <input 
-                                  type="number"
-                                  className="qty-input"
-                                  value={item.count_qty}
-                                  onChange={(e) => handleStocktakeQtyChange(idx, e.target.value)}
-                                />
+                                {!item.show_mixed ? (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <input 
+                                      type="number"
+                                      className="qty-input"
+                                      style={{ width: '80px' }}
+                                      value={item.count_qty}
+                                      onChange={(e) => handleStocktakeQtyChange(idx, e.target.value)}
+                                    />
+                                    <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>
+                                      {baseUnitName}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleToggleMixedCount(idx)}
+                                      style={{ fontSize: '11px', padding: '2px 8px', background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '4px', cursor: 'pointer', color: '#0369a1', fontWeight: 600 }}
+                                    >
+                                      + Mixed Units
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', background: '#f8fafc', padding: '8px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                      <span style={{ fontSize: '11px', fontWeight: 700, color: '#334155' }}>Mixed Packages / Units:</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleToggleMixedCount(idx)}
+                                        style={{ fontSize: '10px', background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', textDecoration: 'underline' }}
+                                      >
+                                        Simple Input
+                                      </button>
+                                    </div>
+                                    {(item.mixed_entries || []).map((entry: any, eIdx: number) => {
+                                      const convertibleUnits = getConvertibleUnits(catalogMatch, conversions, packagingOptions);
+                                      return (
+                                        <div key={eIdx} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                          <input
+                                            type="number"
+                                            style={{ width: '65px', height: '26px', padding: '2px 4px', fontSize: '12px', border: '1px solid #cbd5e1', borderRadius: '4px' }}
+                                            value={entry.quantity}
+                                            placeholder="0"
+                                            onChange={(e) => handleUpdateMixedEntry(idx, eIdx, 'quantity', e.target.value)}
+                                          />
+                                          <select
+                                            style={{ height: '26px', fontSize: '11px', padding: '2px 4px', border: '1px solid #cbd5e1', borderRadius: '4px', flex: 1 }}
+                                            value={entry.unit}
+                                            onChange={(e) => handleUpdateMixedEntry(idx, eIdx, 'unit', e.target.value)}
+                                          >
+                                            {convertibleUnits.map((u: string) => (
+                                              <option key={u} value={u}>{u}</option>
+                                            ))}
+                                          </select>
+                                          {item.mixed_entries.length > 1 && (
+                                            <button
+                                              type="button"
+                                              onClick={() => handleRemoveMixedEntry(idx, eIdx)}
+                                              style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '2px' }}
+                                            >
+                                              <Trash2 size={13} />
+                                            </button>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2px' }}>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleAddMixedEntry(idx)}
+                                        style={{ fontSize: '11px', padding: '2px 6px', background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px' }}
+                                      >
+                                        <Plus size={11} /> Add unit
+                                      </button>
+                                      <span style={{ fontSize: '11px', fontWeight: 700, color: '#047857', background: '#d1fae5', padding: '2px 6px', borderRadius: '4px' }}>
+                                        Total: {item.calculated_base_qty} {baseUnitName}
+                                      </span>
+                                    </div>
+                                    <div style={{ fontSize: '10px', color: '#64748b' }}>
+                                      {item.breakdown_text}
+                                    </div>
+                                  </div>
+                                )}
                               </td>
                               <td>
                                 {isBelowPar && item.par_level > 0 ? (
@@ -1332,12 +1544,17 @@ export default function InventoryScreen({ user }: InventoryScreenProps) {
         </div>
       )}
 
-      {/* MODAL 2: Stock Adjustment Data Entry */}
+      {/* MODAL 2: Stock Adjustment (Increase/Decrease Delta) */}
       {showAdjustmentModal && (
         <div className="inv-modal-overlay">
-          <div className="inv-modal-content" style={{ maxWidth: '500px' }}>
+          <div className="inv-modal-content" style={{ maxWidth: '520px' }}>
             <div className="inv-modal-header">
-              <h3>Record Stock Adjustment</h3>
+              <div>
+                <h3 style={{ margin: 0 }}>Stock Adjustment (Increase/Decrease Delta)</h3>
+                <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: '#64748b' }}>
+                  Applies an adjustment delta to inventory balances without replacing theoretical stock.
+                </p>
+              </div>
               <X size={20} style={{ cursor: 'pointer' }} onClick={() => setShowAdjustmentModal(false)} />
             </div>
             <div className="inv-modal-body">
@@ -1429,11 +1646,12 @@ export default function InventoryScreen({ user }: InventoryScreenProps) {
                     value={adjustmentForm.item_name}
                     onChange={(e) => {
                       const selected = catalogItems.find(i => i.name === e.target.value);
+                      const base = selected?.base_unit || selected?.unit || 'pcs';
                       setAdjustmentForm({ 
                         ...adjustmentForm, 
                         item_name: e.target.value,
                         item_id: selected?.id || '',
-                        unit: selected?.unit || 'pcs',
+                        unit: base,
                         unit_cost: String(selected?.price_usd || '0')
                       });
                     }}
@@ -1441,7 +1659,7 @@ export default function InventoryScreen({ user }: InventoryScreenProps) {
                     <option value="">-- Choose Item --</option>
                     {filteredAdjustmentCatalogItems.map(i => (
                       <option key={i.id || i.name} value={i.name}>
-                        {i.name} ({i.department || 'General'}{i.sub_department ? ` - ${i.sub_department}` : ''})
+                        {i.name} ({i.department || 'General'}{i.sub_department ? ` - ${i.sub_department}` : ''}) [Base: {i.base_unit || i.unit}]
                       </option>
                     ))}
                   </select>
@@ -1466,7 +1684,7 @@ export default function InventoryScreen({ user }: InventoryScreenProps) {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                   <div>
                     <label style={{ fontSize: '13px', fontWeight: 700 }}>
-                      Quantity {adjustmentForm.unit ? `(${adjustmentForm.unit})` : ''}
+                      Quantity & Unit
                     </label>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' }}>
                       <input 
@@ -1477,21 +1695,37 @@ export default function InventoryScreen({ user }: InventoryScreenProps) {
                         onChange={(e) => setAdjustmentForm({ ...adjustmentForm, quantity: e.target.value })}
                         placeholder="0"
                       />
-                      {adjustmentForm.unit && (
-                        <span style={{ 
-                          fontSize: '12px', 
-                          fontWeight: 700, 
-                          color: '#0f766e', 
-                          background: '#ccfbf1', 
-                          padding: '6px 10px', 
-                          borderRadius: '6px', 
-                          border: '1px solid #99f6e4',
-                          whiteSpace: 'nowrap'
-                        }}>
-                          {adjustmentForm.unit}
-                        </span>
-                      )}
+                      {(() => {
+                        const sel = catalogItems.find(i => i.id === adjustmentForm.item_id || i.name === adjustmentForm.item_name);
+                        const convertible = sel ? getConvertibleUnits(sel, conversions, packagingOptions) : [adjustmentForm.unit || 'pcs'];
+                        return (
+                          <select
+                            className="inventory-filter-select"
+                            style={{ width: 'auto', minWidth: '85px', fontWeight: 600 }}
+                            value={adjustmentForm.unit}
+                            onChange={(e) => setAdjustmentForm({ ...adjustmentForm, unit: e.target.value })}
+                          >
+                            {convertible.map((u: string) => (
+                              <option key={u} value={u}>{u}</option>
+                            ))}
+                          </select>
+                        );
+                      })()}
                     </div>
+                    {/* Live Conversion Preview */}
+                    {(() => {
+                      const sel = catalogItems.find(i => i.id === adjustmentForm.item_id || i.name === adjustmentForm.item_name);
+                      if (!sel || !adjustmentForm.quantity || !adjustmentForm.unit) return null;
+                      const base = sel.base_unit || sel.unit;
+                      const factor = conversionFactor(sel.id, adjustmentForm.unit, base, conversions, packagingOptions);
+                      const preview = formatConversionPreview(Number(adjustmentForm.quantity), adjustmentForm.unit, base, factor);
+                      if (!preview) return null;
+                      return (
+                        <div style={{ marginTop: '6px', fontSize: '11px', color: '#0369a1', background: '#e0f2fe', padding: '4px 8px', borderRadius: '4px', fontWeight: 600 }}>
+                          ℹ️ {preview}
+                        </div>
+                      );
+                    })()}
                   </div>
                   <div>
                     <label style={{ fontSize: '13px', fontWeight: 700 }}>Unit Cost ($)</label>

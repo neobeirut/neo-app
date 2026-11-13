@@ -31,33 +31,38 @@ export default function StoreOperatingProfitabilityScreen({ user, permissions }:
   const [showReopenModal, setShowReopenModal] = useState<boolean>(false);
   const [reopenReason, setReopenReason] = useState<string>('');
 
-  const restaurantId = user?.restaurant_id;
+  const restaurantId = user?.restaurant_id || user?.restaurants?.id || 'rest-brime-01';
 
   useEffect(() => {
     async function loadBranches() {
       try {
-        const bList = await api.getBranches();
-        setBranches(bList || []);
+        const res = await api.getBranches();
+        const bList = Array.isArray(res) ? res : (res?.data || []);
+        setBranches(bList);
         if (bList && bList.length > 0) {
           const defaultB = user?.branch_id || bList[0].id;
           setSelectedBranch(defaultB);
+        } else {
+          setSelectedBranch('badaro-central');
         }
       } catch (err) {
         console.error('Failed to load branches:', err);
+        setSelectedBranch('badaro-central');
       }
     }
     loadBranches();
   }, [user]);
 
   const loadData = async () => {
-    if (!restaurantId || !selectedBranch) return;
+    const activeRestId = restaurantId || 'rest-brime-01';
+    const activeBranchId = selectedBranch || 'badaro-central';
     setLoading(true);
     try {
       if (viewMode === 'CLOSED') {
-        const pnl = await storeOperatingPnlApi.getPnlReport(restaurantId, selectedBranch, selectedDate, selectedDate);
+        const pnl = await storeOperatingPnlApi.getPnlReport(activeRestId, activeBranchId, selectedDate, selectedDate);
         setReport(pnl);
       } else {
-        const live = await storeOperatingPnlApi.getLiveProvisionalPnl(restaurantId, selectedBranch, selectedDate);
+        const live = await storeOperatingPnlApi.getLiveProvisionalPnl(activeRestId, activeBranchId, selectedDate);
         setLivePnl(live);
       }
     } catch (err) {
@@ -165,7 +170,7 @@ export default function StoreOperatingProfitabilityScreen({ user, permissions }:
             onChange={(e) => setSelectedBranch(e.target.value)}
             className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white font-medium shadow-sm focus:ring-2 focus:ring-emerald-500"
           >
-            {branches.map(b => (
+            {Array.isArray(branches) && branches.map(b => (
               <option key={b.id} value={b.id}>{b.name || b.id}</option>
             ))}
           </select>

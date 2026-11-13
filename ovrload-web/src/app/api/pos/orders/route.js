@@ -187,6 +187,72 @@ export async function POST(request) {
       `;
     }
 
+    // Send "order_preparing" WhatsApp notification if customerPhone is present and status is preparing/confirmed/accepted
+    const isPreparingOrAccepted = status === "preparing" || status === "confirmed" || status === "accepted";
+    if (isPreparingOrAccepted && customerPhone && String(customerPhone).trim()) {
+      try {
+        const normPhone = String(customerPhone).replace(/\D/g, "").replace(/^00/, "").replace(/^0/, "961");
+        const target = (normPhone.length === 7 || normPhone.length === 8) ? "961" + normPhone : normPhone;
+        const apiKey = process.env.INFOBIP_API_KEY || "4ba437cf19cbff80fd5b41af77ef6dd3-70acb77e-2cf7-4028-9bdb-3382c4b8865a";
+        const baseUrl = (process.env.INFOBIP_BASE_URL || "https://y4r1q1.api.infobip.com").replace(/\/$/, "");
+        const sender = (process.env.INFOBIP_WHATSAPP_SENDER || "96181202607").replace(/\D/g, "");
+
+        const numTotal = Number(total || 0);
+        const formattedTotal = `$${numTotal % 1 === 0 ? numTotal.toFixed(0) : numTotal.toFixed(2)}`;
+
+        console.log(`[pos-order-create] Sending order_preparing template to ${target} for order #${orderId} (Total: ${formattedTotal})`);
+        let prepRes = await fetch(`${baseUrl}/whatsapp/1/message/template`, {
+          method: "POST",
+          headers: {
+            "Authorization": `App ${apiKey}`,
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+          },
+          body: JSON.stringify({
+            messages: [{
+              from: sender,
+              to: target,
+              content: {
+                templateName: "order_preparing",
+                templateData: { body: { placeholders: [formattedTotal] } },
+                language: "en"
+              }
+            }]
+          })
+        });
+        let prepData = await prepRes.json().catch(() => ({}));
+        if (!prepRes.ok && prepRes.status === 400) {
+          console.warn(`[pos-order-create] order_preparing failed with 'en' (status: ${prepRes.status}), trying 'en_US' fallback:`, prepData);
+          const retryRes = await fetch(`${baseUrl}/whatsapp/1/message/template`, {
+            method: "POST",
+            headers: {
+              "Authorization": `App ${apiKey}`,
+              "Content-Type": "application/json",
+              "Accept": "application/json"
+            },
+            body: JSON.stringify({
+              messages: [{
+                from: sender,
+                to: target,
+                content: {
+                  templateName: "order_preparing",
+                  templateData: { body: { placeholders: [formattedTotal] } },
+                  language: "en_US"
+                }
+              }]
+            })
+          });
+          if (retryRes.ok) {
+            prepRes = retryRes;
+            prepData = await retryRes.json().catch(() => ({}));
+          }
+        }
+        console.log(`[pos-order-create] order_preparing response status: ${prepRes.status}`, JSON.stringify(prepData));
+      } catch (e) {
+        console.error("Failed to send order_preparing notification from POS order creation:", e);
+      }
+    }
+
     return Response.json({
       success: true,
       orderId,

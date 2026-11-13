@@ -1,33 +1,23 @@
 import { ChevronRight, ChevronLeft } from "lucide-react";
-import { useState, useEffect } from "react";
-import { openOrderApp } from "@/utils/deviceDetection";
 
 export function HeroSection({ sliderData }) {
   const { sliderImages, currentSlide, nextSlide, prevSlide, goToSlide } =
     sliderData;
-  const [isLoaded, setIsLoaded] = useState(false);
 
   // Default fallback image if no slider images
   const defaultImage = "https://app.neobeirut.com/website/home-page-branch.jpg";
   const hasSliderImages = sliderImages && sliderImages.length > 0;
   const currentImage = hasSliderImages ? sliderImages[currentSlide] : null;
 
-  // Fade in the first image smoothly on mount
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setIsLoaded(true);
-    }, 100);
-    return () => clearTimeout(timer);
-  }, []);
 
   return (
     <section className="relative min-h-screen flex items-center justify-center overflow-hidden pt-20">
       <div className="absolute inset-0">
         <img
           src={currentImage?.url || defaultImage}
-          alt={currentImage?.title || "Background"}
+          alt={currentImage?.title || "NÉO Beirut bistro and bakery"}
+          fetchPriority="high"
           className="w-full h-full object-cover transition-opacity duration-500"
-          style={{ opacity: isLoaded ? 1 : 0 }}
         />
         <div className="absolute inset-0 bg-black/40"></div>
       </div>
@@ -79,13 +69,13 @@ export function HeroSection({ sliderData }) {
             {currentImage?.subtitle || "Flavors Worth Savoring"}
           </p>
         </div>
-        <button
-          onClick={(e) => openOrderApp(e)}
+        <a
+          href="/shop"
           className="inline-flex items-center gap-2 px-8 py-4 bg-[#2D5F5D] text-white font-semibold hover:bg-[#1f4342] transition-all rounded-lg shadow-lg hover:shadow-xl cursor-pointer"
         >
           Explore Our Menu
           <ChevronRight size={24} />
-        </button>
+        </a>
       </div>
     </section>
   );

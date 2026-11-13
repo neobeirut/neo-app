@@ -15,7 +15,7 @@ export default function WasteScreen({ user }: { user: any }) {
   const [endDate, setEndDate] = useState('');
 
   const sources = ['All', 'Kitchen', 'Bar', 'Retail', 'Supplies'];
-  const types = ['All', 'Spoilage', 'Expired', 'Burned/Ruined', 'Spillage', 'Overproduction'];
+  const types = ['All', 'Spoilage', 'Preparation waste', 'Damaged', 'Expired', 'Staff meal', 'Quality rejection', 'Other'];
 
   useEffect(() => {
     loadBranches();

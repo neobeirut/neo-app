@@ -1,0 +1,14 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /admin
+Disallow: /account
+Disallow: /pos
+Disallow: /driver
+Disallow: /init-
+Disallow: /errors/
+Disallow: /apple-review-instructions
+Disallow: /shop/cart
+Disallow: /shop/checkout
+
+Sitemap: https://www.neobeirut.com/sitemap.xml

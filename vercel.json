@@ -2,6 +2,15 @@
   "cleanUrls": true,
   "outputDirectory": "dist",
   "routes": [
+    { "src": "^/new/?$", "dest": "/new/index.html" },
+    { "src": "^/new/admin(/.*)?$", "dest": "/new/admin/index.html" },
+    { "src": "^/new/pos/assets/(.*)", "dest": "/new/pos/assets/$1" },
+    { "src": "^/new/(?:pos|waiter|kds)/assets/(.*)", "dest": "/new/pos/assets/$1" },
+    { "src": "^/new/pos(/.*)?$", "dest": "/new/pos/index.html" },
+    { "src": "^/new/waiter(/.*)?$", "dest": "/new/pos/index.html" },
+    { "src": "^/new/kds(/.*)?$", "dest": "/new/pos/index.html" },
+    { "src": "^/new/pos/(.*)", "dest": "/new/pos/$1" },
+
     { "src": "^/tablet-punch-pwa$", "dest": "/tablet-punch-pwa/" },
     { "src": "^/tablet-punch-pwa/(.*)", "dest": "/tablet-punch-pwa/$1" },
     { "src": "^/sw.js$", "dest": "/sw.js", "headers": { "cache-control": "no-cache, no-store, must-revalidate" } },
@@ -20,6 +29,15 @@
     { "src": "^/(.*)$", "dest": "/index.html" }
   ],
   "headers": [
+    {
+      "source": "/new(.*)",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" },
+        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+        { "key": "Pragma", "value": "no-cache" },
+        { "key": "Expires", "value": "0" }
+      ]
+    },
     {
       "source": "/sw.js",
       "headers": [

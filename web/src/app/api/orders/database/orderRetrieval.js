@@ -9,39 +9,42 @@ export async function getUserOrders(userId) {
       ua.building,
       ua.company_name,
       ua.address_line2,
-      json_agg(
-        json_build_object(
-          'id', oi.id,
-          'product_id', oi.product_id,
-          'product_name', p.name,
-          'product_image', p.image_url,
-          'quantity', oi.quantity,
-          'unit_price', oi.unit_price,
-          'total_price', oi.total_price,
-          'customizations', oi.customizations,
-          'comment', oi.comment,
-          'addons', (
-            SELECT json_agg(
-              json_build_object(
-                'id', pa.id,
-                'name', pa.name,
-                'price', oia.price
+      COALESCE(
+        json_agg(
+          json_build_object(
+            'id', oi.id,
+            'product_id', oi.product_id,
+            'product_name', p.name,
+            'product_image', p.image_url,
+            'quantity', oi.quantity,
+            'unit_price', oi.unit_price,
+            'total_price', oi.total_price,
+            'customizations', oi.customizations,
+            'comment', oi.comment,
+            'addons', (
+              SELECT json_agg(
+                json_build_object(
+                  'id', pa.id,
+                  'name', pa.name,
+                  'price', oia.price
+                )
               )
+              FROM order_item_addons oia
+              JOIN product_addons pa ON oia.product_addon_id = pa.id
+              WHERE oia.order_item_id = oi.id
             )
-            FROM order_item_addons oia
-            JOIN product_addons pa ON oia.product_addon_id = pa.id
-            WHERE oia.order_item_id = oi.id
           )
-        )
+        ) FILTER (WHERE oi.id IS NOT NULL),
+        '[]'::json
       ) as items
     FROM orders o
     LEFT JOIN branches b ON o.branch_id = b.id
     LEFT JOIN user_addresses ua ON o.address_id = ua.id
-    JOIN order_items oi ON o.id::text = oi.order_id::text
+    LEFT JOIN order_items oi ON o.id::text = oi.order_id::text
     LEFT JOIN products p ON oi.product_id::text = p.id::text
     WHERE o.user_id = ${userId}
     GROUP BY o.id, b.name, b.address, ua.building, ua.company_name, ua.address_line2
-    ORDER BY o.created_at DESC
+    ORDER BY COALESCE(o.created_at, o.scheduled_date::timestamp) DESC, o.id DESC
   `;
 
   return orders;

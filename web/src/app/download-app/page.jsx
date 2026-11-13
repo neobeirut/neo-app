@@ -1,5 +1,8 @@
 "use client";
 
+import { publicPageMeta } from "@/utils/seo";
+export const meta = () => publicPageMeta({"title":"NÉO Beirut App | Order on iPhone & Android","description":"Download the NÉO Beirut app for iPhone or Android to browse the menu and order. Find the official App Store and Google Play links.","path":"/download-app"});
+
 import { Smartphone, Apple } from "lucide-react";
 
 export default function DownloadAppPage() {

@@ -14,7 +14,7 @@
 "whatsapp_template_cancelled","{""template_name"":""cancelled"",""language"":""en_US""}","2026-01-31T08:13:47.280Z","2026-04-21T16:48:14.118Z"
 "whatsapp_template_completed","{""template_name"":""completed"",""language"":""en_US""}","2026-01-31T08:13:47.274Z","2026-04-21T16:48:14.148Z"
 "whatsapp_template_new_order_to_branch","{""template_name"":""new_order_to_branch"",""language"":""en_US"",""locale"":""en_US""}","2026-01-31T08:47:18.181Z","2026-04-21T16:48:14.153Z"
-"whatsapp_template_otp","{""template_name"":""neo_login_code_2026"",""language"":""en_US""}","2026-04-17T19:57:57.628Z","2026-04-21T16:48:14.159Z"
+"whatsapp_template_otp","{""template_name"":""neo_login_code_2026"",""language"":""en_US"",""schema"":{""category"":""AUTHENTICATION"",""bodyPlaceholderCount"":1,""hasHeader"":false,""headerType"":null,""hasButtons"":true,""buttonCount"":1,""buttonType"":""URL"",""hasFooter"":false}}","2026-04-17T19:57:57.628Z","2026-10-21T15:57:50.624Z"
 "whatsapp_template_out_for_delivery","{""template_name"":""out_for_delivery"",""language"":""en_US""}","2026-01-31T08:13:47.269Z","2026-04-21T16:48:14.164Z"
 "whatsapp_template_pending","{""template_name"":""pending"",""language"":""en_US""}","2026-01-31T08:13:47.247Z","2026-04-21T16:48:14.170Z"
 "whatsapp_template_preparing","{""template_name"":""preparing"",""language"":""en_US""}","2026-01-31T08:13:47.255Z","2026-04-21T16:48:14.175Z"

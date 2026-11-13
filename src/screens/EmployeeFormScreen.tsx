@@ -46,6 +46,8 @@ export default function EmployeeFormScreen({ user }: { user?: any }) {
   const [webPassword, setWebPassword] = useState('');
   const [showWebPassword, setShowWebPassword] = useState(false);
   const [role, setRole] = useState('User');
+  const [assignedConcept, setAssignedConcept] = useState('NEO');
+  const [canSwitchConcepts, setCanSwitchConcepts] = useState(false);
   const [isPayrollEligible, setIsPayrollEligible] = useState(true);
   const [trackAttendance, setTrackAttendance] = useState(true);
   const [shiftManagement, setShiftManagement] = useState(true);
@@ -141,6 +143,8 @@ export default function EmployeeFormScreen({ user }: { user?: any }) {
               setPin(userRes.data.pin || '');
               setEmail(userRes.data.email || '');
               setRole(userRes.data.role || 'User');
+              setAssignedConcept(userRes.data.concept || 'NEO');
+              setCanSwitchConcepts(Boolean(userRes.data.can_switch_concepts));
             }
           }
 
@@ -250,12 +254,15 @@ export default function EmployeeFormScreen({ user }: { user?: any }) {
     let resolvedAppUserId = appUserId;
 
     if (isAppUser) {
+      const combinedDepts = Array.from(new Set([department, subDepartment].filter(Boolean))).join(', ') || 'All';
       const userPayload: any = {
         name: `${firstName} ${lastName}`.trim(),
         pin: pin.trim(),
         role: role,
         branch: branch,
-        departments: department || 'All',
+        concept: assignedConcept,
+        can_switch_concepts: canSwitchConcepts || role === 'Admin' || role === 'Manager' || assignedConcept === 'ALL',
+        departments: combinedDepts,
         production_access: productionAccess,
         email: email.trim() || null,
         restaurant_id: user?.restaurant_id || null
@@ -461,10 +468,53 @@ export default function EmployeeFormScreen({ user }: { user?: any }) {
             <div>
               <label style={labelStyle}>User Role *</label>
               <select style={inputStyle} value={role} onChange={e => setRole(e.target.value)} required>
-                <option value="User">User (Mobile App Only)</option>
-                <option value="Manager">Manager (Web Admin & Mobile)</option>
-                <option value="Admin">Admin (Full Web Admin & Mobile)</option>
+                <optgroup label="FLOW POS Roles">
+                  <option value="Waiter">Waiter (POS Table Service & Ordering)</option>
+                  <option value="Runner">Runner (POS Floor & Order Delivery)</option>
+                  <option value="Cashier">Cashier (POS Payments & Settlement)</option>
+                  <option value="Floor Supervisor">Floor Supervisor (POS Floor Operations & Authorizations)</option>
+                  <option value="Manager">Manager (Full POS Management & Web Admin)</option>
+                  <option value="Admin">Admin (Full System Administrator & Web Admin)</option>
+                </optgroup>
+                <optgroup label="General">
+                  <option value="User">User (Mobile App / General Staff)</option>
+                </optgroup>
               </select>
+              <p style={{ margin: '4px 0 0', fontSize: '11px', color: 'var(--text-muted)' }}>
+                Governs terminal permissions. (e.g. Waiters can order & print bills, but cannot settle without supervisor approval).
+              </p>
+            </div>
+            <div>
+              <label style={labelStyle}>Assigned Concept POS *</label>
+              <select 
+                style={inputStyle} 
+                value={assignedConcept} 
+                onChange={e => {
+                  setAssignedConcept(e.target.value);
+                  if (e.target.value === 'ALL') setCanSwitchConcepts(true);
+                }}
+              >
+                <option value="NEO">NÉO (Restaurant, Café & Bakery)</option>
+                <option value="OVRLOAD">OVRLOAD (Loaded Wraps & Delivery)</option>
+                <option value="WICKD">WICKD (Cinnamon-Roll Delivery Brand)</option>
+                <option value="ALL">All Concepts (Multi-Concept Manager)</option>
+              </select>
+              <p style={{ margin: '4px 0 0', fontSize: '11px', color: 'var(--text-muted)' }}>
+                When this cashier logs into the POS terminal, it automatically opens this concept's dedicated POS with its specific menu.
+              </p>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingTop: '24px' }}>
+              <input 
+                type="checkbox" 
+                id="canSwitchConceptsToggle"
+                checked={canSwitchConcepts || role === 'Admin' || role === 'Manager' || assignedConcept === 'ALL'} 
+                disabled={role === 'Admin' || role === 'Manager' || assignedConcept === 'ALL'}
+                onChange={e => setCanSwitchConcepts(e.target.checked)} 
+                style={{ width: '18px', height: '18px', cursor: 'pointer' }} 
+              />
+              <label htmlFor="canSwitchConceptsToggle" style={{ fontSize: '12px', fontWeight: 600, color: '#334155', cursor: 'pointer' }}>
+                Allow Switching Concepts (Manager / Admin)
+              </label>
             </div>
             <div>
               <label style={labelStyle}>
@@ -608,8 +658,27 @@ export default function EmployeeFormScreen({ user }: { user?: any }) {
           </div>
 
           <div>
-            <label style={labelStyle}>Position</label>
-            <input style={inputStyle} value={position} onChange={e => setPosition(e.target.value)} placeholder="e.g. Head Chef" />
+            <label style={labelStyle}>Position (Job Title)</label>
+            <input 
+              style={inputStyle} 
+              value={position} 
+              onChange={e => {
+                const val = e.target.value;
+                setPosition(val);
+                if (role === 'User' || !role) {
+                  const lower = val.toLowerCase();
+                  if (lower.includes('waiter') || lower.includes('waitress') || lower.includes('server')) setRole('Waiter');
+                  else if (lower.includes('runner') || lower.includes('busser')) setRole('Runner');
+                  else if (lower.includes('cashier') || lower.includes('cash')) setRole('Cashier');
+                  else if (lower.includes('supervisor')) setRole('Floor Supervisor');
+                  else if (lower.includes('manager')) setRole('Manager');
+                }
+              }} 
+              placeholder="e.g. Waiter, Head Chef, Cashier" 
+            />
+            <p style={{ margin: '4px 0 0', fontSize: '11px', color: 'var(--text-muted)' }}>
+              Official job title for payroll & HR. POS permissions are governed by their <strong>User Role</strong> above.
+            </p>
           </div>
 
            <div>

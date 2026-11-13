@@ -54,6 +54,7 @@ export function CateringSection() {
           <h2 className="text-5xl md:text-6xl font-bold mb-4 text-[#2D5F5D]">
             Corporate Catering
           </h2>
+          <p className="mt-4 mb-6"><a className="underline text-[#2D5F5D]" href="/corporate-catering-beirut">Explore business lunch boxes and corporate catering in Beirut</a></p>
           <div className="h-1 w-32 bg-[#2D5F5D] mx-auto"></div>
         </div>
 

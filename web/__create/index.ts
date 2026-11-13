@@ -39,9 +39,24 @@ for (const method of ['log', 'info', 'warn', 'error', 'debug'] as const) {
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
 });
+pool.on('error', (err) => {
+  console.error('Unexpected error on idle Neon database client:', err);
+});
+
 const adapter = NeonAdapter(pool);
 
 const app = new Hono();
+
+// Keep operational and account pages out of search without changing access or order handling.
+app.use('*', async (c, next) => {
+  await next();
+  if (/^\/(?:admin|pos|driver|account|api|errors)(?:\/|$)/.test(c.req.path) ||
+      /^\/init-/.test(c.req.path) ||
+      /^\/(?:apple-review-instructions|delete-account)(?:\/|$)/.test(c.req.path) ||
+      /^\/shop\/(?:cart|checkout)(?:\/|$)/.test(c.req.path)) {
+    c.header('X-Robots-Tag', 'noindex, nofollow');
+  }
+});
 
 app.get('/health', (c) => c.json({ status: 'ok' }, 200));
 app.get('/api/health', (c) => c.json({ status: 'ok' }, 200));
@@ -56,7 +71,7 @@ app.use('*', (c, next) => {
 app.use(contextStorage());
 
 app.onError((err, c) => {
-  if (c.req.method !== 'GET') {
+  if (c.req.path.startsWith('/api') || c.req.method !== 'GET') {
     return c.json(
       {
         error: 'An error occurred in your app',
@@ -65,7 +80,7 @@ app.onError((err, c) => {
       500
     );
   }
-  return c.html(getHTMLForErrorPage(err), 200);
+  return c.html(getHTMLForErrorPage(err), 500);
 });
 
 if (process.env.CORS_ORIGINS) {

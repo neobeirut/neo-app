@@ -50,7 +50,14 @@ export default function DriverPage() {
       const res = await fetch("/api/orders/pending-delivery");
       if (!res.ok) throw new Error("HTTP " + res.status);
       const data = await res.json();
-      setOrders(data);
+      const filtered = Array.isArray(data)
+        ? data.filter((o) => {
+            if (!o) return false;
+            const s = `${o.order_source || ""} ${o.customer_name || ""} ${o.delivery_address || ""}`.toLowerCase();
+            return !s.includes("toter") && !s.includes("noknok") && !s.includes("nok nok");
+          })
+        : [];
+      setOrders(filtered);
       setConnected(true);
     } catch (err) {
       setConnected(false);

@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#eb660c" />
+    <meta name="description" content="FLOW POS, Waiter & KDS Terminal - Test Version" />
+    
+    <!-- PWA Web App Manifest -->
+    <link rel="manifest" href="/new/pos/manifest.json" />
+
+    <!-- iOS / iPadOS PWA Meta Tags -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Waiter POS" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="application-name" content="Waiter POS" />
+
+    <!-- Touch Icons -->
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="apple-touch-icon" sizes="192x192" href="/icon-192x192.png" />
+    <link rel="apple-touch-icon" sizes="512x512" href="/icon-512x512.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192x192.png" />
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍽️</text></svg>" />
+    <title>FLOW POS / Waiter / KDS (TEST VERSION)</title>
+
+    <!-- Safari WebKit Compatibility Polyfills & Error Capture -->
+    <script>
+      (function() {
+        // Polyfill crypto.randomUUID for Safari / insecure HTTP
+        try {
+          if (!window.crypto) window.crypto = {};
+          if (!window.crypto.randomUUID) {
+            window.crypto.randomUUID = function() {
+              return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                var r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+              });
+            };
+          }
+        } catch (e) {}
+
+        // Polyfill AbortSignal.timeout
+        try {
+          if (typeof AbortSignal !== 'undefined' && !AbortSignal.timeout) {
+            AbortSignal.timeout = function(ms) {
+              var controller = new AbortController();
+              setTimeout(function() { controller.abort(); }, ms);
+              return controller.signal;
+            };
+          }
+        } catch (e) {}
+
+        // Global Error Display Overlay for Mobile Debugging
+        window.addEventListener('error', function(e) {
+          try {
+            var b = document.getElementById('safari-debug-banner');
+            if (!b) {
+              b = document.createElement('div');
+              b.id = 'safari-debug-banner';
+              b.style = 'position:fixed;top:0;left:0;right:0;bottom:0;background:#1a0505;color:#ff9999;padding:24px;z-index:9999999;font-family:monospace;font-size:13px;overflow:auto;line-height:1.6;border:4px solid #ff4444;';
+              document.documentElement.appendChild(b);
+            }
+            b.innerHTML += '<h3 style="color:#ff4444;margin:0 0 8px 0;font-size:16px;">⚠️ Startup Error:</h3>' +
+              '<div><strong>Message:</strong> ' + (e.message || e) + '</div>' +
+              '<div><strong>File:</strong> ' + (e.filename || '') + ':' + (e.lineno || '') + '</div>' +
+              '<pre style="background:#2b0a0a;padding:10px;border-radius:6px;overflow:auto;margin-top:8px;">' + (e.error && e.error.stack ? e.error.stack : 'No stack trace') + '</pre><hr style="border-color:#551111;margin:16px 0;" />';
+          } catch (err) {}
+        });
+
+        window.addEventListener('unhandledrejection', function(e) {
+          try {
+            var b = document.getElementById('safari-debug-banner');
+            if (!b) {
+              b = document.createElement('div');
+              b.id = 'safari-debug-banner';
+              b.style = 'position:fixed;top:0;left:0;right:0;bottom:0;background:#1a0505;color:#ff9999;padding:24px;z-index:9999999;font-family:monospace;font-size:13px;overflow:auto;line-height:1.6;border:4px solid #ff4444;';
+              document.documentElement.appendChild(b);
+            }
+            var r = e.reason;
+            b.innerHTML += '<h3 style="color:#ffaa44;margin:0 0 8px 0;font-size:16px;">⚠️ Unhandled Rejection:</h3>' +
+              '<pre style="background:#2b0a0a;padding:10px;border-radius:6px;overflow:auto;margin-top:8px;">' + (r && r.stack ? r.stack : (r && r.message ? r.message : r)) + '</pre><hr style="border-color:#551111;margin:16px 0;" />';
+          } catch (err) {}
+        });
+      })();
+    </script>
+  </head>
+  <body class="bg-[#F5F6F4] text-[#242B28] select-none overflow-hidden">
+    <div id="root">
+      <div style="height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#F5F6F4;color:#242B28;font-family:system-ui,-apple-system,sans-serif;">
+        <div style="width:48px;height:48px;border-radius:12px;background:#eb660c22;color:#eb660c;display:flex;align-items:center;justify-content:center;font-size:24px;margin-bottom:12px;border:1px solid #eb660c44;">
+          🍽️
+        </div>
+        <div style="font-size:18px;font-weight:bold;margin-bottom:4px;letter-spacing:0.5px;">Neo Beirut</div>
+        <div style="font-size:12px;color:#64748b;">Loading interface...</div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.tsx"></script>
+    <script>
+      // Early capture of beforeinstallprompt so it is never lost during initial render
+      window.addEventListener('beforeinstallprompt', function(e) {
+        e.preventDefault();
+        window.deferredPwaPrompt = e;
+        window.dispatchEvent(new CustomEvent('flow:pwa_install_ready', { detail: e }));
+        console.log('📱 PWA install prompt ready and captured');
+      });
+
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+          navigator.serviceWorker.register('/sw.js').then(function(reg) {
+            console.log('✅ FLOW Waiter POS Service Worker registered:', reg.scope);
+          }).catch(function(err) {
+            console.warn('Service Worker registration skipped or failed:', err);
+          });
+        });
+      }
+    </script>
+  </body>
+</html>
