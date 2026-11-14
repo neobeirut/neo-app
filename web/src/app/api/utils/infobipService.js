@@ -170,7 +170,7 @@ export async function sendInfobipTemplateMessage({
   // Handle WhatsApp Carousel templates (such as new_clients_message)
   const effectiveCards =
     carouselCards ||
-    (templateName === "plat_dujours_launch"
+    ((templateName === "plat_dujours_launch" || templateName === "plat_du_jours_launch")
       ? [
           {
             cardIndex: 0,
@@ -348,10 +348,19 @@ export async function sendInfobipMediaMessage({
  */
 export async function fetchInfobipTemplates() {
   try {
-    const res = await infobipRequest("/whatsapp/1/templates", {
-      method: "GET",
-    });
-    return res?.templates || [];
+    const config = await getInfobipConfig();
+    let res = null;
+    try {
+      res = await infobipRequest(`/whatsapp/2/senders/${config.sender}/templates`, { method: "GET" });
+    } catch (e1) {
+      try {
+        res = await infobipRequest(`/whatsapp/1/senders/${config.sender}/templates`, { method: "GET" });
+      } catch (e2) {
+        res = await infobipRequest("/whatsapp/1/templates", { method: "GET" });
+      }
+    }
+    const tpls = res?.templates || res?.results || [];
+    return tpls;
   } catch (err) {
     console.error("[infobipService] Failed to fetch templates:", err.message);
     throw err;

@@ -31,16 +31,36 @@ export async function POST(request) {
       const category = tpl.category || "UTILITY";
       const status = tpl.status || "APPROVED";
       const components = tpl.components || [];
+      const structure = tpl.structure || {};
 
       const bodyComponent = components.find(c => c.type === "BODY") || {};
       const headerComponent = components.find(c => c.type === "HEADER") || {};
       const footerComponent = components.find(c => c.type === "FOOTER") || {};
       const buttonsComponent = components.find(c => c.type === "BUTTONS") || {};
 
-      const bodyText = bodyComponent.text || "";
-      const headerText = headerComponent.text || (headerComponent.format ? `[${headerComponent.format}]` : "");
-      const footerText = footerComponent.text || "";
-      const buttons = buttonsComponent.buttons || [];
+      let bodyText = bodyComponent.text || "";
+      if (!bodyText && structure.body) {
+        bodyText = typeof structure.body === 'string' ? structure.body : (structure.body.text || "");
+      }
+
+      let headerText = headerComponent.text || (headerComponent.format ? `[${headerComponent.format}]` : "");
+      if (!headerText) {
+        if (structure.carousel) {
+          headerText = `[CAROUSEL: ${structure.carousel.cards?.length || 0} cards]`;
+        } else if (structure.header) {
+          headerText = structure.header.format ? `[${structure.header.format}]` : (structure.header.text || "");
+        }
+      }
+
+      let footerText = footerComponent.text || "";
+      if (!footerText && structure.footer) {
+        footerText = typeof structure.footer === 'string' ? structure.footer : (structure.footer.text || "");
+      }
+
+      let buttons = buttonsComponent.buttons || [];
+      if ((!buttons || buttons.length === 0) && structure.buttons) {
+        buttons = structure.buttons;
+      }
 
       // Extract placeholders e.g. {{1}}, {{2}}
       const matches = bodyText.match(/\{\{(\d+)\}\}/g) || [];

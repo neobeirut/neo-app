@@ -84,7 +84,7 @@ async function processCampaignBatch(campaignId, adminId) {
             .filter(v => v.length > 0);
 
           // Ensure templates requiring a name (plat_dujours_launch, new_clients_message) get contact name
-          if ((campaign.template_name === 'new_clients_message' || campaign.template_name === 'plat_dujours_launch') && personalizedPlaceholders.length === 0) {
+          if ((campaign.template_name === 'new_clients_message' || campaign.template_name === 'plat_dujours_launch' || campaign.template_name === 'plat_du_jours_launch') && personalizedPlaceholders.length === 0) {
             personalizedPlaceholders.push(rec.contact_name || 'there');
           }
 
