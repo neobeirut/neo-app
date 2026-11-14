@@ -27,6 +27,36 @@ export async function GET(request, { params }) {
       return Response.json({ error: "Campaign not found" }, { status: 404 });
     }
 
+    // Compute live accurate stats directly from whatsapp_campaign_recipients
+    const [counts] = await sql`
+      SELECT 
+        COUNT(*)::int as total,
+        COUNT(*) FILTER (WHERE status IN ('sent', 'delivered', 'read'))::int as sent,
+        COUNT(*) FILTER (WHERE status IN ('delivered', 'read'))::int as delivered,
+        COUNT(*) FILTER (WHERE status = 'read')::int as read,
+        COUNT(*) FILTER (WHERE status = 'failed')::int as failed
+      FROM whatsapp_campaign_recipients
+      WHERE campaign_id = ${id}
+    `;
+
+    // Keep campaign table in sync if counts updated
+    if (counts && (campaign.sent_count !== counts.sent || campaign.delivered_count !== counts.delivered)) {
+      await sql`
+        UPDATE whatsapp_campaigns
+        SET 
+          sent_count = ${counts.sent},
+          delivered_count = ${counts.delivered},
+          read_count = ${counts.read},
+          failed_count = ${counts.failed},
+          updated_at = now()
+        WHERE id = ${id}
+      `;
+      campaign.sent_count = counts.sent;
+      campaign.delivered_count = counts.delivered;
+      campaign.read_count = counts.read;
+      campaign.failed_count = counts.failed;
+    }
+
     const recipients = statusFilter !== 'all'
       ? await sql`
           SELECT 
@@ -55,15 +85,18 @@ export async function GET(request, { params }) {
           LIMIT ${limit} OFFSET ${offset}
         `;
 
-    const [totalRecipientsRow] = await sql`
-      SELECT COUNT(*)::int as total FROM whatsapp_campaign_recipients WHERE campaign_id = ${id}
-    `;
-
     return Response.json({
       ok: true,
       campaign,
       recipients,
-      totalRecipients: totalRecipientsRow?.total || 0,
+      totalRecipients: counts?.total || campaign.total_recipients || 0,
+      counts: {
+        recipients: counts?.total || campaign.total_recipients || 0,
+        sent: counts?.sent || campaign.sent_count || 0,
+        delivered: counts?.delivered || campaign.delivered_count || 0,
+        read: counts?.read || campaign.read_count || 0,
+        failed: counts?.failed || campaign.failed_count || 0,
+      }
     });
   } catch (error) {
     console.error("[whatsapp/campaigns/[id] GET] Error:", error);

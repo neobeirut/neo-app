@@ -263,6 +263,9 @@ export default function WhatsAppCampaigns({ adminToken, onOpenChat }) {
       const data = await res.json();
       if (data.ok) {
         setCampaignDetails(data);
+        if (data.campaign) {
+          setSelectedCampaign(data.campaign);
+        }
       }
     } catch (err) {
       console.error("Failed fetching campaign details:", err);
@@ -985,23 +988,23 @@ export default function WhatsAppCampaigns({ adminToken, onOpenChat }) {
             <div className="p-5 border-b border-slate-800 bg-slate-950/40 grid grid-cols-2 sm:grid-cols-5 gap-3 text-center text-xs">
               <div className="p-3 bg-slate-900 rounded-xl border border-slate-800">
                 <div className="text-slate-500">Recipients</div>
-                <div className="text-lg font-bold text-white mt-0.5">{selectedCampaign.total_recipients || 0}</div>
+                <div className="text-lg font-bold text-white mt-0.5">{campaignDetails?.counts?.recipients ?? campaignDetails?.campaign?.total_recipients ?? selectedCampaign.total_recipients ?? 0}</div>
               </div>
               <div className="p-3 bg-slate-900 rounded-xl border border-slate-800">
                 <div className="text-slate-500">Sent</div>
-                <div className="text-lg font-bold text-emerald-400 mt-0.5">{selectedCampaign.sent_count || 0}</div>
+                <div className="text-lg font-bold text-emerald-400 mt-0.5">{campaignDetails?.counts?.sent ?? campaignDetails?.campaign?.sent_count ?? selectedCampaign.sent_count ?? 0}</div>
               </div>
               <div className="p-3 bg-slate-900 rounded-xl border border-slate-800">
                 <div className="text-slate-500">Delivered</div>
-                <div className="text-lg font-bold text-blue-400 mt-0.5">{selectedCampaign.delivered_count || 0}</div>
+                <div className="text-lg font-bold text-blue-400 mt-0.5">{campaignDetails?.counts?.delivered ?? campaignDetails?.campaign?.delivered_count ?? selectedCampaign.delivered_count ?? 0}</div>
               </div>
               <div className="p-3 bg-slate-900 rounded-xl border border-slate-800">
                 <div className="text-slate-500">Read</div>
-                <div className="text-lg font-bold text-purple-400 mt-0.5">{selectedCampaign.read_count || 0}</div>
+                <div className="text-lg font-bold text-purple-400 mt-0.5">{campaignDetails?.counts?.read ?? campaignDetails?.campaign?.read_count ?? selectedCampaign.read_count ?? 0}</div>
               </div>
               <div className="p-3 bg-slate-900 rounded-xl border border-slate-800">
                 <div className="text-slate-500">Failed</div>
-                <div className="text-lg font-bold text-red-400 mt-0.5">{selectedCampaign.failed_count || 0}</div>
+                <div className="text-lg font-bold text-red-400 mt-0.5">{campaignDetails?.counts?.failed ?? campaignDetails?.campaign?.failed_count ?? selectedCampaign.failed_count ?? 0}</div>
               </div>
             </div>
 
