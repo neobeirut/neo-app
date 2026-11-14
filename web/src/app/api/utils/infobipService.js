@@ -170,7 +170,7 @@ export async function sendInfobipTemplateMessage({
   // Handle WhatsApp Carousel templates (such as new_clients_message)
   const effectiveCards =
     carouselCards ||
-    (templateName === "plat_du_jours_launch"
+    ((templateName === "plat_du_jours_launch" || templateName === "plat_du_jours_launch_en")
       ? [
           // plat_du_jours_launch has EXACTLY 5 cards (Monday to Friday)
           {
