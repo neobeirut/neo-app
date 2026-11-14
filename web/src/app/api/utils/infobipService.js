@@ -170,8 +170,48 @@ export async function sendInfobipTemplateMessage({
   // Handle WhatsApp Carousel templates (such as new_clients_message)
   const effectiveCards =
     carouselCards ||
-    ((templateName === "plat_dujours_launch" || templateName === "plat_du_jours_launch")
+    (templateName === "plat_du_jours_launch"
       ? [
+          // plat_du_jours_launch has EXACTLY 5 cards (Monday to Friday)
+          {
+            cardIndex: 0,
+            header: {
+              type: "IMAGE",
+              mediaUrl: "https://app.neobeirut.com/templates/Le-Boeuf-Bourguignon-aux-Champignons.jpg",
+            },
+          },
+          {
+            cardIndex: 1,
+            header: {
+              type: "IMAGE",
+              mediaUrl: "https://app.neobeirut.com/templates/Escalope-Cordon-Bleu-Poster.jpg",
+            },
+          },
+          {
+            cardIndex: 2,
+            header: {
+              type: "IMAGE",
+              mediaUrl: "https://app.neobeirut.com/templates/Neo-Beirut-Paella-Advertisement.jpg",
+            },
+          },
+          {
+            cardIndex: 3,
+            header: {
+              type: "IMAGE",
+              mediaUrl: "https://app.neobeirut.com/templates/Les-lasagnes-double-sauce-gourmande.jpg",
+            },
+          },
+          {
+            cardIndex: 4,
+            header: {
+              type: "IMAGE",
+              mediaUrl: "https://app.neobeirut.com/templates/La-Dorade-Sweet-Potato-Dish.jpg",
+            },
+          },
+        ]
+      : templateName === "plat_dujours_launch"
+      ? [
+          // plat_dujours_launch has 6 cards (Intro + Monday to Friday)
           {
             cardIndex: 0,
             header: {
