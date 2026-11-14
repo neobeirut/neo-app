@@ -168,28 +168,53 @@ export async function sendInfobipTemplateMessage({
   }
 
   // Handle WhatsApp Carousel templates (such as new_clients_message)
-  const platImages = [
-    "https://app.neobeirut.com/templates/5-Plats-5-Bonnes-Raisons.jpg",
-    "https://app.neobeirut.com/templates/Le-Boeuf-Bourguignon-aux-Champignons.jpg",
-    "https://app.neobeirut.com/templates/Escalope-Cordon-Bleu-Poster.jpg",
-    "https://app.neobeirut.com/templates/Neo-Beirut-Paella-Advertisement.jpg",
-    "https://app.neobeirut.com/templates/Les-lasagnes-double-sauce-gourmande.jpg",
-    "https://app.neobeirut.com/templates/La-Dorade-Sweet-Potato-Dish.jpg"
-  ];
-
   const effectiveCards =
     carouselCards ||
-    (templateName === "plat_du_jours_launch"
-      ? platImages.map((url, idx) => ({
-          cardIndex: idx,
-          header: { type: "IMAGE", mediaUrl: url },
-          buttons: [{ type: "QUICK_REPLY", parameter: `reserve_${idx}` }]
-        }))
-      : templateName === "plat_dujours_launch"
-      ? platImages.map((url, idx) => ({
-          cardIndex: idx,
-          header: { type: "IMAGE", mediaUrl: url }
-        }))
+    ((templateName === "plat_dujours_launch" || templateName === "plat_du_jours_launch")
+      ? [
+          {
+            cardIndex: 0,
+            header: {
+              type: "IMAGE",
+              mediaUrl: "https://app.neobeirut.com/templates/5-Plats-5-Bonnes-Raisons.jpg",
+            },
+          },
+          {
+            cardIndex: 1,
+            header: {
+              type: "IMAGE",
+              mediaUrl: "https://app.neobeirut.com/templates/Le-Boeuf-Bourguignon-aux-Champignons.jpg",
+            },
+          },
+          {
+            cardIndex: 2,
+            header: {
+              type: "IMAGE",
+              mediaUrl: "https://app.neobeirut.com/templates/Escalope-Cordon-Bleu-Poster.jpg",
+            },
+          },
+          {
+            cardIndex: 3,
+            header: {
+              type: "IMAGE",
+              mediaUrl: "https://app.neobeirut.com/templates/Neo-Beirut-Paella-Advertisement.jpg",
+            },
+          },
+          {
+            cardIndex: 4,
+            header: {
+              type: "IMAGE",
+              mediaUrl: "https://app.neobeirut.com/templates/Les-lasagnes-double-sauce-gourmande.jpg",
+            },
+          },
+          {
+            cardIndex: 5,
+            header: {
+              type: "IMAGE",
+              mediaUrl: "https://app.neobeirut.com/templates/La-Dorade-Sweet-Potato-Dish.jpg",
+            },
+          },
+        ]
       : templateName === "new_clients_message"
       ? [
           {
@@ -218,19 +243,13 @@ export async function sendInfobipTemplateMessage({
 
   if (effectiveCards && effectiveCards.length > 0) {
     templateData.carousel = {
-      cards: effectiveCards.map((c, idx) => {
-        const cardObj = {
-          cardIndex: typeof c.cardIndex === "number" ? c.cardIndex : idx,
-          header: c.header || {
-            type: c.type || "IMAGE",
-            mediaUrl: c.mediaUrl || c.url,
-          },
-        };
-        if (c.buttons && Array.isArray(c.buttons) && c.buttons.length > 0) {
-          cardObj.buttons = c.buttons;
-        }
-        return cardObj;
-      }),
+      cards: effectiveCards.map((c, idx) => ({
+        cardIndex: typeof c.cardIndex === "number" ? c.cardIndex : idx,
+        header: c.header || {
+          type: c.type || "IMAGE",
+          mediaUrl: c.mediaUrl || c.url,
+        },
+      })),
     };
   }
 
