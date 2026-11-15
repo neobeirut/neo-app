@@ -1,7 +1,14 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://ilrlychrraagugntqdfr.supabase.co';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_kOFvZiJuLPN9uliL649IHg_Z-CESFMg';
+const AUTHORITATIVE_URL = 'https://ilrlychrraagugntqdfr.supabase.co';
+const AUTHORITATIVE_ANON_KEY = 'sb_publishable_kOFvZiJuLPN9uliL649IHg_Z-CESFMg';
+
+// Protect against stale legacy database env vars (e.g. ibtbcgkkixkglnhhrrpu)
+const envUrl = import.meta.env.VITE_SUPABASE_URL;
+const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+const supabaseUrl = (envUrl && !envUrl.includes('ibtbcgkkixkglnhhrrpu')) ? envUrl : AUTHORITATIVE_URL;
+const supabaseAnonKey = (envKey && !envKey.includes('D4nQcvqU') && !envKey.includes('ibtbcgkkixkglnhhrrpu')) ? envKey : AUTHORITATIVE_ANON_KEY;
 
 let memoryRestaurantId: string | null = null;
 

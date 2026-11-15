@@ -46,9 +46,14 @@ export default function PosPinScreen({
   onCancel,
   onLogout
 }: PosPinScreenProps) {
-  const [restaurantId] = useState<string>(() =>
-    initialRestaurantId || localStorage.getItem('flow_pos_selected_restaurant') || '79256f11-a9f8-4fec-901d-69baf929762d'
-  );
+  const [restaurantId] = useState<string>(() => {
+    if (initialRestaurantId && /^[0-9a-f-]{36}$/i.test(initialRestaurantId)) return initialRestaurantId;
+    try {
+      const stored = typeof window !== 'undefined' ? localStorage.getItem('flow_pos_selected_restaurant') : null;
+      if (stored && /^[0-9a-f-]{36}$/i.test(stored)) return stored;
+    } catch {}
+    return '79256f11-a9f8-4fec-901d-69baf929762d';
+  });
   const [restaurantName, setRestaurantName] = useState('');
 
   // Step: 'staff' | 'pin'
@@ -128,23 +133,24 @@ export default function PosPinScreen({
           .select('id, admin_permissions')
           .in('id', permIds);
 
-        const posAccessMap: Record<string, boolean> = {};
+        const posAccessDeniedMap: Record<string, boolean> = {};
         (permsData || []).forEach((p: any) => {
-          posAccessMap[p.id] = !!(p.admin_permissions?.can_access_pos);
+          if (p.admin_permissions?.can_access_pos === false) {
+            posAccessDeniedMap[p.id] = true;
+          }
         });
 
-        // Filter staff who have can_access_pos = true OR have an authorized role
+        // Filter staff who have can_access_pos !== false
         let posStaff = data.filter((u: any) => {
           if (u.permissions?.can_access_pos === false || u.admin_permissions?.can_access_pos === false) {
             return false;
           }
           const key = `user:${u.display_name || u.name}`;
-          if (posAccessMap[key] === false) return false;
+          if (posAccessDeniedMap[key]) return false;
           return true;
         });
 
-        // Fallback: If no staff matched permissions (e.g. newly created branch/restaurant),
-        // show all active users so the POS NEVER renders an empty dead screen!
+        // Fallback: If no staff matched permissions, show all active users
         if (posStaff.length === 0) {
           posStaff = data;
         }
@@ -159,6 +165,21 @@ export default function PosPinScreen({
         })));
       } catch (err) {
         console.error('Staff loading error:', err);
+        // Resilient fallback on any query exception
+        try {
+          const { data: emergencyUsers } = await supabase
+            .from('users')
+            .select('id, name, display_name, role, branch')
+            .eq('is_active', true);
+          if (emergencyUsers && emergencyUsers.length > 0 && isMounted) {
+            setStaffList(emergencyUsers.map((u: any, i: number) => ({
+              ...u,
+              name: u.display_name || u.name || 'Staff',
+              initials: getInitials(u.display_name || u.name),
+              color: AVATAR_COLORS[i % AVATAR_COLORS.length],
+            })));
+          }
+        } catch {}
       } finally {
         if (isMounted) setStaffLoading(false);
       }

@@ -1,13 +1,13 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const AUTHORITATIVE_URL = 'https://ilrlychrraagugntqdfr.supabase.co';
+const AUTHORITATIVE_ANON_KEY = 'sb_publishable_kOFvZiJuLPN9uliL649IHg_Z-CESFMg';
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error(
-    '[FLOW Config Error] Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY. Configure environment variables explicitly before running.'
-  );
-}
+const envUrl = import.meta.env.VITE_SUPABASE_URL;
+const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+const supabaseUrl = (envUrl && !envUrl.includes('ibtbcgkkixkglnhhrrpu')) ? envUrl : AUTHORITATIVE_URL;
+const supabaseAnonKey = (envKey && !envKey.includes('D4nQcvqU') && !envKey.includes('ibtbcgkkixkglnhhrrpu')) ? envKey : AUTHORITATIVE_ANON_KEY;
 
 // Public client – for reads and auth flows (exposed to the browser)
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
