@@ -19,7 +19,7 @@ import SOPsScreen from './screens/SOPsScreen';
 import SOPFormScreen from './screens/SOPFormScreen';
 import PrinterManagementScreen from './screens/pos/PrinterManagementScreen';
 import ItemRecipesReportScreen from './screens/ItemRecipesReportScreen';
-import { LayoutDashboard, BarChart3, ChefHat, Users, LogOut, DollarSign, Shield, BookOpen, TrendingUp, MessageSquare, Newspaper, AlertTriangle, Sparkles, Trash2, History, Coins, Truck, ShoppingBag, ShoppingCart, Calendar, ClipboardList, Package, CheckSquare, Receipt, Briefcase, Store, ChevronDown, ChevronRight, Clock, Target, Layers, Download, Sliders, FileText, Gift, Lock, Flame, Settings, Building2, Printer, FileSpreadsheet, Database } from 'lucide-react';
+import { LayoutDashboard, BarChart3, ChefHat, Users, LogOut, DollarSign, Shield, BookOpen, TrendingUp, MessageSquare, Newspaper, AlertTriangle, Sparkles, Trash2, History, Coins, Truck, ShoppingBag, ShoppingCart, Calendar, ClipboardList, Package, CheckSquare, Receipt, Briefcase, Store, ChevronDown, ChevronRight, Clock, Target, Layers, Download, Sliders, FileText, Gift, Lock, Flame, Settings, Building2, Printer, FileSpreadsheet, Database, Bot } from 'lucide-react';
 import SalesAnalyticsScreen from './screens/SalesAnalyticsScreen';
 import { api, hasAdminAccess } from './api/client';
 import { supabase } from './api/supabase';
@@ -176,7 +176,7 @@ import ConceptSelector from './components/common/ConceptSelector';
       {
         name: 'POS & Sales',
         items: [
-          { to: '/pos', label: 'Point of Sale (POS)', icon: <Store size={18} />, key: 'pos_terminal', externalHref: 'http://localhost:4173/#/pos' },
+          { to: '/pos', label: 'Point of Sale (POS)', icon: <Store size={18} />, key: 'pos_terminal', externalHref: '/new/pos' },
           { to: '/crm/products', label: 'Menu Products', icon: <ShoppingBag size={18} />, key: 'crm_products' },
           { to: '/pos/orders-history', label: 'Order History & Channels', icon: <History size={18} />, key: 'orders_history' },
           { to: '/orders', label: 'Branch Orders', icon: <ShoppingBag size={18} />, visible: canAccess('orders', permissions?.can_create_orders !== false || permissions?.can_receive_orders !== false), key: 'orders' },
@@ -185,7 +185,7 @@ import ConceptSelector from './components/common/ConceptSelector';
           { to: '/voids', label: 'Void Receipts', icon: <Receipt size={18} />, visible: canAccess('voids', !!permissions?.can_view_voids), key: 'voids' },
           { to: '/pos/invoice-generator', label: 'Invoice Generator', icon: <Receipt size={18} />, key: 'pos_invoice_generator', visible: isSuperAdmin },
           { to: '/pos/printers', label: 'Printer Management', icon: <Printer size={18} />, key: 'pos_printers' },
-          { to: '/pos/settings', label: 'POS Receipt & Hardware', icon: <Settings size={18} />, key: 'pos_settings', externalHref: 'http://localhost:4173/#/pos-settings' },
+          { to: '/pos/settings', label: 'POS Receipt & Hardware', icon: <Settings size={18} />, key: 'pos_settings', externalHref: '/new/pos#/pos-settings' },
           { to: '/pos/permissions', label: 'POS Permissions', icon: <Lock size={18} />, key: 'pos_permissions' }
         ]
       },
@@ -227,6 +227,7 @@ import ConceptSelector from './components/common/ConceptSelector';
         name: 'Customers & CRM',
         items: [
           { to: '/crm', label: 'WhatsApp Live Inbox', icon: <MessageSquare size={18} />, key: 'crm_inbox' },
+          { to: '/crm/ai-assistant', label: 'NÉO AI Assistant', icon: <Bot size={18} />, key: 'crm_ai_assistant' },
           { to: '/crm/contacts', label: 'Customer Contacts', icon: <Users size={18} />, key: 'crm_contacts' },
           { to: '/crm/templates', label: 'Message Templates', icon: <FileText size={18} />, key: 'crm_templates' },
           { to: '/crm/loyalty', label: 'Loyalty & Promos', icon: <Gift size={18} />, key: 'crm_loyalty' },
@@ -836,6 +837,8 @@ function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () 
               <Route path="/branch-management" element={<BranchManagementScreen />} />
             )}
             <Route path="/crm" element={<CrmHubScreen user={user} />} />
+            <Route path="/crm/ai-assistant" element={<CrmHubScreen user={user} defaultTab="ai_assistant" />} />
+            <Route path="/crm/ai_assistant" element={<CrmHubScreen user={user} defaultTab="ai_assistant" />} />
             <Route path="/crm/products" element={<CrmHubScreen user={user} defaultTab="products" />} />
             <Route path="/crm/modifiers" element={<CrmHubScreen user={user} defaultTab="modifiers" />} />
             <Route path="/crm/contacts" element={<CrmHubScreen user={user} defaultTab="contacts" />} />
@@ -857,13 +860,13 @@ function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () 
 
 function RedirectToPos() {
   useEffect(() => {
-    window.location.href = 'http://localhost:4173/#/pos';
+    window.location.href = '/new/pos';
   }, []);
   return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] gap-3 text-slate-300">
       <span className="w-8 h-8 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></span>
       <p className="text-sm font-bold">Opening FLOW POS Terminal...</p>
-      <a href="http://localhost:4173/#/pos" className="text-xs text-amber-400 underline font-semibold">
+      <a href="/new/pos" className="text-xs text-amber-400 underline font-semibold">
         Click here to open POS directly
       </a>
     </div>
