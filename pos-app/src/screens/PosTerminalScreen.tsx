@@ -5294,7 +5294,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
               draftCartCounts={Object.fromEntries(
                 Object.entries(conceptDraftCarts).map(([k, v]) => [k, Array.isArray(v) ? v.length : 0])
               )}
-              canSwitchConcepts={isAdmin || Boolean(user?.can_switch_concepts) || Boolean(activeCashier?.can_switch_concepts)}
+              canSwitchConcepts={isAdmin || Boolean(user?.can_switch_concepts) || Boolean(activeCashier?.can_switch_concepts) || hasPosPermission(activeCashier || user, 'switch_pos_concept')}
               onWorkspaceChanged={handleWorkspaceChanged}
               onClearCartRequest={() => setTicketItems([])}
             />
@@ -5866,16 +5866,18 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                     <span className="hidden sm:inline">Lock</span>
                   </button>
 
-                  {/* 1 - Features */}
-                  <button
-                    type="button"
-                    onClick={() => setIsFeaturesModalOpen(true)}
-                    className="flex-1 min-w-0 h-full rounded-xl bg-[#F5F6F4] hover:bg-slate-200 active:scale-98 text-[#242B28] font-black text-xs sm:text-sm font-black tracking-wider flex items-center justify-center gap-1 sm:gap-1.5 border border-[#E0E3DF] shadow-sm transition cursor-pointer px-1"
-                    title="Open POS Features: History, Store Control, Shift, Tables, Orders"
-                  >
-                    <span className="text-sm sm:text-base">⚙️</span>
-                    <span className="truncate">Features</span>
-                  </button>
+                  {/* 1 - Features (Protected by POS Permission: access_features) */}
+                  {hasPosPermission(activeCashier || user, 'access_features') && (
+                    <button
+                      type="button"
+                      onClick={() => setIsFeaturesModalOpen(true)}
+                      className="flex-1 min-w-0 h-full rounded-xl bg-[#F5F6F4] hover:bg-slate-200 active:scale-98 text-[#242B28] font-black text-xs sm:text-sm font-black tracking-wider flex items-center justify-center gap-1 sm:gap-1.5 border border-[#E0E3DF] shadow-sm transition cursor-pointer px-1"
+                      title="Open POS Features: History, Store Control, Shift, Tables, Orders"
+                    >
+                      <span className="text-sm sm:text-base">⚙️</span>
+                      <span className="truncate">Features</span>
+                    </button>
+                  )}
 
                   {/* 2 - Hold (Deactivated in Sell screen; use Settle & Close to hold/schedule) */}
                   <button
@@ -8550,8 +8552,8 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         </div>
       )}
 
-      {/* FEATURES MODAL */}
-      {isFeaturesModalOpen && (
+      {/* FEATURES MODAL (Permission: access_features) */}
+      {isFeaturesModalOpen && hasPosPermission(activeCashier || user, 'access_features') && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-xl p-6 space-y-4 text-slate-900 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between border-b border-slate-200 pb-3">

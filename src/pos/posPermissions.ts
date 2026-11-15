@@ -50,6 +50,7 @@ export type PosPermissionKey =
   | 'view_pos_audit_log'
   | 'configure_pos_settings'
   | 'manage_pos_devices'
+  | 'access_features'
   // E. Multi-Concept Controls (Phase 1)
   | 'switch_pos_concept'
   | 'view_all_concepts'
@@ -133,6 +134,7 @@ export const POS_PERMISSION_DEFINITIONS: PosPermissionDef[] = [
   { key: 'view_pos_audit_log', label: 'View POS Audit Log', description: 'Access real-time POS authorization and security audit history', category: 'supervisor' },
   { key: 'configure_pos_settings', label: 'Configure POS Settings', description: 'Change operational POS settings, VAT, screen builder', category: 'supervisor' },
   { key: 'manage_pos_devices', label: 'Manage POS Devices', description: 'Authorize and link physical POS terminals and printers', category: 'supervisor' },
+  { key: 'access_features', label: 'Access POS Features Button', description: 'View and open the POS Features menu (History, Shifts, Payments, Supplier Invoices, Screen Builder, Settings)', category: 'supervisor', isSensitive: true },
 
   // ── E. Multi-Concept Controls (Phase 1) ──
   { key: 'switch_pos_concept', label: 'Switch Concept Workspace', description: 'Toggle between NÉO, OVRLOAD, and WICKD workspaces in POS', category: 'supervisor' },
@@ -211,6 +213,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<PosRoleName, Record<PosPermissionK
     view_pos_audit_log: false,
     configure_pos_settings: false,
     manage_pos_devices: false,
+    access_features: false,
     switch_pos_concept: false,
     view_all_concepts: false,
     view_concept_sales: false,
@@ -267,6 +270,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<PosRoleName, Record<PosPermissionK
     view_pos_audit_log: false,
     configure_pos_settings: false,
     manage_pos_devices: false,
+    access_features: false,
     switch_pos_concept: false,
     view_all_concepts: false,
     view_concept_sales: false,
@@ -323,6 +327,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<PosRoleName, Record<PosPermissionK
     view_pos_audit_log: false,
     configure_pos_settings: false,
     manage_pos_devices: false,
+    access_features: true,
     switch_pos_concept: true,
     view_all_concepts: false,
     view_concept_sales: true,
@@ -379,6 +384,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<PosRoleName, Record<PosPermissionK
     view_pos_audit_log: true,
     configure_pos_settings: false,
     manage_pos_devices: false,
+    access_features: true,
     switch_pos_concept: true,
     view_all_concepts: true,
     view_concept_sales: true,
@@ -435,6 +441,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<PosRoleName, Record<PosPermissionK
     view_pos_audit_log: true,
     configure_pos_settings: true,
     manage_pos_devices: true,
+    access_features: true,
     switch_pos_concept: true,
     view_all_concepts: true,
     view_concept_sales: true,
@@ -491,6 +498,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<PosRoleName, Record<PosPermissionK
     view_pos_audit_log: true,
     configure_pos_settings: true,
     manage_pos_devices: true,
+    access_features: true,
     switch_pos_concept: true,
     view_all_concepts: true,
     view_concept_sales: true,

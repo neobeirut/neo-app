@@ -50,7 +50,14 @@ export type PosPermissionKey =
   | 'manage_pos_permissions'
   | 'view_pos_audit_log'
   | 'configure_pos_settings'
-  | 'manage_pos_devices';
+  | 'manage_pos_devices'
+  | 'access_features'
+  // E. Multi-Concept Controls
+  | 'switch_pos_concept'
+  | 'view_all_concepts'
+  | 'view_concept_sales'
+  | 'view_concept_costs'
+  | 'view_concept_profitability';
 
 export type PosRoleName =
   | 'waiter'
@@ -111,7 +118,13 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<PosRoleName, Record<PosPermissionK
     manage_pos_permissions: false,
     view_pos_audit_log: false,
     configure_pos_settings: false,
-    manage_pos_devices: false
+    manage_pos_devices: false,
+    access_features: false,
+    switch_pos_concept: false,
+    view_all_concepts: false,
+    view_concept_sales: false,
+    view_concept_costs: false,
+    view_concept_profitability: false
   },
 
   runner: {
@@ -162,7 +175,13 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<PosRoleName, Record<PosPermissionK
     manage_pos_permissions: false,
     view_pos_audit_log: false,
     configure_pos_settings: false,
-    manage_pos_devices: false
+    manage_pos_devices: false,
+    access_features: false,
+    switch_pos_concept: false,
+    view_all_concepts: false,
+    view_concept_sales: false,
+    view_concept_costs: false,
+    view_concept_profitability: false
   },
 
   cashier: {
@@ -213,7 +232,13 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<PosRoleName, Record<PosPermissionK
     manage_pos_permissions: false,
     view_pos_audit_log: false,
     configure_pos_settings: false,
-    manage_pos_devices: false
+    manage_pos_devices: false,
+    access_features: true,
+    switch_pos_concept: true,
+    view_all_concepts: false,
+    view_concept_sales: true,
+    view_concept_costs: false,
+    view_concept_profitability: false
   },
 
   floor_supervisor: {
@@ -264,7 +289,13 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<PosRoleName, Record<PosPermissionK
     manage_pos_permissions: false,
     view_pos_audit_log: true,
     configure_pos_settings: false,
-    manage_pos_devices: false
+    manage_pos_devices: false,
+    access_features: true,
+    switch_pos_concept: true,
+    view_all_concepts: true,
+    view_concept_sales: true,
+    view_concept_costs: false,
+    view_concept_profitability: false
   },
 
   manager: {
@@ -315,7 +346,13 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<PosRoleName, Record<PosPermissionK
     manage_pos_permissions: false,
     view_pos_audit_log: true,
     configure_pos_settings: true,
-    manage_pos_devices: true
+    manage_pos_devices: true,
+    access_features: true,
+    switch_pos_concept: true,
+    view_all_concepts: true,
+    view_concept_sales: true,
+    view_concept_costs: true,
+    view_concept_profitability: true
   },
 
   administrator: {
@@ -366,7 +403,13 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<PosRoleName, Record<PosPermissionK
     manage_pos_permissions: true,
     view_pos_audit_log: true,
     configure_pos_settings: true,
-    manage_pos_devices: true
+    manage_pos_devices: true,
+    access_features: true,
+    switch_pos_concept: true,
+    view_all_concepts: true,
+    view_concept_sales: true,
+    view_concept_costs: true,
+    view_concept_profitability: true
   }
 };
 
