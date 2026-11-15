@@ -91,6 +91,7 @@ export default function CrmInboxTab({ initialPhone, onNavigateToContacts }: CrmI
     loadTemplates();
 
     const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
       loadConversations(true);
       if (selectedConv?.id) {
         loadMessages(selectedConv.id, true);
@@ -119,6 +120,13 @@ export default function CrmInboxTab({ initialPhone, onNavigateToContacts }: CrmI
         text,
         contactId: selectedConv.contact_id,
       });
+
+      // Human Takeover: When staff replies manually, suppress automated AI replies
+      if (selectedConv.ai_mode === 'ACTIVE') {
+        await crmService.toggleAiMode(selectedConv.id, 'HUMAN_TAKEOVER').catch(() => {});
+        setSelectedConv(prev => prev ? { ...prev, ai_mode: 'HUMAN_TAKEOVER' } : null);
+      }
+
       await loadMessages(selectedConv.id, true);
       await loadConversations(true);
     } catch (err: any) {
@@ -361,20 +369,85 @@ export default function CrmInboxTab({ initialPhone, onNavigateToContacts }: CrmI
                   </h4>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', color: 'var(--text-muted)' }}>
                     <span>{selectedConv.phone}</span>
+                    <span style={{ 
+                      fontSize: '10px', 
+                      padding: '1px 6px', 
+                      borderRadius: '4px', 
+                      fontWeight: 700, 
+                      backgroundColor: selectedConv.provider === 'meta' || !selectedConv.concept_id || selectedConv.concept_id.endsWith('1') ? '#e0f2fe' : '#fce7f3', 
+                      color: selectedConv.provider === 'meta' || !selectedConv.concept_id || selectedConv.concept_id.endsWith('1') ? '#0369a1' : '#be185d' 
+                    }}>
+                      {selectedConv.provider === 'meta' || !selectedConv.concept_id || selectedConv.concept_id.endsWith('1') ? 'NÉO • Meta Cloud API (Badaro)' : 'OVRLOAD • Infobip'}
+                    </span>
                     {selectedConv.session_active ? (
                       <span style={{ color: '#16a34a', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                        ● 24h Session Window Active
+                        ● 24h Window Active
                       </span>
                     ) : (
                       <span style={{ color: '#ca8a04', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                        ⚠️ Window expired (templates recommended)
+                        ⚠️ Window expired
                       </span>
                     )}
                   </div>
                 </div>
               </div>
 
-              <div style={{ display: 'flex', gap: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {/* AI Mode & Human Takeover Controls */}
+                {selectedConv.ai_mode === 'ACTIVE' ? (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await crmService.toggleAiMode(selectedConv.id, 'HUMAN_TAKEOVER').catch(() => {});
+                      setSelectedConv(prev => prev ? { ...prev, ai_mode: 'HUMAN_TAKEOVER' } : null);
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      padding: '5px 10px',
+                      borderRadius: '6px',
+                      backgroundColor: '#fef3c7',
+                      color: '#b45309',
+                      border: '1px solid #fde68a',
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      cursor: 'pointer'
+                    }}
+                    title="Click to take over conversation from AI"
+                  >
+                    🤖 AI Active • Click to Take Over
+                  </button>
+                ) : selectedConv.ai_mode === 'HUMAN_TAKEOVER' ? (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await crmService.toggleAiMode(selectedConv.id, 'ACTIVE').catch(() => {});
+                      setSelectedConv(prev => prev ? { ...prev, ai_mode: 'ACTIVE' } : null);
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      padding: '5px 10px',
+                      borderRadius: '6px',
+                      backgroundColor: '#dcfce7',
+                      color: '#15803d',
+                      border: '1px solid #bbf7d0',
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      cursor: 'pointer'
+                    }}
+                    title="Click to hand conversation back to AI Assistant"
+                  >
+                    👤 Staff Engaged • Return to AI
+                  </button>
+                ) : (
+                  <span style={{ fontSize: '11px', padding: '3px 8px', borderRadius: '6px', backgroundColor: '#f1f5f9', color: '#64748b' }}>
+                    AI Off (Human Only)
+                  </span>
+                )}
+
                 <a
                   href={`https://wa.me/${selectedConv.phone.replace(/[^0-9]/g, '')}`}
                   target="_blank"
@@ -385,14 +458,14 @@ export default function CrmInboxTab({ initialPhone, onNavigateToContacts }: CrmI
                     gap: '5px',
                     padding: '6px 10px',
                     borderRadius: '6px',
-                    backgroundColor: '#dcfce7',
-                    color: '#15803d',
+                    backgroundColor: '#f1f5f9',
+                    color: '#475569',
                     fontSize: '12px',
                     fontWeight: 600,
                     textDecoration: 'none'
                   }}
                 >
-                  <ExternalLink size={14} /> Open in WhatsApp
+                  <ExternalLink size={14} /> Open WA
                 </a>
               </div>
             </div>

@@ -1,11 +1,29 @@
 import { supabase } from '../api/supabase';
 
 let heartbeatInterval: any = null;
+let listenersAttached = false;
 let lastSyncTime = 0;
 const SYNC_THROTTLE_MS = 30000; 
 const INACTIVITY_TIMEOUT_MS = 15 * 60 * 1000; // 15 mins inactivity
 let lastActivityTime = Date.now();
 let activeSessionId: string | null = null;
+
+const handleUserInteraction = () => {
+  sessionLogger.recordActivity();
+};
+
+const handleVisibilityChange = () => {
+  if (document.visibilityState === 'visible') {
+    const sessionId = activeSessionId || localStorage.getItem('neo_web_session_id');
+    if (!sessionId) return;
+    const now = Date.now();
+    if (now - lastActivityTime > INACTIVITY_TIMEOUT_MS) {
+      sessionLogger.expireSession();
+    } else {
+      sessionLogger.recordActivity();
+    }
+  }
+};
 
 const parseUserAgent = () => {
   const ua = navigator.userAgent;
@@ -111,18 +129,48 @@ export const sessionLogger = {
     }
   },
 
+  expireSession: async () => {
+    const sessionId = activeSessionId || localStorage.getItem('neo_web_session_id');
+    sessionLogger.stopHeartbeat();
+    if (sessionId) {
+      try {
+        await supabase
+          .from('login_logs')
+          .update({
+            Action: 'SessionExpired',
+            Status: 'Expired',
+            LogoutTime: new Date().toISOString()
+          })
+          .eq('SessionID', sessionId)
+          .eq('Status', 'Active');
+      } catch (e) {
+        console.error('Session expiration update error:', e);
+      }
+    }
+    localStorage.removeItem('neo_web_session_id');
+    activeSessionId = null;
+    localStorage.removeItem('neo_admin_user');
+    window.location.reload();
+  },
+
   startHeartbeat: () => {
     if (heartbeatInterval) clearInterval(heartbeatInterval);
 
-    const handleUserInteraction = () => {
-      sessionLogger.recordActivity();
-    };
+    if (!listenersAttached && typeof window !== 'undefined') {
+      window.addEventListener('mousedown', handleUserInteraction, { passive: true });
+      window.addEventListener('keypress', handleUserInteraction, { passive: true });
+      window.addEventListener('scroll', handleUserInteraction, { passive: true });
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+      listenersAttached = true;
+    }
 
-    window.addEventListener('mousedown', handleUserInteraction);
-    window.addEventListener('keypress', handleUserInteraction);
-    window.addEventListener('scroll', handleUserInteraction);
-
+    // Run keepalive check every 60s instead of 15s, and skip execution entirely when tab is hidden in background
     heartbeatInterval = setInterval(async () => {
+      // Don't burn CPU cycles when tab is in background
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+        return;
+      }
+
       const sessionId = activeSessionId || localStorage.getItem('neo_web_session_id');
       if (!sessionId) {
         sessionLogger.stopHeartbeat();
@@ -132,34 +180,22 @@ export const sessionLogger = {
       const now = Date.now();
       if (now - lastActivityTime > INACTIVITY_TIMEOUT_MS) {
         console.log('Admin session inactive. Expiring.');
-        sessionLogger.stopHeartbeat();
-        
-        try {
-          await supabase
-            .from('login_logs')
-            .update({
-              Action: 'SessionExpired',
-              Status: 'Expired',
-              LogoutTime: new Date().toISOString()
-            })
-            .eq('SessionID', sessionId)
-            .eq('Status', 'Active');
-        } catch (e) {
-          console.error(e);
-        }
-
-        localStorage.removeItem('neo_web_session_id');
-        activeSessionId = null;
-        localStorage.removeItem('neo_admin_user');
-        window.location.reload(); 
+        await sessionLogger.expireSession();
       }
-    }, 15000);
+    }, 60000);
   },
 
   stopHeartbeat: () => {
     if (heartbeatInterval) {
       clearInterval(heartbeatInterval);
       heartbeatInterval = null;
+    }
+    if (listenersAttached && typeof window !== 'undefined') {
+      window.removeEventListener('mousedown', handleUserInteraction);
+      window.removeEventListener('keypress', handleUserInteraction);
+      window.removeEventListener('scroll', handleUserInteraction);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      listenersAttached = false;
     }
   }
 };

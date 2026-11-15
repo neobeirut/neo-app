@@ -26,10 +26,7 @@ export const sessionLogger = {
   },
 
   startHeartbeat: () => {
-    if (heartbeatInterval) clearInterval(heartbeatInterval);
-    heartbeatInterval = setInterval(() => {
-      // Keepalive tick
-    }, 30000);
+    // Keepalive handled passively via user activity; no background interval needed
   },
 
   stopHeartbeat: () => {

@@ -1914,6 +1914,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     let cancelled = false;
     setPreparingOrderCount(null);
     const refresh = async () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
       try {
         const rows = await loadPreparingOrders(currentBranchId || commerceBranchLink?.flow_branch_id, commerceBranchLink?.external_branch_id, currentRestaurantId);
         if (!cancelled) setPreparingOrderCount(rows.length);
@@ -1926,6 +1927,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   }, [currentRestaurantId, currentBranchId, commerceBranchLink?.flow_branch_id, commerceBranchLink?.external_branch_id, inventoryRevision]);
 
   const fetchOrdersQueue = async () => {
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
     if (isPollingRef.current) return;
     isPollingRef.current = true;
     try {
