@@ -75,21 +75,48 @@ export function useOrders(options: UseOrdersOptions = {}) {
         cutoff = await getTodayShiftsCutoffIso(branchName, restaurantId || undefined, activeShift);
       }
 
-      let list: any[] = [];
-      if (!HAS_COMMERCE_API) {
-        const directRes = await fetchDirectOrders(restaurantId || undefined, branchId || undefined, flowBranchId || undefined, cutoff);
-        list = directRes.orders || [];
-      } else {
-        const qs: string[] = ['type=all'];
-        if (restaurantId) qs.push(`restaurant_id=${encodeURIComponent(restaurantId)}`);
-        if (branchId) qs.push(`branch_id=${encodeURIComponent(String(branchId))}`);
-        if (cutoff) qs.push(`created_after=${encodeURIComponent(cutoff)}`);
-        const queryStr = `?${qs.join('&')}`;
+      // Always query direct Supabase pos_orders (the source of truth for FLOW POS table orders)
+      const directPromise = fetchDirectOrders(restaurantId || undefined, branchId || undefined, flowBranchId || undefined, cutoff)
+        .then(r => r.orders || [])
+        .catch(e => {
+          console.warn('[useOrders] fetchDirectOrders failed:', e);
+          return [];
+        });
 
-        const res = await fetch(`${COMMERCE_API_BASE}/api/pos/orders${queryStr}`);
-        if (!res.ok) throw new Error('Failed to fetch orders (HTTP ' + res.status + ')');
-        const rawOrders = await res.json();
-        list = Array.isArray(rawOrders) ? rawOrders : (rawOrders.orders || []);
+      let commerceList: any[] = [];
+      if (HAS_COMMERCE_API) {
+        try {
+          const qs: string[] = ['type=all'];
+          if (restaurantId) qs.push(`restaurant_id=${encodeURIComponent(restaurantId)}`);
+          if (branchId) qs.push(`branch_id=${encodeURIComponent(String(branchId))}`);
+          if (cutoff) qs.push(`created_after=${encodeURIComponent(cutoff)}`);
+          const queryStr = `?${qs.join('&')}`;
+
+          const res = await fetch(`${COMMERCE_API_BASE}/api/pos/orders${queryStr}`);
+          if (res.ok) {
+            const rawOrders = await res.json();
+            commerceList = Array.isArray(rawOrders) ? rawOrders : (rawOrders.orders || []);
+          }
+        } catch (commErr) {
+          console.warn('[useOrders] Commerce API fetch failed, falling back to direct orders:', commErr);
+        }
+      }
+
+      const directList = await directPromise;
+      // Merge directList (prioritized) and commerceList, deduplicating by ID
+      const seenIds = new Set<string>();
+      const list: any[] = [];
+      for (const ord of directList) {
+        if (ord && ord.id && !seenIds.has(String(ord.id))) {
+          seenIds.add(String(ord.id));
+          list.push(ord);
+        }
+      }
+      for (const ord of commerceList) {
+        if (ord && ord.id && !seenIds.has(String(ord.id))) {
+          seenIds.add(String(ord.id));
+          list.push(ord);
+        }
       }
       let adapted = list.map((o: any) => adaptOvrloadOrder(o, slaConfig));
 

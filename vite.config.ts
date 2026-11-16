@@ -2,6 +2,47 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { resolve } from 'path';
 import { handleReplenishmentAiRequest } from './api/replenishment-ai.js';
+import { handleAiAssistantRequest } from './api/ai-assistant-server.js';
+
+function aiAssistantBackendPlugin() {
+  const attachMiddleware = (middlewares: any) => {
+    middlewares.use('/api/ai/orchestrate', (req: any, res: any) => {
+      if (req.method !== 'POST') {
+        res.statusCode = 405;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ error: 'Method not allowed' }));
+        return;
+      }
+      let raw = '';
+      req.on('data', (chunk: any) => {
+        raw += chunk;
+      });
+      req.on('end', async () => {
+        try {
+          const body = raw ? JSON.parse(raw) : {};
+          const result = await handleAiAssistantRequest(body);
+          res.statusCode = 200;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ success: true, data: result }));
+        } catch (err: any) {
+          res.statusCode = 500;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ success: false, error: err?.message || 'Server-side AI orchestration error' }));
+        }
+      });
+    });
+  };
+
+  return {
+    name: 'ai-assistant-backend',
+    configureServer(server: any) {
+      attachMiddleware(server.middlewares);
+    },
+    configurePreviewServer(server: any) {
+      attachMiddleware(server.middlewares);
+    },
+  };
+}
 
 function replenishmentAiBackendPlugin() {
   const attachMiddleware = (middlewares: any) => {
@@ -44,14 +85,16 @@ function replenishmentAiBackendPlugin() {
 }
 
 export default defineConfig({
-  plugins: [react(), replenishmentAiBackendPlugin()],
+  plugins: [react(), replenishmentAiBackendPlugin(), aiAssistantBackendPlugin()],
   base: '/',
   server: {
-    port: 5173,
+    port: 5174,
+    strictPort: true,
     host: true
   },
   preview: {
-    port: 5173,
+    port: 5174,
+    strictPort: true,
     host: true
   },
   resolve: {

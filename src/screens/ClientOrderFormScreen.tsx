@@ -179,12 +179,16 @@ export default function ClientOrderFormScreen({ user, permissions, onUpdateUser 
   const [branches, setBranches] = useState<string[]>([]);
   const [itemSuggestions, setItemSuggestions] = useState<string[]>([]);
   const [vatRate, setVatRate] = useState<number>(11);
+  const [isVatSubscribed, setIsVatSubscribed] = useState<boolean>(false);
+  const [isVatInclusive, setIsVatInclusive] = useState<boolean>(false);
+  const isHistoricalOrderRef = useRef<boolean>(false);
+  const itemsModifiedByUserRef = useRef<boolean>(false);
 
   useEffect(() => {
     loadSystemUsers();
     loadBranches();
     loadItemSuggestions();
-    loadVatRate();
+    loadVatSettings();
     if (isEdit) {
       loadOrderDetails();
     } else {
@@ -244,11 +248,17 @@ export default function ClientOrderFormScreen({ user, permissions, onUpdateUser 
     }
   };
 
-  const loadVatRate = async () => {
+  const loadVatSettings = async () => {
     try {
-      const res = await api.getVatRate(user?.restaurant_id);
-      if (res.success && res.rate !== undefined) {
-        setVatRate(res.rate);
+      const res = await (api as any).getVatSettings(user?.restaurant_id);
+      if (res && res.success) {
+        setIsVatSubscribed(Boolean(res.isVatSubscribed));
+        if (res.vatRate !== undefined) {
+          setVatRate(res.vatRate);
+        }
+        if (res.isVatInclusive !== undefined) {
+          setIsVatInclusive(Boolean(res.isVatInclusive));
+        }
       }
     } catch (e) {
       console.error(e);
@@ -332,6 +342,8 @@ export default function ClientOrderFormScreen({ user, permissions, onUpdateUser 
         setTasks(tasksWithOtherFlag);
 
         setAttachments(fetchedAttachments || []);
+        isHistoricalOrderRef.current = true;
+        itemsModifiedByUserRef.current = false;
       } else {
         alert('Failed to load order: ' + res.error);
         navigate('/client-orders');
@@ -411,6 +423,7 @@ export default function ClientOrderFormScreen({ user, permissions, onUpdateUser 
 
   // Items handlers
   const addItemRow = () => {
+    itemsModifiedByUserRef.current = true;
     setItems([
       ...items,
       { id: Math.random().toString(36).substring(2, 9), item_name: '', qty: 1, unit: 'pcs', unit_price: 0, total_price: 0 }
@@ -418,10 +431,12 @@ export default function ClientOrderFormScreen({ user, permissions, onUpdateUser 
   };
 
   const removeItemRow = (itemId: string) => {
+    itemsModifiedByUserRef.current = true;
     setItems(items.filter(it => it.id !== itemId));
   };
 
   const updateItemRow = (itemId: string, field: string, value: any) => {
+    itemsModifiedByUserRef.current = true;
     const updated = items.map(item => {
       if (item.id === itemId) {
         const newItem = { ...item, [field]: value };
@@ -439,6 +454,13 @@ export default function ClientOrderFormScreen({ user, permissions, onUpdateUser 
 
   // Recalculate invoice totals automatically
   useEffect(() => {
+    // If this is an existing submitted historical order that was just loaded from DB,
+    // preserve its historical financial values (subtotal, vat, grand_total).
+    // Changing Company Settings must NOT recalculate historical orders when they are reopened.
+    if (isEdit && isHistoricalOrderRef.current && !itemsModifiedByUserRef.current) {
+      return;
+    }
+
     const sub = items.reduce((sum, item) => sum + (Number(item.total_price) || 0), 0);
     const discVal = Number(orderForm.discount_value) || 0;
     let discAmt = 0;
@@ -447,9 +469,22 @@ export default function ClientOrderFormScreen({ user, permissions, onUpdateUser 
     } else {
       discAmt = discVal;
     }
-    const vat = Math.max(0, (sub - discAmt) * (vatRate / 100));
-    const grand = Math.max(0, sub - discAmt + vat);
-    
+    const netBase = Math.max(0, sub - discAmt);
+    let vat = 0;
+    let grand = netBase;
+
+    if (isVatSubscribed) {
+      if (isVatInclusive) {
+        // VAT-inclusive pricing: menu prices already include VAT, do not add on top
+        vat = netBase - (netBase / (1 + vatRate / 100));
+        grand = netBase;
+      } else {
+        // VAT-exclusive pricing: add on top
+        vat = netBase * (vatRate / 100);
+        grand = netBase + vat;
+      }
+    }
+
     setOrderForm(prev => ({
       ...prev,
       subtotal: sub,
@@ -457,7 +492,7 @@ export default function ClientOrderFormScreen({ user, permissions, onUpdateUser 
       vat: vat,
       grand_total: grand
     }));
-  }, [items, orderForm.discount_value, orderForm.discount_type, vatRate]);
+  }, [items, orderForm.discount_value, orderForm.discount_type, vatRate, isVatSubscribed, isVatInclusive, isEdit]);
 
   // Tasks handlers
   const addTaskRow = () => {
@@ -602,7 +637,9 @@ export default function ClientOrderFormScreen({ user, permissions, onUpdateUser 
         qty: Number(item.qty) || 1,
         unit: item.unit || 'pcs',
         unit_price: Number(item.unit_price) || 0,
-        total_price: Number(item.total_price) || 0
+        total_price: Number(item.total_price) || 0,
+        customizations_json: item.customizations_json || [],
+        customization_ids: item.customization_ids || []
       }));
 
       // Sanitize tasks
@@ -1315,10 +1352,14 @@ export default function ClientOrderFormScreen({ user, permissions, onUpdateUser 
                   <span>-${orderForm.discount.toFixed(2)}</span>
                 </div>
               )}
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>VAT ({vatRate}%):</span>
-                <span>${orderForm.vat.toFixed(2)}</span>
-              </div>
+              {isVatSubscribed && (
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+                    {isVatInclusive ? `Included VAT (${vatRate}%):` : `VAT (${vatRate}%):`}
+                  </span>
+                  <span>${orderForm.vat.toFixed(2)}</span>
+                </div>
+              )}
               <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '2px solid var(--border)', paddingTop: '8px', marginTop: '4px' }}>
                 <span style={{ fontSize: '15px', fontWeight: 800, color: 'var(--primary)' }}>Grand Total:</span>
                 <span style={{ fontSize: '15px', fontWeight: 800, color: 'var(--primary)' }}>${orderForm.grand_total.toFixed(2)}</span>

@@ -90,6 +90,7 @@ import {
   createDirectOrder,
   updateDirectOrderStatus,
   fetchDirectOrders,
+  fetchOrderWithItems,
   claimDirectOrder,
   reversePosOrderInventory,
   resolveCanonicalSalesChannel
@@ -3276,22 +3277,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     }
     if (!table.commerce_order_id && !table.current_session_id) return;
     try {
-      let ord: any;
-      if (!HAS_COMMERCE_API) {
-        if (table.commerce_order_id) {
-          const { data } = await supabase.from('pos_orders').select('*, items:pos_order_items(*)').eq('id', table.commerce_order_id).maybeSingle();
-          ord = data;
-          if (!ord) {
-            const { data: legData } = await supabase.from('orders').select('*').eq('id', table.commerce_order_id).maybeSingle();
-            ord = legData;
-          }
-        }
-      } else {
-        const res = await fetch(`${COMMERCE_API_BASE}/api/pos/orders?type=all`);
-        const data = await res.json();
-        const orders = data.orders || [];
-        ord = orders.find((o: any) => o.id === table.commerce_order_id);
-      }
+      const ord = await fetchOrderWithItems(table.commerce_order_id, table.table_code, currentRestaurantId);
 
       const preCheckPayload = {
         isPreCheck: true,
@@ -3480,35 +3466,27 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
 
       setQuickTableInput("");
 
-      // If existing occupied table has a commerce order, load it into ticket!
-      if (res.orderId) {
-        try {
-          let ord: any;
-          if (!HAS_COMMERCE_API) {
-            const { data } = await supabase.from('pos_orders').select('*, items:pos_order_items(*)').eq('id', res.orderId).maybeSingle();
-            ord = data;
-          } else {
-            const orderRes = await fetch(`${COMMERCE_API_BASE}/api/pos/orders?type=all`);
-            const data = await orderRes.json();
-            ord = (data.orders || []).find((o: any) => o.id === res.orderId);
-          }
-          if (ord) {
-            loadOrderToTicket(ord, "POS");
-            setActiveTableContext({
-              orderId: res.orderId,
-              tableCode: res.table.table_code,
-              sessionId: res.sessionId,
-              tableId: res.table.id,
-              guestCount: res.guestCount,
-              waiterName: res.waiterName,
-              isExistingOccupied: true,
-              isNewlyCreated: false
-            });
-            return;
-          }
-        } catch (e) {
-          console.warn("Could not load existing table order:", e);
+      // If existing occupied table has a commerce order or active table order, load it into ticket!
+      try {
+        const ord = await fetchOrderWithItems(res.orderId, res.table.table_code, currentRestaurantId);
+        if (ord) {
+          loadOrderToTicket(ord, "POS");
+          const resolvedOrderId = ord.id || res.orderId;
+          setEditingOrderId(resolvedOrderId);
+          setActiveTableContext({
+            orderId: resolvedOrderId,
+            tableCode: res.table.table_code,
+            sessionId: res.sessionId,
+            tableId: res.table.id,
+            guestCount: ord.guest_count || res.guestCount || 1,
+            waiterName: ord.waiter_name || res.waiterName || "Cashier",
+            isExistingOccupied: true,
+            isNewlyCreated: false
+          });
+          return;
         }
+      } catch (e) {
+        console.warn("Could not load existing table order:", e);
       }
 
       // Fresh table session (newly created or opened before order entered)
@@ -4531,52 +4509,93 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
           });
         }
       } else if (targetOrderId) {
-        const updateRes = await fetch(`${COMMERCE_API_BASE}/api/pos/orders/${targetOrderId}/status`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
+        let updateSucceeded = false;
+        try {
+          const updateRes = await fetch(`${COMMERCE_API_BASE}/api/pos/orders/${targetOrderId}/status`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              status: finalOrderStatus,
+              payment_status: "paid",
+              expected_version: editingOrderVersion,
+              payment_operation_id: paymentOperationId,
+              subtotal,
+              subtotal_amount: subtotal,
+              deliveryFee: (!isDineIn && orderType === "delivery") ? (Number(deliveryFee) || 0) : 0,
+              delivery_fee: (!isDineIn && orderType === "delivery") ? (Number(deliveryFee) || 0) : 0,
+              discountAmount,
+              discount_amount: discountAmount,
+              total,
+              total_amount: total,
+              customerName: customerName.trim() || (activeTableContext ? `Table ${activeTableContext.tableCode}` : ""),
+              customerPhone,
+              deliveryAddress,
+              orderType: isDineIn ? "dine_in" : orderType,
+              orderSource: effectiveChannel,
+              paymentMethod: actualPaymentMethod,
+              items: ticketItems.map((item) => ({
+                line_item_id: item.line_item_id,
+                product_id: item.product_id,
+                quantity: item.qty,
+                qty: item.qty,
+                unit_price: item.unit_price,
+                unit_price_usd: item.unit_price,
+                price: item.unit_price,
+                total_price: Number(item.unit_price || 0) * Number(item.qty || 1),
+                customizations: item.selectedCustomizations || [],
+                comment: item.note
+              }))
+            })
+          });
+          if (updateRes.ok) {
+            data = await updateRes.json();
+            if (updateRes.status === 409 || data.conflict) {
+              alert(data.error || "This order was updated on another terminal. The latest version has been loaded.");
+              if (data.currentOrder) {
+                loadOrderToTicket(data.currentOrder);
+              }
+              setIsSubmitting(false);
+              return;
+            }
+            if (data.success) {
+              data.orderId = targetOrderId;
+              updateSucceeded = true;
+            }
+          }
+        } catch (commUpdateErr) {
+          console.warn('[handleCheckoutSubmit] Commerce API update status failed:', commUpdateErr);
+        }
+
+        if (!updateSucceeded) {
+          // Fallback to updating direct order in Supabase pos_orders
+          data = await updateDirectOrderStatus(targetOrderId, {
             status: finalOrderStatus,
-            payment_status: "paid",
-            expected_version: editingOrderVersion,
-            payment_operation_id: paymentOperationId,
+            payment_status: 'paid',
+            terminalId: persistentTerminalId,
+            is_inventory_commit: true,
+            tendered_amount: paymentDetails?.tenderedAmount ?? total,
+            tendered_currency: paymentDetails?.tenderedCurrency || 'USD',
+            change_amount: paymentDetails?.changeAmount || 0,
+            change_currency: paymentDetails?.changeCurrency || 'USD',
+            special_instructions: advanceInstructions,
+            payment_method: actualPaymentMethod,
+            customer_name: finalCustomerName,
             subtotal,
-            subtotal_amount: subtotal,
-            deliveryFee: (!isDineIn && orderType === "delivery") ? (Number(deliveryFee) || 0) : 0,
-            delivery_fee: (!isDineIn && orderType === "delivery") ? (Number(deliveryFee) || 0) : 0,
-            discountAmount,
-            discount_amount: discountAmount,
             total,
-            total_amount: total,
-            customerName: customerName.trim() || (activeTableContext ? `Table ${activeTableContext.tableCode}` : ""),
-            customerPhone,
-            deliveryAddress,
-            orderType: isDineIn ? "dine_in" : orderType,
-            orderSource: effectiveChannel,
-            paymentMethod: actualPaymentMethod,
             items: ticketItems.map((item) => ({
               line_item_id: item.line_item_id,
               product_id: item.product_id,
+              name: item.name,
               quantity: item.qty,
-              qty: item.qty,
               unit_price: item.unit_price,
-              unit_price_usd: item.unit_price,
-              price: item.unit_price,
-              total_price: Number(item.unit_price || 0) * Number(item.qty || 1),
               customizations: item.selectedCustomizations || [],
-              comment: item.note
+              comment: item.note || "",
+              item_added_by: item.item_added_by || activeCashier?.name || user?.name || "Cashier",
+              item_added_by_id: item.item_added_by_id || activeCashier?.id || user?.id || null
             }))
-          })
-        });
-        data = await updateRes.json();
-        if (updateRes.status === 409 || data.conflict) {
-          alert(data.error || "This order was updated on another terminal. The latest version has been loaded.");
-          if (data.currentOrder) {
-            loadOrderToTicket(data.currentOrder);
-          }
-          setIsSubmitting(false);
-          return;
+          });
+          if (data && data.success) data.orderId = targetOrderId;
         }
-        if (data.success) data.orderId = targetOrderId;
       } else {
         const createRes = await fetch(`${COMMERCE_API_BASE}/api/pos/orders`, {
           method: "POST",
@@ -5674,26 +5693,24 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                   setEditingOrderVersion(null);
                   setPosActiveView('sell');
 
-                  if (orderId) {
-                    try {
-                      let ord: any;
-                      if (!HAS_COMMERCE_API) {
-                        const { data } = await supabase.from('pos_orders').select('*, items:pos_order_items(*)').eq('id', orderId).maybeSingle();
-                        ord = data;
-                      } else {
-                        const res = await fetch(`${COMMERCE_API_BASE}/api/pos/orders?type=all`);
-                        const data = await res.json();
-                        ord = (data.orders || []).find((o: any) => o.id === orderId);
+                  try {
+                    const ord = await fetchOrderWithItems(orderId, tableCode, currentRestaurantId);
+                    if (ord && request === tableEditorRequest.current) {
+                      loadOrderToTicket(ord, "POS");
+                      if (ord.id) {
+                        setEditingOrderId(ord.id);
+                        setActiveTableContext(prev => prev ? {
+                          ...prev,
+                          orderId: ord.id,
+                          isExistingOccupied: true
+                        } : null);
                       }
-                      if (ord && request === tableEditorRequest.current) {
-                        loadOrderToTicket(ord, "POS");
-                      }
-                    } catch (e) {
-                      console.error("Failed to load table order into ticket:", e);
+                    } else if (!ord && activeTableContext?.tableCode !== tableCode) {
+                      // Fresh different table: initialize empty ticket
+                      setTicketItems([]);
                     }
-                  } else if (activeTableContext?.tableCode !== tableCode) {
-                    // Fresh different table: initialize empty ticket
-                    setTicketItems([]);
+                  } catch (e) {
+                    console.error("Failed to load table order into ticket:", e);
                   }
                 }}
                 activeShift={activeShift}
@@ -5723,23 +5740,14 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                     setCustomerName(`Table ${tableCode}`);
                     setOrderType("dine_in");
                     setEditingOrderId(targetOrderId);
-                    if (targetOrderId) {
-                      try {
-                        let ord: any;
-                        if (!HAS_COMMERCE_API) {
-                          const { data } = await supabase.from('pos_orders').select('*, items:pos_order_items(*)').eq('id', targetOrderId).maybeSingle();
-                          ord = data;
-                        } else {
-                          const res = await fetch(`${COMMERCE_API_BASE}/api/pos/orders?type=all`);
-                          const data = await res.json();
-                          ord = (data.orders || []).find((o: any) => o.id === targetOrderId);
-                        }
-                        if (ord) {
-                          loadOrderToTicket(ord, "POS");
-                        }
-                      } catch (e) {
-                        console.error("Failed to load order for settling:", e);
+                    try {
+                      const ord = await fetchOrderWithItems(targetOrderId, tableCode, currentRestaurantId);
+                      if (ord) {
+                        loadOrderToTicket(ord, "POS");
+                        if (ord.id) setEditingOrderId(ord.id);
                       }
+                    } catch (e) {
+                      console.error("Failed to load order for settling:", e);
                     }
                     setPosActiveView('sell');
                     setIsTerminalPaymentModalOpen(true);

@@ -19,6 +19,10 @@ export interface WhatsAppConversation {
   session_active: boolean;
   status?: string | null;
   contact_id?: number | null;
+  concept_id?: string | null;
+  provider?: 'meta' | 'infobip' | 'manual_sim';
+  ai_mode?: 'ACTIVE' | 'PAUSED' | 'HUMAN_TAKEOVER';
+  brand_display_name?: string | null;
   last_message_preview?: string | null;
   service_window_active?: boolean;
   latest_location_address?: string | null;
@@ -297,6 +301,18 @@ export const crmService = {
     const { error } = await supabase
       .from('whatsapp_conversations')
       .update({ status, updated_at: new Date().toISOString() })
+      .eq('id', conversationId);
+    if (error) throw error;
+  },
+
+  async toggleAiMode(conversationId: string, mode: 'ACTIVE' | 'HUMAN_TAKEOVER' | 'PAUSED'): Promise<void> {
+    const { error } = await supabase
+      .from('whatsapp_conversations')
+      .update({
+        ai_mode: mode,
+        human_takeover_at: mode === 'HUMAN_TAKEOVER' ? new Date().toISOString() : null,
+        updated_at: new Date().toISOString()
+      })
       .eq('id', conversationId);
     if (error) throw error;
   },

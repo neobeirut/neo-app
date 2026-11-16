@@ -1,5 +1,6 @@
 import { readModifiers, serializeModifiers, modifierText, inventoryLines } from './posInventory';
 import { supabase, getGlobalRestaurantId } from "../../api/supabase";
+import { COMMERCE_API_BASE, HAS_COMMERCE_API } from "../config";
 
 export interface CreateOrderPayload {
   branch_id?: number | string;
@@ -992,4 +993,117 @@ export async function deleteDraftOrder(orderId: number | string) {
     console.error('[posOrderService] deleteDraftOrder exception:', err);
     return { success: false, error: err.message };
   }
+}
+
+/**
+ * Authoritative single-order fetcher with full line items hydration.
+ * Checks Supabase direct pos_orders first (source of truth for table orders),
+ * falls back to legacy orders table, table_label active order matching,
+ * and finally Commerce API if available.
+ */
+export async function fetchOrderWithItems(
+  orderId?: string | number | null,
+  tableCode?: string | null,
+  restaurantId?: string | null
+): Promise<any | null> {
+  const rid = restaurantId || getGlobalRestaurantId();
+
+  // 1. If orderId is provided, check direct Supabase pos_orders first
+  if (orderId && String(orderId).trim() !== '' && !String(orderId).startsWith('table-')) {
+    try {
+      const { data, error } = await supabase
+        .from('pos_orders')
+        .select('*, pos_order_items(*)')
+        .eq('id', orderId)
+        .maybeSingle();
+
+      if (!error && data) {
+        return {
+          ...data,
+          items: data.pos_order_items || data.items || []
+        };
+      }
+    } catch (err) {
+      console.warn('[fetchOrderWithItems] Error fetching pos_orders by id:', err);
+    }
+
+    // 2. Try legacy orders table in Supabase
+    try {
+      const { data: legData, error: legErr } = await supabase
+        .from('orders')
+        .select('*')
+        .eq('id', orderId)
+        .maybeSingle();
+
+      if (!legErr && legData) {
+        return legData;
+      }
+    } catch (err) {
+      // ignore
+    }
+
+    // 3. Try Commerce API if available
+    if (HAS_COMMERCE_API) {
+      try {
+        const singleRes = await fetch(`${COMMERCE_API_BASE}/api/pos/orders/${orderId}`);
+        if (singleRes.ok) {
+          const sData = await singleRes.json();
+          const ord = sData.order || (sData.id ? sData : null);
+          if (ord) return ord;
+        }
+      } catch {
+        // fallback to list
+      }
+      try {
+        const res = await fetch(`${COMMERCE_API_BASE}/api/pos/orders?type=all`);
+        if (res.ok) {
+          const d = await res.json();
+          const orders = d.orders || (Array.isArray(d) ? d : []);
+          const found = orders.find((o: any) => String(o.id) === String(orderId));
+          if (found) return found;
+        }
+      } catch (err) {
+        console.warn('[fetchOrderWithItems] Error querying Commerce API:', err);
+      }
+    }
+  }
+
+  // 4. If tableCode is provided (or orderId was null/not found), search active open order by table_label
+  if (tableCode) {
+    try {
+      const clean = String(tableCode).trim();
+      const numOnly = clean.replace(/^(TABLE\s*|T)/i, '').trim();
+      const variants = Array.from(new Set([
+        clean,
+        clean.toUpperCase(),
+        clean.toLowerCase(),
+        numOnly,
+        `T${numOnly}`,
+        `Table ${numOnly}`,
+        `TABLE ${numOnly}`
+      ].filter(Boolean)));
+
+      let query = supabase
+        .from('pos_orders')
+        .select('*, pos_order_items(*)')
+        .in('table_label', variants)
+        .in('status', ['held', 'preparing', 'new', 'confirmed', 'ready', 'open', 'occupied', 'bill_requested', 'pending'])
+        .order('id', { ascending: false })
+        .limit(1);
+
+      if (rid) query = query.eq('restaurant_id', rid);
+
+      const { data, error } = await query.maybeSingle();
+      if (!error && data) {
+        return {
+          ...data,
+          items: data.pos_order_items || data.items || []
+        };
+      }
+    } catch (err) {
+      console.warn('[fetchOrderWithItems] Error fetching by tableCode:', err);
+    }
+  }
+
+  return null;
 }

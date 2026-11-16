@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   MessageSquare, Users, FileText, Megaphone, 
-  Sliders, Gift, Truck, Store, ExternalLink, ShoppingBag
+  Sliders, Gift, Truck, Store, ExternalLink, ShoppingBag, Bot
 } from 'lucide-react';
 import CrmInboxTab from './crm/CrmInboxTab';
 import CrmContactsTab from './crm/CrmContactsTab';
@@ -12,6 +12,7 @@ import CrmCampaignsTab from './crm/CrmCampaignsTab';
 import CrmModifiersTab from './crm/CrmModifiersTab';
 import CrmLoyaltyTab from './crm/CrmLoyaltyTab';
 import CrmDeliveryPricingTab from './crm/CrmDeliveryPricingTab';
+import CrmAiAssistantTab from './crm/CrmAiAssistantTab';
 import { crmService } from '../api/crmService';
 
 interface CrmHubScreenProps {
@@ -19,9 +20,9 @@ interface CrmHubScreenProps {
   defaultTab?: CrmTab;
 }
 
-type CrmTab = 'inbox' | 'contacts' | 'products' | 'templates' | 'campaigns' | 'modifiers' | 'loyalty' | 'delivery';
+type CrmTab = 'inbox' | 'contacts' | 'products' | 'templates' | 'campaigns' | 'modifiers' | 'loyalty' | 'delivery' | 'ai_assistant';
 
-const VALID_CRM_TABS: CrmTab[] = ['inbox', 'contacts', 'products', 'templates', 'campaigns', 'modifiers', 'loyalty', 'delivery'];
+const VALID_CRM_TABS: CrmTab[] = ['inbox', 'contacts', 'products', 'templates', 'campaigns', 'modifiers', 'loyalty', 'delivery', 'ai_assistant'];
 
 export default function CrmHubScreen({ user, defaultTab }: CrmHubScreenProps) {
   const { tab } = useParams<{ tab?: string }>();
@@ -75,6 +76,7 @@ export default function CrmHubScreen({ user, defaultTab }: CrmHubScreenProps) {
     { key: 'campaigns', label: 'Broadcast Campaigns', icon: <Megaphone size={16} /> },
     { key: 'loyalty', label: 'Loyalty & Promos', icon: <Gift size={16} /> },
     { key: 'delivery', label: 'Delivery Pricing', icon: <Truck size={16} /> },
+    { key: 'ai_assistant', label: 'NÉO AI Assistant', icon: <Bot size={16} /> },
   ];
 
   const pageTitle: Record<CrmTab, string> = {
@@ -86,6 +88,7 @@ export default function CrmHubScreen({ user, defaultTab }: CrmHubScreenProps) {
     campaigns: 'Broadcast Campaigns',
     loyalty: 'Loyalty & Promos',
     delivery: 'Delivery Pricing',
+    ai_assistant: 'NÉO AI Customer Assistant Configuration',
   };
 
   const pageSubtitle: Record<CrmTab, string> = {
@@ -97,6 +100,7 @@ export default function CrmHubScreen({ user, defaultTab }: CrmHubScreenProps) {
     campaigns: 'Send broadcast campaigns to your opted-in customers.',
     loyalty: 'Configure loyalty tiers, promo codes and reward catalog.',
     delivery: 'Set delivery pricing rules by distance and branch.',
+    ai_assistant: 'Configure NÉO Badaro knowledge base, AI provider, operational tools, and test simulator.',
   };
 
   return (
@@ -120,6 +124,48 @@ export default function CrmHubScreen({ user, defaultTab }: CrmHubScreenProps) {
         </div>
       </div>
 
+      {/* Tab Navigation */}
+      <div style={{ display: 'flex', gap: '6px', borderBottom: '1px solid var(--border)', paddingBottom: '8px', overflowX: 'auto' }}>
+        {tabs.map(t => {
+          const isActive = activeTab === t.key;
+          return (
+            <button
+              key={t.key}
+              onClick={() => handleTabChange(t.key)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '7px 12px',
+                borderRadius: '8px',
+                border: 'none',
+                backgroundColor: isActive ? 'var(--primary)' : '#ffffff',
+                color: isActive ? '#ffffff' : 'var(--text-main)',
+                fontSize: '13px',
+                fontWeight: isActive ? 700 : 500,
+                cursor: 'pointer',
+                boxShadow: isActive ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                whiteSpace: 'nowrap',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              {t.icon}
+              <span>{t.label}</span>
+              {t.badge && (
+                <span style={{
+                  fontSize: '11px',
+                  padding: '1px 6px',
+                  borderRadius: '10px',
+                  backgroundColor: isActive ? 'rgba(255,255,255,0.25)' : 'var(--border)',
+                  color: isActive ? '#ffffff' : 'var(--text-muted)'
+                }}>
+                  {t.badge}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
 
       {/* Tab Content */}
       <div>
@@ -143,6 +189,7 @@ export default function CrmHubScreen({ user, defaultTab }: CrmHubScreenProps) {
         {activeTab === 'campaigns' && <CrmCampaignsTab />}
         {activeTab === 'loyalty' && <CrmLoyaltyTab />}
         {activeTab === 'delivery' && <CrmDeliveryPricingTab />}
+        {activeTab === 'ai_assistant' && <CrmAiAssistantTab />}
       </div>
     </div>
   );

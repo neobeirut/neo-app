@@ -436,9 +436,21 @@ export async function loadFloorState(branchId: string): Promise<{
 
       (directTableOrders || []).forEach((dOrder: any) => {
         const cleanLabel = (dOrder.table_label || '').trim().toUpperCase();
+        const normLabel = cleanLabel.replace(/^(TABLE\s*|T)/i, '').trim();
         for (const tbl of tableMap.values()) {
           const c = (tbl.table_code || '').toUpperCase();
-          if (c === cleanLabel || c === `T${cleanLabel}` || c.replace(/^T/, '') === cleanLabel || tbl.display_name?.toUpperCase() === cleanLabel) {
+          const normCode = c.replace(/^(TABLE\s*|T)/i, '').trim();
+          const normDisplay = (tbl.display_name || '').toUpperCase().replace(/^(TABLE\s*|T)/i, '').trim();
+
+          const isMatch = (
+            c === cleanLabel ||
+            c === `T${cleanLabel}` ||
+            c.replace(/^T/, '') === cleanLabel ||
+            tbl.display_name?.toUpperCase() === cleanLabel ||
+            (normLabel !== '' && (normLabel === normCode || normLabel === normDisplay))
+          );
+
+          if (isMatch) {
             const isBillReq = dOrder.status === 'bill_requested' || (dOrder.special_instructions && dOrder.special_instructions.includes('BILL_PRINTED'));
             // Always apply bill_requested so it shows the amber pulse even if session hydration set it to occupied
             if (tbl.status === 'available' || (isBillReq && tbl.status !== 'bill_requested')) {

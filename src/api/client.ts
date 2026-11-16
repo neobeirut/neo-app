@@ -3400,6 +3400,65 @@ export const api = {
     return { success: true, rate: data ? parseFloat(data.setting_value) : 11 };
   },
 
+  getVatSettings: async (restaurantId?: string) => {
+    let isSubscribed = false;
+    let vatRate = 11;
+    let isVatInclusive = false;
+    const rid = restaurantId || getRestaurantId();
+
+    if (rid) {
+      const { data, error } = await supabase
+        .from('restaurants')
+        .select('settings')
+        .eq('id', rid)
+        .maybeSingle();
+
+      if (!error && data?.settings) {
+        const settings = data.settings as any;
+        if (settings.is_vat_subscribed !== undefined) {
+          isSubscribed = settings.is_vat_subscribed === true;
+        }
+        if (settings.vat_rate !== undefined && Number(settings.vat_rate) >= 0) {
+          vatRate = parseFloat(settings.vat_rate);
+        }
+        if (settings.is_vat_inclusive !== undefined) {
+          isVatInclusive = Boolean(settings.is_vat_inclusive);
+        } else if (settings.vat_treatment === 'INCLUSIVE' || settings.prices_include_vat === true) {
+          isVatInclusive = true;
+        }
+      }
+    }
+
+    // Fallback check from app_settings
+    const { data: appData } = await supabase
+      .from('app_settings')
+      .select('setting_key, setting_value')
+      .in('setting_key', ['vat_rate', 'is_vat_subscribed', 'is_vat_inclusive', 'vat_treatment']);
+
+    if (appData && appData.length > 0) {
+      const appVat = appData.find(s => s.setting_key === 'vat_rate');
+      if (appVat && parseFloat(appVat.setting_value) >= 0 && vatRate === 11) {
+        vatRate = parseFloat(appVat.setting_value);
+      }
+      const appSub = appData.find(s => s.setting_key === 'is_vat_subscribed');
+      if (appSub && !isSubscribed) {
+        isSubscribed = appSub.setting_value === 'true' || appSub.setting_value === '1';
+      }
+      const appInc = appData.find(s => s.setting_key === 'is_vat_inclusive' || s.setting_key === 'vat_treatment');
+      if (appInc) {
+        isVatInclusive = appInc.setting_value === 'true' || appInc.setting_value === 'INCLUSIVE';
+      }
+    }
+
+    return {
+      success: true,
+      isVatSubscribed: isSubscribed,
+      vatRate,
+      isVatInclusive,
+      vatTreatment: !isSubscribed ? 'DISABLED' : (isVatInclusive ? 'INCLUSIVE' : 'EXCLUSIVE')
+    };
+  },
+
   updateVatRate: async (rate: number) => {
     const { error } = await supabase
       .from('app_settings')
@@ -3690,7 +3749,12 @@ export const api = {
 
     if (order.id) await supabase.from('client_order_items').delete().eq('order_id', order.id);
     if (items.length > 0) {
-      const itemsPayload = items.map((item: any) => ({ ...item, order_id: order.id }));
+      const itemsPayload = items.map((item: any) => ({
+        ...item,
+        order_id: order.id,
+        customizations_json: item.customizations_json || [],
+        customization_ids: item.customization_ids || []
+      }));
       const { error: itemsError } = await supabase.from('client_order_items').insert(itemsPayload);
       if (itemsError) return { success: false, error: itemsError.message };
     }

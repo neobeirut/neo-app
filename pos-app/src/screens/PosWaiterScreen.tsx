@@ -18,7 +18,8 @@ import {
 import type { PosScreen, PosScreenButton } from '../pos/types/posScreen';
 import {
   createDirectOrder,
-  updateDirectOrderStatus
+  updateDirectOrderStatus,
+  fetchOrderWithItems
 } from '../pos/services/posOrderService';
 import {
   buildPreparationPrintJobs,
@@ -512,26 +513,18 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
       setCurrentScreenId(root.id);
     }
 
-    // Load existing items if occupied
-    if (orderId) {
-      try {
-        let ord: any;
-        if (!COMMERCE_API_BASE) {
-          const { data } = await supabase
-            .from('pos_orders')
-            .select('*, items:pos_order_items(*)')
-            .eq('id', orderId)
-            .maybeSingle();
-          ord = data;
-        } else {
-          const res = await fetch(`${COMMERCE_API_BASE}/api/pos/orders?type=all`);
-          const data = await res.json();
-          ord = (data.orders || []).find((o: any) => o.id === orderId);
-        }
+    // Load existing items if occupied or active order exists
+    try {
+      const ord = await fetchOrderWithItems(orderId, tableCode, restaurantId);
 
-        if (ord) {
-          const rawItems = ord.items || ord.pos_order_items || [];
-          const mapped: TicketItem[] = rawItems.map((i: any) => {
+      if (ord) {
+        if (ord.id && !tableCtx.orderId) {
+          tableCtx.orderId = ord.id;
+          tableCtx.isExistingOccupied = true;
+          setActiveTableContext({ ...tableCtx });
+        }
+        const rawItems = ord.items || ord.pos_order_items || [];
+        const mapped: TicketItem[] = rawItems.map((i: any) => {
             const rawName = String(i.product_name || i.name || '').trim();
             const isHold =
               Boolean(i.isHoldSeparator) ||
@@ -561,8 +554,7 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
         console.error('Failed to load table items:', err);
         showNotification('Failed to load table items.', 'error');
       }
-    }
-  };
+    };
 
   // Add Item to Ticket (triggered from touch matrix button)
   const handleTouchButtonPress = (btn: PosScreenButton) => {

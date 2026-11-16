@@ -21,7 +21,7 @@ export interface ConceptMessagingConfig {
   concept_code: ConceptCode;
   concept_name: string;
   whatsapp_sender_number: string;
-  provider_identifier: 'infobip';
+  provider_identifier: 'infobip' | 'meta' | 'manual_sim';
   display_name: string;
   provisioning_status: ProvisioningStatus;
   is_enabled: boolean;
@@ -94,7 +94,7 @@ export const CANONICAL_MESSAGING_CONFIGS: Record<string, ConceptMessagingConfig>
     concept_code: 'NEO',
     concept_name: 'NÉO',
     whatsapp_sender_number: '96176489078',
-    provider_identifier: 'infobip',
+    provider_identifier: 'meta',
     display_name: 'NÉO Beirut',
     provisioning_status: 'PENDING',
     is_enabled: false,
@@ -104,7 +104,7 @@ export const CANONICAL_MESSAGING_CONFIGS: Record<string, ConceptMessagingConfig>
       otp: { name: 'neo_login_code_2026', language: 'en_US' }
     },
     supported_languages: ['en', 'ar', 'fr'],
-    metadata: { operational: false, notes: 'Pending carrier re-provisioning in Infobip' }
+    metadata: { operational: false, notes: 'Direct Meta WhatsApp Cloud API (Test Sandbox Mode)' }
   },
   '00000000-0000-0000-0000-000000000003': {
     concept_id: '00000000-0000-0000-0000-000000000003',
@@ -412,12 +412,17 @@ export class ConceptMessagingService {
       }
     }
 
-    // 6. Provider Dispatch (Simulated in Staging / Unit Tests)
-    const providerMsgId = `infobip-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    // 6. Provider Dispatch with Provider-Specific Message Identifier
+    const isMeta = conceptConfig?.provider_identifier === 'meta';
+    const providerMsgId = isMeta 
+      ? `wamid.HBg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+      : `infobip-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
     const logEntry = {
       messageId: providerMsgId,
       conceptId,
       conceptCode: resolved.conceptCode,
+      provider: isMeta ? 'meta' : 'infobip',
       sender: resolved.senderNumber,
       recipient: cleanRecipient,
       category,
@@ -443,11 +448,13 @@ export class ConceptMessagingService {
         trigger_event: triggerEvent,
         idempotency_key: idempotencyKey,
         direction: 'outbound',
+        provider: isMeta ? 'meta' : 'infobip',
         message_type: templateName ? 'template' : 'text',
         text_content: textContent || `Template: ${templateName}`,
         template_name: templateName || null,
         status: 'sent',
-        infobip_message_id: providerMsgId
+        infobip_message_id: isMeta ? null : providerMsgId,
+        meta_message_id: isMeta ? providerMsgId : null
       });
     } catch (e) {}
 
