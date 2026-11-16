@@ -23,6 +23,8 @@
     { "src": "^/privacy(/.*)?$", "dest": "/privacy.html" },
     { "src": "^/style.css$", "dest": "/style.css" },
     { "src": "^/flow-logo.png$", "dest": "/flow-logo.png" },
+    { "src": "^/api/ai/orchestrate(/.*)?$", "dest": "/api/ai/orchestrate.js" },
+    { "src": "^/api/replenishment-ai(/.*)?$", "dest": "/api/replenishment-ai.js" },
     { "src": "^/api/(.*)", "dest": "https://gregarious-curiosity-production-653f.up.railway.app/api/$1" },
     { "src": "^/admin(/.*)?$", "dest": "/admin/index.html" },
     { "src": "^/login(/.*)?$", "dest": "/admin/index.html" },
