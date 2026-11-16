@@ -84,6 +84,7 @@ export function useKdsStream(
 
     // 2. Backup Polling every 4 seconds to guarantee zero missed orders
     const pollInterval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
       if (isSubscribed) {
         refreshFires();
       }

@@ -68,6 +68,7 @@ export function useOrders(options: UseOrdersOptions = {}) {
   const isFirstFetchRef = useRef(true);
 
   const fetchOrders = useCallback(async (isSilent = false) => {
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
     if (!isSilent) setIsLoading(true);
     try {
       let cutoff = shiftCutoffTime;

@@ -113,6 +113,7 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
   });
 
   const fetchState = useCallback(async () => {
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
     setErrorMsg(null);
     try {
       const [res, syncs] = await Promise.all([

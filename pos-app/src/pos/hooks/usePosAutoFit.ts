@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 export interface UsePosAutoFitOptions {
   baseWidth?: number;  // Ideal unconstrained width (default: 1180)
   baseHeight?: number; // Ideal unconstrained height (default: 820)
-  minScale?: number;   // Minimum downscale factor (default: 0.68)
+  minScale?: number;   // Minimum downscale factor (default: 0.72)
   maxScale?: number;   // Maximum scale factor (default: 1.0)
   storageKey?: string; // Local storage toggle key
 }
@@ -22,7 +22,7 @@ export function usePosAutoFit(options: UsePosAutoFitOptions = {}): UsePosAutoFit
   const {
     baseWidth = 1180,
     baseHeight = 820,
-    minScale = 0.68,
+    minScale = 0.72,
     maxScale = 1.0,
     storageKey = 'flow_pos_autofit',
   } = options;
@@ -30,9 +30,11 @@ export function usePosAutoFit(options: UsePosAutoFitOptions = {}): UsePosAutoFit
   const [isAutoFit, setIsAutoFitState] = useState<boolean>(() => {
     try {
       const saved = localStorage.getItem(storageKey);
-      return saved !== 'false';
+      if (saved !== null) return saved === 'true';
+      // Default to false on standard screens, enable only if screen height is genuinely constrained (< 780px)
+      return typeof window !== 'undefined' && window.innerHeight < 780;
     } catch {
-      return true;
+      return false;
     }
   });
 
@@ -41,52 +43,50 @@ export function usePosAutoFit(options: UsePosAutoFitOptions = {}): UsePosAutoFit
     height: typeof window !== 'undefined' ? window.innerHeight : baseHeight,
   }));
 
-  const updateViewport = useCallback(() => {
-    if (typeof window === 'undefined') return;
-    const w = window.visualViewport ? window.visualViewport.width : window.innerWidth;
-    const h = window.visualViewport ? window.visualViewport.height : window.innerHeight;
-    setViewport({ width: Math.round(w), height: Math.round(h) });
-  }, []);
-
+  // Debounced window resize handler — NEVER listens to visualViewport to prevent Chrome zoom layout loops
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    updateViewport();
 
-    let rafId: number | null = null;
-    const onResize = () => {
-      if (rafId) cancelAnimationFrame(rafId);
-      rafId = requestAnimationFrame(() => {
-        updateViewport();
-      });
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const handleResize = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        const curW = window.innerWidth;
+        const curH = window.innerHeight;
+        setViewport(prev => {
+          if (Math.abs(prev.width - curW) < 6 && Math.abs(prev.height - curH) < 6) {
+            return prev;
+          }
+          return { width: curW, height: curH };
+        });
+      }, 150);
     };
 
-    window.addEventListener('resize', onResize);
-    window.addEventListener('orientationchange', onResize);
-    if (window.visualViewport) {
-      window.visualViewport.addEventListener('resize', onResize);
-    }
+    window.addEventListener('resize', handleResize, { passive: true });
+    window.addEventListener('orientationchange', handleResize, { passive: true });
 
     return () => {
-      if (rafId) cancelAnimationFrame(rafId);
-      window.removeEventListener('resize', onResize);
-      window.removeEventListener('orientationchange', onResize);
-      if (window.visualViewport) {
-        window.visualViewport.removeEventListener('resize', onResize);
-      }
+      if (timer) clearTimeout(timer);
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('orientationchange', handleResize);
     };
-  }, [updateViewport]);
+  }, []);
 
   const scale = useMemo(() => {
     if (!isAutoFit) return 1.0;
-    // Calculate ratio needed to fit both width and height within viewport
+    // If the browser window height is at least baseHeight - 20, snap to 1.0 (zero scaling)
+    if (viewport.height >= baseHeight - 20) return 1.0;
+
     const scaleW = viewport.width / baseWidth;
     const scaleH = viewport.height / baseHeight;
     const calculated = Math.min(scaleW, scaleH);
 
-    // Only downscale if the screen is smaller than the base canvas; clamp to safe boundaries
-    const target = Math.min(maxScale, Math.max(minScale, calculated));
-    // Round to 3 decimal places for stability
-    return Math.round(target * 1000) / 1000;
+    // If calculated scale is close to 1.0 (>= 0.96), snap to 1.0
+    if (calculated >= 0.96) return 1.0;
+
+    const clamped = Math.min(maxScale, Math.max(minScale, calculated));
+    // Round to 2 decimal places for rock-solid stability
+    return Math.round(clamped * 100) / 100;
   }, [isAutoFit, viewport.width, viewport.height, baseWidth, baseHeight, minScale, maxScale]);
 
   const toggleAutoFit = useCallback(() => {
@@ -111,7 +111,7 @@ export function usePosAutoFit(options: UsePosAutoFitOptions = {}): UsePosAutoFit
   }, [storageKey]);
 
   const containerStyle = useMemo<React.CSSProperties>(() => {
-    if (!isAutoFit || scale >= 0.999) {
+    if (!isAutoFit || scale >= 0.98) {
       return {
         width: '100%',
         height: '100vh',
@@ -120,7 +120,6 @@ export function usePosAutoFit(options: UsePosAutoFitOptions = {}): UsePosAutoFit
       };
     }
 
-    // Modern browser zoom scaling
     const supportsZoom = typeof CSS !== 'undefined' && CSS.supports && CSS.supports('zoom', '1');
     if (supportsZoom) {
       return {
@@ -132,7 +131,6 @@ export function usePosAutoFit(options: UsePosAutoFitOptions = {}): UsePosAutoFit
       } as any;
     }
 
-    // Fallback using transform
     return {
       transform: `scale(${scale})`,
       transformOrigin: 'top left',
