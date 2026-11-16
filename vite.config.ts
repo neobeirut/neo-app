@@ -1,8 +1,8 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { resolve } from 'path';
-import { handleReplenishmentAiRequest } from './api/replenishment-ai.js';
-import { handleAiAssistantRequest } from './api/ai-assistant-server.js';
+
+
 
 function aiAssistantBackendPlugin() {
   const attachMiddleware = (middlewares: any) => {
@@ -20,6 +20,7 @@ function aiAssistantBackendPlugin() {
       req.on('end', async () => {
         try {
           const body = raw ? JSON.parse(raw) : {};
+          const { handleAiAssistantRequest } = await import('./api/ai-assistant-server.js');
           const result = await handleAiAssistantRequest(body);
           res.statusCode = 200;
           res.setHeader('Content-Type', 'application/json');
@@ -60,6 +61,7 @@ function replenishmentAiBackendPlugin() {
       req.on('end', async () => {
         try {
           const body = raw ? JSON.parse(raw) : {};
+          const { handleReplenishmentAiRequest } = await import('./api/replenishment-ai.js');
           const result = await handleReplenishmentAiRequest(body);
           res.statusCode = 200;
           res.setHeader('Content-Type', 'application/json');
