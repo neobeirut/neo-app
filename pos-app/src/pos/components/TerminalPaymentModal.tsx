@@ -503,10 +503,10 @@ export const TerminalPaymentModal: React.FC<TerminalPaymentModalProps> = ({
         </div>
       )}
 
-      {/* FULL PAGE MAIN CONTENT: TWO-COLUMN NO-SCROLL LAYOUT (OR SINGLE-COLUMN WHEN TABLE) */}
-      <div className={`flex-1 min-h-0 flex ${isTable ? 'flex-col overflow-y-auto' : 'flex-col lg:flex-row overflow-hidden'} p-4 gap-4`}>
+      {/* FULL PAGE MAIN CONTENT: TWO-COLUMN NO-SCROLL LAYOUT */}
+      <div className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-hidden p-3 sm:p-4 gap-4">
         {/* PAYMENT COLUMN: TOTAL, METHOD SELECTOR, CASH TENDER & CHANGE */}
-        <div className={`${isTable ? 'w-full max-w-4xl mx-auto' : 'lg:w-1/2'} flex flex-col gap-3 h-full ${isTable ? '' : 'overflow-y-auto no-scrollbar'}`}>
+        <div className={`${isTable ? 'w-full max-w-3xl mx-auto' : 'lg:w-1/2'} flex flex-col gap-3 h-full overflow-y-auto no-scrollbar`}>
           {/* TOTAL DUE BANNER */}
           <div className="p-3.5 rounded-xl bg-white border border-slate-200 flex items-center justify-between gap-3 shadow-xs flex-shrink-0">
             <div>

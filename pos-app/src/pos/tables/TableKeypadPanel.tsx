@@ -759,7 +759,7 @@ export const TableKeypadPanel: React.FC<TableKeypadPanelProps> = ({
                   type="button"
                   disabled={!isShiftOpen}
                   onClick={() => handleSeatDigit(d)}
-                  className={`w-[72px] h-[72px] rounded-xl font-black text-base border border-[#E0E3DF] transition-all flex items-center justify-center shadow-sm select-none ${
+                  className={`w-[68px] h-[52px] rounded-xl font-black text-base border border-[#E0E3DF] transition-all flex items-center justify-center shadow-sm select-none ${
                     !isShiftOpen
                       ? "bg-[#F5F6F4] text-slate-400 opacity-40 cursor-not-allowed"
                       : "bg-[#F5F6F4] hover:bg-slate-200 text-[#242B28] cursor-pointer active:scale-95"
@@ -772,7 +772,7 @@ export const TableKeypadPanel: React.FC<TableKeypadPanelProps> = ({
                 type="button"
                 disabled={!isShiftOpen}
                 onClick={handleSeatClear}
-                className={`w-[72px] h-[72px] rounded-xl font-black text-xs border border-rose-200 transition-all flex items-center justify-center shadow-sm select-none uppercase ${
+                className={`w-[68px] h-[52px] rounded-xl font-black text-xs border border-rose-200 transition-all flex items-center justify-center shadow-sm select-none uppercase ${
                   !isShiftOpen
                     ? "bg-rose-50 text-slate-400 opacity-40 cursor-not-allowed"
                     : "bg-rose-50 hover:bg-rose-100 active:bg-rose-600 active:text-white text-rose-600 cursor-pointer active:scale-95"
@@ -784,7 +784,7 @@ export const TableKeypadPanel: React.FC<TableKeypadPanelProps> = ({
                 type="button"
                 disabled={!isShiftOpen}
                 onClick={() => handleSeatDigit('0')}
-                className={`w-[72px] h-[72px] rounded-xl font-black text-base border border-[#E0E3DF] transition-all flex items-center justify-center shadow-sm select-none ${
+                className={`w-[68px] h-[52px] rounded-xl font-black text-base border border-[#E0E3DF] transition-all flex items-center justify-center shadow-sm select-none ${
                   !isShiftOpen
                     ? "bg-[#F5F6F4] text-slate-400 opacity-40 cursor-not-allowed"
                     : "bg-[#F5F6F4] hover:bg-slate-200 text-[#242B28] cursor-pointer active:scale-95"
@@ -798,7 +798,7 @@ export const TableKeypadPanel: React.FC<TableKeypadPanelProps> = ({
                   disabled={!isShiftOpen}
                   onClick={handleSeatConfirm}
                   style={isShiftOpen ? { backgroundColor: primaryColor, color: primaryText } : undefined}
-                  className={`w-[72px] h-[72px] rounded-xl font-black text-sm border border-transparent transition-all flex items-center justify-center shadow-sm select-none ${
+                  className={`w-[68px] h-[52px] rounded-xl font-black text-sm border border-transparent transition-all flex items-center justify-center shadow-sm select-none ${
                     !isShiftOpen
                       ? "bg-slate-200 text-slate-400 opacity-40 cursor-not-allowed"
                       : "cursor-pointer active:scale-95 hover:opacity-90"
@@ -811,7 +811,7 @@ export const TableKeypadPanel: React.FC<TableKeypadPanelProps> = ({
                   type="button"
                   disabled={!isShiftOpen}
                   onClick={handleSeatBackspace}
-                  className={`w-[72px] h-[72px] rounded-xl font-black text-base border border-[#E0E3DF] transition-all flex items-center justify-center shadow-sm select-none ${
+                  className={`w-[68px] h-[52px] rounded-xl font-black text-base border border-[#E0E3DF] transition-all flex items-center justify-center shadow-sm select-none ${
                     !isShiftOpen
                       ? "bg-[#F5F6F4] text-slate-400 opacity-40 cursor-not-allowed"
                       : "bg-[#F5F6F4] hover:bg-slate-200 text-[#242B28] cursor-pointer active:scale-95"
@@ -909,7 +909,7 @@ export const TableKeypadPanel: React.FC<TableKeypadPanelProps> = ({
                   type="button"
                   disabled={!isShiftOpen}
                   onClick={() => handleDigit(digit)}
-                  className={`w-[72px] h-[72px] rounded-xl font-black text-base border border-[#E0E3DF] transition-all flex items-center justify-center shadow-sm select-none ${
+                  className={`w-[68px] h-[52px] rounded-xl font-black text-base border border-[#E0E3DF] transition-all flex items-center justify-center shadow-sm select-none ${
                     !isShiftOpen
                       ? "bg-[#F5F6F4] text-slate-400 opacity-40 cursor-not-allowed"
                       : "bg-[#F5F6F4] hover:bg-slate-200 text-[#242B28] cursor-pointer active:scale-95"
@@ -922,7 +922,7 @@ export const TableKeypadPanel: React.FC<TableKeypadPanelProps> = ({
                 type="button"
                 disabled={!isShiftOpen}
                 onClick={handleClear}
-                className={`w-[72px] h-[72px] rounded-xl font-black text-xs border border-rose-200 transition-all flex items-center justify-center shadow-sm select-none uppercase ${
+                className={`w-[68px] h-[52px] rounded-xl font-black text-xs border border-rose-200 transition-all flex items-center justify-center shadow-sm select-none uppercase ${
                   !isShiftOpen
                     ? "bg-rose-50 text-slate-400 opacity-40 cursor-not-allowed"
                     : "bg-rose-50 hover:bg-rose-100 active:bg-rose-600 active:text-white text-rose-600 cursor-pointer active:scale-95"
@@ -934,7 +934,7 @@ export const TableKeypadPanel: React.FC<TableKeypadPanelProps> = ({
                 type="button"
                 disabled={!isShiftOpen}
                 onClick={() => handleDigit('0')}
-                className={`w-[72px] h-[72px] rounded-xl font-black text-base border border-[#E0E3DF] transition-all flex items-center justify-center shadow-sm select-none ${
+                className={`w-[68px] h-[52px] rounded-xl font-black text-base border border-[#E0E3DF] transition-all flex items-center justify-center shadow-sm select-none ${
                   !isShiftOpen
                     ? "bg-[#F5F6F4] text-slate-400 opacity-40 cursor-not-allowed"
                     : "bg-[#F5F6F4] hover:bg-slate-200 text-[#242B28] cursor-pointer active:scale-95"
@@ -948,7 +948,7 @@ export const TableKeypadPanel: React.FC<TableKeypadPanelProps> = ({
                   disabled={!isShiftOpen}
                   onClick={() => setIsTableConfirmed(true)}
                   style={isShiftOpen ? { backgroundColor: primaryColor, color: primaryText } : undefined}
-                  className={`w-[72px] h-[72px] rounded-xl font-black text-sm border border-transparent transition-all flex flex-col items-center justify-center shadow-sm select-none ${
+                  className={`w-[68px] h-[52px] rounded-xl font-black text-sm border border-transparent transition-all flex flex-col items-center justify-center shadow-sm select-none ${
                     !isShiftOpen
                       ? "bg-slate-200 text-slate-400 opacity-40 cursor-not-allowed"
                       : "cursor-pointer active:scale-95 hover:opacity-90"
@@ -962,7 +962,7 @@ export const TableKeypadPanel: React.FC<TableKeypadPanelProps> = ({
                   type="button"
                   disabled={!isShiftOpen}
                   onClick={handleBackspace}
-                  className={`w-[72px] h-[72px] rounded-xl font-black text-base border border-[#E0E3DF] transition-all flex items-center justify-center shadow-sm select-none ${
+                  className={`w-[68px] h-[52px] rounded-xl font-black text-base border border-[#E0E3DF] transition-all flex items-center justify-center shadow-sm select-none ${
                     !isShiftOpen
                       ? "bg-[#F5F6F4] text-slate-400 opacity-40 cursor-not-allowed"
                       : "bg-[#F5F6F4] hover:bg-slate-200 text-[#242B28] cursor-pointer active:scale-95"
@@ -1077,7 +1077,7 @@ export const TableKeypadPanel: React.FC<TableKeypadPanelProps> = ({
                 handleOpenOpenTable();
               }}
               style={isShiftOpen ? { backgroundColor: primaryColor, color: primaryText } : undefined}
-              className={`w-full h-12 font-black text-xs md:text-sm rounded-xl transition shadow flex items-center justify-center gap-2 ${
+              className={`w-full h-10 font-black text-xs md:text-sm rounded-xl transition shadow flex items-center justify-center gap-2 ${
                 !isShiftOpen
                   ? "bg-slate-200 text-slate-400 opacity-40 cursor-not-allowed"
                   : "hover:opacity-90 active:scale-95 cursor-pointer"
@@ -1139,15 +1139,15 @@ export const TableKeypadPanel: React.FC<TableKeypadPanelProps> = ({
           const occOrder = orders.find(order => String(order.id) === String(matchedTable.commerce_order_id));
           const fireState = occOrder ? getFireState?.(occOrder) : undefined;
           return (
-          <div className="bg-[#F5F6F4] rounded-2xl p-3.5 border border-[#E0E3DF] space-y-3 shadow-sm">
+          <div className="bg-[#F5F6F4] rounded-2xl p-2.5 border border-[#E0E3DF] space-y-2 shadow-sm">
             {/* OCCUPIED STATUS & FINANCIALS */}
-            <div className="flex items-center justify-between border-b border-[#E0E3DF] pb-2">
+            <div className="flex items-center justify-between border-b border-[#E0E3DF] pb-1.5">
               <div>
                 <div className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping" />
-                  <span className="text-2xl font-black text-[#242B28]">Table {matchedTable.table_code.replace(/^T/i, '')}</span>
+                  <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+                  <span className="text-xl font-black text-[#242B28]">Table {matchedTable.table_code.replace(/^T/i, '')}</span>
                 </div>
-                <div className="text-[10px] text-[#5E6964] mt-0.5">
+                <div className="text-[10px] text-[#5E6964]">
                   Server: <strong className="text-[#242B28]">{matchedTable.assigned_waiter || cashierName}</strong>
                 </div>
               </div>
@@ -1159,13 +1159,13 @@ export const TableKeypadPanel: React.FC<TableKeypadPanelProps> = ({
             </div>
 
             {/* QUICK STATS: read-only guests + elapsed */}
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <div className="p-2 rounded-xl bg-white border border-[#E0E3DF] flex items-center justify-between">
+            <div className="grid grid-cols-2 gap-1.5 text-xs">
+              <div className="py-1 px-2 rounded-xl bg-white border border-[#E0E3DF] flex items-center justify-between">
                 <span className="text-[#5E6964] text-[10px]">Guests</span>
                 <span className="font-black text-[#242B28]">{matchedTable.guest_count || 1}</span>
               </div>
 
-              <div className="p-2 rounded-xl bg-white border border-[#E0E3DF] flex items-center justify-between">
+              <div className="py-1 px-2 rounded-xl bg-white border border-[#E0E3DF] flex items-center justify-between">
                 <span className="font-black text-amber-700 flex items-center gap-1">
                   <Clock className="w-3 h-3 text-amber-600" />
                   {formatElapsedDuration(matchedTable.elapsed_minutes)}
@@ -1174,7 +1174,7 @@ export const TableKeypadPanel: React.FC<TableKeypadPanelProps> = ({
             </div>
 
             {/* SECONDARY ACTION BUTTONS: Transfer + Print Bill */}
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 gap-1.5">
               <button
                 type="button"
                 disabled={!isShiftOpen}
@@ -1186,7 +1186,7 @@ export const TableKeypadPanel: React.FC<TableKeypadPanelProps> = ({
                   setIsTransferMode(true);
                   setTransferTargetInput('');
                 }}
-                className={`h-10 rounded-xl border font-black text-xs flex items-center justify-center gap-1.5 transition active:scale-95 ${
+                className={`h-9 rounded-xl border font-black text-xs flex items-center justify-center gap-1.5 transition active:scale-95 ${
                   !isShiftOpen
                     ? "bg-[#F5F6F4] text-slate-400 border-[#E0E3DF] opacity-40 cursor-not-allowed"
                     : "bg-white hover:bg-slate-100 text-[#242B28] border-[#E0E3DF] cursor-pointer"
@@ -1206,7 +1206,7 @@ export const TableKeypadPanel: React.FC<TableKeypadPanelProps> = ({
                   }
                   if (onPrintPreCheckDoc) onPrintPreCheckDoc(matchedTable);
                 }}
-                className={`h-10 rounded-xl border font-black text-xs flex items-center justify-center gap-1.5 transition active:scale-95 ${
+                className={`h-9 rounded-xl border font-black text-xs flex items-center justify-center gap-1.5 transition active:scale-95 ${
                   !isShiftOpen
                     ? "bg-[#F5F6F4] text-slate-400 border-[#E0E3DF] opacity-40 cursor-not-allowed"
                     : "bg-white hover:bg-slate-100 text-[#242B28] border-[#E0E3DF] cursor-pointer"
@@ -1229,7 +1229,7 @@ export const TableKeypadPanel: React.FC<TableKeypadPanelProps> = ({
                   }
                   if (occOrder) onFireOrder?.(occOrder);
                 }}
-                className="w-full h-10 rounded-xl bg-orange-600 hover:bg-orange-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-black text-xs flex items-center justify-center gap-1.5 transition active:scale-95 cursor-pointer"
+                className="w-full h-9 rounded-xl bg-orange-600 hover:bg-orange-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-black text-xs flex items-center justify-center gap-1.5 transition active:scale-95 cursor-pointer"
               >
                 <span>{fireState?.busy ? 'Firing…' : !fireState?.holds ? 'Fire — No held courses' : fireState.fired >= fireState.holds ? '✓ Fired' : `🔥 Fire — ${fireState.holds - fireState.fired} held`}</span>
               </button>
@@ -1247,7 +1247,7 @@ export const TableKeypadPanel: React.FC<TableKeypadPanelProps> = ({
                 handleOpenOccupiedOrder();
               }}
               style={isShiftOpen ? { backgroundColor: primaryColor, color: primaryText } : undefined}
-              className={`w-full h-12 font-black text-sm rounded-xl transition-all shadow flex items-center justify-center gap-2 ${
+              className={`w-full h-10 font-black text-xs sm:text-sm rounded-xl transition-all shadow flex items-center justify-center gap-2 ${
                 !isShiftOpen
                   ? "bg-slate-200 text-slate-400 opacity-40 cursor-not-allowed"
                   : "hover:opacity-90 active:scale-95 cursor-pointer"
@@ -1265,7 +1265,7 @@ export const TableKeypadPanel: React.FC<TableKeypadPanelProps> = ({
                 }
                 handleClear();
               }}
-              className={`w-full h-12 rounded-xl text-[#242B28] font-black text-sm border border-[#E0E3DF] bg-white hover:bg-slate-100 transition active:scale-95 ${
+              className={`w-full h-9 rounded-xl text-[#242B28] font-black text-xs border border-[#E0E3DF] bg-white hover:bg-slate-100 transition active:scale-95 ${
                 !isShiftOpen
                   ? "opacity-40 cursor-not-allowed"
                   : "cursor-pointer"

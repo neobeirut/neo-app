@@ -75,6 +75,7 @@ import {
 import { TableTransferModal } from "../pos/components/TableTransferModal";
 import { ConceptWorkspaceSwitcher } from "../pos/components/ConceptWorkspaceSwitcher";
 import FullscreenToggleButton from "../pos/components/FullscreenToggleButton";
+import { usePosAutoFit } from "../pos/hooks/usePosAutoFit";
 import { posWorkspaceService, KNOWN_CONCEPT_PROFILES, type TerminalWorkspaceState } from "../pos/services/posWorkspaceService";
 
 interface PosTerminalScreenProps {
@@ -210,6 +211,14 @@ const partitionCustomizations = (customizations) => {
 // OVR LOAD Tablet POS System v2.6.0 - Auto WhatsApp Location Sync
 export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenProps) {
   const { primaryColor, primaryHover, primaryText } = useRestaurantTheme();
+
+  // Screen Auto-Fit Engine (automatically adapts layout and popups to any resolution without scrolling)
+  const {
+    scale: autoFitScale,
+    isAutoFit,
+    toggleAutoFit,
+    containerStyle: autoFitContainerStyle
+  } = usePosAutoFit({ baseWidth: 1180, baseHeight: 820 });
 
   // FLOW Branch Mapping State
   const [commerceBranchLink, setCommerceBranchLink] = useState<CommerceBranchLink | null>(null);
@@ -5190,7 +5199,10 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   const realtimeStatus = getRealtimeBranchStatusInfo(branchStatus, posOperationalStatus, posClosureReason);
 
   return (
-    <div className="h-screen max-h-screen flex flex-col bg-[#F5F6F4] text-[#242B28] font-sans overflow-hidden select-none">
+    <div
+      style={autoFitContainerStyle}
+      className="h-screen max-h-screen flex flex-col bg-[#F5F6F4] text-[#242B28] font-sans overflow-hidden select-none"
+    >
       <InventorySyncNotice restaurantId={currentRestaurantId} branchId={currentBranchId || commerceBranchLink?.flow_branch_id} legacyBranchId={commerceBranchLink?.external_branch_id} revision={inventoryRevision} />
       {!isShiftOpen && (
         <div className="bg-rose-950 border-b border-rose-500/50 px-4 py-2 flex items-center justify-between z-30 flex-shrink-0 animate-pulse text-white">
@@ -5372,6 +5384,18 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                 compact
                 className="px-2 py-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 text-xs font-bold flex items-center justify-center cursor-pointer transition shadow-xs"
               />
+              <button
+                type="button"
+                onClick={toggleAutoFit}
+                className={`px-2 py-1.5 rounded-lg text-xs font-bold flex items-center justify-center cursor-pointer transition shadow-xs border ${
+                  isAutoFit
+                    ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
+                    : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                }`}
+                title={`Screen Auto-Fit: ${isAutoFit ? `ON (${Math.round(autoFitScale * 100)}%) - Click for 100% standard size` : 'OFF (100%) - Click to auto-fit to screen'}`}
+              >
+                <span>{isAutoFit ? `📐 Fit ${autoFitScale < 0.999 ? `${Math.round(autoFitScale * 100)}%` : 'Auto'}` : '📐 100%'}</span>
+              </button>
             </div>
 
             {/* Cashier Badge with 1-Tap Quick Lock */}

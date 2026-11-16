@@ -134,10 +134,10 @@ export const OpenShiftModal: React.FC<OpenShiftModalProps> = ({
   const hasHandoverData = effectivePrefillSource && (effectivePrefillUsd != null || effectivePrefillLbp != null);
 
   return (
-    <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
-      <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-md p-6 shadow-2xl text-slate-900">
+    <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 animate-in fade-in">
+      <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-md max-h-[94dvh] flex flex-col shadow-2xl text-slate-900 overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-200 pb-3 mb-4">
+        <div className="flex items-center justify-between border-b border-slate-200 p-4 sm:p-5 flex-shrink-0 bg-white">
           <div className="flex items-center gap-3">
             <div
               className="w-10 h-10 rounded-2xl flex items-center justify-center font-bold text-xl shadow-xs"
@@ -166,27 +166,27 @@ export const OpenShiftModal: React.FC<OpenShiftModalProps> = ({
           </button>
         </div>
 
-        {(error || (!isConceptDeliveryMode && statusError)) && (
-          <div className="mb-4 p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs font-bold flex items-center gap-2">
-            <span>⚠️</span>
-            <span>{error || (!isConceptDeliveryMode && statusError)}</span>
-          </div>
-        )}
+        <form onSubmit={handleSubmit} className="flex-1 min-h-0 flex flex-col overflow-hidden">
+          <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-5 space-y-3.5">
+            {(error || (!isConceptDeliveryMode && statusError)) && (
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs font-bold flex items-center gap-2">
+                <span>⚠️</span>
+                <span>{error || (!isConceptDeliveryMode && statusError)}</span>
+              </div>
+            )}
 
-        {/* Warning Banner */}
-        <div className="mb-4 p-3 bg-amber-50 border border-amber-300 rounded-xl text-amber-900 flex items-start gap-2.5 text-xs">
-          <span className="text-base leading-none">⚠️</span>
-          <div>
-            <div className="font-black text-amber-900">
-              {isConceptDeliveryMode ? `${concept?.name || 'OVRLOAD'} Cash Shift is Currently Closed` : 'Shift is Currently Closed'}
+            {/* Warning Banner */}
+            <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl text-amber-900 flex items-start gap-2.5 text-xs">
+              <span className="text-base leading-none">⚠️</span>
+              <div>
+                <div className="font-black text-amber-900">
+                  {isConceptDeliveryMode ? `${concept?.name || 'OVRLOAD'} Cash Shift is Currently Closed` : 'Shift is Currently Closed'}
+                </div>
+                <div className="text-amber-800/90 mt-0.5 font-medium leading-relaxed">
+                  Please count and verify your opening cash float to begin taking orders and processing payments.
+                </div>
+              </div>
             </div>
-            <div className="text-amber-800/90 mt-0.5 font-medium leading-relaxed">
-              Please count and verify your opening cash float to begin taking orders and processing payments.
-            </div>
-          </div>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
           {/* Cashier & Date */}
           <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex justify-between items-center text-xs">
             <span className="text-slate-500 font-bold uppercase text-[11px]">Cashier:</span>
@@ -325,9 +325,10 @@ export const OpenShiftModal: React.FC<OpenShiftModalProps> = ({
               />
             </div>
           </div>
+          </div>
 
-          {/* Actions */}
-          <div className="flex gap-2 pt-2">
+          {/* Actions - Fixed at Bottom */}
+          <div className="flex gap-2 p-4 bg-slate-50 border-t border-slate-200 flex-shrink-0">
             <button
               type="button"
               onClick={onClose}
