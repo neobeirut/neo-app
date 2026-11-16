@@ -83,6 +83,7 @@ interface TicketItem {
   name: string;
   unit_price: number;
   qty: number;
+  originalQty?: number;
   selectedCustomizations?: any[];
   note?: string;
   isHoldSeparator?: boolean;
@@ -539,13 +540,15 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
               rawName.toUpperCase().includes('HOLD FOR NEXT COURSE') ||
               rawName.toUpperCase() === '--- HOLD ---';
 
+            const itemQty = Number(i.quantity || i.qty) || 1;
             return {
               line_item_id: i.line_item_id || String(i.id || Math.random()),
               order_item_id: i.id,
               product_id: isHold ? (i.product_id || 'hold_separator_' + Date.now()) : (i.product_id || i.id),
               name: isHold ? 'HOLD' : (i.product_name || i.name),
               unit_price: isHold ? 0 : (Number(i.unit_price) || 0),
-              qty: Number(i.quantity || i.qty) || 1,
+              qty: itemQty,
+              originalQty: !isHold ? itemQty : 0,
               selectedCustomizations: i.customizations || [],
               note: i.comment || i.note || '',
               isHoldSeparator: isHold,
@@ -678,29 +681,37 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
       return;
     }
 
-    const isSentToKitchen = Boolean(item.isOrdered && activeTableContext?.orderId);
+    const originalQty = Number(item.originalQty !== undefined ? item.originalQty : (item.isOrdered && activeTableContext?.orderId ? item.qty : 0));
 
-    if (delta < 0 && isSentToKitchen) {
-      const canVoid = hasPosPermission(currentUser, 'void_sent_items');
-      if (!canVoid) {
-        setSupervisorAuthRequest({
-          actionKey: 'void_sent_items',
-          actionTitle: `Void Sent Item: ${item.name}`,
-          tableNumber: activeTableContext?.tableCode,
-          orderId: activeTableContext?.orderId,
-          previousValue: item.qty,
-          newValue: item.qty - 1,
-          requireReason: true,
-          defaultReason: 'Customer changed mind',
-          onAuthorized: () => {
-            executeVoidSentItem(index);
-          }
-        });
-        return;
-      } else {
-        executeVoidSentItem(index);
-        return;
+    if (delta < 0) {
+      const newQty = item.qty + delta;
+      // Only require supervisor void if trying to reduce below already placed original quantity!
+      if (originalQty > 0 && newQty < originalQty) {
+        const canVoid = hasPosPermission(currentUser, 'void_sent_items');
+        if (!canVoid) {
+          setSupervisorAuthRequest({
+            actionKey: 'void_sent_items',
+            actionTitle: `Void Sent Item: ${item.name}`,
+            tableNumber: activeTableContext?.tableCode,
+            orderId: activeTableContext?.orderId,
+            previousValue: item.qty,
+            newValue: item.qty - 1,
+            requireReason: true,
+            defaultReason: 'Customer changed mind',
+            onAuthorized: () => {
+              executeVoidSentItem(index);
+            }
+          });
+          return;
+        } else {
+          executeVoidSentItem(index);
+          return;
+        }
       }
+
+      // Decrement unplaced draft quantity freely
+      applyDraftQtyChange(index, delta);
+      return;
     }
 
     if (isOtherWaiterTable && !hasPosPermission(currentUser, 'edit_other_tables')) {
@@ -1068,6 +1079,20 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
 
       let targetOrderId = activeTableContext?.orderId;
       if (targetOrderId) {
+        if (COMMERCE_API_BASE && /^\d+$/.test(String(targetOrderId))) {
+          try {
+            await fetch(`${COMMERCE_API_BASE}/api/pos/orders/${targetOrderId}/status`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                status: 'held',
+                items: orderPayload.items
+              })
+            });
+          } catch (e) {
+            console.warn('Commerce API status update warning from waiter screen:', e);
+          }
+        }
         await updateDirectOrderStatus(targetOrderId, {
           items: orderPayload.items
         });
@@ -1093,7 +1118,19 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
       }
 
       // Send Chits to Preparation Printers: Intelligent multi-printer routing & bundle expansion
-      const unprintedItems = ticketItems.filter(it => !it.isOrdered && !isCourseHoldItem(it));
+      const unprintedItems: any[] = [];
+      for (const it of ticketItems) {
+        if (isCourseHoldItem(it)) continue;
+        const orig = Number(it.originalQty || 0);
+        if (!it.isOrdered || orig === 0) {
+          unprintedItems.push(it);
+        } else if (it.qty > orig) {
+          unprintedItems.push({
+            ...it,
+            qty: it.qty - orig
+          });
+        }
+      }
       if (unprintedItems.length > 0) {
         try {
           const { jobs, unroutedCount, excludedNoPrintCount } = await buildPreparationPrintJobs({
@@ -1122,7 +1159,7 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
         }
       }
 
-      setTicketItems(prev => prev.map(it => ({ ...it, isOrdered: true })));
+      setTicketItems(prev => prev.map(it => ({ ...it, isOrdered: true, originalQty: it.qty })));
       showNotification(`📤 Order sent to kitchen for Table ${activeTableContext?.tableCode}!`, 'success');
 
       // Return immediately to table selection page
@@ -1233,6 +1270,7 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
               onClick={() => {
                 setView('floor');
                 setActiveTableContext(null);
+                setTicketItems([]);
               }}
               className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[#F5F6F4] hover:bg-slate-200 text-[#242B28] border border-[#E0E3DF] text-sm font-semibold transition active:scale-95 cursor-pointer"
             >
@@ -1663,8 +1701,20 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
                           className="flex-1 min-w-0 pr-1 cursor-pointer hover:opacity-90"
                           title="Click to customize modifiers & notes"
                         >
-                          <div className="font-bold text-xs text-[#242B28] truncate leading-snug">
-                            {item.name}
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-bold text-xs text-[#242B28] truncate leading-snug">{item.name}</span>
+                            {Boolean(item.isOrdered && activeTableContext?.orderId) && (
+                              <span className="text-[9px] font-black uppercase tracking-wider px-1 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-300">
+                                {Number(item.originalQty || 0) > 0 && item.qty > Number(item.originalQty)
+                                  ? `Ordered: ${item.originalQty} (+${item.qty - Number(item.originalQty)} new)`
+                                  : 'Ordered'}
+                              </span>
+                            )}
+                            {!item.isOrdered && Boolean(activeTableContext?.orderId) && !item.isHoldSeparator && (
+                              <span className="text-[9px] font-black uppercase tracking-wider px-1 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-300">
+                                +Draft
+                              </span>
+                            )}
                           </div>
 
                           {/* Customizations Pills */}

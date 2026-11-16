@@ -961,7 +961,8 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
           } else {
             remaining[targetItemIndex] = {
               ...currentItem,
-              qty: currentItem.qty - toRemove
+              qty: currentItem.qty - toRemove,
+              originalQty: Math.max(0, Number(currentItem.originalQty !== undefined ? currentItem.originalQty : currentItem.qty) - toRemove)
             };
           }
         }
@@ -2229,11 +2230,13 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         rawName.toUpperCase().includes('HOLD FOR NEXT COURSE') ||
         rawName.toUpperCase() === '--- HOLD ---';
 
+      const itemQty = Number(i.quantity || i.qty) || 1;
       return {
         product_id: isHold ? (i.product_id || 'hold_separator_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6)) : (i.product_id || i.id),
         name: isHold ? 'HOLD' : (i.product_name || i.name),
         unit_price: isHold ? 0 : (Number(i.unit_price) || 0),
-        qty: Number(i.quantity || i.qty) || 1,
+        qty: itemQty,
+        originalQty: !isHold ? itemQty : 0,
         selectedCustomizations: custs,
         note: i.comment || i.note || (isHold ? "Kitchen waits for fire" : ""),
         isHoldSeparator: isHold,
@@ -2967,17 +2970,19 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     if (!item) return;
 
     const targetOrderId = editingOrderId || activeTableContext?.orderId;
-    const isOrderedItem = Boolean(item.isOrdered && targetOrderId);
+    const originalQty = Number(item.originalQty !== undefined ? item.originalQty : (item.isOrdered && targetOrderId ? item.qty : 0));
 
     if (delta < 0) {
-      if (isOrderedItem) {
-        // Decrementing an already-ordered item requires manager authorization and void waste logging!
+      const newQty = item.qty + delta;
+
+      // Only prompt for manager void if the user tries to reduce below the already-placed original quantity!
+      if (originalQty > 0 && newQty < originalQty) {
         handlePromptVoid(index, 1);
         return;
       }
-      // Draft item just added to the basket: decrement or remove immediately
+
+      // Decrement unplaced/draft quantity freely
       const updated = [...ticketItems];
-      const newQty = item.qty + delta;
       if (newQty <= 0) {
         updated.splice(index, 1);
       } else {
@@ -3010,11 +3015,28 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     }
 
     const targetOrderId = editingOrderId || activeTableContext?.orderId;
+    const origQty = Number(itemToVoid.originalQty !== undefined ? itemToVoid.originalQty : (itemToVoid.isOrdered && targetOrderId ? itemToVoid.qty : 0));
+
+    // If caller didn't specify a specific void qty (e.g. trash icon was clicked):
+    if (qtyToVoid === undefined) {
+      if (itemToVoid.qty > origQty) {
+        // Discard unplaced draft quantity freely back to original placed qty
+        if (origQty > 0) {
+          const updated = [...ticketItems];
+          updated[index] = { ...itemToVoid, qty: origQty };
+          setTicketItems(updated);
+        } else {
+          handleRemoveTicketItem(index);
+        }
+        return;
+      }
+    }
+
     // Authorized void should ONLY appear once items are ordered, not when just added to the basket!
-    const isOrderedItem = Boolean(itemToVoid.isOrdered && targetOrderId);
+    const isOrderedItem = Boolean(itemToVoid.isOrdered && targetOrderId && origQty > 0);
 
     if (isOrderedItem) {
-      const actualQtyToVoid = Math.min(itemToVoid.qty || 1, qtyToVoid && qtyToVoid > 0 ? qtyToVoid : (itemToVoid.qty || 1));
+      const actualQtyToVoid = Math.min(origQty, qtyToVoid && qtyToVoid > 0 ? qtyToVoid : origQty);
       const staffUser = activeCashier || user;
       const canVoidDirect = hasPosPermission(staffUser, 'void_sent_items');
 
@@ -3147,16 +3169,24 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   };
 
   const handleResetCart = () => {
-    const hasOrderedItems = ticketItems.some(i => i.isOrdered);
     const targetOrderId = editingOrderId || activeTableContext?.orderId;
+    const hasOrderedItems = ticketItems.some(i => i.isOrdered);
+
+    // If there are uncommitted draft additions (new items or incremented quantities), discard ONLY draft changes!
+    const hasDraftChanges = ticketItems.some(i => (!i.isOrdered && !i.isHoldSeparator) || (Number(i.originalQty || 0) > 0 && i.qty > Number(i.originalQty)));
+    if (hasDraftChanges && targetOrderId) {
+      const reverted = ticketItems
+        .filter(i => (i.isOrdered && Number(i.originalQty || 0) > 0) || i.isHoldSeparator)
+        .map(i => ({
+          ...i,
+          qty: Number(i.originalQty || 0) > 0 ? Number(i.originalQty) : i.qty
+        }));
+      setTicketItems(reverted);
+      return;
+    }
 
     if (hasOrderedItems && targetOrderId) {
-      // If there are uncommitted draft items added in this session, clear only draft items
-      const hasDraftItems = ticketItems.some(i => !i.isOrdered && !i.isHoldSeparator);
-      if (hasDraftItems) {
-        setTicketItems(ticketItems.filter(i => i.isOrdered || i.isHoldSeparator));
-        return;
-      }
+      // If only placed items remain at their original quantities, wiping cart requires manager void authorization
 
       // If only ordered items remain, wiping cart requires manager void authorization
       const staffUser = activeCashier || user;
@@ -4060,6 +4090,22 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
             heldOrderId = data.order?.id || data.orderId;
           }
         }
+      } else if (heldOrderId) {
+        // Dual-write sync: ensure Supabase pos_orders and pos_order_items match Commerce API
+        try {
+          await updateDirectOrderStatus(heldOrderId, {
+            subtotal,
+            total,
+            items: orderPayload.items,
+            ...(!isDineIn ? {
+              is_scheduled: Boolean(effScheduledTime),
+              scheduled_for: effScheduledTime ? `${effScheduledDate} ${effScheduledTime}` : null,
+              scheduled_notes: effScheduledNote || null
+            } : {})
+          });
+        } catch (dbSyncErr) {
+          console.warn("Direct DB sync after Commerce API order placement warning:", dbSyncErr);
+        }
       }
 
       if (!data?.success) {
@@ -4126,8 +4172,20 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
             console.warn("Kitchen print for scheduled order error:", pe);
           }
         } else {
-          // Multi-Printer Preparation Routing Engine: Dispatch new items to section printers
-          const unprintedItems = ticketItems.filter(it => !it.isOrdered && !isCourseHoldItem(it));
+          // Multi-Printer Preparation Routing Engine: Dispatch new and incremental items to section printers
+          const unprintedItems: any[] = [];
+          for (const it of ticketItems) {
+            if (isCourseHoldItem(it)) continue;
+            const orig = Number(it.originalQty || 0);
+            if (!it.isOrdered || orig === 0) {
+              unprintedItems.push(it);
+            } else if (it.qty > orig) {
+              unprintedItems.push({
+                ...it,
+                qty: it.qty - orig
+              });
+            }
+          }
           if (unprintedItems.length > 0) {
             try {
               const effBranchId = currentBranchId || commerceBranchLink?.flow_branch_id;
@@ -6400,7 +6458,14 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                         <h5 className="font-extrabold text-xs text-[#242B28] leading-tight hover:opacity-80 transition-colors">{item.name}</h5>
                         {Boolean(item.isOrdered && (editingOrderId || activeTableContext?.orderId)) && (
                           <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-300">
-                            Ordered
+                            {Number(item.originalQty || 0) > 0 && item.qty > Number(item.originalQty)
+                              ? `Ordered: ${item.originalQty} (+${item.qty - Number(item.originalQty)} new)`
+                              : 'Ordered'}
+                          </span>
+                        )}
+                        {!item.isOrdered && Boolean(editingOrderId || activeTableContext?.orderId) && !item.isHoldSeparator && (
+                          <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-300">
+                            +Draft
                           </span>
                         )}
                       </div>
@@ -6436,7 +6501,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                       onClick={() => handlePromptVoid(index)}
                       disabled={!isShiftOpen}
                       className="text-rose-500 hover:text-rose-700 hover:bg-rose-50 p-1.5 rounded text-sm transition-all active:scale-90 flex items-center justify-center cursor-pointer flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
-                      title={!isShiftOpen ? "Shift is closed" : Boolean(item.isOrdered && (editingOrderId || activeTableContext?.orderId)) ? "Authorize Item Void (Requires Manager PIN)" : "Remove Item from Ticket"}
+                      title={!isShiftOpen ? "Shift is closed" : Boolean(item.isOrdered && (editingOrderId || activeTableContext?.orderId) && item.qty <= Number(item.originalQty || 0)) ? "Authorize Item Void (Requires Manager PIN)" : "Remove / Discard Draft Quantity"}
                     >
                       🗑️
                     </button>

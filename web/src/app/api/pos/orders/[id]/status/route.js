@@ -62,6 +62,9 @@ export async function PATCH(request, { params }) {
       if (items && Array.isArray(items) && items.length > 0) {
         await sql`DELETE FROM order_items WHERE order_id = ${id}`;
         for (const item of items) {
+          const rawPid = item.product_id || item.id;
+          const pId = parseInt(rawPid, 10);
+          if (isNaN(pId)) continue;
           const unitPrice = parseFloat(item.unit_price || item.unit_price_usd || 0);
           const qty = parseInt(item.quantity || item.qty || 1, 10);
           const totalPrice = unitPrice * qty;
@@ -81,7 +84,7 @@ export async function PATCH(request, { params }) {
               comment
             ) VALUES (
               ${id},
-              ${item.product_id || item.id},
+              ${pId},
               ${qty},
               ${unitPrice},
               ${totalPrice},
