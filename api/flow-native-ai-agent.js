@@ -40,7 +40,8 @@ export function getStagingSql() {
 
 export const NEO_CONCEPT_ID = '00000000-0000-0000-0000-000000000001';
 export const NEO_RESTAURANT_ID = '79256f11-a9f8-4fec-901d-69baf929762d';
-export const GEMINI_API_KEY = (typeof process !== 'undefined' && process.env?.GEMINI_API_KEY) || '';
+export const getGeminiApiKey = () => (typeof process !== 'undefined' && process.env?.GEMINI_API_KEY ? process.env.GEMINI_API_KEY.trim() : '');
+export const GEMINI_API_KEY = getGeminiApiKey();
 
 /**
  * Retrieve Live Server Date and Time in Asia/Beirut Timezone
@@ -1833,7 +1834,7 @@ CRITICAL OPERATIONAL & MODIFICATION MANDATES:
    - Guest count: Preserve neutrality ("5 guests").
    - Customer identity: Capture real name before submission.
    - Natural confirmation: If confirmed with minor request (e.g. "yes and we need a high chair"), submit directly with babyChairs=1.
-9. Communicate naturally, warmly, and concisely in English (or French/Arabic if spoken to).`;
+9. LANGUAGE PROTOCOL: ALWAYS reply in the exact language the customer addresses you with. If the customer speaks French (e.g. "je ne comprend pas langlais", "les heure douverture"), reply fluently and warmly in French. If Arabic / Lebanese / Arabizi, reply in Arabic / Lebanese. If English, reply in English. NEVER respond in English when the customer states they do not speak English or communicates in French/Arabic.`;
 
   // Sync session history
   if (Array.isArray(history) && history.length > 0 && session.history.length === 0) {
@@ -1860,7 +1861,8 @@ CRITICAL OPERATIONAL & MODIFICATION MANDATES:
   let totalRetryCount = 0;
   let modelCallsCount = 0;
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${activeModel}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`;
+  const effectiveKey = getGeminiApiKey();
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${activeModel}:generateContent?key=${encodeURIComponent(effectiveKey)}`;
 
   while (loops > 0) {
     loops--;

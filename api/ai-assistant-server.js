@@ -133,7 +133,7 @@ export async function callGeminiApi({
   model = 'gemini-2.5-flash',
   temperature = 0.2
 }) {
-  const apiKey = (typeof process !== 'undefined' && process.env?.GEMINI_API_KEY) || '';
+  const apiKey = (typeof process !== 'undefined' && process.env?.GEMINI_API_KEY ? process.env.GEMINI_API_KEY.trim() : '');
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
   const contents = [];
