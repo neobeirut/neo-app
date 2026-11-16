@@ -414,6 +414,26 @@ export async function executeTransferSelectedItems(params: TransferSelectedItems
       // Create new dine-in order for destination table
       const newDestSubtotal = itemsToAdd.reduce((acc, it) => acc + it.unit_price * it.quantity, 0);
 
+      // 1. Authoritative create in Supabase pos_orders (the source of truth for POS table sessions)
+      const createRes = await createDirectOrder({
+        branch_id: params.branchId,
+        restaurant_id: params.restaurantId,
+        concept_id: conceptId,
+        orderType: 'dine_in',
+        service_type: 'dine_in',
+        table_label: finalTargetCode,
+        customerName: `Table ${cleanDestCode}`,
+        guest_count: 2,
+        waiter_reference: params.staffUser.name || 'Staff',
+        cashierName: params.staffUser.name || 'Staff',
+        orderSource: 'POS',
+        paymentMethod: 'Cash',
+        status: 'held',
+        subtotal: newDestSubtotal,
+        total: newDestSubtotal,
+        items: itemsToAdd
+      });
+
       let extOrderId: any = null;
       if (COMMERCE_API_BASE) {
         try {
@@ -448,26 +468,8 @@ export async function executeTransferSelectedItems(params: TransferSelectedItems
         }
       }
 
-      const createRes = await createDirectOrder({
-        branch_id: params.branchId,
-        restaurant_id: params.restaurantId,
-        concept_id: conceptId,
-        orderType: 'dine_in',
-        service_type: 'dine_in',
-        table_label: finalTargetCode,
-        customerName: `Table ${cleanDestCode}`,
-        guest_count: 2,
-        waiter_reference: params.staffUser.name || 'Staff',
-        cashierName: params.staffUser.name || 'Staff',
-        orderSource: 'POS',
-        paymentMethod: 'Cash',
-        status: 'held',
-        subtotal: newDestSubtotal,
-        total: newDestSubtotal,
-        items: itemsToAdd
-      });
-
-      targetDestOrderId = extOrderId || createRes?.order?.id || createRes?.orderId;
+      // Canonical targetDestOrderId must prioritize authoritative Supabase pos_orders ID
+      targetDestOrderId = createRes?.order?.id || createRes?.orderId || extOrderId;
 
       // SAFETY GATE: If destination order creation failed, DO NOT subtract items from source table!
       if (!createRes?.success && !targetDestOrderId) {

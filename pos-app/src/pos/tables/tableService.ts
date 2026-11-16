@@ -394,7 +394,7 @@ export async function loadFloorState(branchId: string): Promise<{
           }
         });
       } else {
-        // Table has NO order and NO items yet! Table remains free/available on floor plan
+        // Table has NO active order or items! Mark table as available and close stale session
         links.forEach((l: any) => {
           const tbl = tableMap.get(l.table_id);
           if (tbl) {
@@ -403,6 +403,13 @@ export async function loadFloorState(branchId: string): Promise<{
             tbl.commerce_order_id = null;
           }
         });
+        if (session.id) {
+          supabase
+            .from('pos_table_sessions')
+            .update({ status: 'closed', closed_at: new Date().toISOString() })
+            .eq('id', session.id)
+            .then(() => {});
+        }
       }
     });
 

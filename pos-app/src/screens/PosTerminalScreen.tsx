@@ -3714,20 +3714,22 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       alert(`⚠️ Your assigned role (${staffUser?.role || 'Staff'}) does not have permission to view the tables floor.`);
       return;
     }
-    const needsSave = Boolean(activeTableContext && ticketItems.length > 0);
-    tableNavigationSaving.current = needsSave;
-    setIsSavingTableNavigation(needsSave);
-    setPosActiveView('tables');
-    try {
-      if (needsSave) await handleSaveTableOrderSilently();
-      refreshFloorTables().catch(() => {});
-    } catch (e: any) {
-      setValidationError(e?.message || 'Could not save the table order. Please retry.');
-      setPosActiveView('sell');
-    } finally {
-      tableNavigationSaving.current = false;
-      setIsSavingTableNavigation(false);
+    // Check if waiter has unplaced draft changes (new items or incremented quantities)
+    const hasDraftChanges = ticketItems.some(i => (!i.isOrdered && !i.isHoldSeparator && i.name !== 'HOLD') || (Number(i.originalQty || 0) > 0 && i.qty > Number(i.originalQty)));
+    if (activeTableContext && hasDraftChanges) {
+      const confirmLeave = window.confirm(`⚠️ Table ${activeTableContext.tableCode} has unplaced draft changes. Discard unplaced changes and return to tables?`);
+      if (!confirmLeave) return;
+      // Revert draft changes back to saved/placed quantities without modifying DB
+      const reverted = ticketItems
+        .filter(i => (i.isOrdered && Number(i.originalQty || 0) > 0) || i.isHoldSeparator)
+        .map(i => ({
+          ...i,
+          qty: Number(i.originalQty || 0) > 0 ? Number(i.originalQty) : i.qty
+        }));
+      setTicketItems(reverted);
     }
+    setPosActiveView('tables');
+    refreshFloorTables().catch(() => {});
   };
   const handleOpenFloorMap = async () => {
     await handleNavigateToTables();
@@ -4012,123 +4014,22 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
 
       let data: any = null;
 
-      if (HAS_COMMERCE_API) {
-        try {
-          if (heldOrderId) {
-            const updateRes = await fetch(`${COMMERCE_API_BASE}/api/pos/orders/${heldOrderId}/status`, {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                status: isDineIn ? "held" : "preparing",
-                subtotal,
-                subtotal_amount: subtotal,
-                deliveryFee: (!isDineIn && orderType === "delivery") ? (Number(deliveryFee) || 0) : 0,
-                delivery_fee: (!isDineIn && orderType === "delivery") ? (Number(deliveryFee) || 0) : 0,
-                discountAmount,
-                discount_amount: discountAmount,
-                total,
-                total_amount: total,
-                customerName: resolvedCustomerName,
-                customerPhone,
-                deliveryAddress,
-                orderType: isDineIn ? "dine_in" : (orderType || "takeout"),
-                orderSource: selectedChannel || "POS",
-                items: orderPayload.items
-              })
-            });
-            if (updateRes.ok) {
-              data = await updateRes.json();
-              if (data) data.orderId = heldOrderId;
-            } else {
-              const errBody = await updateRes.json().catch(() => ({}));
-              data = { success: false, error: errBody.error || `HTTP ${updateRes.status} updating order` };
-            }
-          } else {
-            const extBranch = commerceBranchLink?.external_branch_id || currentBranchId || commerceBranchLink?.flow_branch_id;
-            const createRes = await fetch(`${COMMERCE_API_BASE}/api/pos/orders`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                branch_id: extBranch,
-                restaurant_id: currentRestaurantId,
-                concept_id: workspaceState.activeConcept?.id,
-                client_order_token: clientOrderToken,
-                orderType: isDineIn ? "dine_in" : (orderType || "takeout"),
-                service_type: isDineIn ? "dine_in" : undefined,
-                table_label: activeTableContext ? activeTableContext.tableCode : undefined,
-                guest_count: activeTableContext ? (activeTableContext.guestCount || 1) : undefined,
-                waiter_reference: activeTableContext ? (activeTableContext.waiterName || user?.name) : (activeCashier?.name || user?.name),
-                cashierName: activeCashier?.name || user?.name || "Cashier",
-                orderSource: selectedChannel || "POS",
-                paymentMethod: selectedPaymentMethod || "Cash USD",
-                payment_status: "pending",
-                customerName: resolvedCustomerName,
-                customerPhone,
-                deliveryAddress,
-                status: isDineIn ? "held" : "preparing",
-                subtotal,
-                subtotal_amount: subtotal,
-                deliveryFee: (!isDineIn && orderType === "delivery") ? (Number(deliveryFee) || 0) : 0,
-                delivery_fee: (!isDineIn && orderType === "delivery") ? (Number(deliveryFee) || 0) : 0,
-                discountAmount,
-                discount_amount: discountAmount,
-                total,
-                total_amount: total,
-                is_scheduled: Boolean(effScheduledTime),
-                scheduled_for: effScheduledTime ? `${effScheduledDate} ${effScheduledTime}` : undefined,
-                scheduled_note: effScheduledNote || undefined,
-                items: orderPayload.items
-              })
-            });
-            if (createRes.ok) {
-              data = await createRes.json();
-              if (data?.order?.id) data.orderId = data.order.id;
-              if (data && data.success) {
-                heldOrderId = data.orderId || data.order?.id;
-              }
-            } else {
-              const errBody = await createRes.json().catch(() => ({}));
-              data = { success: false, error: errBody.error || `HTTP ${createRes.status} creating order` };
-            }
-          }
-        } catch (apiErr: any) {
-          console.warn("Commerce API order placement failed, falling back to direct DB:", apiErr);
-        }
-      }
-
-      if (!data || !data.success) {
-        if (heldOrderId) {
-          data = await updateDirectOrderStatus(heldOrderId, {
-            subtotal,
-            total,
-            items: orderPayload.items,
-            ...(!isDineIn ? {
-              is_scheduled: Boolean(effScheduledTime),
-              scheduled_for: effScheduledTime ? `${effScheduledDate} ${effScheduledTime}` : null,
-              scheduled_notes: effScheduledNote || null
-            } : {})
-          });
-        } else {
-          data = await createDirectOrder(orderPayload);
-          if (data && data.success) {
-            heldOrderId = data.order?.id || data.orderId;
-          }
-        }
-      } else if (heldOrderId) {
-        // Dual-write sync: ensure Supabase pos_orders and pos_order_items match Commerce API
-        try {
-          await updateDirectOrderStatus(heldOrderId, {
-            subtotal,
-            total,
-            items: orderPayload.items,
-            ...(!isDineIn ? {
-              is_scheduled: Boolean(effScheduledTime),
-              scheduled_for: effScheduledTime ? `${effScheduledDate} ${effScheduledTime}` : null,
-              scheduled_notes: effScheduledNote || null
-            } : {})
-          });
-        } catch (dbSyncErr) {
-          console.warn("Direct DB sync after Commerce API order placement warning:", dbSyncErr);
+      // 1. Authoritative DB action in Supabase pos_orders (the source of truth for FLOW POS table sessions & floor plan)
+      if (heldOrderId) {
+        data = await updateDirectOrderStatus(heldOrderId, {
+          subtotal,
+          total,
+          items: orderPayload.items,
+          ...(!isDineIn ? {
+            is_scheduled: Boolean(effScheduledTime),
+            scheduled_for: effScheduledTime ? `${effScheduledDate} ${effScheduledTime}` : null,
+            scheduled_notes: effScheduledNote || null
+          } : {})
+        });
+      } else {
+        data = await createDirectOrder(orderPayload);
+        if (data && data.success) {
+          heldOrderId = data.order?.id || data.orderId;
         }
       }
 
@@ -4139,7 +4040,38 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         alert('⚠️ ' + errMsg);
         return;
       }
-      if (heldOrderId) {
+
+      // 2. Dual-write to Commerce API mirror (for external reports/analytics)
+      if (HAS_COMMERCE_API && heldOrderId) {
+        try {
+          const extBranch = commerceBranchLink?.external_branch_id || currentBranchId || commerceBranchLink?.flow_branch_id;
+          await fetch(`${COMMERCE_API_BASE}/api/pos/orders`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              branch_id: extBranch,
+              restaurant_id: currentRestaurantId,
+              concept_id: workspaceState.activeConcept?.id,
+              client_order_token: clientOrderToken,
+              orderType: isDineIn ? "dine_in" : (orderType || "takeout"),
+              service_type: isDineIn ? "dine_in" : undefined,
+              table_label: activeTableContext ? activeTableContext.tableCode : undefined,
+              customerName: resolvedCustomerName,
+              customerPhone,
+              deliveryAddress,
+              status: isDineIn ? "held" : "preparing",
+              subtotal,
+              total,
+              items: orderPayload.items
+            })
+          }).catch(apiErr => console.warn("Commerce API mirror notice:", apiErr));
+        } catch (apiErr: any) {
+          console.warn("Commerce API mirror notice:", apiErr);
+        }
+      }
+
+      // 3. Ensure Table Session is linked and occupied
+      if (isDineIn && heldOrderId) {
         if (activeTableContext?.sessionId) {
           try {
             await supabase
@@ -4154,7 +4086,45 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
           } catch (e) {
             console.warn("Could not update pos_table_sessions with held order ID:", e);
           }
+        } else if (activeTableContext?.tableCode) {
+          try {
+            const effBranch = currentBranchId || commerceBranchLink?.flow_branch_id || '';
+            const targetTable = await resolveOrCreatePosTable(effBranch, activeTableContext.tableCode);
+            const { data: newSession } = await supabase
+              .from('pos_table_sessions')
+              .insert([{
+                branch_id: effBranch,
+                restaurant_id: currentRestaurantId,
+                table_id: targetTable.id,
+                table_code: targetTable.table_code,
+                commerce_order_id: heldOrderId,
+                status: 'occupied',
+                guest_count: activeTableContext.guestCount || 2,
+                assigned_waiter_name_snapshot: activeTableContext.waiterName || user?.name || "Staff",
+                opened_by_user_id: user?.id || null,
+                opened_by_name_snapshot: user?.name || "Staff",
+                version: 1
+              }])
+              .select('id')
+              .single();
+
+            if (newSession?.id) {
+              await supabase
+                .from('pos_table_session_tables')
+                .insert([{
+                  session_id: newSession.id,
+                  table_id: targetTable.id,
+                  is_primary: true
+                }]);
+              setActiveTableContext(prev => prev ? { ...prev, sessionId: newSession.id, tableId: targetTable.id } : null);
+            }
+          } catch (createSessErr) {
+            console.warn("Could not create pos_table_sessions for table order:", createSessErr);
+          }
         }
+      }
+
+      if (heldOrderId) {
 
         // If this was a scheduled order, print the kitchen ticket chit
         if (effScheduledTime) {
@@ -4261,7 +4231,6 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         fetchOrdersQueue();
         try {
           window.dispatchEvent(new CustomEvent('flow:order_created', { detail: { orderId: heldOrderId } }));
-          window.dispatchEvent(new CustomEvent('flow:order_settled', { detail: { orderId: heldOrderId } }));
         } catch (e) {}
         refreshFloorTables().catch(() => {});
       } else {
@@ -6205,6 +6174,40 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                     >
                       <span>🔄</span>
                       <span>Transfer</span>
+                    </button>
+                    {/* CANCEL EDIT / DISCARD DRAFT BUTTON FOR TABLE */}
+                    {ticketItems.some(i => (!i.isOrdered && !i.isHoldSeparator && i.name !== 'HOLD') || (Number(i.originalQty || 0) > 0 && i.qty > Number(i.originalQty))) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const reverted = ticketItems
+                            .filter(i => (i.isOrdered && Number(i.originalQty || 0) > 0) || i.isHoldSeparator)
+                            .map(i => ({
+                              ...i,
+                              qty: Number(i.originalQty || 0) > 0 ? Number(i.originalQty) : i.qty
+                            }));
+                          setTicketItems(reverted);
+                        }}
+                        className="px-2 py-0.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 text-[10px] font-black border border-rose-300 flex items-center gap-1 transition active:scale-95 cursor-pointer ml-1"
+                        title="Discard unplaced draft quantity changes and new items"
+                      >
+                        <span>✕</span>
+                        <span>Cancel Edit</span>
+                      </button>
+                    )}
+                    {/* EXIT TABLE TO FLOOR (Leaves placed items intact) */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveTableContext(null);
+                        setTicketItems([]);
+                        setPosActiveView('tables');
+                        refreshFloorTables().catch(() => {});
+                      }}
+                      className="px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold border border-slate-300 flex items-center gap-1 transition active:scale-95 cursor-pointer ml-1"
+                      title="Close table editor and view Floor Plan"
+                    >
+                      <span>Exit</span>
                     </button>
                   </div>
                 )}

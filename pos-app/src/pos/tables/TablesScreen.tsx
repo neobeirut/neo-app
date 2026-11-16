@@ -234,6 +234,7 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
     tables.forEach(t => {
       // Empty or settled tables should not be displayed in Open Tables!
       if (t.status === 'available') return;
+      if (!t.commerce_order_id && (!t.current_bill || t.current_bill <= 0)) return;
 
       const codeUpper = (t.table_code || '').toUpperCase();
       if (settledKeys.has(codeUpper) || (t.commerce_order_id && settledKeys.has(`order-${t.commerce_order_id}`)) || settledKeys.has(`table-${t.id}`)) {

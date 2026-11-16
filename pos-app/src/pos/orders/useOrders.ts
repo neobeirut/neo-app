@@ -190,13 +190,19 @@ export function useOrders(options: UseOrdersOptions = {}) {
       fetchOrders(true);
     };
 
+    const handleRefreshOnly = () => {
+      fetchOrders(true);
+    };
+
     window.addEventListener('flow:table_settled', handleSettled);
     window.addEventListener('flow:order_settled', handleSettled);
-    window.addEventListener('flow:order_created', handleSettled);
+    window.addEventListener('flow:order_created', handleRefreshOnly);
+    window.addEventListener('flow:table_transferred', handleRefreshOnly);
     return () => {
       window.removeEventListener('flow:table_settled', handleSettled);
       window.removeEventListener('flow:order_settled', handleSettled);
-      window.removeEventListener('flow:order_created', handleSettled);
+      window.removeEventListener('flow:order_created', handleRefreshOnly);
+      window.removeEventListener('flow:table_transferred', handleRefreshOnly);
     };
   }, [fetchOrders]);
 
