@@ -428,18 +428,30 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
   const activeMetricsTables = mainTab === 'floor_plan' && activeAreaId ? filteredTables : tables;
   const availableCount = activeMetricsTables.filter(t => t.status === 'available').length;
   const openCount = activeMetricsTables.filter(t => t.status === 'open').length;
-  const occupiedCount = activeMetricsTables.filter(t => t.status === 'occupied' || t.status === 'bill_requested').length;
-  const billCount = activeMetricsTables.filter(t => t.status === 'bill_requested').length;
-  const totalGuests = activeMetricsTables.reduce((sum, t) => {
-    if (t.status === 'available') return sum;
-    const count = t.guest_count || t.capacity || 2;
-    return sum + Number(count);
-  }, 0);
-  const totalDue = activeMetricsTables.reduce((sum, t) => {
-    if (t.status === 'available') return sum;
-    const bill = t.current_bill !== undefined && t.current_bill !== null ? t.current_bill : (t.amount_remaining || 0);
-    return sum + Number(bill);
-  }, 0);
+
+  const occupiedCount = mainTab === 'open_tables'
+    ? displayOpenTables.length
+    : activeMetricsTables.filter(t => t.status === 'occupied' || t.status === 'bill_requested').length;
+
+  const billCount = mainTab === 'open_tables'
+    ? displayOpenTables.filter(o => o.isBillRequested || o.statusGroup === 'HELD' || o.rawStatus === 'bill_requested').length
+    : activeMetricsTables.filter(t => t.status === 'bill_requested').length;
+
+  const totalGuests = mainTab === 'open_tables'
+    ? displayOpenTables.reduce((sum, o) => sum + Number(o.guestCount || 1), 0)
+    : activeMetricsTables.reduce((sum, t) => {
+        if (t.status === 'available') return sum;
+        const count = t.guest_count || t.capacity || 2;
+        return sum + Number(count);
+      }, 0);
+
+  const totalDue = mainTab === 'open_tables'
+    ? displayOpenTables.reduce((sum, o) => sum + Number(o.totalAmount || o.subtotalAmount || 0), 0)
+    : activeMetricsTables.reduce((sum, t) => {
+        if (t.status === 'available') return sum;
+        const bill = t.current_bill !== undefined && t.current_bill !== null ? t.current_bill : (t.amount_remaining || 0);
+        return sum + Number(bill);
+      }, 0);
 
   return (
     <div className="h-full flex flex-col bg-[#F5F6F4] text-slate-900 select-none overflow-hidden relative">

@@ -306,6 +306,9 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   // Cashier PIN Lock & Fast Switch States
   const [activeCashier, setActiveCashier] = useState<any>(() => {
     try {
+      if (localStorage.getItem('flow_pos_locked') === 'true') {
+        return null;
+      }
       const saved = localStorage.getItem('pos_current_cashier');
       if (saved) return JSON.parse(saved);
     } catch {}
@@ -1278,7 +1281,13 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   const [currentScreenId, setCurrentScreenId] = useState<string>('root');
   const [screenStack, setScreenStack] = useState<string[]>([]);
   const [isFeaturesModalOpen, setIsFeaturesModalOpen] = useState(false);
-  const [isPinLockOpen, setIsPinLockOpen] = useState(false);
+  const [isPinLockOpen, setIsPinLockOpen] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('flow_pos_locked') === 'true';
+    } catch {
+      return false;
+    }
+  });
   const [isSecurityModalOpen, setIsSecurityModalOpen] = useState(false);
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [transferTargetTableInput, setTransferTargetTableInput] = useState("");
@@ -1299,6 +1308,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   // Instant Screen Lock / Block for Fast Staff Handover
   const handleQuickLock = () => {
     localStorage.removeItem('pos_current_cashier');
+    localStorage.setItem('flow_pos_locked', 'true');
     setActiveCashier(null);
     setIsPinLockOpen(true);
   };
@@ -1321,6 +1331,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
 
   const handleTerminalLogout = async () => {
     try {
+      localStorage.removeItem('flow_pos_locked');
       localStorage.removeItem('flow_pos_user');
       localStorage.removeItem('pos_current_cashier');
       setActiveCashier(null);
@@ -8824,6 +8835,8 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
               initialRestaurantId={currentRestaurantId}
               onLogout={handleTerminalLogout}
               onSuccess={async (cashierUser) => {
+                localStorage.removeItem('flow_pos_locked');
+                localStorage.setItem('pos_current_cashier', JSON.stringify(cashierUser));
                 setActiveCashier(cashierUser);
                 setIsPinLockOpen(false);
                 const currentShift = await checkShift();
@@ -8866,9 +8879,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                 type="button"
                 onClick={() => {
                   setIsSecurityModalOpen(false);
-                  localStorage.removeItem('pos_current_cashier');
-                  setActiveCashier(null);
-                  setIsPinLockOpen(true);
+                  handleQuickLock();
                 }}
                 className="w-full p-3.5 rounded-2xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-left flex items-center gap-3 transition cursor-pointer active:scale-98 shadow-xs"
               >

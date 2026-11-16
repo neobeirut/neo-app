@@ -189,6 +189,7 @@ export default function App() {
     setUser(null);
     localStorage.removeItem('flow_pos_user');
     localStorage.removeItem('pos_current_cashier');
+    localStorage.removeItem('flow_pos_locked');
   };
 
   const branchId = user?.branch_id || localStorage.getItem('flow_pos_selected_branch') || '9c214659-9cc7-4f33-b115-cbbb8a823a94';

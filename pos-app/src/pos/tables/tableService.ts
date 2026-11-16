@@ -428,13 +428,59 @@ export async function loadFloorState(branchId: string): Promise<{
 
     // 7. Directly hydrate any active POS table orders onto tableMap by table_label
     try {
-      const { data: directTableOrders } = await supabase
-        .from('pos_orders')
-        .select('id, table_label, total_amount, tendered_amount, status, items_count, guest_count, waiter_name, special_instructions, created_at')
-        .in('status', ['held', 'preparing', 'new', 'confirmed', 'ready', 'open', 'occupied', 'bill_requested'])
-        .not('table_label', 'is', null);
+      const [posOrdersRes, commerceOrdersRes] = await Promise.all([
+        supabase
+          .from('pos_orders')
+          .select('id, table_label, total_amount, tendered_amount, status, items_count, guest_count, waiter_name, special_instructions, created_at')
+          .in('status', ['held', 'preparing', 'new', 'confirmed', 'ready', 'open', 'occupied', 'bill_requested'])
+          .not('table_label', 'is', null),
+        COMMERCE_API_BASE
+          ? fetch(`${COMMERCE_API_BASE}/api/pos/orders?type=all`).then(r => r.ok ? r.json() : { orders: [] }).catch(() => ({ orders: [] }))
+          : Promise.resolve({ orders: [] })
+      ]);
 
-      (directTableOrders || []).forEach((dOrder: any) => {
+      const candidateTableOrders: any[] = [];
+
+      (posOrdersRes.data || []).forEach((dOrder: any) => {
+        candidateTableOrders.push({
+          id: dOrder.id,
+          table_label: dOrder.table_label,
+          total_amount: dOrder.total_amount,
+          tendered_amount: dOrder.tendered_amount,
+          status: dOrder.status,
+          guest_count: dOrder.guest_count,
+          waiter_name: dOrder.waiter_name,
+          special_instructions: dOrder.special_instructions,
+          created_at: dOrder.created_at
+        });
+      });
+
+      ((commerceOrdersRes as any)?.orders || []).forEach((cOrder: any) => {
+        const st = (cOrder.status || '').toLowerCase();
+        if (['completed', 'cancelled', 'canceled', 'closed', 'voided'].includes(st)) return;
+        const isDineIn = cOrder.order_type === 'dine_in' || (cOrder.customer_name && /^Table\s+/i.test(cOrder.customer_name));
+        if (!isDineIn) return;
+
+        const tableLabel = cOrder.table_label || (cOrder.customer_name ? cOrder.customer_name.replace(/^Table\s*/i, '') : '');
+        if (!tableLabel) return;
+
+        // Don't duplicate if already added by ID from pos_orders
+        if (candidateTableOrders.some(o => o.id === cOrder.id)) return;
+
+        candidateTableOrders.push({
+          id: cOrder.id,
+          table_label: tableLabel,
+          total_amount: cOrder.total_amount || cOrder.subtotal_amount,
+          tendered_amount: cOrder.tendered_amount,
+          status: cOrder.status,
+          guest_count: cOrder.guest_count,
+          waiter_name: cOrder.waiter_name || cOrder.assigned_waiter,
+          special_instructions: cOrder.special_instructions,
+          created_at: cOrder.created_at
+        });
+      });
+
+      candidateTableOrders.forEach((dOrder: any) => {
         const cleanLabel = (dOrder.table_label || '').trim().toUpperCase();
         const normLabel = cleanLabel.replace(/^(TABLE\s*|T)/i, '').trim();
         for (const tbl of tableMap.values()) {

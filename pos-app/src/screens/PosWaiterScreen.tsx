@@ -110,7 +110,13 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
   const [currentUser, setCurrentUser] = useState<any>(initialUser);
 
   // Tablet Lock Screen state (Fast Handover between servers)
-  const [isLocked, setIsLocked] = useState<boolean>(false);
+  const [isLocked, setIsLocked] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('flow_pos_locked') === 'true';
+    } catch {
+      return false;
+    }
+  });
 
   // Full Screen API state
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -1186,9 +1192,16 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
       <PosPinScreen
         isLockScreen={true}
         initialRestaurantId={restaurantId}
-        onCancel={() => setIsLocked(false)}
-        onLogout={onExit}
+        onCancel={() => {
+          localStorage.removeItem('flow_pos_locked');
+          setIsLocked(false);
+        }}
+        onLogout={() => {
+          localStorage.removeItem('flow_pos_locked');
+          onExit?.();
+        }}
         onSuccess={(unlockedUser: any) => {
+          localStorage.removeItem('flow_pos_locked');
           setIsLocked(false);
           const norm = normalizePosRole(unlockedUser?.role);
           if (norm === 'waiter') {
@@ -1329,7 +1342,10 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
           {/* Quick Lock Button */}
           <button
             type="button"
-            onClick={() => setIsLocked(true)}
+            onClick={() => {
+              localStorage.setItem('flow_pos_locked', 'true');
+              setIsLocked(true);
+            }}
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 text-xs font-bold transition active:scale-95 cursor-pointer"
             title="Lock screen for next server"
           >
