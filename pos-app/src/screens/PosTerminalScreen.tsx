@@ -8878,6 +8878,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
           sourceTableCode={activeTableContext.tableCode}
           sourceOrderId={activeTableContext.orderId || editingOrderId}
           sourceSessionId={activeTableContext.sessionId}
+          conceptId={workspaceState?.activeConcept?.id || '00000000-0000-0000-0000-000000000001'}
           ticketItems={ticketItems}
           availableTables={branchFloorTables}
           restaurantId={currentRestaurantId}
@@ -8888,6 +8889,11 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
             role: (activeCashier || user)?.role || 'cashier'
           }}
           onSuccess={async (result) => {
+            try {
+              window.dispatchEvent(new CustomEvent('flow:order_created', { detail: { orderId: result.destOrderId } }));
+              window.dispatchEvent(new CustomEvent('flow:table_transferred', { detail: { destTableCode: result.destTableCode } }));
+            } catch (e) {}
+
             if (result.mode === 'entire') {
               setActiveTableContext(prev => prev ? {
                 ...prev,
@@ -8902,7 +8908,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                 setTicketItems(result.remainingItems);
               } else {
                 setTicketItems([]);
-                setActiveTableContext(null)
+                setActiveTableContext(null);
                 setCustomerName("");
               }
               await refreshFloorTables();

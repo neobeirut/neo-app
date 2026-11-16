@@ -16,12 +16,10 @@ export async function PATCH(request, { params }) {
       deliveryAddress,
       orderType,
       orderSource,
+      table_label,
+      tableLabel,
       items
     } = body;
-
-    if (!status) {
-      return Response.json({ error: "Missing status field" }, { status: 400 });
-    }
 
     const [existingOrder] = await sql`
       SELECT id, status, customer_phone FROM orders WHERE id = ${id} LIMIT 1
@@ -30,12 +28,15 @@ export async function PATCH(request, { params }) {
       return Response.json({ error: "Order not found" }, { status: 404 });
     }
     const prevStatus = existingOrder.status;
+    const newStatus = status || existingOrder.status;
+    const effTable = table_label || tableLabel;
+    const resolvedCustomerName = customerName || (effTable ? `Table ${String(effTable).replace(/^Table\s*/i, '').replace(/^T/i, '')}` : null);
     const phoneToNotify = customerPhone || existingOrder.customer_phone;
 
     if (voidReason) {
       await sql`
         UPDATE orders 
-        SET status = ${status}, void_reason = ${voidReason}
+        SET status = ${newStatus}, void_reason = ${voidReason}
         WHERE id = ${id}
       `;
     } else {
@@ -45,12 +46,12 @@ export async function PATCH(request, { params }) {
       await sql`
         UPDATE orders 
         SET 
-          status = ${status},
+          status = ${newStatus},
           subtotal_amount = COALESCE(${subtotal !== undefined && subtotal !== null ? subtotal : null}, subtotal_amount),
           delivery_fee = COALESCE(${deliveryFee !== undefined && deliveryFee !== null ? deliveryFee : null}, delivery_fee),
           discount_amount = COALESCE(${discountAmount !== undefined && discountAmount !== null ? discountAmount : null}, discount_amount),
           total_amount = COALESCE(${total !== undefined && total !== null ? total : null}, total_amount),
-          customer_name = COALESCE(${customerName || null}, customer_name),
+          customer_name = COALESCE(${resolvedCustomerName || null}, customer_name),
           customer_phone = COALESCE(${customerPhone || null}, customer_phone),
           delivery_address = COALESCE(${deliveryAddress || null}, delivery_address),
           order_type = COALESCE(${orderType || null}, order_type),

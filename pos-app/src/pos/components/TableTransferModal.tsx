@@ -31,6 +31,7 @@ interface TableTransferModalProps {
   sourceTableCode: string;
   sourceOrderId?: string | number | null;
   sourceSessionId?: string | null;
+  conceptId?: string | null;
   ticketItems: any[];
   availableTables: PosTable[];
   restaurantId: string;
@@ -43,6 +44,7 @@ interface TableTransferModalProps {
   onSuccess: (result: {
     mode: 'entire' | 'items';
     destTableCode: string;
+    destOrderId?: string | number;
     remainingItems?: any[];
   }) => void;
   onRequestSupervisorAuth: (request: SupervisorAuthRequest) => void;
@@ -54,6 +56,7 @@ export function TableTransferModal({
   sourceTableCode,
   sourceOrderId,
   sourceSessionId,
+  conceptId,
   ticketItems,
   availableTables,
   restaurantId,
@@ -262,6 +265,7 @@ export function TableTransferModal({
           toTableCode: destTableCode,
           fromOrderId: sourceOrderId,
           fromSessionId: sourceSessionId,
+          conceptId,
           branchId,
           restaurantId,
           selectedItems: itemsPayload,
@@ -279,6 +283,7 @@ export function TableTransferModal({
         onSuccess({
           mode: 'items',
           destTableCode: res.destTableCode,
+          destOrderId: res.destOrderId,
           remainingItems: res.remainingTicketItems
         });
         onClose();

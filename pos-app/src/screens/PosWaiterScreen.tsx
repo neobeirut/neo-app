@@ -1844,6 +1844,7 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
           sourceTableCode={activeTableContext.tableCode}
           sourceOrderId={activeTableContext.orderId}
           sourceSessionId={activeTableContext.sessionId}
+          conceptId={'00000000-0000-0000-0000-000000000001'}
           ticketItems={ticketItems}
           availableTables={floorTables}
           restaurantId={restaurantId}
@@ -1854,6 +1855,11 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
             role: currentUser?.role || 'waiter'
           }}
           onSuccess={(result) => {
+            try {
+              window.dispatchEvent(new CustomEvent('flow:order_created', { detail: { orderId: result.destOrderId } }));
+              window.dispatchEvent(new CustomEvent('flow:table_transferred', { detail: { destTableCode: result.destTableCode } }));
+            } catch (e) {}
+
             if (result.mode === 'entire') {
               setActiveTableContext(prev => prev ? {
                 ...prev,
@@ -1867,6 +1873,7 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
             } else {
               setTicketItems(result.remainingItems || []);
               showNotification(`✅ Items transferred to Table ${result.destTableCode}!`, 'success');
+              refreshFloorTablesList().catch(() => {});
             }
           }}
           onRequestSupervisorAuth={(req) => setSupervisorAuthRequest(req)}

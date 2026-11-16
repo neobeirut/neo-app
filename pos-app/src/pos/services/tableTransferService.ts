@@ -43,6 +43,7 @@ export interface TransferSelectedItemsParams {
   toTableCode: string;
   fromOrderId?: string | number | null;
   fromSessionId?: string | null;
+  conceptId?: string | null;
   branchId: string;
   restaurantId: string;
   selectedItems: TransferItemSelection[];
@@ -131,18 +132,27 @@ export async function executeTransferEntireTable(params: TransferEntireTablePara
       `Table ${fromClean.replace(/^T/, '')}`
     ];
 
+    const cleanDest = finalTargetCode.replace(/^T/, '');
+
     // 1. Update orders in pos_orders
     if (params.fromOrderId) {
       await supabase
         .from('pos_orders')
-        .update({ table_label: finalTargetCode })
+        .update({ 
+          table_label: finalTargetCode,
+          customer_name: `Table ${cleanDest}`
+        })
         .eq('id', params.fromOrderId);
 
       if (COMMERCE_API_BASE) {
         fetch(`${COMMERCE_API_BASE}/api/pos/orders/${params.fromOrderId}/status`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ table_label: finalTargetCode })
+          body: JSON.stringify({ 
+            table_label: finalTargetCode,
+            customerName: `Table ${cleanDest}`,
+            status: 'held'
+          })
         }).catch(() => {});
       }
     }
@@ -150,7 +160,10 @@ export async function executeTransferEntireTable(params: TransferEntireTablePara
     // Also update any active order associated with source table
     await supabase
       .from('pos_orders')
-      .update({ table_label: finalTargetCode })
+      .update({ 
+        table_label: finalTargetCode,
+        customer_name: `Table ${cleanDest}`
+      })
       .in('status', ['held', 'preparing', 'new', 'confirmed', 'ready', 'open', 'occupied', 'bill_requested'])
       .in('table_label', fromVariants);
 
@@ -182,8 +195,67 @@ export async function executeTransferEntireTable(params: TransferEntireTablePara
 
       await supabase
         .from('pos_table_sessions')
-        .update({ version: Date.now() })
+        .update({ 
+          table_id: finalTargetId,
+          table_code: finalTargetCode,
+          version: Date.now() 
+        })
         .eq('id', params.fromSessionId);
+    } else if (params.fromOrderId) {
+      // If fromSessionId was null, find or create the active session
+      const { data: existingSession } = await supabase
+        .from('pos_table_sessions')
+        .select('id')
+        .eq('commerce_order_id', params.fromOrderId)
+        .in('status', ['open', 'occupied', 'bill_requested'])
+        .maybeSingle();
+
+      if (existingSession?.id) {
+        await supabase
+          .from('pos_table_session_tables')
+          .delete()
+          .eq('session_id', existingSession.id);
+        await supabase
+          .from('pos_table_session_tables')
+          .insert([{
+            session_id: existingSession.id,
+            table_id: finalTargetId,
+            is_primary: true
+          }]);
+        await supabase
+          .from('pos_table_sessions')
+          .update({
+            table_id: finalTargetId,
+            table_code: finalTargetCode,
+            version: Date.now()
+          })
+          .eq('id', existingSession.id);
+      } else {
+        const { data: createdSess } = await supabase
+          .from('pos_table_sessions')
+          .insert([{
+            branch_id: params.branchId,
+            restaurant_id: params.restaurantId,
+            table_id: finalTargetId,
+            table_code: finalTargetCode,
+            commerce_order_id: params.fromOrderId,
+            status: 'occupied',
+            guest_count: 2,
+            waiter_name: params.staffUser?.name || 'Staff',
+            version: 1
+          }])
+          .select('id')
+          .single();
+        if (createdSess?.id) {
+          await supabase
+            .from('pos_table_session_tables')
+            .insert([{
+              session_id: createdSess.id,
+              table_id: finalTargetId,
+              is_primary: true
+            }]);
+        }
+      }
     }
 
     // 3. Log sensitive action audit
@@ -227,6 +299,7 @@ export async function executeTransferSelectedItems(params: TransferSelectedItems
   remainingTicketItems: any[];
   transferredCount: number;
   destTableCode: string;
+  destOrderId?: string | number;
   error?: string;
 }> {
   try {
@@ -241,17 +314,32 @@ export async function executeTransferSelectedItems(params: TransferSelectedItems
       throw new Error('No items selected to transfer.');
     }
 
-    // 1. Resolve destination table
+    // 1. Resolve concept_id
+    let conceptId = params.conceptId;
+    if (!conceptId && params.fromOrderId) {
+      try {
+        const { data: ord } = await supabase
+          .from('pos_orders')
+          .select('concept_id')
+          .eq('id', params.fromOrderId)
+          .maybeSingle();
+        if (ord?.concept_id) conceptId = ord.concept_id;
+      } catch (e) {}
+    }
+    if (!conceptId) conceptId = '00000000-0000-0000-0000-000000000001';
+
+    // 2. Resolve destination table
     const targetTable = await resolveOrCreatePosTable(params.branchId, params.toTableCode);
     const finalTargetCode = targetTable.table_code;
+    const cleanDestCode = finalTargetCode.replace(/^T/i, '');
 
-    // 2. Check if destination table has an active order
+    // 3. Check if destination table has an active order
     const toVariants = [
       finalTargetCode,
-      `T${finalTargetCode.replace(/^T/, '')}`,
-      finalTargetCode.replace(/^T/, ''),
+      `T${cleanDestCode}`,
+      cleanDestCode,
       `Table ${finalTargetCode}`,
-      `Table ${finalTargetCode.replace(/^T/, '')}`
+      `Table ${cleanDestCode}`
     ];
 
     const { data: existingDestOrders } = await supabase
@@ -277,8 +365,10 @@ export async function executeTransferSelectedItems(params: TransferSelectedItems
       item_added_by_id: params.staffUser.id || null
     }));
 
+    let targetDestOrderId: string | number | null = null;
+
     if (destOrder) {
-      // Append items to destination order
+      // Append items to existing destination order
       const currentDestItems = (destOrder.items || []).map((i: any) => ({
         line_item_id: i.line_item_id || String(i.id),
         order_item_id: i.id,
@@ -295,20 +385,77 @@ export async function executeTransferSelectedItems(params: TransferSelectedItems
       const mergedDestItems = [...currentDestItems, ...itemsToAdd];
       const newDestSubtotal = mergedDestItems.reduce((acc, it) => acc + it.unit_price * it.quantity, 0);
 
+      // Update Commerce API if available
+      if (COMMERCE_API_BASE && /^\d+$/.test(String(destOrder.id))) {
+        try {
+          await fetch(`${COMMERCE_API_BASE}/api/pos/orders/${destOrder.id}/status`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              status: 'held',
+              subtotal: newDestSubtotal,
+              total: newDestSubtotal,
+              items: mergedDestItems
+            })
+          });
+        } catch (e) {
+          console.warn('Commerce API update existing dest order error:', e);
+        }
+      }
+
       await updateDirectOrderStatus(destOrder.id, {
         subtotal: newDestSubtotal,
         total: newDestSubtotal,
         items: mergedDestItems
       });
+
+      targetDestOrderId = destOrder.id;
     } else {
       // Create new dine-in order for destination table
       const newDestSubtotal = itemsToAdd.reduce((acc, it) => acc + it.unit_price * it.quantity, 0);
+
+      let extOrderId: any = null;
+      if (COMMERCE_API_BASE) {
+        try {
+          const extRes = await fetch(`${COMMERCE_API_BASE}/api/pos/orders`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              branch_id: params.branchId,
+              restaurant_id: params.restaurantId,
+              concept_id: conceptId,
+              orderType: 'dine_in',
+              service_type: 'dine_in',
+              table_label: finalTargetCode,
+              customerName: `Table ${cleanDestCode}`,
+              guest_count: 2,
+              waiter_reference: params.staffUser.name || 'Staff',
+              cashierName: params.staffUser.name || 'Staff',
+              orderSource: 'POS',
+              paymentMethod: 'Cash',
+              status: 'held',
+              subtotal: newDestSubtotal,
+              total: newDestSubtotal,
+              items: itemsToAdd
+            })
+          });
+          if (extRes.ok) {
+            const extData = await extRes.json();
+            extOrderId = extData?.order?.id || extData?.orderId || extData?.id;
+          }
+        } catch (e) {
+          console.warn('Commerce API create new dest order error:', e);
+        }
+      }
+
       const createRes = await createDirectOrder({
         branch_id: params.branchId,
         restaurant_id: params.restaurantId,
+        concept_id: conceptId,
         orderType: 'dine_in',
         service_type: 'dine_in',
         table_label: finalTargetCode,
+        customerName: `Table ${cleanDestCode}`,
         guest_count: 2,
         waiter_reference: params.staffUser.name || 'Staff',
         cashierName: params.staffUser.name || 'Staff',
@@ -320,35 +467,42 @@ export async function executeTransferSelectedItems(params: TransferSelectedItems
         items: itemsToAdd
       });
 
-      if (createRes.success && (createRes.order?.id || createRes.orderId)) {
-        const newOrderId = createRes.order?.id || createRes.orderId;
-        // Check/create table session for destination table
-        const { data: newSession } = await supabase
-          .from('pos_table_sessions')
-          .insert([{
-            branch_id: params.branchId,
-            commerce_order_id: newOrderId,
-            status: 'occupied',
-            guest_count: 2,
-            waiter_name: params.staffUser.name || 'Staff',
-            version: 1
-          }])
-          .select('id')
-          .single();
+      targetDestOrderId = extOrderId || createRes?.order?.id || createRes?.orderId;
 
-        if (newSession?.id) {
-          await supabase
-            .from('pos_table_session_tables')
-            .insert([{
-              session_id: newSession.id,
-              table_id: targetTable.id,
-              is_primary: true
-            }]);
-        }
+      // SAFETY GATE: If destination order creation failed, DO NOT subtract items from source table!
+      if (!createRes?.success && !targetDestOrderId) {
+        throw new Error(createRes?.error || 'Failed to create destination table order. Source items were NOT modified.');
+      }
+
+      // Check/create table session for destination table
+      const { data: newSession } = await supabase
+        .from('pos_table_sessions')
+        .insert([{
+          branch_id: params.branchId,
+          restaurant_id: params.restaurantId,
+          table_id: targetTable.id,
+          table_code: finalTargetCode,
+          commerce_order_id: targetDestOrderId,
+          status: 'occupied',
+          guest_count: 2,
+          waiter_name: params.staffUser.name || 'Staff',
+          version: 1
+        }])
+        .select('id')
+        .single();
+
+      if (newSession?.id) {
+        await supabase
+          .from('pos_table_session_tables')
+          .insert([{
+            session_id: newSession.id,
+            table_id: targetTable.id,
+            is_primary: true
+          }]);
       }
     }
 
-    // 3. Update source order items: subtract or remove transferred items
+    // 4. NOW AND ONLY NOW: Update source order items (subtract or remove transferred items)
     const transferMap = new Map<string, number>();
     params.selectedItems.forEach(it => {
       transferMap.set(it.line_item_id, it.transferQty);
@@ -366,7 +520,8 @@ export async function executeTransferSelectedItems(params: TransferSelectedItems
         if (remaining > 0) {
           updatedSourceItems.push({
             ...item,
-            qty: remaining
+            qty: remaining,
+            originalQty: Math.max(0, (Number(item.originalQty !== undefined ? item.originalQty : item.qty)) - transferQty)
           });
         }
       } else {
@@ -380,6 +535,24 @@ export async function executeTransferSelectedItems(params: TransferSelectedItems
 
     if (params.fromOrderId) {
       if (sourceHasItems) {
+        // Dual-write update to Commerce API & Supabase pos_orders
+        if (COMMERCE_API_BASE && /^\d+$/.test(String(params.fromOrderId))) {
+          try {
+            await fetch(`${COMMERCE_API_BASE}/api/pos/orders/${params.fromOrderId}/status`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                status: 'held',
+                subtotal: newSourceSubtotal,
+                total: newSourceSubtotal,
+                items: updatedSourceItems
+              })
+            });
+          } catch (e) {
+            console.warn('Commerce API update source order error:', e);
+          }
+        }
+
         await updateDirectOrderStatus(params.fromOrderId, {
           subtotal: newSourceSubtotal,
           total: newSourceSubtotal,
@@ -398,6 +571,20 @@ export async function executeTransferSelectedItems(params: TransferSelectedItems
         });
       } else {
         // All items transferred out: update order status to cancelled or held empty
+        if (COMMERCE_API_BASE && /^\d+$/.test(String(params.fromOrderId))) {
+          try {
+            await fetch(`${COMMERCE_API_BASE}/api/pos/orders/${params.fromOrderId}/status`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                status: 'completed',
+                subtotal: 0,
+                total: 0,
+                items: []
+              })
+            });
+          } catch (e) {}
+        }
         await updateDirectOrderStatus(params.fromOrderId, {
           subtotal: 0,
           total: 0,
@@ -434,7 +621,8 @@ export async function executeTransferSelectedItems(params: TransferSelectedItems
       success: true,
       remainingTicketItems: updatedSourceItems,
       transferredCount: params.selectedItems.reduce((a, b) => a + b.transferQty, 0),
-      destTableCode: finalTargetCode
+      destTableCode: finalTargetCode,
+      destOrderId: targetDestOrderId || undefined
     };
   } catch (err: any) {
     console.error('executeTransferSelectedItems error:', err);
