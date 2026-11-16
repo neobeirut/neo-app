@@ -177,7 +177,7 @@ export async function GET(request) {
     const topProducts = await sql(
       `SELECT 
         oi.product_id,
-        COALESCE(oi.product_name, p.name, 'Unknown Item') as product_name,
+        COALESCE(p.name, 'Unknown Item') as product_name,
         COALESCE(c.name, 'Uncategorized') as category_name,
         SUM(oi.quantity)::int as total_qty,
         SUM((oi.quantity * oi.unit_price)::float) as total_revenue
@@ -186,7 +186,7 @@ export async function GET(request) {
       LEFT JOIN products p ON (CASE WHEN oi.product_id ~ '^[0-9]+$' THEN oi.product_id::integer ELSE NULL END) = p.id
       LEFT JOIN categories c ON p.category_id = c.id
       WHERE ${salesStatusFilterO} ${dateWhereClauseO}
-      GROUP BY oi.product_id, COALESCE(oi.product_name, p.name, 'Unknown Item'), c.name
+      GROUP BY oi.product_id, COALESCE(p.name, 'Unknown Item'), c.name
       ORDER BY total_qty DESC
       LIMIT 15`
     ) || [];

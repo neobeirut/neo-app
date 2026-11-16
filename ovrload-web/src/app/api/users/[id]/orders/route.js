@@ -25,7 +25,7 @@ export async function GET(request, { params }) {
           json_build_object(
             'id', oi.id,
             'product_id', oi.product_id,
-            'product_name', COALESCE(oi.product_name, p.name, 'Item'),
+            'product_name', COALESCE(p.name, 'Item'),
             'quantity', oi.quantity,
             'unit_price', oi.unit_price,
             'total_price', oi.total_price

@@ -101,7 +101,7 @@ export async function GET(request, { params }) {
         SELECT 
           oi.order_id,
           oi.quantity,
-          COALESCE(oi.product_name, p.name, 'Item') as product_name,
+          COALESCE(p.name, 'Item') as product_name,
           oi.total_price,
           p.category_id,
           c.name as category_name
