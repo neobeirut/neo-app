@@ -311,6 +311,12 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   const tableNavigationSaving = useRef(false);
   const [isSavingTableNavigation, setIsSavingTableNavigation] = useState(false);
   const [branchFloorTables, setBranchFloorTables] = useState<PosTable[]>([]);
+  const [openTablesCount, setOpenTablesCount] = useState<number | null>(null);
+
+  const fallbackOccupiedTablesCount = branchFloorTables.filter(
+    (t: any) => t.status && t.status !== 'free' && t.status !== 'available' && t.status !== 'inactive'
+  ).length;
+  const effectiveActiveTablesCount = openTablesCount !== null ? openTablesCount : fallbackOccupiedTablesCount;
 
   // Cashier PIN Lock & Fast Switch States
   const [activeCashier, setActiveCashier] = useState<any>(() => {
@@ -594,6 +600,23 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
 
   useEffect(() => {
     refreshFloorTables();
+  }, [currentBranchId, commerceBranchLink, branchCapabilities]);
+
+  // Dynamically refresh floor table states whenever table sessions or orders change
+  useEffect(() => {
+    const handleTableChange = () => {
+      refreshFloorTables();
+    };
+    window.addEventListener('flow:table_settled', handleTableChange);
+    window.addEventListener('flow:order_created', handleTableChange);
+    window.addEventListener('flow:table_transferred', handleTableChange);
+    window.addEventListener('flow:order_settled', handleTableChange);
+    return () => {
+      window.removeEventListener('flow:table_settled', handleTableChange);
+      window.removeEventListener('flow:order_created', handleTableChange);
+      window.removeEventListener('flow:table_transferred', handleTableChange);
+      window.removeEventListener('flow:order_settled', handleTableChange);
+    };
   }, [currentBranchId, commerceBranchLink, branchCapabilities]);
 
   // FLOW Shift Cash State & Bridge
@@ -1321,6 +1344,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     localStorage.setItem('flow_pos_locked', 'true');
     setActiveCashier(null);
     setIsPinLockOpen(true);
+    window.dispatchEvent(new Event('flow:pos_lock'));
   };
 
   const [autoLockOnOrder, setAutoLockOnOrder] = useState<boolean>(() => {
@@ -5345,7 +5369,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
               </span>
             ) : posActiveView === 'tables' ? (
               <span className="text-xs text-slate-500 font-semibold hidden sm:inline">
-                {branchFloorTables.filter((t: any) => t.status && t.status !== 'free' && t.status !== 'available' && t.status !== 'inactive').length} active / {branchFloorTables.length} tables
+                {effectiveActiveTablesCount} active / {branchFloorTables.length} tables
               </span>
             ) : (
               <span className="text-xs text-slate-500 font-semibold hidden sm:inline">
@@ -5507,11 +5531,11 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
               >
                 <span className="text-sm">🪑</span>
                 <span className="truncate">Tables</span>
-                {branchFloorTables.filter((t: any) => t.status && t.status !== 'free' && t.status !== 'available' && t.status !== 'inactive').length > 0 && (
+                {effectiveActiveTablesCount > 0 && (
                   <span className={`ml-0.5 min-w-[18px] h-[18px] px-1 rounded text-[10px] font-black flex items-center justify-center leading-none ${
                     posActiveView === 'tables' ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-900 border border-amber-300'
                   }`}>
-                    {branchFloorTables.filter((t: any) => t.status && t.status !== 'free' && t.status !== 'available' && t.status !== 'inactive').length}
+                    {effectiveActiveTablesCount}
                   </span>
                 )}
               </button>
@@ -5751,6 +5775,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                 cashierName={activeCashier?.name || user?.name || "Cashier"}
                 initialTableCode={activeTableContext?.tableCode || null}
                 initialTables={branchFloorTables}
+                onOpenTablesCountChange={setOpenTablesCount}
                 isTableAdmin={isTableAdmin}
                 getFireState={order => {
                   const tableCode = order.tableLabel || order.customerName?.replace(/^Table\s*/i, '') || '';

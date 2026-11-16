@@ -62,6 +62,7 @@ interface TablesScreenProps {
   onFireOrder?: (order: FlowPosOrder) => Promise<void>;
   isShiftOpen?: boolean;
   onOpenShift?: () => void;
+  onOpenTablesCountChange?: (count: number) => void;
 }
 
 export const TablesScreen: React.FC<TablesScreenProps> = ({
@@ -80,7 +81,8 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
   onSettleTable,
   isTableAdmin, getFireState, onFireOrder,
   isShiftOpen,
-  onOpenShift
+  onOpenShift,
+  onOpenTablesCountChange
 }) => {
   const shiftOpen = typeof isShiftOpen === 'boolean' ? isShiftOpen : Boolean(activeShift);
   const [areas, setAreas] = useState<FloorArea[]>([]);
@@ -292,6 +294,11 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
     return list;
   }, [openTableOrders, tables, cashierName, settledKeys]);
 
+  // Synchronize active open tables count to POS header and top buttons
+  useEffect(() => {
+    onOpenTablesCountChange?.(displayOpenTables.length);
+  }, [displayOpenTables.length, onOpenTablesCountChange]);
+
   const handleOpenOrderInCart = (order: FlowPosOrder) => {
     const isCancelled =
       order.statusGroup === 'CANCELLED' ||
@@ -430,29 +437,15 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
   const availableCount = activeMetricsTables.filter(t => t.status === 'available').length;
   const openCount = activeMetricsTables.filter(t => t.status === 'open').length;
 
-  const occupiedCount = mainTab === 'open_tables'
-    ? displayOpenTables.length
-    : activeMetricsTables.filter(t => t.status === 'occupied' || t.status === 'bill_requested').length;
+  const occupiedCount = displayOpenTables.length;
 
-  const billCount = mainTab === 'open_tables'
-    ? displayOpenTables.filter(o => o.isBillRequested || o.statusGroup === 'HELD' || o.rawStatus === 'bill_requested').length
-    : activeMetricsTables.filter(t => t.status === 'bill_requested').length;
+  const billCount = displayOpenTables.filter(
+    o => o.isBillRequested || o.statusGroup === 'HELD' || o.rawStatus === 'bill_requested'
+  ).length;
 
-  const totalGuests = mainTab === 'open_tables'
-    ? displayOpenTables.reduce((sum, o) => sum + Number(o.guestCount || 1), 0)
-    : activeMetricsTables.reduce((sum, t) => {
-        if (t.status === 'available') return sum;
-        const count = t.guest_count || t.capacity || 2;
-        return sum + Number(count);
-      }, 0);
+  const totalGuests = displayOpenTables.reduce((sum, o) => sum + Number(o.guestCount || 1), 0);
 
-  const totalDue = mainTab === 'open_tables'
-    ? displayOpenTables.reduce((sum, o) => sum + Number(o.totalAmount || o.subtotalAmount || 0), 0)
-    : activeMetricsTables.reduce((sum, t) => {
-        if (t.status === 'available') return sum;
-        const bill = t.current_bill !== undefined && t.current_bill !== null ? t.current_bill : (t.amount_remaining || 0);
-        return sum + Number(bill);
-      }, 0);
+  const totalDue = displayOpenTables.reduce((sum, o) => sum + Number(o.totalAmount || o.subtotalAmount || 0), 0);
 
   return (
     <div className="h-full flex flex-col bg-[#F5F6F4] text-slate-900 select-none overflow-hidden relative">

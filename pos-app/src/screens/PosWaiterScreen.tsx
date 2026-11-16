@@ -1383,6 +1383,7 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
             onClick={() => {
               localStorage.setItem('flow_pos_locked', 'true');
               setIsLocked(true);
+              window.dispatchEvent(new Event('flow:pos_lock'));
             }}
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 text-xs font-bold transition active:scale-95 cursor-pointer"
             title="Lock screen for next server"

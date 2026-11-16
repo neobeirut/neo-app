@@ -101,6 +101,25 @@ export default function App() {
     }
   });
 
+  const [isLocked, setIsLocked] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('flow_pos_locked') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    const handleLock = () => setIsLocked(true);
+    const handleUnlock = () => setIsLocked(false);
+    window.addEventListener('flow:pos_lock', handleLock);
+    window.addEventListener('flow:pos_unlock', handleUnlock);
+    return () => {
+      window.removeEventListener('flow:pos_lock', handleLock);
+      window.removeEventListener('flow:pos_unlock', handleUnlock);
+    };
+  }, []);
+
   // Revalidate user concept from shared database settings upon app launch
   useEffect(() => {
     if (!user?.id) return;
@@ -187,6 +206,7 @@ export default function App() {
       console.warn('Supabase sign out error:', e);
     }
     setUser(null);
+    setIsLocked(false);
     localStorage.removeItem('flow_pos_user');
     localStorage.removeItem('pos_current_cashier');
     localStorage.removeItem('flow_pos_locked');
@@ -201,8 +221,23 @@ export default function App() {
       </div>
       <HashRouter>
         <Routes>
-          {!user ? (
-            <Route path="*" element={<PosPinScreen onSuccess={handleLogin} />} />
+          {!user || isLocked ? (
+            <Route
+              path="*"
+              element={
+                <PosPinScreen
+                  isLockScreen={Boolean(user && isLocked)}
+                  initialRestaurantId={user?.restaurant_id || '79256f11-a9f8-4fec-901d-69baf929762d'}
+                  onLogout={handleLogout}
+                  onSuccess={(unlockedUser) => {
+                    localStorage.removeItem('flow_pos_locked');
+                    setIsLocked(false);
+                    handleLogin(unlockedUser);
+                    window.dispatchEvent(new Event('flow:pos_unlock'));
+                  }}
+                />
+              }
+            />
           ) : (
             <>
               <Route
