@@ -51,6 +51,7 @@ import { TableTransferModal } from '../pos/components/TableTransferModal';
 import { PosModifierModal, partitionCustomizations } from '../pos/components/PosModifierModal';
 import { usePos86 } from '../pos/hooks/usePos86';
 import { Pos86Modal } from '../pos/components/Pos86Modal';
+import { KNOWN_CONCEPT_PROFILES } from '../pos/services/posWorkspaceService';
 import {
   Utensils,
   Lock,
@@ -224,7 +225,9 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
   }, [commerceBranchLink]);
 
   const branchName = useMemo(() => {
-    return commerceBranchLink?.flow_branch_name || currentUser?.branch || 'Badaro';
+    const raw = commerceBranchLink?.flow_branch_name || currentUser?.branch || localStorage.getItem('flow_pos_selected_branch') || 'Badaro';
+    if (!raw || raw.toLowerCase() === 'all' || raw.toLowerCase() === 'main branch') return 'Badaro';
+    return raw;
   }, [commerceBranchLink, currentUser]);
 
   // FLOW Shift Cash State & Bridge
@@ -239,8 +242,19 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
   // Active Concept Context (Unified with PosTerminalScreen)
   const activeConceptId = useMemo(() => {
     try {
-      if (currentUser?.concept_id) return currentUser.concept_id;
-      if (currentUser?.concept) return currentUser.concept;
+      const raw = currentUser?.concept_id || currentUser?.concept;
+      if (raw) {
+        const found = Object.values(KNOWN_CONCEPT_PROFILES).find(
+          c => c.id === raw ||
+               c.code.toUpperCase() === String(raw).toUpperCase() ||
+               c.name.toUpperCase() === String(raw).toUpperCase() ||
+               c.receipt_prefix.toUpperCase() === String(raw).toUpperCase()
+        );
+        if (found) return found.id;
+        if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw)) {
+          return raw;
+        }
+      }
       const savedState = localStorage.getItem('flow_pos_terminal_state');
       if (savedState) {
         const parsed = JSON.parse(savedState);

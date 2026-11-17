@@ -10,6 +10,28 @@ export interface Pos86Item {
   commerce_product_id?: string;
 }
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function resolveConceptUuid(cid?: string): string | null {
+  if (!cid) return null;
+  const trimmed = cid.trim();
+  if (UUID_REGEX.test(trimmed)) return trimmed;
+  const upper = trimmed.toUpperCase();
+  if (upper === 'NEO' || upper === 'NÉO') return '00000000-0000-0000-0000-000000000001';
+  if (upper === 'OVRLOAD' || upper === 'OVR') return '00000000-0000-0000-0000-000000000002';
+  if (upper === 'WICKD' || upper === 'WCK') return '00000000-0000-0000-0000-000000000003';
+  return null;
+}
+
+function resolveBranchName(branch?: string): string {
+  if (!branch) return 'Badaro';
+  const trimmed = branch.trim();
+  if (trimmed.toLowerCase() === 'all' || trimmed.toLowerCase() === 'main branch' || UUID_REGEX.test(trimmed)) {
+    return 'Badaro';
+  }
+  return trimmed;
+}
+
 export function usePos86(branchName?: string, conceptId?: string) {
   const [unavailableProductIds, setUnavailableProductIds] = useState<Set<string>>(new Set());
   const [unavailableProductNames, setUnavailableProductNames] = useState<Set<string>>(new Set());
@@ -18,7 +40,8 @@ export function usePos86(branchName?: string, conceptId?: string) {
   const [loading, setLoading] = useState(false);
   const [unmapped86Items, setUnmapped86Items] = useState<string[]>([]);
 
-  const effectiveBranch = (branchName && branchName !== 'All') ? branchName.trim() : 'Badaro';
+  const effectiveBranch = resolveBranchName(branchName);
+  const effectiveConceptUuid = resolveConceptUuid(conceptId);
 
   const fetch86Status = useCallback(async () => {
     setLoading(true);
@@ -26,22 +49,68 @@ export function usePos86(branchName?: string, conceptId?: string) {
       const now = new Date();
       const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
-      // 1. Fetch active 86 record for branch and concept for TODAY only
+      // 1. Fetch active 86 record for branch and concept for TODAY
       let query = supabase.from('menu_86').select('*');
       if (effectiveBranch) {
         query = query.ilike('branch', effectiveBranch);
       }
-      if (conceptId) {
-        query = query.or(`concept_id.eq.${conceptId},concept_id.is.null`);
+      if (effectiveConceptUuid) {
+        query = query.or(`concept_id.eq.${effectiveConceptUuid},concept_id.is.null`);
       }
-      const { data: records, error } = await query
+      let { data: records, error } = await query
         .gte('date', `${todayStr}T00:00:00.000Z`)
         .lte('date', `${todayStr}T23:59:59.999Z`)
-        .order('date', { ascending: false })
-        .limit(1);
+        .order('date', { ascending: false });
 
-      const activeRecord = (records && records.length > 0) ? records[0] : null;
-      if (!activeRecord || !Array.isArray(activeRecord.items) || activeRecord.items.length === 0) {
+      if (error) {
+        console.warn('[usePos86] Error fetching today 86 records with filter:', error);
+      }
+
+      // Fallback: If no records found with branch/concept filter, check today records more broadly
+      if (!records || records.length === 0) {
+        const { data: fbToday, error: fbErr } = await supabase
+          .from('menu_86')
+          .select('*')
+          .gte('date', `${todayStr}T00:00:00.000Z`)
+          .lte('date', `${todayStr}T23:59:59.999Z`)
+          .order('date', { ascending: false });
+        if (!fbErr && fbToday && fbToday.length > 0) {
+          records = fbToday;
+        } else {
+          // If timezone difference exists (e.g. UTC date saved slightly earlier/later), check latest records within 36 hours
+          const { data: latest } = await supabase
+            .from('menu_86')
+            .select('*')
+            .order('date', { ascending: false })
+            .limit(5);
+          if (latest && latest.length > 0) {
+            const latestDate = new Date(latest[0].date || latest[0].created_at);
+            const diffHours = Math.abs(now.getTime() - latestDate.getTime()) / (1000 * 60 * 60);
+            if (diffHours <= 36) {
+              records = latest;
+            }
+          }
+        }
+      }
+
+      const activeRecords = (records && records.length > 0) ? records : [];
+      const rawItemsMap = new Map<string, Pos86Item>();
+
+      for (const rec of activeRecords) {
+        if (Array.isArray(rec.items)) {
+          for (const it of rec.items) {
+            if (it && it.name) {
+              const key = `${it.name.toLowerCase().trim()}_${it.type || 'menu'}`;
+              if (!rawItemsMap.has(key)) {
+                rawItemsMap.set(key, it);
+              }
+            }
+          }
+        }
+      }
+
+      const rawItems: Pos86Item[] = Array.from(rawItemsMap.values());
+      if (rawItems.length === 0) {
         setUnavailableProductIds(new Set());
         setUnavailableProductNames(new Set());
         setUnavailableIngredientNames(new Set());
@@ -51,17 +120,6 @@ export function usePos86(branchName?: string, conceptId?: string) {
         return;
       }
 
-      // Aggregate active 86 items for today's record
-      const rawItemsMap = new Map<string, Pos86Item>();
-      for (const it of activeRecord.items) {
-        if (it && it.name) {
-          const key = `${it.name.toLowerCase().trim()}_${it.type || 'menu'}`;
-          if (!rawItemsMap.has(key)) {
-            rawItemsMap.set(key, it);
-          }
-        }
-      }
-      const rawItems: Pos86Item[] = Array.from(rawItemsMap.values());
       setActive86Items(rawItems);
 
       // 2. Fetch commerce product links (optional enhancement)
@@ -133,7 +191,7 @@ export function usePos86(branchName?: string, conceptId?: string) {
     } finally {
       setLoading(false);
     }
-  }, [effectiveBranch, conceptId]);
+  }, [effectiveBranch, effectiveConceptUuid]);
 
   useEffect(() => {
     fetch86Status();
