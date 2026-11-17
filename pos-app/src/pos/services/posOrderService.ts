@@ -729,6 +729,28 @@ export async function retryOrderInventoryDeduction(orderId: number | string) {
 }
 
 /**
+ * Allows skipping or dismissing stock deduction for an order that cannot be resolved
+ * (e.g. if a product was deleted from the catalog, resulting in PRODUCT_NOT_FOUND)
+ */
+export async function skipOrderInventoryDeduction(orderId: number | string, reason?: string) {
+  try {
+    const { error } = await supabase
+      .from('pos_orders')
+      .update({
+        inventory_status: 'SKIPPED',
+        inventory_error: reason ? `SKIPPED: ${reason}` : 'Inventory deduction skipped manually',
+        inventory_resolved_at: new Date().toISOString()
+      })
+      .eq('id', orderId);
+
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+/**
  * Unified Inventory: Reverse finished goods / recipe deduction when item voided before preparation
  * - Enforces explicit branch security (no Badaro UUID fallback)
  */

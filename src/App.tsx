@@ -177,6 +177,7 @@ import ConceptSelector from './components/common/ConceptSelector';
         name: 'POS & Sales',
         items: [
           { to: '/pos', label: 'Point of Sale (POS)', icon: <Store size={18} />, key: 'pos_terminal', externalHref: '/new/pos' },
+          { to: '/86', label: '86 Missing Items', icon: <AlertTriangle size={18} />, visible: canAccess('missing_items', permissions?.can_view_86 !== false || permissions?.can_manage_86 !== false), key: 'missing_items' },
           { to: '/crm/products', label: 'Menu Products', icon: <ShoppingBag size={18} />, key: 'crm_products' },
           { to: '/pos/orders-history', label: 'Order History & Channels', icon: <History size={18} />, key: 'orders_history' },
           { to: '/orders', label: 'Branch Orders', icon: <ShoppingBag size={18} />, visible: canAccess('orders', permissions?.can_create_orders !== false || permissions?.can_receive_orders !== false), key: 'orders' },
@@ -193,6 +194,7 @@ import ConceptSelector from './components/common/ConceptSelector';
         name: 'Inventory & Procurement',
         items: [
           { to: '/catalog', label: 'Item Catalog', icon: <Package size={18} />, visible: canAccess('catalog', permissions?.can_view_catalog !== false), key: 'catalog' },
+          { to: '/86', label: '86 Missing Items', icon: <AlertTriangle size={18} />, visible: canAccess('missing_items', permissions?.can_view_86 !== false || permissions?.can_manage_86 !== false), key: 'missing_items' },
           { to: '/inventory-reporting', label: 'Inventory Management', icon: <ClipboardList size={18} />, visible: canAccess('inventory_reporting', !!permissions?.can_view_inventory || !!permissions?.can_manage_inventory), key: 'inventory_reporting' },
           { to: '/purchasing', label: 'Purchasing & Procurement', icon: <Truck size={18} />, visible: canAccess('purchasing', permissions?.can_create_purchasing !== false || permissions?.can_receive_purchasing !== false), key: 'purchasing' },
           { to: '/suppliers', label: 'Supplier Management', icon: <Store size={18} />, visible: canAccess('suppliers', permissions?.can_view_suppliers !== false), key: 'suppliers' },
@@ -681,7 +683,11 @@ function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () 
               </>
             )}
             {isSectionEnabled('missing_items') && canAccess('missing_items', permissions?.can_view_86 !== false || permissions?.can_manage_86 !== false) && (
+              <>
               <Route path="/86" element={<Menu86ViewScreen />} />
+              <Route path="/86-missing-items" element={<Menu86ViewScreen />} />
+              <Route path="/missing-items" element={<Menu86ViewScreen />} />
+              </>
             )}
             {isSectionEnabled('employees') && canAccess('employees', !!permissions?.can_manage_hr) && (
               <>

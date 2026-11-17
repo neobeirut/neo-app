@@ -5387,6 +5387,21 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
               </button>
             )}
 
+            <button
+              type="button"
+              onClick={() => { window.open('/new/admin/#/86', '_blank'); }}
+              className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-800 hover:text-slate-950 text-xs font-bold border border-slate-300 flex items-center gap-1.5 transition active:scale-95 cursor-pointer shadow-xs"
+              title="Open Daily 86 Missing Items Manager in Admin"
+            >
+              <span>🚫</span>
+              <span>86 Items</span>
+              {active86Items.length > 0 && (
+                <span className="px-1.5 py-0.5 rounded-full bg-rose-500 text-white text-[10px] font-black leading-none">
+                  {active86Items.length}
+                </span>
+              )}
+            </button>
+
             {heldShiftsCount > 0 && (
               <button
                 type="button"

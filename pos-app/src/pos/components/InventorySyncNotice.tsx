@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../api/supabase';
-import { retryOrderInventoryDeduction } from '../services/posOrderService';
+import { retryOrderInventoryDeduction, skipOrderInventoryDeduction } from '../services/posOrderService';
 
 export default function InventorySyncNotice({
   restaurantId,
@@ -112,6 +112,30 @@ export default function InventorySyncNotice({
                 }}
               >
                 {retrying === String(order.id) ? 'Retrying…' : 'Retry update'}
+              </button>
+              <button
+                type="button"
+                disabled={!!retrying}
+                className="rounded-lg bg-amber-200/80 hover:bg-amber-300 text-amber-900 px-2.5 py-1 font-bold text-[11px] disabled:opacity-50 transition cursor-pointer"
+                title="Dismiss stock error for this order (e.g. if the item was deleted from catalog)"
+                onClick={async () => {
+                  if (!window.confirm(`Dismiss and skip stock deduction for Order #${order.id}?\n\nUse this if an item was deleted or stock cannot be deducted.`)) return;
+                  setRetrying(String(order.id));
+                  try {
+                    const res = await skipOrderInventoryDeduction(order.id, order.inventory_error);
+                    if (res.success) {
+                      setRefresh(n => n + 1);
+                    } else {
+                      setError(res.error || 'Could not dismiss order stock error.');
+                    }
+                  } catch (e: any) {
+                    setError(e.message || 'Could not dismiss.');
+                  } finally {
+                    setRetrying(null);
+                  }
+                }}
+              >
+                Dismiss
               </button>
             </div>
           </div>
