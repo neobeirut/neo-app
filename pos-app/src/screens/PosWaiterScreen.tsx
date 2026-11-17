@@ -50,6 +50,7 @@ import PosPinScreen from '../pos/components/PosPinScreen';
 import { TableTransferModal } from '../pos/components/TableTransferModal';
 import { PosModifierModal, partitionCustomizations } from '../pos/components/PosModifierModal';
 import { usePos86 } from '../pos/hooks/usePos86';
+import { Pos86Modal } from '../pos/components/Pos86Modal';
 import {
   Utensils,
   Lock,
@@ -235,8 +236,23 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
     restaurantId
   );
 
+  // Active Concept Context (Unified with PosTerminalScreen)
+  const activeConceptId = useMemo(() => {
+    try {
+      if (currentUser?.concept_id) return currentUser.concept_id;
+      if (currentUser?.concept) return currentUser.concept;
+      const savedState = localStorage.getItem('flow_pos_terminal_state');
+      if (savedState) {
+        const parsed = JSON.parse(savedState);
+        if (parsed.activeConcept?.id) return parsed.activeConcept.id;
+      }
+    } catch {}
+    return '00000000-0000-0000-0000-000000000001';
+  }, [currentUser]);
+
   // FLOW 86 Dynamic Availability Hook
-  const { isProduct86d, isCustomization86d, refetch86 } = usePos86(branchName);
+  const { isProduct86d, isCustomization86d, active86Items = [], refetch86 } = usePos86(branchName, activeConceptId);
+  const [is86ModalOpen, setIs86ModalOpen] = useState(false);
 
   // Load custom role permissions
   useEffect(() => {
@@ -1372,6 +1388,22 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
             </div>
           </div>
 
+          {/* Quick 86 Items Button */}
+          <button
+            type="button"
+            onClick={() => setIs86ModalOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#F5F6F4] hover:bg-slate-200 text-[#242B28] border border-[#E0E3DF] text-xs font-bold transition active:scale-95 cursor-pointer shadow-xs"
+            title="View Daily 86 Missing Items"
+          >
+            <span>🚫</span>
+            <span className="hidden sm:inline">86 Items</span>
+            {active86Items.length > 0 && (
+              <span className="px-1.5 py-0.5 rounded-full bg-rose-500 text-white text-[10px] font-black leading-none">
+                {active86Items.length}
+              </span>
+            )}
+          </button>
+
           {/* Quick KDS Button */}
           <button
             type="button"
@@ -1502,6 +1534,22 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
                     </>
                   )}
                 </div>
+
+                {/* Quick 86 shortcut while ordering */}
+                <button
+                  type="button"
+                  onClick={() => setIs86ModalOpen(true)}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-[#242B28] border border-slate-300 text-xs font-bold transition active:scale-95 cursor-pointer shadow-xs"
+                  title="View Daily 86 Missing Items"
+                >
+                  <span>🚫</span>
+                  <span className="hidden sm:inline">86 Items</span>
+                  {active86Items.length > 0 && (
+                    <span className="px-1.5 py-0.5 rounded-full bg-rose-500 text-white text-[10px] font-black leading-none">
+                      {active86Items.length}
+                    </span>
+                  )}
+                </button>
               </div>
 
               {/* Dynamic Grid Matrix: Automatically adapts columns and font to tablet direction */}
@@ -1877,7 +1925,7 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
           sourceTableCode={activeTableContext.tableCode}
           sourceOrderId={activeTableContext.orderId}
           sourceSessionId={activeTableContext.sessionId}
-          conceptId={'00000000-0000-0000-0000-000000000001'}
+          conceptId={activeConceptId}
           ticketItems={ticketItems}
           availableTables={floorTables}
           restaurantId={restaurantId}
@@ -1942,6 +1990,16 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
         isOpen={isInstallModalOpen}
         onClose={() => setIsInstallModalOpen(false)}
         deferredPrompt={deferredInstallPrompt}
+      />
+
+      {/* POS 86 MISSING ITEMS MODAL (VIEW DIVIDED BY MENU & INGREDIENTS) */}
+      <Pos86Modal
+        isOpen={is86ModalOpen}
+        onClose={() => setIs86ModalOpen(false)}
+        items={active86Items}
+        conceptName={currentUser?.concept_name || 'NÉO'}
+        branchName={branchName}
+        onRefresh={refetch86}
       />
     </div>
   );
