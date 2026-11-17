@@ -458,7 +458,7 @@ export const api = {
 
   getProductsSimpleList: async () => {
     const rid = getRestaurantId();
-    let query = supabase.from('products').select('id, name, inventory_mode, price, inventory_applies').order('name');
+    let query = supabase.from('products').select('id, name, inventory_mode, price, inventory_applies, concept_id').order('name');
     if (rid) query = query.eq('restaurant_id', rid);
     const { data, error } = await query;
     if (error) return { success: false, error: error.message };
@@ -2016,40 +2016,69 @@ export const api = {
   },
 
   // "86" Daily Missing Items
-  get86Logs: async (date: string, branch?: string) => {
+  get86Logs: async (date: string, branch?: string, conceptId?: string) => {
     const rid = getRestaurantId();
-    let query = supabase.from('menu_86').select('*').eq('date', date);
+    let query = supabase.from('menu_86').select('*');
+    if (date) {
+      query = query.gte('date', `${date}T00:00:00.000Z`).lte('date', `${date}T23:59:59.999Z`);
+    }
     if (branch && branch !== 'All') {
       query = query.eq('branch', branch);
     }
     if (rid) {
-      query = query.eq('restaurant_id', rid);
+      query = query.or(`restaurant_id.eq.${rid},restaurant_id.is.null`);
+    }
+    if (conceptId && conceptId !== 'ALL') {
+      query = query.or(`concept_id.eq.${conceptId},concept_id.is.null`);
     }
     const { data, error } = await query.order('branch');
     if (error) return { success: false, error: error.message };
     return { success: true, data };
   },
 
-  save86: async (branch: string, items: any[], date: string) => {
-    const { data: existing, error: findError } = await supabase
+  save86: async (branch: string, items: any[], date: string, conceptId?: string) => {
+    const rid = getRestaurantId() || '79256f11-a9f8-4fec-901d-69baf929762d';
+    const effectiveConceptId = conceptId || '00000000-0000-0000-0000-000000000001';
+
+    let query = supabase
       .from('menu_86')
       .select('id')
       .eq('branch', branch)
-      .eq('date', date)
-      .maybeSingle();
+      .gte('date', `${date}T00:00:00.000Z`)
+      .lte('date', `${date}T23:59:59.999Z`);
 
+    if (rid) {
+      query = query.or(`restaurant_id.eq.${rid},restaurant_id.is.null`);
+    }
+    if (effectiveConceptId) {
+      query = query.or(`concept_id.eq.${effectiveConceptId},concept_id.is.null`);
+    }
+
+    const { data: existing, error: findError } = await query.maybeSingle();
     if (findError) return { success: false, error: findError.message };
 
     if (existing) {
       const { error } = await supabase
         .from('menu_86')
-        .update({ items })
+        .update({
+          items,
+          restaurant_id: rid,
+          concept_id: effectiveConceptId,
+          updated_at: new Date().toISOString()
+        })
         .eq('id', existing.id);
       if (error) return { success: false, error: error.message };
     } else {
       const { error } = await supabase
         .from('menu_86')
-        .insert([{ branch, date, items }]);
+        .insert([{
+          branch,
+          date: `${date}T00:00:00.000Z`,
+          items,
+          restaurant_id: rid,
+          concept_id: effectiveConceptId,
+          updated_at: new Date().toISOString()
+        }]);
       if (error) return { success: false, error: error.message };
     }
     return { success: true };

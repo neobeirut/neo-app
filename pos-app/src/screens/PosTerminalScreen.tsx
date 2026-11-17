@@ -549,8 +549,9 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   }, [user?.branch, activeCashier?.branch, user?.restaurant_id]);
 
   // FLOW 86 Dynamic Availability Hook
-  const { isProduct86d, isCustomization86d, unavailableProductIds, refetch86 } = usePos86(
-    commerceBranchLink?.flow_branch_name || user?.branch || "Badaro"
+  const { isProduct86d, isCustomization86d, unavailableProductIds, active86Items = [], refetch86 } = usePos86(
+    commerceBranchLink?.flow_branch_name || user?.branch || "Badaro",
+    workspaceState?.activeConcept?.id
   );
 
   // Persistent POS terminal identity (from localStorage or hardware station ID)

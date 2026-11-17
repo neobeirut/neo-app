@@ -171,3 +171,5 @@ export function useActiveConcept() {
   }
   return ctx;
 }
+
+export const useConcept = useActiveConcept;

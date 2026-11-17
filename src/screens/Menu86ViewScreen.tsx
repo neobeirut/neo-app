@@ -1,6 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { api } from '../api/client';
-import { Loader2, Calendar, MapPin, AlertCircle, ChefHat, Layers, CheckCircle, Plus, Trash2, X, Edit } from 'lucide-react';
+import { useActiveConcept } from '../context/ConceptContext';
+import { KNOWN_CONCEPTS } from '../types/concept';
+import { Loader2, Calendar, MapPin, AlertCircle, ChefHat, Layers, CheckCircle, Plus, Trash2, X, Edit, Tag } from 'lucide-react';
 
 interface Menu86Item {
   name: string;
@@ -12,9 +14,11 @@ interface Menu86Record {
   id: string;
   branch: string;
   date: string;
+  concept_id?: string;
+  restaurant_id?: string;
   items: Menu86Item[];
   created_at: string;
-  updated_at: string;
+  updated_at?: string | null;
 }
 
 export default function Menu86ViewScreen() {
@@ -26,17 +30,31 @@ export default function Menu86ViewScreen() {
     return `${year}-${month}-${day}`;
   };
 
+  const { activeConcept, conceptId } = useActiveConcept();
   const [date, setDate] = useState(getTodayString());
   const [selectedBranch, setSelectedBranch] = useState('All');
+  const [selectedConcept, setSelectedConcept] = useState<string>(conceptId || 'ALL');
   const [branches, setBranches] = useState<any[]>([]);
   const [menuRecipes, setMenuRecipes] = useState<any[]>([]);
+  const [products, setProducts] = useState<any[]>([]);
+  const [inventoryItems, setInventoryItems] = useState<any[]>([]);
   const [logs, setLogs] = useState<Menu86Record[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Sync selected concept when header concept switcher changes
+  useEffect(() => {
+    if (conceptId) {
+      setSelectedConcept(conceptId);
+    } else {
+      setSelectedConcept('ALL');
+    }
+  }, [conceptId]);
+
   // Modal States
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formBranch, setFormBranch] = useState('');
+  const [formConceptId, setFormConceptId] = useState<string>(conceptId || KNOWN_CONCEPTS.NEO.id);
   const [formDate, setFormDate] = useState(getTodayString());
   const [formItems, setFormItems] = useState<Menu86Item[]>([]);
   const [newItemName, setNewItemName] = useState('');
@@ -44,28 +62,78 @@ export default function Menu86ViewScreen() {
   const [newItemDept, setNewItemDept] = useState('Kitchen');
   const [saving, setSaving] = useState(false);
 
+  const getConceptName = (cid?: string) => {
+    if (!cid) return 'NÉO';
+    const found = Object.values(KNOWN_CONCEPTS).find(c => c.id === cid);
+    return found?.name || 'NÉO';
+  };
+
+  const getConceptColor = (cid?: string) => {
+    if (!cid) return '#1e5c4f';
+    const found = Object.values(KNOWN_CONCEPTS).find(c => c.id === cid);
+    return found?.primaryColor || '#1e5c4f';
+  };
+
+  // Available items in the modal filtered by formConceptId
+  const availableMenuItems = useMemo(() => {
+    const list: { id: string; name: string; dept: string; source: string }[] = [];
+    const seen = new Set<string>();
+
+    // 1. Recipes matching concept
+    const matchingRecipes = menuRecipes.filter(r => !r.concept_id || r.concept_id === formConceptId);
+    for (const r of matchingRecipes) {
+      const norm = (r.item_name || '').toLowerCase().trim();
+      if (norm && !seen.has(norm)) {
+        seen.add(norm);
+        list.push({
+          id: `recipe_${r.id}`,
+          name: r.item_name,
+          dept: r.menu_sections?.department || 'Kitchen',
+          source: 'Kitchen Recipe'
+        });
+      }
+    }
+
+    // 2. Products matching concept
+    const matchingProducts = products.filter(p => !p.concept_id || p.concept_id === formConceptId);
+    for (const p of matchingProducts) {
+      const norm = (p.name || '').toLowerCase().trim();
+      if (norm && !seen.has(norm)) {
+        seen.add(norm);
+        list.push({
+          id: `prod_${p.id}`,
+          name: p.name,
+          dept: 'Kitchen',
+          source: 'POS Product'
+        });
+      }
+    }
+
+    return list.sort((a, b) => a.name.localeCompare(b.name));
+  }, [menuRecipes, products, formConceptId]);
+
   const handleOpenCreateModal = (existingLog?: Menu86Record) => {
     if (existingLog) {
       setFormBranch(existingLog.branch);
-      setFormDate(existingLog.date);
+      setFormDate(existingLog.date ? existingLog.date.split('T')[0] : date);
+      setFormConceptId(existingLog.concept_id || conceptId || KNOWN_CONCEPTS.NEO.id);
       setFormItems(existingLog.items || []);
     } else {
-      setFormBranch(branches[0]?.name || '');
+      setFormBranch(branches[0]?.name || 'Badaro');
       setFormDate(date);
+      setFormConceptId(conceptId || KNOWN_CONCEPTS.NEO.id);
       setFormItems([]);
     }
     
-    // Set default menu item selection if available
-    const firstRecipe = menuRecipes[0];
-    setNewItemName(firstRecipe ? firstRecipe.item_name : '');
+    setNewItemName('');
     setNewItemType('menu');
-    setNewItemDept(firstRecipe?.menu_sections?.department || 'Kitchen');
+    setNewItemDept('Kitchen');
     setIsModalOpen(true);
   };
 
   const handleAddItem = () => {
     if (!newItemName.trim()) {
-      alert('Please enter an item name.');
+      alert('Please enter or select an item name.');
       return;
     }
     const item: Menu86Item = {
@@ -87,9 +155,9 @@ export default function Menu86ViewScreen() {
     }
     const updatedItems = (logRecord.items || []).filter(i => i.name !== itemName);
     try {
-      const res = await api.save86(logRecord.branch, updatedItems, logRecord.date);
+      const res = await api.save86(logRecord.branch, updatedItems, logRecord.date, logRecord.concept_id);
       if (res.success) {
-        const logsRes = await api.get86Logs(date, selectedBranch);
+        const logsRes = await api.get86Logs(date, selectedBranch, selectedConcept);
         if (logsRes.success) {
           setLogs(logsRes.data || []);
         }
@@ -112,11 +180,11 @@ export default function Menu86ViewScreen() {
     }
     setSaving(true);
     try {
-      const res = await api.save86(formBranch, formItems, formDate);
+      const res = await api.save86(formBranch, formItems, formDate, formConceptId);
       if (res.success) {
         setIsModalOpen(false);
-        // Refresh logs
-        const logsRes = await api.get86Logs(date, selectedBranch);
+        // Refresh logs immediately
+        const logsRes = await api.get86Logs(date, selectedBranch, selectedConcept);
         if (logsRes.success) {
           setLogs(logsRes.data || []);
         }
@@ -130,19 +198,27 @@ export default function Menu86ViewScreen() {
     }
   };
 
-  // Fetch branches and menu recipes on mount
+  // Fetch branches, menu recipes, products, and ingredients on mount
   useEffect(() => {
     const fetchInitialData = async () => {
       try {
-        const [branchRes, recipesRes] = await Promise.all([
+        const [branchRes, recipesRes, productsRes, itemsRes] = await Promise.all([
           api.getBranchesList(),
-          api.getMenuRecipes()
+          api.getMenuRecipes(),
+          api.getProductsSimpleList(),
+          api.getInventoryItemsSimpleList()
         ]);
         if (branchRes.success && branchRes.data) {
           setBranches(branchRes.data);
         }
         if (recipesRes.success && recipesRes.data) {
           setMenuRecipes(recipesRes.data);
+        }
+        if (productsRes.success && productsRes.data) {
+          setProducts(productsRes.data);
+        }
+        if (itemsRes.success && itemsRes.data) {
+          setInventoryItems(itemsRes.data);
         }
       } catch (err: any) {
         console.error('Error fetching initial data for 86 screen:', err);
@@ -151,13 +227,13 @@ export default function Menu86ViewScreen() {
     fetchInitialData();
   }, []);
 
-  // Fetch 86 logs when date or branch selection changes
+  // Fetch 86 logs when date, branch, or concept selection changes
   useEffect(() => {
     const fetchLogs = async () => {
       setLoading(true);
       setError(null);
       try {
-        const res = await api.get86Logs(date, selectedBranch);
+        const res = await api.get86Logs(date, selectedBranch, selectedConcept);
         if (res.success) {
           setLogs(res.data || []);
         } else {
@@ -170,7 +246,7 @@ export default function Menu86ViewScreen() {
       }
     };
     fetchLogs();
-  }, [date, selectedBranch]);
+  }, [date, selectedBranch, selectedConcept]);
 
   // Helper to render department badges
   const renderDepartmentBadge = (dept?: string) => {
@@ -227,7 +303,7 @@ export default function Menu86ViewScreen() {
             <AlertCircle size={28} style={{ color: 'var(--primary)' }} /> Daily "86" Missing Items
           </h1>
           <p style={{ color: 'var(--text-muted)', margin: '4px 0 0 0', fontSize: '14px' }}>
-            Monitor unavailable dishes, beverages, and ingredients across all branches.
+            Monitor unavailable dishes, beverages, and ingredients across all brand concepts and branches.
           </p>
         </div>
         <button
@@ -252,7 +328,7 @@ export default function Menu86ViewScreen() {
         </button>
       </div>
 
-      {/* Filter Panel with Glassmorphism / Subtle Shadow */}
+      {/* Filter Panel */}
       <div style={filterPanelStyle}>
         <div style={filterGroupStyle}>
           <label style={labelStyle}>
@@ -285,6 +361,25 @@ export default function Menu86ViewScreen() {
             ))}
           </select>
         </div>
+
+        <div style={filterGroupStyle}>
+          <label style={labelStyle}>
+            <Layers size={16} style={{ marginRight: '6px' }} />
+            Brand Concept
+          </label>
+          <select
+            value={selectedConcept}
+            onChange={(e) => setSelectedConcept(e.target.value)}
+            style={selectStyle}
+          >
+            <option value="ALL">All Concepts</option>
+            {Object.values(KNOWN_CONCEPTS).map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* Error alert */}
@@ -311,7 +406,7 @@ export default function Menu86ViewScreen() {
               All Clear
             </h3>
             <p style={{ color: '#64748b', fontSize: '14px', marginTop: '6px', maxWidth: '360px', textAlign: 'center' }}>
-              No missing menu items or ingredients have been logged for this date.
+              No missing menu items or ingredients have been logged for this date and filter.
             </p>
           </div>
         ) : (
@@ -319,6 +414,11 @@ export default function Menu86ViewScreen() {
             {logs.map((log) => {
               const menuItems = (log.items || []).filter((i) => i.type === 'menu');
               const ingredients = (log.items || []).filter((i) => i.type === 'ingredient');
+              const cName = getConceptName(log.concept_id);
+              const cColor = getConceptColor(log.concept_id);
+              const timeDisplay = log.updated_at || log.created_at
+                ? new Date(log.updated_at || log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                : 'Today';
 
               return (
                 <div
@@ -327,7 +427,7 @@ export default function Menu86ViewScreen() {
                   onMouseOver={(e) => {
                     e.currentTarget.style.transform = 'translateY(-2px)';
                     e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1)';
-                    e.currentTarget.style.borderColor = 'var(--primary)';
+                    e.currentTarget.style.borderColor = cColor;
                   }}
                   onMouseOut={(e) => {
                     e.currentTarget.style.transform = 'none';
@@ -336,11 +436,24 @@ export default function Menu86ViewScreen() {
                   }}
                 >
                   <div style={cardHeaderStyle}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <MapPin size={18} style={{ color: 'var(--primary)' }} />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      <MapPin size={18} style={{ color: cColor }} />
                       <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1e293b', margin: 0 }}>
                         {log.branch}
                       </h2>
+                      <span
+                        style={{
+                          padding: '2px 8px',
+                          borderRadius: '12px',
+                          fontSize: '11px',
+                          fontWeight: 700,
+                          backgroundColor: `${cColor}18`,
+                          color: cColor,
+                          border: `1px solid ${cColor}40`
+                        }}
+                      >
+                        {cName}
+                      </span>
                       <button
                         onClick={() => handleOpenCreateModal(log)}
                         style={{
@@ -363,7 +476,7 @@ export default function Menu86ViewScreen() {
                       </button>
                     </div>
                     <span style={timestampStyle}>
-                      Updated {new Date(log.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      Updated {timeDisplay}
                     </span>
                   </div>
 
@@ -479,7 +592,7 @@ export default function Menu86ViewScreen() {
             
             <div style={modalBodyStyle}>
               <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-                <div style={{ flex: 1, minWidth: '200px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <div style={{ flex: 1, minWidth: '160px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
                   <label style={labelStyle}>Branch Location</label>
                   <select
                     value={formBranch}
@@ -492,8 +605,24 @@ export default function Menu86ViewScreen() {
                     ))}
                   </select>
                 </div>
+
+                <div style={{ flex: 1, minWidth: '160px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <label style={labelStyle}>Brand Concept</label>
+                  <select
+                    value={formConceptId}
+                    onChange={(e) => {
+                      setFormConceptId(e.target.value);
+                      setNewItemName('');
+                    }}
+                    style={{ ...selectStyle, width: '100%' }}
+                  >
+                    {Object.values(KNOWN_CONCEPTS).map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
                 
-                <div style={{ flex: 1, minWidth: '200px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <div style={{ flex: 1, minWidth: '160px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
                   <label style={labelStyle}>Date</label>
                   <input
                     type="date"
@@ -518,52 +647,73 @@ export default function Menu86ViewScreen() {
                       onChange={(e) => {
                         const typeVal = e.target.value as 'menu' | 'ingredient';
                         setNewItemType(typeVal);
-                        if (typeVal === 'menu') {
-                          const firstRecipe = menuRecipes[0];
-                          setNewItemName(firstRecipe ? firstRecipe.item_name : '');
-                          setNewItemDept(firstRecipe?.menu_sections?.department || 'Kitchen');
-                        } else {
-                          setNewItemName('');
-                          setNewItemDept('Kitchen');
-                        }
+                        setNewItemName('');
+                        setNewItemDept('Kitchen');
                       }}
                       style={{ ...selectStyle, width: '100%' }}
                     >
-                      <option value="menu">Menu Item</option>
-                      <option value="ingredient">Ingredient</option>
+                      <option value="menu">Menu Item / Dish</option>
+                      <option value="ingredient">Ingredient / Modifier</option>
                     </select>
                   </div>
 
                   {newItemType === 'menu' ? (
-                    <div style={{ flex: 2, minWidth: '180px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                      <label style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>Select Menu Item</label>
-                      <select
-                        value={newItemName}
-                        onChange={(e) => {
-                          const nameVal = e.target.value;
-                          setNewItemName(nameVal);
-                          const recipe = menuRecipes.find(r => r.item_name === nameVal);
-                          if (recipe?.menu_sections?.department) {
-                            setNewItemDept(recipe.menu_sections.department);
-                          }
-                        }}
-                        style={{ ...selectStyle, width: '100%' }}
-                      >
-                        {menuRecipes.map((r) => (
-                          <option key={r.id} value={r.item_name}>{r.item_name}</option>
-                        ))}
-                      </select>
-                    </div>
-                  ) : (
-                    <div style={{ flex: 2, minWidth: '180px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                      <label style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>Item Name</label>
+                    <div style={{ flex: 2, minWidth: '200px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <label style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>Select or Type Menu Item</label>
+                        <span style={{ fontSize: '10px', color: '#94a3b8' }}>{availableMenuItems.length} items in concept</span>
+                      </div>
                       <input
                         type="text"
-                        placeholder="e.g. Avocado Toast, Fresh Mint"
+                        list="concept_menu_items_list"
+                        placeholder="Choose from list or type..."
                         value={newItemName}
-                        onChange={(e) => setNewItemName(e.target.value)}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setNewItemName(val);
+                          const matched = availableMenuItems.find(i => i.name.toLowerCase() === val.toLowerCase().trim());
+                          if (matched && matched.dept) {
+                            setNewItemDept(matched.dept);
+                          }
+                        }}
                         style={{ ...inputStyle, width: '100%' }}
                       />
+                      <datalist id="concept_menu_items_list">
+                        {availableMenuItems.map((item) => (
+                          <option key={item.id} value={item.name}>
+                            {item.name} ({item.source})
+                          </option>
+                        ))}
+                      </datalist>
+                    </div>
+                  ) : (
+                    <div style={{ flex: 2, minWidth: '200px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <label style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>Ingredient / Modifier</label>
+                        <span style={{ fontSize: '10px', color: '#94a3b8' }}>{inventoryItems.length} ingredients</span>
+                      </div>
+                      <input
+                        type="text"
+                        list="inventory_ingredients_list"
+                        placeholder="Choose or type ingredient (e.g. Avocado)..."
+                        value={newItemName}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setNewItemName(val);
+                          const matched = inventoryItems.find(i => (i.name || '').toLowerCase() === val.toLowerCase().trim());
+                          if (matched && matched.department) {
+                            setNewItemDept(matched.department);
+                          }
+                        }}
+                        style={{ ...inputStyle, width: '100%' }}
+                      />
+                      <datalist id="inventory_ingredients_list">
+                        {inventoryItems.map((ing) => (
+                          <option key={ing.id} value={ing.name}>
+                            {ing.name} ({ing.department || 'Kitchen'})
+                          </option>
+                        ))}
+                      </datalist>
                     </div>
                   )}
                   
@@ -678,8 +828,6 @@ export default function Menu86ViewScreen() {
   );
 }
 
-
-
 const modalOverlayStyle = {
   position: 'fixed' as const,
   top: 0,
@@ -698,7 +846,7 @@ const modalContentStyle = {
   backgroundColor: '#ffffff',
   borderRadius: '12px',
   width: '100%',
-  maxWidth: '600px',
+  maxWidth: '640px',
   boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
   border: '1px solid #e2e8f0',
   display: 'flex',

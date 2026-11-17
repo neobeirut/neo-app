@@ -10,7 +10,7 @@ export interface Pos86Item {
   commerce_product_id?: string;
 }
 
-export function usePos86(branchName?: string) {
+export function usePos86(branchName?: string, conceptId?: string) {
   const [unavailableProductIds, setUnavailableProductIds] = useState<Set<string>>(new Set());
   const [unavailableProductNames, setUnavailableProductNames] = useState<Set<string>>(new Set());
   const [unavailableIngredientNames, setUnavailableIngredientNames] = useState<Set<string>>(new Set());
@@ -23,36 +23,31 @@ export function usePos86(branchName?: string) {
   const fetch86Status = useCallback(async () => {
     setLoading(true);
     try {
-      // 1. Fetch active 86 record for branch (or latest)
+      // 1. Fetch active 86 record for branch (and concept if provided)
       let query = supabase.from('menu_86').select('*');
       if (effectiveBranch) {
         query = query.ilike('branch', effectiveBranch);
       }
+      if (conceptId) {
+        query = query.or(`concept_id.eq.${conceptId},concept_id.is.null`);
+      }
       const { data: records, error } = await query
         .order('date', { ascending: false })
-        .limit(3);
+        .limit(10);
 
+      let fallbackRecords: any[] = [];
       if (error || !records || records.length === 0) {
         // Fallback: check without branch filter if specific branch had no record
-        const { data: fallbackRecords } = await supabase
+        const { data: fb } = await supabase
           .from('menu_86')
           .select('*')
           .order('date', { ascending: false })
-          .limit(1);
-
-        if (!fallbackRecords || fallbackRecords.length === 0) {
-          setUnavailableProductIds(new Set());
-          setUnavailableProductNames(new Set());
-          setUnavailableIngredientNames(new Set());
-          setActive86Items([]);
-          setUnmapped86Items([]);
-          setLoading(false);
-          return;
-        }
+          .limit(5);
+        fallbackRecords = fb || [];
       }
 
-      const activeRecord = (records && records.length > 0) ? records[0] : null;
-      if (!activeRecord) {
+      const activeRecords = (records && records.length > 0) ? records : fallbackRecords;
+      if (!activeRecords || activeRecords.length === 0) {
         setUnavailableProductIds(new Set());
         setUnavailableProductNames(new Set());
         setUnavailableIngredientNames(new Set());
@@ -62,7 +57,21 @@ export function usePos86(branchName?: string) {
         return;
       }
 
-      const rawItems: Pos86Item[] = Array.isArray(activeRecord.items) ? activeRecord.items : [];
+      // Aggregate all active 86 items across returned records for this branch/concept
+      const rawItemsMap = new Map<string, Pos86Item>();
+      for (const rec of activeRecords) {
+        if (Array.isArray(rec.items)) {
+          for (const it of rec.items) {
+            if (it && it.name) {
+              const key = `${it.name.toLowerCase().trim()}_${it.type || 'menu'}`;
+              if (!rawItemsMap.has(key)) {
+                rawItemsMap.set(key, it);
+              }
+            }
+          }
+        }
+      }
+      const rawItems: Pos86Item[] = Array.from(rawItemsMap.values());
       setActive86Items(rawItems);
 
       // 2. Fetch commerce product links (optional enhancement)
@@ -134,7 +143,7 @@ export function usePos86(branchName?: string) {
     } finally {
       setLoading(false);
     }
-  }, [effectiveBranch]);
+  }, [effectiveBranch, conceptId]);
 
   useEffect(() => {
     fetch86Status();
