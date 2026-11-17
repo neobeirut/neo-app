@@ -241,14 +241,39 @@ export default function PosScreenBuilderScreen({ user }: { user?: any }) {
     setIsAddButtonModalOpen(false);
   };
 
-  const handleDeleteButton = (btnIndex: number) => {
+  const handleDeleteButton = async (btnIndex: number) => {
     if (!activeScreen) return;
-    const updatedButtons = activeScreen.buttons.filter((_, idx) => idx !== btnIndex);
+    const btnToDelete = activeScreen.buttons[btnIndex];
+    const btnLabelName = btnToDelete?.label || 'this button';
+    if (!window.confirm(`Are you sure you want to delete "${btnLabelName}" from "${activeScreen.name}"?`)) {
+      return;
+    }
+    const updatedButtons = activeScreen.buttons
+      .filter((_, idx) => idx !== btnIndex)
+      .map((b, i) => ({ ...b, sortOrder: i }));
     const updatedScreens = screens.map((s) => (s.id === activeScreen.id ? { ...s, buttons: updatedButtons } : s));
     setScreens(updatedScreens);
+    setIsAddButtonModalOpen(false);
+    setEditingButtonIndex(null);
+
+    // Persist immediately to Supabase
+    try {
+      setSaving(true);
+      const res = await savePosScreens(currentRestaurantId, updatedScreens, activeConceptId);
+      if (res.success) {
+        setSaveSuccess(true);
+        setTimeout(() => setSaveSuccess(false), 3000);
+      } else {
+        setError(res.error || 'Failed to save changes after deletion');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Error saving changes after deletion');
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleClearScreen = () => {
+  const handleClearScreen = async () => {
     if (!activeScreen) return;
     if (activeScreen.buttons.length === 0) return;
     if (!window.confirm(`Clear all ${activeScreen.buttons.length} button(s) from "${activeScreen.name}"? This will leave the screen completely empty.`)) {
@@ -256,6 +281,19 @@ export default function PosScreenBuilderScreen({ user }: { user?: any }) {
     }
     const updatedScreens = screens.map((s) => (s.id === activeScreen.id ? { ...s, buttons: [] } : s));
     setScreens(updatedScreens);
+
+    try {
+      setSaving(true);
+      const res = await savePosScreens(currentRestaurantId, updatedScreens, activeConceptId);
+      if (res.success) {
+        setSaveSuccess(true);
+        setTimeout(() => setSaveSuccess(false), 3000);
+      }
+    } catch (err: any) {
+      console.error('Failed to auto-save after clear:', err);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleReorderButton = (fromIndex: number, toIndex: number) => {
@@ -672,10 +710,10 @@ export default function PosScreenBuilderScreen({ user }: { user?: any }) {
                         ? (products.find((p) => String(p.id) === String(btn.productId)) ||
                            products.find((p) => (p.name || '').trim().toLowerCase() === (btn.label || '').trim().toLowerCase()))
                         : null;
-                      const isProductDeleted = !isSubscreen && (
+                      const isUnavailable = !isSubscreen && (
                         !matchingProd ||
                         (matchingProd as any).is_active === false ||
-                        ['deleted', 'archived'].includes(String((matchingProd as any).status || '').toLowerCase())
+                        ['deleted', 'archived', 'unavailable', 'unavailable today', 'out_of_stock'].includes(String((matchingProd as any).status || '').toLowerCase())
                       );
                       return (
                         <div
@@ -712,9 +750,10 @@ export default function PosScreenBuilderScreen({ user }: { user?: any }) {
                             setDraggedBtnIndex(null);
                             setDragOverBtnIndex(null);
                           }}
-                          title={isProductDeleted ? `⚠️ "${btn.label}" is deleted or not found in catalog` : "Drag and drop to move this button"}
-                          className={`relative group rounded-xl border overflow-hidden ${gridDensity.minHeight} ${gridDensity.padding} flex flex-col justify-between transition-all shadow-xs cursor-grab active:cursor-grabbing select-none ${
-                            isProductDeleted ? 'bg-slate-100 border-dashed border-rose-400 opacity-60' : `${colorTheme.bg} ${colorTheme.border}`
+                          onClick={() => handleOpenAddButtonModal(idx)}
+                          title={isUnavailable ? `⚠️ "${btn.label}" is unavailable` : "Click to edit, or drag to reorder"}
+                          className={`relative group rounded-xl border overflow-hidden ${gridDensity.minHeight} ${gridDensity.padding} flex flex-col justify-between transition-all shadow-xs cursor-pointer select-none ${
+                            isUnavailable ? 'bg-slate-100 border-dashed border-rose-300 opacity-60' : `${colorTheme.bg} ${colorTheme.border}`
                           } ${
                             isDragging ? 'opacity-40 scale-95' : ''
                           } ${isDragOver ? 'ring-2 ring-emerald-500 border-emerald-500 scale-[1.03]' : ''}`}
@@ -724,39 +763,50 @@ export default function PosScreenBuilderScreen({ user }: { user?: any }) {
                               <GripVertical size={10} className="text-slate-500" />
                               {btn.type === 'screen' ? '📁 Sub' : '🍽️ Dish'}
                             </span>
-                            {isProductDeleted && (
+                            {isUnavailable && (
                               <span className="text-[9px] uppercase font-black tracking-wider px-1.5 py-0.5 rounded bg-rose-600 text-white shadow-xs">
-                                Deleted
+                                Unavailable
                               </span>
                             )}
-                            <div className="flex items-center gap-0.5">
+                            <div
+                              className="flex items-center gap-1 z-20"
+                              onMouseDown={(e) => e.stopPropagation()}
+                              onTouchStart={(e) => e.stopPropagation()}
+                              onClick={(e) => e.stopPropagation()}
+                            >
                               <button
                                 type="button"
+                                draggable={false}
+                                onMouseDown={(e) => e.stopPropagation()}
+                                onTouchStart={(e) => e.stopPropagation()}
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   handleOpenAddButtonModal(idx);
                                 }}
-                                className="p-1 rounded bg-black/10 hover:bg-black/20 text-slate-700 hover:text-slate-900 transition cursor-pointer"
+                                className="p-1.5 rounded-lg bg-black/10 hover:bg-black/20 text-slate-700 hover:text-slate-900 transition cursor-pointer"
                                 title="Edit Button"
                               >
-                                <Edit3 size={11} />
+                                <Edit3 size={12} />
                               </button>
                               <button
                                 type="button"
+                                draggable={false}
+                                onMouseDown={(e) => e.stopPropagation()}
+                                onTouchStart={(e) => e.stopPropagation()}
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  handleDeleteButton(idx);
+                                  void handleDeleteButton(idx);
                                 }}
-                                className="p-1 rounded bg-black/10 hover:bg-rose-100 text-slate-700 hover:text-rose-700 transition cursor-pointer"
+                                className="p-1.5 rounded-lg bg-black/10 hover:bg-rose-600 hover:text-white text-slate-700 transition cursor-pointer"
                                 title="Delete Button"
                               >
-                                <Trash2 size={11} />
+                                <Trash2 size={12} />
                               </button>
                             </div>
                           </div>
 
                           <div className="my-auto py-1 text-center pointer-events-none">
-                            <span className={`font-black ${gridDensity.fontSize} leading-tight line-clamp-2 ${isProductDeleted ? 'line-through text-slate-400' : (colorTheme.text || 'text-slate-800')}`}>
+                            <span className={`font-black ${gridDensity.fontSize} leading-tight line-clamp-2 ${isUnavailable ? 'line-through text-slate-400' : (colorTheme.text || 'text-slate-800')}`}>
                               {btn.label}
                             </span>
                           </div>
@@ -764,7 +814,7 @@ export default function PosScreenBuilderScreen({ user }: { user?: any }) {
                           <div className="text-[9px] text-slate-500 font-medium text-center truncate opacity-80 pointer-events-none">
                             {btn.type === 'screen'
                               ? `Opens: ${screens.find((s) => s.id === btn.targetScreenId)?.name || 'Screen'}`
-                              : 'Drag to move'}
+                              : 'Click or drag to move'}
                           </div>
                         </div>
                       );
@@ -980,18 +1030,29 @@ export default function PosScreenBuilderScreen({ user }: { user?: any }) {
               </div>
             </div>
 
-            <div className="flex gap-2 pt-2">
+            <div className="flex items-center gap-2 pt-2">
+              {editingButtonIndex !== null && (
+                <button
+                  type="button"
+                  onClick={() => void handleDeleteButton(editingButtonIndex)}
+                  className="py-2.5 px-3.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 text-xs font-black transition flex items-center justify-center gap-1.5 cursor-pointer shrink-0 shadow-xs"
+                  title="Delete this button from screen"
+                >
+                  <Trash2 size={14} />
+                  <span>Delete Button</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setIsAddButtonModalOpen(false)}
-                className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 text-xs font-bold transition"
+                className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 text-xs font-bold transition cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={handleSaveButton}
-                className="flex-1 py-2.5 rounded-xl bg-[#1e5c4f] hover:bg-[#16473D] text-white text-xs font-black shadow-xs transition"
+                className="flex-1 py-2.5 rounded-xl bg-[#1e5c4f] hover:bg-[#16473D] text-white text-xs font-black shadow-xs transition cursor-pointer"
               >
                 {editingButtonIndex !== null ? 'Update Button' : 'Add Button'}
               </button>

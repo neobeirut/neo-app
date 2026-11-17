@@ -572,8 +572,8 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
     } else {
       const prod = products.find(p => String(p.id) === String(btn.productId)) ||
                    products.find(p => (p.name || '').trim().toLowerCase() === (btn.label || '').trim().toLowerCase());
-      if (!prod || (prod as any).is_active === false || ['deleted', 'archived'].includes(String((prod as any).status || '').toLowerCase())) {
-        showNotification(`⚠️ "${btn.label}" is deleted or not found in the catalog.`, 'error');
+      if (!prod || (prod as any).is_active === false || ['deleted', 'archived', 'unavailable', 'unavailable today', 'out_of_stock'].includes(String((prod as any).status || '').toLowerCase())) {
+        showNotification(`⚠️ "${btn.label}" is currently unavailable.`, 'error');
         return;
       }
       handleAddItem(prod);
@@ -581,8 +581,8 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
   };
 
   const handleAddItem = (product: PosProduct | { id: any; name: string; unit_price_usd: number; customizations?: any[] }) => {
-    if (!product || (product as any).is_active === false || ['deleted', 'archived'].includes(String((product as any).status || '').toLowerCase())) {
-      showNotification(`⚠️ This product is deleted or unavailable.`, 'error');
+    if (!product || (product as any).is_active === false || ['deleted', 'archived', 'unavailable', 'unavailable today', 'out_of_stock'].includes(String((product as any).status || '').toLowerCase())) {
+      showNotification(`⚠️ This product is currently unavailable.`, 'error');
       return;
     }
     if (isOtherWaiterTable) {
@@ -1525,12 +1525,12 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
                         ? (products.find((p: any) => String(p.id) === String(btn.productId)) ||
                            products.find((p: any) => (p.name || '').trim().toLowerCase() === (btn.label || '').trim().toLowerCase()))
                         : null;
-                      const isProductDeleted = !isSubscreen && (
+                      const isUnavailable = !isSubscreen && (
                         !matchingProduct ||
                         (matchingProduct as any).is_active === false ||
-                        ['deleted', 'archived'].includes(String((matchingProduct as any).status || '').toLowerCase())
+                        ['deleted', 'archived', 'unavailable', 'unavailable today', 'out_of_stock'].includes(String((matchingProduct as any).status || '').toLowerCase())
                       );
-                      const isDisabled = isProductDeleted;
+                      const isDisabled = isUnavailable;
 
                       return (
                         <button
@@ -1538,7 +1538,7 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
                           type="button"
                           onClick={() => handleTouchButtonPress(btn)}
                           disabled={isDisabled}
-                          title={isProductDeleted ? `⚠️ "${btn.label}" is deleted or not found in catalog` : btn.label}
+                          title={isUnavailable ? `⚠️ "${btn.label}" is unavailable` : btn.label}
                           className={`w-full ${activeGridDensity.minHeight} ${activeGridDensity.padding} rounded-2xl border flex flex-col items-center justify-center text-center shadow-xs transition-all active:scale-95 cursor-pointer select-none overflow-hidden relative group ${
                             isDisabled
                               ? 'bg-slate-100 border-dashed border-rose-300 opacity-40 cursor-not-allowed text-slate-400'
@@ -1556,9 +1556,9 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
                           >
                             {btn.label}
                           </span>
-                          {isProductDeleted && (
+                          {isUnavailable && (
                             <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 mt-1">
-                              Deleted
+                              Unavailable
                             </span>
                           )}
                         </button>

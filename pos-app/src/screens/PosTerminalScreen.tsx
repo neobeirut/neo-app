@@ -2382,8 +2382,11 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   });
 
   const handleQuickAddProduct = (product) => {
-    if (!product || product.is_active === false || ['deleted', 'archived'].includes(String(product.status || '').toLowerCase())) {
-      alert(`⚠️ This item is deleted or inactive and cannot be added to the order.`);
+    const isProductUnavail = !product || product.is_active === false ||
+      ['deleted', 'archived', 'unavailable', 'unavailable today', 'out_of_stock'].includes(String(product.status || '').toLowerCase()) ||
+      isProduct86d(product.id);
+    if (isProductUnavail) {
+      alert(`⚠️ "${product?.name || 'This item'}" is currently unavailable and cannot be added to the order.`);
       return;
     }
     if (!isShiftOpen) {
@@ -2500,8 +2503,12 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       const prod = products.find((p: any) => String(p.id) === String(btn.productId)) ||
                    products.find((p: any) => (p.name || '').trim().toLowerCase() === (btn.label || '').trim().toLowerCase());
 
-      if (!prod || prod.is_active === false || ['deleted', 'archived'].includes(String(prod.status || '').toLowerCase())) {
-        alert(`⚠️ "${btn.label}" is deleted or not found in the product catalog and cannot be ordered.`);
+      const isUnavailable = !prod || prod.is_active === false ||
+        ['deleted', 'archived', 'unavailable', 'unavailable today', 'out_of_stock'].includes(String(prod.status || '').toLowerCase()) ||
+        isProduct86d((prod as any).id);
+
+      if (isUnavailable) {
+        alert(`⚠️ "${btn.label}" is currently unavailable and cannot be ordered.`);
         return;
       }
 
@@ -5935,13 +5942,13 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                           ? (products.find((p: any) => String(p.id) === String(btn.productId)) ||
                              products.find((p: any) => (p.name || '').trim().toLowerCase() === (btn.label || '').trim().toLowerCase()))
                           : null;
-                        const isProductDeleted = !isSubscreen && (
+                        const isUnavailable = !isSubscreen && (
                           !matchingProduct ||
                           matchingProduct.is_active === false ||
-                          ['deleted', 'archived'].includes(String(matchingProduct.status || '').toLowerCase())
+                          ['deleted', 'archived', 'unavailable', 'unavailable today', 'out_of_stock'].includes(String(matchingProduct.status || '').toLowerCase()) ||
+                          (matchingProduct ? isProduct86d(matchingProduct.id) : false)
                         );
-                        const is86d = matchingProduct ? isProduct86d(matchingProduct.id) : false;
-                        const isDisabled = (!isShiftOpen && !isSubscreen) || isProductDeleted || is86d;
+                        const isDisabled = (!isShiftOpen && !isSubscreen) || isUnavailable;
 
                         return (
                           <button
@@ -5949,25 +5956,20 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                             type="button"
                             onClick={() => handleTouchButtonPress(btn)}
                             disabled={isDisabled}
-                            title={isProductDeleted ? `⚠️ "${btn.label}" is deleted or not found in catalog` : (is86d ? `⚠️ "${btn.label}" is 86'd` : btn.label)}
+                            title={isUnavailable ? `⚠️ "${btn.label}" is unavailable` : btn.label}
                             className={`${activeGridDensity.minHeight} ${activeGridDensity.padding} rounded-2xl border flex flex-col items-center justify-center text-center shadow-xs transition-all active:scale-95 cursor-pointer relative overflow-hidden group select-none ${
                               isDisabled
-                                ? `bg-slate-100 ${isProductDeleted ? 'border-dashed border-rose-300' : 'border-slate-200'} opacity-40 cursor-not-allowed text-slate-400`
+                                ? `bg-slate-100 ${isUnavailable ? 'border-dashed border-rose-300' : 'border-slate-200'} opacity-40 cursor-not-allowed text-slate-400`
                                 : `${colorTheme.bg} ${colorTheme.border} ${colorTheme.hover} ${colorTheme.text || 'text-slate-800'} hover:shadow-md hover:scale-[1.01]`
                             }`}
                           >
                             {/* PURE BUTTON NAME ONLY */}
-                            <span className={`font-black ${activeGridDensity.fontSize} leading-tight tracking-wide line-clamp-3 ${isProductDeleted ? 'line-through text-slate-400' : (colorTheme.text || 'text-slate-800')}`}>
+                            <span className={`font-black ${activeGridDensity.fontSize} leading-tight tracking-wide line-clamp-3 ${isUnavailable ? 'line-through text-slate-400' : (colorTheme.text || 'text-slate-800')}`}>
                               {btn.label}
                             </span>
-                            {isProductDeleted && (
+                            {isUnavailable && (
                               <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 mt-1">
-                                Deleted
-                              </span>
-                            )}
-                            {!isProductDeleted && is86d && (
-                              <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 mt-1">
-                                86'd
+                                Unavailable
                               </span>
                             )}
                           </button>
