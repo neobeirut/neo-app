@@ -27,16 +27,8 @@ export function usePosAutoFit(options: UsePosAutoFitOptions = {}): UsePosAutoFit
     storageKey = 'flow_pos_autofit',
   } = options;
 
-  const [isAutoFit, setIsAutoFitState] = useState<boolean>(() => {
-    try {
-      const saved = localStorage.getItem(storageKey);
-      if (saved !== null) return saved === 'true';
-      // Default to false on standard screens, enable only if screen height is genuinely constrained (< 780px)
-      return typeof window !== 'undefined' && window.innerHeight < 780;
-    } catch {
-      return false;
-    }
-  });
+  // Always enable auto-fit by default across all devices and resolutions
+  const [isAutoFit, setIsAutoFitState] = useState<boolean>(true);
 
   const [viewport, setViewport] = useState<{ width: number; height: number }>(() => ({
     width: typeof window !== 'undefined' ? window.innerWidth : baseWidth,

@@ -5296,10 +5296,24 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       {/* UNIFIED TOP POS HEADER: EXACT SAME ACROSS SELL, TABLES, AND ORDERS */}
       <div className="flex items-stretch border-b border-[#E0E3DF] flex-shrink-0 bg-white">
         {/* LEFT SECTION (65% Width) */}
-        <div className="w-[65%] px-4 py-2.5 bg-white border-r border-[#E0E3DF] flex items-center justify-between gap-3 flex-shrink-0 min-h-[58px]">
-          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+        <div className="w-[65%] px-4 py-2 bg-white border-r border-[#E0E3DF] flex items-center justify-between gap-3 flex-shrink-0 min-h-[58px]">
+          {/* LEFT: Concept Switcher THEN Prominently Highlighted Main Menu Breadcrumb */}
+          <div className="flex items-center gap-3 overflow-x-auto no-scrollbar">
+            {/* Concept Workspace Switcher (Positioned on the FAR LEFT before Main Menu) */}
+            <ConceptWorkspaceSwitcher
+              workspaceState={workspaceState}
+              cartItemCount={ticketItems.length}
+              draftCartCounts={Object.fromEntries(
+                Object.entries(conceptDraftCarts).map(([k, v]) => [k, Array.isArray(v) ? v.length : 0])
+              )}
+              canSwitchConcepts={isAdmin || Boolean(user?.can_switch_concepts) || Boolean(activeCashier?.can_switch_concepts) || hasPosPermission(activeCashier || user, 'switch_pos_concept')}
+              onWorkspaceChanged={handleWorkspaceChanged}
+              onClearCartRequest={() => setTicketItems([])}
+            />
+
+            {/* Breadcrumb Navigation with Prominently Highlighted Main Menu */}
             {posActiveView === 'sell' ? (
-              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-600">
+              <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => {
@@ -5309,73 +5323,60 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                       setCurrentScreenId(root.id);
                     }
                   }}
-                  className={`hover:text-slate-900 transition ${activePosScreen?.isRoot ? 'text-amber-700 font-black text-sm' : ''}`}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95 ${
+                    activePosScreen?.isRoot
+                      ? 'bg-[#1e5c4f] text-white shadow-md ring-2 ring-[#1e5c4f]/30'
+                      : 'bg-emerald-50 hover:bg-emerald-100 text-[#1e5c4f] border border-emerald-300'
+                  }`}
+                  title="Return to Main Menu Root"
                 >
-                  Main Menu
+                  <span>📋</span>
+                  <span>Main Menu</span>
                 </button>
                 {activePosScreen && !activePosScreen.isRoot && (
                   <>
-                    <span className="text-slate-400">/</span>
-                    <span className="text-slate-900 font-black text-sm">{activePosScreen.name}</span>
+                    <span className="text-slate-400 font-bold">/</span>
+                    <span className="px-2.5 py-1 rounded-xl bg-slate-100 border border-slate-300 text-slate-900 font-black text-xs shadow-xs">
+                      {activePosScreen.name}
+                    </span>
                   </>
                 )}
               </div>
             ) : posActiveView === 'tables' ? (
-              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-600">
+              <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => setPosActiveView('sell')}
-                  className="hover:text-slate-900 transition text-slate-600"
+                  className="px-3 py-1.5 rounded-xl text-xs font-black bg-emerald-50 hover:bg-emerald-100 text-[#1e5c4f] border border-emerald-300 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95"
                 >
-                  Main Menu
+                  <span>📋</span>
+                  <span>Main Menu</span>
                 </button>
-                <span className="text-slate-400">/</span>
-                <span className="text-amber-700 font-black text-sm">
+                <span className="text-slate-400 font-bold">/</span>
+                <span className="px-2.5 py-1 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 font-black text-xs shadow-xs">
                   Floor Plan & Tables
                 </span>
               </div>
             ) : (
-              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-600">
+              <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => setPosActiveView('sell')}
-                  className="hover:text-slate-900 transition text-slate-600"
+                  className="px-3 py-1.5 rounded-xl text-xs font-black bg-emerald-50 hover:bg-emerald-100 text-[#1e5c4f] border border-emerald-300 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95"
                 >
-                  Main Menu
+                  <span>📋</span>
+                  <span>Main Menu</span>
                 </button>
-                <span className="text-slate-400">/</span>
-                <span className="text-amber-700 font-black text-sm">
+                <span className="text-slate-400 font-bold">/</span>
+                <span className="px-2.5 py-1 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 font-black text-xs shadow-xs">
                   Orders Hub
                 </span>
               </div>
             )}
           </div>
 
+          {/* RIGHT TOOLS IN 65% SECTION */}
           <div className="flex items-center gap-2">
-            {posActiveView === 'sell' ? (
-              <span className="text-xs text-slate-500 font-semibold hidden sm:inline">
-                {activePosScreen?.buttons?.length || 0} items ({activeGridConfig.cols}×{activeGridConfig.rows})
-              </span>
-            ) : posActiveView === 'tables' ? (
-              <span className="text-xs text-slate-500 font-semibold hidden sm:inline">
-                {effectiveActiveTablesCount} active / {branchFloorTables.length} tables
-              </span>
-            ) : (
-              <span className="text-xs text-slate-500 font-semibold hidden sm:inline">
-                {commerceBranchLink?.flow_branch_name || user?.branch || currentBranchName}
-              </span>
-            )}
-
-            <button
-              type="button"
-              onClick={() => { window.location.hash = '#/kds'; }}
-              className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-800 hover:text-slate-950 text-xs font-bold border border-slate-300 flex items-center gap-1.5 transition active:scale-95 cursor-pointer shadow-xs"
-              title="Open Kitchen Display System (KDS)"
-            >
-              <span>🍳</span>
-              <span>KDS</span>
-            </button>
-
             {isAdmin && (
               <button
                 type="button"
@@ -5415,19 +5416,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
               </button>
             )}
 
-            {/* Concept Workspace Switcher (Phase 2 Multi-Concept POS) */}
-            <ConceptWorkspaceSwitcher
-              workspaceState={workspaceState}
-              cartItemCount={ticketItems.length}
-              draftCartCounts={Object.fromEntries(
-                Object.entries(conceptDraftCarts).map(([k, v]) => [k, Array.isArray(v) ? v.length : 0])
-              )}
-              canSwitchConcepts={isAdmin || Boolean(user?.can_switch_concepts) || Boolean(activeCashier?.can_switch_concepts) || hasPosPermission(activeCashier || user, 'switch_pos_concept')}
-              onWorkspaceChanged={handleWorkspaceChanged}
-              onClearCartRequest={() => setTicketItems([])}
-            />
-
-            {/* Quick Delivery POS Navigation Shortcuts (WhatsApp Queue, Held Orders, History) */}
+            {/* Quick Delivery POS Navigation Shortcuts (WhatsApp Queue, Held Orders) */}
             <div className="flex items-center gap-1">
               <button
                 type="button"
@@ -5455,62 +5444,16 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                   </span>
                 )}
               </button>
-              <button
-                type="button"
-                onClick={() => {
-                  fetchOrderHistory();
-                  setActiveTabModal("history");
-                }}
-                className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold transition flex items-center gap-1 border border-slate-300 cursor-pointer shadow-xs active:scale-95"
-                title="Order History"
-              >
-                <span>📜 History</span>
-              </button>
               <FullscreenToggleButton
                 compact
                 className="px-2 py-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 text-xs font-bold flex items-center justify-center cursor-pointer transition shadow-xs"
               />
-              <button
-                type="button"
-                onClick={toggleAutoFit}
-                className={`px-2 py-1.5 rounded-lg text-xs font-bold flex items-center justify-center cursor-pointer transition shadow-xs border ${
-                  isAutoFit
-                    ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
-                    : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
-                }`}
-                title={`Screen Auto-Fit: ${isAutoFit ? `ON (${Math.round(autoFitScale * 100)}%) - Click for 100% standard size` : 'OFF (100%) - Click to auto-fit to screen'}`}
-              >
-                <span>{isAutoFit ? `📐 Fit ${autoFitScale < 0.999 ? `${Math.round(autoFitScale * 100)}%` : 'Auto'}` : '📐 100%'}</span>
-              </button>
             </div>
 
-            {/* Cashier Badge with 1-Tap Quick Lock */}
+            {/* Cashier Badge */}
             <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-white border border-slate-300 text-xs font-bold text-slate-800 shadow-xs">
               <span className="text-amber-500 text-sm">👤</span>
               <span className="text-slate-900 font-black max-w-[120px] truncate">{activeCashier?.name || user?.name || "Cashier"}</span>
-              <button
-                type="button"
-                onClick={handleQuickLock}
-                className="px-2 py-0.5 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 text-[11px] font-black flex items-center gap-1 cursor-pointer transition active:scale-95 shadow-xs"
-                title="Lock Terminal immediately so another user must enter their PIN"
-              >
-                <span>🔒</span>
-                <span>Lock</span>
-              </button>
-              {!isShiftOpen ? (
-                <button
-                  type="button"
-                  onClick={() => setIsOpenShiftModalOpen(true)}
-                  className="ml-0.5 px-2 py-0.5 rounded-lg bg-rose-100 hover:bg-rose-200 text-rose-800 border border-rose-300 text-[10px] font-black cursor-pointer animate-pulse"
-                  title="Shift is closed. Click to open shift."
-                >
-                  Closed
-                </button>
-              ) : (
-                <span className="ml-0.5 px-1.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-300 text-[10px] font-black">
-                  ● Open
-                </span>
-              )}
             </div>
           </div>
         </div>
@@ -5928,7 +5871,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
 
 
                 {/* TOUCH SCREEN BUTTONS GRID: Pure Product Names Only with Dynamic 4-7 cols x 5-7 rows */}
-                <div className="flex-1 overflow-y-auto p-4">
+                <div className="flex-1 overflow-y-auto p-4 flex flex-col">
                   {(!activePosScreen || !activePosScreen.buttons || activePosScreen.buttons.length === 0) ? (
                     <div className="h-full flex flex-col items-center justify-center text-center p-8 border-2 border-dashed border-[#222838] rounded-3xl my-auto">
                       <p className="text-slate-400 font-bold text-sm">No buttons configured on this screen.</p>
@@ -5948,10 +5891,11 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                     </div>
                   ) : (
                     <div
-                      className="w-full align-content-start"
+                      className="w-full flex-1"
                       style={{
                         display: 'grid',
                         gridTemplateColumns: `repeat(${activeGridConfig.cols}, minmax(0, 1fr))`,
+                        gridAutoRows: 'minmax(72px, 1fr)',
                         gap: activeGridDensity.gap
                       }}
                     >
