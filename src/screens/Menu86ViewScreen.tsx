@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { api } from '../api/client';
+import { crmService } from '../api/crmService';
 import { useActiveConcept } from '../context/ConceptContext';
 import { KNOWN_CONCEPTS } from '../types/concept';
 import { Loader2, Calendar, MapPin, AlertCircle, ChefHat, Layers, CheckCircle, Plus, Trash2, X, Edit, Tag } from 'lucide-react';
@@ -35,9 +36,8 @@ export default function Menu86ViewScreen() {
   const [selectedBranch, setSelectedBranch] = useState('All');
   const [selectedConcept, setSelectedConcept] = useState<string>(conceptId || 'ALL');
   const [branches, setBranches] = useState<any[]>([]);
-  const [menuRecipes, setMenuRecipes] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
-  const [inventoryItems, setInventoryItems] = useState<any[]>([]);
+  const [customizationItems, setCustomizationItems] = useState<any[]>([]);
   const [logs, setLogs] = useState<Menu86Record[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -74,28 +74,17 @@ export default function Menu86ViewScreen() {
     return found?.primaryColor || '#1e5c4f';
   };
 
-  // Available items in the modal filtered by formConceptId
+  // Available menu products in the modal filtered by formConceptId (sellable items only)
   const availableMenuItems = useMemo(() => {
     const list: { id: string; name: string; dept: string; source: string }[] = [];
     const seen = new Set<string>();
 
-    // 1. Recipes matching concept
-    const matchingRecipes = menuRecipes.filter(r => !r.concept_id || r.concept_id === formConceptId);
-    for (const r of matchingRecipes) {
-      const norm = (r.item_name || '').toLowerCase().trim();
-      if (norm && !seen.has(norm)) {
-        seen.add(norm);
-        list.push({
-          id: `recipe_${r.id}`,
-          name: r.item_name,
-          dept: r.menu_sections?.department || 'Kitchen',
-          source: 'Kitchen Recipe'
-        });
-      }
-    }
+    const matchingProducts = products.filter(p => 
+      (!p.concept_id || p.concept_id === formConceptId) &&
+      p.status !== 'deleted' &&
+      p.is_active !== false
+    );
 
-    // 2. Products matching concept
-    const matchingProducts = products.filter(p => !p.concept_id || p.concept_id === formConceptId);
     for (const p of matchingProducts) {
       const norm = (p.name || '').toLowerCase().trim();
       if (norm && !seen.has(norm)) {
@@ -103,14 +92,36 @@ export default function Menu86ViewScreen() {
         list.push({
           id: `prod_${p.id}`,
           name: p.name,
-          dept: 'Kitchen',
-          source: 'POS Product'
+          dept: p.preparation_section || 'Kitchen',
+          source: 'Menu Product'
         });
       }
     }
 
     return list.sort((a, b) => a.name.localeCompare(b.name));
-  }, [menuRecipes, products, formConceptId]);
+  }, [products, formConceptId]);
+
+  // Available modifiers / customization items (sellable options & add-ons only)
+  const availableModifiers = useMemo(() => {
+    const list: { id: string; name: string; group: string; dept: string }[] = [];
+    const seen = new Set<string>();
+
+    const matching = (customizationItems || []).filter(c => c.is_active !== false);
+    for (const c of matching) {
+      const norm = (c.name || '').toLowerCase().trim();
+      if (norm && !seen.has(norm)) {
+        seen.add(norm);
+        list.push({
+          id: `mod_${c.id}`,
+          name: c.name,
+          group: c.option_group_name || 'Modifier',
+          dept: 'Kitchen'
+        });
+      }
+    }
+
+    return list.sort((a, b) => a.name.localeCompare(b.name));
+  }, [customizationItems]);
 
   const handleOpenCreateModal = (existingLog?: Menu86Record) => {
     if (existingLog) {
@@ -200,27 +211,23 @@ export default function Menu86ViewScreen() {
     }
   };
 
-  // Fetch branches, menu recipes, products, and ingredients on mount
+  // Fetch branches, products, and modifiers on mount
   useEffect(() => {
     const fetchInitialData = async () => {
       try {
-        const [branchRes, recipesRes, productsRes, itemsRes] = await Promise.all([
+        const [branchRes, productsRes, modsRes] = await Promise.all([
           api.getBranchesList(),
-          api.getMenuRecipes(),
           api.getProductsSimpleList(),
-          api.getInventoryItemsSimpleList()
+          crmService.getCustomizationItems().catch(() => [])
         ]);
         if (branchRes.success && branchRes.data) {
           setBranches(branchRes.data);
         }
-        if (recipesRes.success && recipesRes.data) {
-          setMenuRecipes(recipesRes.data);
-        }
         if (productsRes.success && productsRes.data) {
           setProducts(productsRes.data);
         }
-        if (itemsRes.success && itemsRes.data) {
-          setInventoryItems(itemsRes.data);
+        if (Array.isArray(modsRes)) {
+          setCustomizationItems(modsRes);
         }
       } catch (err: any) {
         console.error('Error fetching initial data for 86 screen:', err);
@@ -527,12 +534,12 @@ export default function Menu86ViewScreen() {
                       )}
                     </div>
 
-                    {/* Ingredients Section */}
+                    {/* Modifiers & Options Section */}
                     <div style={{ flex: 1, minWidth: '200px' }}>
                       <div style={subSectionHeaderStyle}>
                         <Layers size={16} style={{ color: '#f59e0b' }} />
                         <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: '#475569' }}>
-                          Ingredients ({ingredients.length})
+                          Modifiers & Options ({ingredients.length})
                         </h4>
                       </div>
                       {ingredients.length === 0 ? (
@@ -639,11 +646,11 @@ export default function Menu86ViewScreen() {
               
               {/* Add Item Form */}
               <div style={{ backgroundColor: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: '#475569' }}>Add Missing Item / Ingredient</h4>
+                <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: '#475569' }}>Add Missing Item / Modifier</h4>
                 
                 <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-                  <div style={{ flex: 1, minWidth: '100px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <label style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>Type</label>
+                  <div style={{ flex: 1, minWidth: '120px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <label style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>Item Type</label>
                     <select
                       value={newItemType}
                       onChange={(e) => {
@@ -654,21 +661,21 @@ export default function Menu86ViewScreen() {
                       }}
                       style={{ ...selectStyle, width: '100%' }}
                     >
-                      <option value="menu">Menu Item / Dish</option>
-                      <option value="ingredient">Ingredient / Modifier</option>
+                      <option value="menu">Menu Product</option>
+                      <option value="ingredient">Modifier / Add-on</option>
                     </select>
                   </div>
 
                   {newItemType === 'menu' ? (
                     <div style={{ flex: 2, minWidth: '200px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <label style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>Select or Type Menu Item</label>
-                        <span style={{ fontSize: '10px', color: '#94a3b8' }}>{availableMenuItems.length} items in concept</span>
+                        <label style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>Select Menu Product</label>
+                        <span style={{ fontSize: '10px', color: '#94a3b8' }}>{availableMenuItems.length} products in concept</span>
                       </div>
                       <input
                         type="text"
                         list="concept_menu_items_list"
-                        placeholder="Choose from list or type..."
+                        placeholder="Choose menu product or type..."
                         value={newItemName}
                         onChange={(e) => {
                           const val = e.target.value;
@@ -683,7 +690,7 @@ export default function Menu86ViewScreen() {
                       <datalist id="concept_menu_items_list">
                         {availableMenuItems.map((item) => (
                           <option key={item.id} value={item.name}>
-                            {item.name} ({item.source})
+                            {item.name}
                           </option>
                         ))}
                       </datalist>
@@ -691,28 +698,28 @@ export default function Menu86ViewScreen() {
                   ) : (
                     <div style={{ flex: 2, minWidth: '200px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <label style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>Ingredient / Modifier</label>
-                        <span style={{ fontSize: '10px', color: '#94a3b8' }}>{inventoryItems.length} ingredients</span>
+                        <label style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>Select Modifier / Add-on</label>
+                        <span style={{ fontSize: '10px', color: '#94a3b8' }}>{availableModifiers.length} modifiers</span>
                       </div>
                       <input
                         type="text"
-                        list="inventory_ingredients_list"
-                        placeholder="Choose or type ingredient (e.g. Avocado)..."
+                        list="concept_modifiers_list"
+                        placeholder="Choose modifier (e.g. Oat Milk, Extra Shot)..."
                         value={newItemName}
                         onChange={(e) => {
                           const val = e.target.value;
                           setNewItemName(val);
-                          const matched = inventoryItems.find(i => (i.name || '').toLowerCase() === val.toLowerCase().trim());
-                          if (matched && matched.department) {
-                            setNewItemDept(matched.department);
+                          const matched = availableModifiers.find(i => i.name.toLowerCase() === val.toLowerCase().trim());
+                          if (matched && matched.dept) {
+                            setNewItemDept(matched.dept);
                           }
                         }}
                         style={{ ...inputStyle, width: '100%' }}
                       />
-                      <datalist id="inventory_ingredients_list">
-                        {inventoryItems.map((ing) => (
-                          <option key={ing.id} value={ing.name}>
-                            {ing.name} ({ing.department || 'Kitchen'})
+                      <datalist id="concept_modifiers_list">
+                        {availableModifiers.map((mod) => (
+                          <option key={mod.id} value={mod.name}>
+                            {mod.name} ({mod.group})
                           </option>
                         ))}
                       </datalist>
