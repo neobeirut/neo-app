@@ -219,7 +219,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     isAutoFit,
     toggleAutoFit,
     containerStyle: autoFitContainerStyle
-  } = usePosAutoFit({ baseWidth: 1180, baseHeight: 820 });
+  } = usePosAutoFit({ baseWidth: 1366, baseHeight: 768, minScale: 0.65 });
 
   // FLOW Branch Mapping State
   const [commerceBranchLink, setCommerceBranchLink] = useState<CommerceBranchLink | null>(null);
@@ -5262,7 +5262,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   return (
     <div
       style={autoFitContainerStyle}
-      className="h-screen max-h-screen flex flex-col bg-[#F5F6F4] text-[#242B28] font-sans overflow-hidden select-none"
+      className="flex flex-col bg-[#F5F6F4] text-[#242B28] font-sans overflow-hidden select-none w-full"
     >
       <InventorySyncNotice restaurantId={currentRestaurantId} branchId={currentBranchId || commerceBranchLink?.flow_branch_id} legacyBranchId={commerceBranchLink?.external_branch_id} revision={inventoryRevision} />
       {!isShiftOpen && (
@@ -5284,11 +5284,11 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         </div>
       )}
       {/* UNIFIED TOP POS HEADER: EXACT SAME ACROSS SELL, TABLES, AND ORDERS */}
-      <div className="flex items-stretch border-b border-[#E0E3DF] flex-shrink-0 bg-white">
+      <div className="flex items-stretch border-b border-[#E0E3DF] flex-shrink-0 bg-white w-full overflow-hidden">
         {/* LEFT SECTION (65% Width) */}
-        <div className="w-[65%] min-w-0 px-3 py-2 bg-white border-r border-[#E0E3DF] flex items-center justify-between gap-2 min-h-[58px]">
+        <div className="w-[65%] min-w-0 px-2 sm:px-3 py-1.5 sm:py-2 bg-white border-r border-[#E0E3DF] flex items-center justify-between gap-1.5 sm:gap-2 min-h-[54px] overflow-hidden">
           {/* LEFT: Concept Switcher THEN Prominently Highlighted Main Menu Breadcrumb */}
-          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar min-w-0">
+          <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar min-w-0">
             {/* Concept Workspace Switcher (Positioned on the FAR LEFT before Main Menu) */}
             <ConceptWorkspaceSwitcher
               workspaceState={workspaceState}
@@ -5303,7 +5303,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
 
             {/* Breadcrumb Navigation with Prominently Highlighted Main Menu */}
             {posActiveView === 'sell' ? (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 min-w-0">
                 <button
                   type="button"
                   onClick={() => {
@@ -5313,7 +5313,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                       setCurrentScreenId(root.id);
                     }
                   }}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95 ${
+                  className={`px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95 shrink-0 ${
                     activePosScreen?.isRoot
                       ? 'bg-[#1e5c4f] text-white shadow-md ring-2 ring-[#1e5c4f]/30'
                       : 'bg-emerald-50 hover:bg-emerald-100 text-[#1e5c4f] border border-emerald-300'
@@ -5326,39 +5326,39 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                 {activePosScreen && !activePosScreen.isRoot && (
                   <>
                     <span className="text-slate-400 font-bold">/</span>
-                    <span className="px-2.5 py-1 rounded-xl bg-slate-100 border border-slate-300 text-slate-900 font-black text-xs shadow-xs">
+                    <span className="px-2 py-1 rounded-xl bg-slate-100 border border-slate-300 text-slate-900 font-black text-xs shadow-xs truncate max-w-[120px]">
                       {activePosScreen.name}
                     </span>
                   </>
                 )}
               </div>
             ) : posActiveView === 'tables' ? (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 min-w-0">
                 <button
                   type="button"
                   onClick={() => setPosActiveView('sell')}
-                  className="px-3 py-1.5 rounded-xl text-xs font-black bg-emerald-50 hover:bg-emerald-100 text-[#1e5c4f] border border-emerald-300 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95"
+                  className="px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-black bg-emerald-50 hover:bg-emerald-100 text-[#1e5c4f] border border-emerald-300 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95 shrink-0"
                 >
                   <span>📋</span>
                   <span>Main Menu</span>
                 </button>
                 <span className="text-slate-400 font-bold">/</span>
-                <span className="px-2.5 py-1 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 font-black text-xs shadow-xs">
+                <span className="px-2 py-1 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 font-black text-xs shadow-xs truncate">
                   Floor Plan & Tables
                 </span>
               </div>
             ) : (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 min-w-0">
                 <button
                   type="button"
                   onClick={() => setPosActiveView('sell')}
-                  className="px-3 py-1.5 rounded-xl text-xs font-black bg-emerald-50 hover:bg-emerald-100 text-[#1e5c4f] border border-emerald-300 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95"
+                  className="px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-black bg-emerald-50 hover:bg-emerald-100 text-[#1e5c4f] border border-emerald-300 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95 shrink-0"
                 >
                   <span>📋</span>
                   <span>Main Menu</span>
                 </button>
                 <span className="text-slate-400 font-bold">/</span>
-                <span className="px-2.5 py-1 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 font-black text-xs shadow-xs">
+                <span className="px-2 py-1 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 font-black text-xs shadow-xs truncate">
                   Orders Hub
                 </span>
               </div>
@@ -5366,27 +5366,29 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
           </div>
 
           {/* RIGHT TOOLS IN 65% SECTION */}
-          <div className="flex items-center gap-1.5 flex-shrink-0">
+          <div className="flex items-center gap-1 sm:gap-1.5 flex-shrink-0">
             {isAdmin && (
               <button
                 type="button"
                 onClick={() => { window.location.hash = `#/pos-screens?concept=${workspaceState.activeConcept.id}`; }}
-                className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-800 hover:text-slate-950 text-xs font-bold border border-slate-300 flex items-center gap-1.5 transition active:scale-95 cursor-pointer shadow-xs"
+                className="px-2 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-800 hover:text-slate-950 text-xs font-bold border border-slate-300 flex items-center gap-1 transition active:scale-95 cursor-pointer shadow-xs shrink-0"
                 title={`Open Touch Screens Layout Builder for ${workspaceState.activeConcept.name}`}
               >
                 <span>🎛️</span>
-                <span>Edit Screens</span>
+                <span className="hidden xl:inline">Edit Screens</span>
+                <span className="xl:hidden">Screens</span>
               </button>
             )}
 
             <button
               type="button"
               onClick={() => setIs86ModalOpen(true)}
-              className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-800 hover:text-slate-950 text-xs font-bold border border-slate-300 flex items-center gap-1.5 transition active:scale-95 cursor-pointer shadow-xs"
+              className="px-2 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-800 hover:text-slate-950 text-xs font-bold border border-slate-300 flex items-center gap-1 transition active:scale-95 cursor-pointer shadow-xs shrink-0"
               title="View Daily 86 Missing Items"
             >
               <span>🚫</span>
-              <span>86 Items</span>
+              <span className="hidden sm:inline">86 Items</span>
+              <span className="sm:hidden">86</span>
               {active86Items.length > 0 && (
                 <span className="px-1.5 py-0.5 rounded-full bg-rose-500 text-white text-[10px] font-black leading-none">
                   {active86Items.length}
@@ -5398,20 +5400,20 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
               <button
                 type="button"
                 onClick={() => setIsManagerHeldShiftsModalOpen(true)}
-                className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 text-xs font-bold transition active:scale-95 cursor-pointer shadow-xs animate-pulse"
+                className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 text-xs font-bold transition active:scale-95 cursor-pointer shadow-xs animate-pulse shrink-0"
                 title="Manager Audit: Shifts on hold waiting for formal reconciliation"
               >
                 <span>⏸️</span>
-                <span>{heldShiftsCount} Held Shift{heldShiftsCount > 1 ? 's' : ''}</span>
+                <span className="hidden sm:inline">{heldShiftsCount} Held Shift{heldShiftsCount > 1 ? 's' : ''}</span>
               </button>
             )}
 
             {/* Quick Delivery POS Navigation Shortcuts (WhatsApp Queue, Held Orders) */}
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 shrink-0">
               <button
                 type="button"
                 onClick={() => setActiveTabModal("incoming")}
-                className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold transition flex items-center gap-1 border border-slate-300 cursor-pointer shadow-xs active:scale-95"
+                className="px-1.5 sm:px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold transition flex items-center gap-1 border border-slate-300 cursor-pointer shadow-xs active:scale-95"
                 title="Incoming WhatsApp Orders Queue"
               >
                 <span>📱 WA</span>
@@ -5424,7 +5426,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
               <button
                 type="button"
                 onClick={() => setActiveTabModal("held")}
-                className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold transition flex items-center gap-1 border border-slate-300 cursor-pointer shadow-xs active:scale-95"
+                className="px-1.5 sm:px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold transition flex items-center gap-1 border border-slate-300 cursor-pointer shadow-xs active:scale-95"
                 title="Held Orders Queue"
               >
                 <span>⏸️ Held</span>
@@ -5436,21 +5438,21 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
               </button>
               <FullscreenToggleButton
                 compact
-                className="px-2 py-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 text-xs font-bold flex items-center justify-center cursor-pointer transition shadow-xs"
+                className="px-1.5 sm:px-2 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 text-xs font-bold flex items-center justify-center cursor-pointer transition shadow-xs"
               />
             </div>
 
             {/* Cashier Badge */}
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-white border border-slate-300 text-xs font-bold text-slate-800 shadow-xs">
+            <div className="flex items-center gap-1 px-2 py-1 rounded-xl bg-white border border-slate-300 text-xs font-bold text-slate-800 shadow-xs shrink-0">
               <span className="text-amber-500 text-sm">👤</span>
-              <span className="text-slate-900 font-black max-w-[100px] truncate">{activeCashier?.name || user?.name || "Cashier"}</span>
+              <span className="text-slate-900 font-black max-w-[65px] sm:max-w-[85px] lg:max-w-[110px] truncate">{activeCashier?.name || user?.name || "Cashier"}</span>
             </div>
           </div>
         </div>
 
         {/* RIGHT SECTION (35% Width): PRIMARY POS MODE BUTTONS */}
-        <div className="w-[35%] min-w-0 p-2 bg-white flex items-center min-h-[58px] border-l border-[#E0E3DF]">
-          <div className="grid grid-cols-3 gap-2 w-full">
+        <div className="w-[35%] min-w-0 p-1.5 sm:p-2 bg-white flex items-center min-h-[54px] border-l border-[#E0E3DF] flex-shrink-0">
+          <div className="grid grid-cols-3 gap-1 sm:gap-2 w-full min-w-0">
             {isRestaurantMode && (
               <button
                 type="button"
@@ -5459,17 +5461,17 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                   backgroundColor: posActiveView === 'tables' ? primaryColor : '#F5F6F4',
                   color: posActiveView === 'tables' ? primaryText : '#242B28'
                 }}
-                className={`h-11 px-2 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 shadow-sm border border-[#E0E3DF] ${
+                className={`h-10 sm:h-11 px-1.5 sm:px-2 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1 sm:gap-1.5 cursor-pointer active:scale-95 shadow-sm border border-[#E0E3DF] min-w-0 ${
                   posActiveView === 'tables'
                     ? 'shadow-md ring-1 ring-[#1e5c4f]/30'
                     : 'hover:bg-slate-200'
                 }`}
                 title="Open Floor Plan & Tables"
               >
-                <span className="text-sm">🪑</span>
+                <span className="text-sm shrink-0">🪑</span>
                 <span className="truncate">Tables</span>
                 {effectiveActiveTablesCount > 0 && (
-                  <span className={`ml-0.5 min-w-[18px] h-[18px] px-1 rounded text-[10px] font-black flex items-center justify-center leading-none ${
+                  <span className={`ml-0.5 min-w-[16px] h-[16px] px-1 rounded text-[10px] font-black flex items-center justify-center leading-none shrink-0 ${
                     posActiveView === 'tables' ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-900 border border-amber-300'
                   }`}>
                     {effectiveActiveTablesCount}
@@ -5491,15 +5493,15 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                 backgroundColor: posActiveView === 'sell' ? primaryColor : '#F5F6F4',
                 color: posActiveView === 'sell' ? primaryText : '#242B28'
               }}
-              className={`h-11 px-2 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 shadow-sm border border-[#E0E3DF] ${
+              className={`h-10 sm:h-11 px-1.5 sm:px-2 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1 sm:gap-1.5 cursor-pointer active:scale-95 shadow-sm border border-[#E0E3DF] min-w-0 ${
                 posActiveView === 'sell'
                   ? 'shadow-md ring-1 ring-[#1e5c4f]/30'
                   : 'hover:bg-slate-200'
               }`}
               title={activeTableContext ? "Close table and start new sale" : "Sell Register"}
             >
-              <span className="text-sm">🏷️</span>
-              <span>Sell</span>
+              <span className="text-sm shrink-0">🏷️</span>
+              <span className="truncate">Sell</span>
             </button>
 
             <button
@@ -5509,16 +5511,16 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                 backgroundColor: posActiveView === 'orders' ? primaryColor : '#F5F6F4',
                 color: posActiveView === 'orders' ? primaryText : '#242B28'
               }}
-              className={`h-11 px-2 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 shadow-sm border border-[#E0E3DF] ${
+              className={`h-10 sm:h-11 px-1.5 sm:px-2 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1 sm:gap-1.5 cursor-pointer active:scale-95 shadow-sm border border-[#E0E3DF] min-w-0 ${
                 posActiveView === 'orders'
                   ? 'shadow-md ring-1 ring-[#1e5c4f]/30'
                   : 'hover:bg-slate-200'
               }`}
               title="Orders Hub"
             >
-              <span className="text-sm">📋</span>
-              <span>Orders</span>
-              <span title="Preparing orders, including paid orders awaiting completion" aria-label={preparingOrderCount === null ? 'Preparing count unavailable' : preparingOrderCount + ' preparing orders'} className="min-w-[18px] px-1 rounded bg-pos-primary text-white text-[10px] font-black">{preparingOrderCount ?? '!'}</span>
+              <span className="text-sm shrink-0">📋</span>
+              <span className="truncate">Orders</span>
+              <span title="Preparing orders" className="min-w-[16px] px-1 rounded bg-pos-primary text-white text-[10px] font-black shrink-0">{preparingOrderCount ?? '!'}</span>
             </button>
 
             {!isRestaurantMode && (
@@ -5529,12 +5531,12 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                   backgroundColor: '#F5F6F4',
                   color: '#242B28'
                 }}
-                className="h-11 px-2 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 shadow-sm border border-[#E0E3DF] hover:bg-slate-200"
+                className="h-10 sm:h-11 px-1.5 sm:px-2 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1 sm:gap-1.5 cursor-pointer active:scale-95 shadow-sm border border-[#E0E3DF] hover:bg-slate-200 min-w-0"
                 title={`Cash Shift Management (${workspaceState.activeConcept.name})`}
               >
-                <span className="text-sm">💵</span>
+                <span className="text-sm shrink-0">💵</span>
                 <span className="truncate">Cash</span>
-                <span className={`ml-0.5 min-w-[18px] h-[18px] px-1 rounded text-[10px] font-black flex items-center justify-center leading-none ${
+                <span className={`ml-0.5 min-w-[16px] h-[16px] px-1 rounded text-[10px] font-black flex items-center justify-center leading-none shrink-0 ${
                   isShiftOpen ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-rose-100 text-rose-800 border border-rose-300'
                 }`}>
                   {isShiftOpen ? 'OPEN' : 'CLOSED'}
@@ -5857,11 +5859,11 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
               />
 
               {/* POS SCREEN MATRIX NAVIGATION & TILES */}
-              <div className="flex-1 flex flex-col overflow-hidden bg-[#F5F6F4]">
+              <div className="flex-1 flex flex-col overflow-hidden min-h-0 bg-[#F5F6F4]">
 
 
                 {/* TOUCH SCREEN BUTTONS GRID: Pure Product Names Only with Dynamic 4-7 cols x 5-7 rows */}
-                <div className="flex-1 overflow-y-auto p-4 flex flex-col">
+                <div className="flex-1 overflow-y-auto min-h-0 p-2.5 sm:p-4 flex flex-col">
                   {(!activePosScreen || !activePosScreen.buttons || activePosScreen.buttons.length === 0) ? (
                     <div className="h-full flex flex-col items-center justify-center text-center p-8 border-2 border-dashed border-[#222838] rounded-3xl my-auto">
                       <p className="text-slate-400 font-bold text-sm">No buttons configured on this screen.</p>
@@ -5885,7 +5887,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                       style={{
                         display: 'grid',
                         gridTemplateColumns: `repeat(${activeGridConfig.cols}, minmax(0, 1fr))`,
-                        gridAutoRows: 'minmax(72px, 1fr)',
+                        gridAutoRows: 'minmax(54px, 1fr)',
                         gap: activeGridDensity.gap
                       }}
                     >
@@ -5934,7 +5936,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                 </div>
 
                 {/* 6 ACTION BUTTONS DOCK (EMBEDDED IN LEFT 65% PANEL) */}
-                <div className="h-14 sm:h-16 bg-white border-t-2 border-[#E0E3DF] px-2.5 py-2 flex items-center gap-1.5 sm:gap-2 flex-shrink-0 z-20 shadow-md">
+                <div className="h-[52px] sm:h-14 bg-white border-t-2 border-[#E0E3DF] px-2 py-1.5 flex items-center gap-1 sm:gap-1.5 flex-shrink-0 z-20 shadow-md">
                   {/* 0 - Quick 1-Tap Lock (Far Left) */}
                   <button
                     type="button"
@@ -6413,7 +6415,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
           </div>
 
           {/* TICKET ITEMS LIST */}
-          <div className="flex-1 overflow-y-auto p-3 space-y-2">
+          <div className="flex-1 overflow-y-auto min-h-0 p-2.5 sm:p-3 space-y-2">
             {ticketItems.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center p-6 text-center text-gray-400 border-2 border-dashed border-slate-200 rounded-2xl my-2">
                 <span className="text-3xl mb-2 opacity-50">🛒</span>
@@ -6547,7 +6549,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
           </div>
 
           {/* CHECKOUT SUMMARY & PAY & PRINT AREA */}
-          <div className="p-3.5 border-t border-[#E0E3DF] bg-white text-[#242B28] space-y-2.5 flex-shrink-0">
+          <div className="p-2.5 sm:p-3 border-t border-[#E0E3DF] bg-white text-[#242B28] space-y-2 flex-shrink-0">
             {/* Validation Alert */}
             {validationError && (
               <div className="bg-red-50 border border-red-200 text-red-700 text-xs px-3 py-1.5 rounded-lg flex items-center justify-between">

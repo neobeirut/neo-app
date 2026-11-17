@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 
 export interface UsePosAutoFitOptions {
-  baseWidth?: number;  // Ideal unconstrained width (default: 1180)
-  baseHeight?: number; // Ideal unconstrained height (default: 820)
-  minScale?: number;   // Minimum downscale factor (default: 0.72)
+  baseWidth?: number;  // Ideal unconstrained width (default: 1366)
+  baseHeight?: number; // Ideal unconstrained height (default: 768)
+  minScale?: number;   // Minimum downscale factor (default: 0.65)
   maxScale?: number;   // Maximum scale factor (default: 1.0)
   storageKey?: string; // Local storage toggle key
 }
@@ -20,9 +20,9 @@ export interface UsePosAutoFitReturn {
 
 export function usePosAutoFit(options: UsePosAutoFitOptions = {}): UsePosAutoFitReturn {
   const {
-    baseWidth = 1180,
-    baseHeight = 820,
-    minScale = 0.72,
+    baseWidth = 1366,
+    baseHeight = 768,
+    minScale = 0.65,
     maxScale = 1.0,
     storageKey = 'flow_pos_autofit',
   } = options;
@@ -51,7 +51,7 @@ export function usePosAutoFit(options: UsePosAutoFitOptions = {}): UsePosAutoFit
           }
           return { width: curW, height: curH };
         });
-      }, 150);
+      }, 100);
     };
 
     window.addEventListener('resize', handleResize, { passive: true });
@@ -66,15 +66,13 @@ export function usePosAutoFit(options: UsePosAutoFitOptions = {}): UsePosAutoFit
 
   const scale = useMemo(() => {
     if (!isAutoFit) return 1.0;
-    // If the browser window height is at least baseHeight - 20, snap to 1.0 (zero scaling)
-    if (viewport.height >= baseHeight - 20) return 1.0;
 
     const scaleW = viewport.width / baseWidth;
     const scaleH = viewport.height / baseHeight;
     const calculated = Math.min(scaleW, scaleH);
 
-    // If calculated scale is close to 1.0 (>= 0.96), snap to 1.0
-    if (calculated >= 0.96) return 1.0;
+    // If calculated scale is close to 1.0 (>= 0.98), snap to 1.0
+    if (calculated >= 0.98) return 1.0;
 
     const clamped = Math.min(maxScale, Math.max(minScale, calculated));
     // Round to 2 decimal places for rock-solid stability
@@ -105,30 +103,36 @@ export function usePosAutoFit(options: UsePosAutoFitOptions = {}): UsePosAutoFit
   const containerStyle = useMemo<React.CSSProperties>(() => {
     if (!isAutoFit || scale >= 0.98) {
       return {
-        width: '100%',
+        width: '100vw',
         height: '100vh',
+        maxWidth: '100vw',
         maxHeight: '100vh',
         overflow: 'hidden',
       };
     }
 
+    const zoomFactor = scale;
+    const zoomPercent = `${Math.round((100 / zoomFactor) * 1000) / 1000}%`;
+
     const supportsZoom = typeof CSS !== 'undefined' && CSS.supports && CSS.supports('zoom', '1');
     if (supportsZoom) {
       return {
-        zoom: scale,
-        width: `${Math.round((100 / scale) * 100) / 100}%`,
-        height: `${Math.round((100 / scale) * 100) / 100}vh`,
-        maxHeight: `${Math.round((100 / scale) * 100) / 100}vh`,
+        zoom: zoomFactor,
+        width: zoomPercent,
+        height: zoomPercent,
+        maxWidth: zoomPercent,
+        maxHeight: zoomPercent,
         overflow: 'hidden',
       } as any;
     }
 
     return {
-      transform: `scale(${scale})`,
+      transform: `scale(${zoomFactor})`,
       transformOrigin: 'top left',
-      width: `${Math.round((100 / scale) * 100) / 100}%`,
-      height: `${Math.round((100 / scale) * 100) / 100}vh`,
-      maxHeight: `${Math.round((100 / scale) * 100) / 100}vh`,
+      width: zoomPercent,
+      height: zoomPercent,
+      maxWidth: zoomPercent,
+      maxHeight: zoomPercent,
       overflow: 'hidden',
     };
   }, [isAutoFit, scale]);
