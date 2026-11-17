@@ -154,8 +154,9 @@ export default function Menu86ViewScreen() {
       return;
     }
     const updatedItems = (logRecord.items || []).filter(i => i.name !== itemName);
+    const dateOnly = (logRecord.date || date).split('T')[0].trim();
     try {
-      const res = await api.save86(logRecord.branch, updatedItems, logRecord.date, logRecord.concept_id);
+      const res = await api.save86(logRecord.branch, updatedItems, dateOnly, logRecord.concept_id);
       if (res.success) {
         const logsRes = await api.get86Logs(date, selectedBranch, selectedConcept);
         if (logsRes.success) {
@@ -180,7 +181,8 @@ export default function Menu86ViewScreen() {
     }
     setSaving(true);
     try {
-      const res = await api.save86(formBranch, formItems, formDate, formConceptId);
+      const dateOnly = formDate.split('T')[0].trim();
+      const res = await api.save86(formBranch, formItems, dateOnly, formConceptId);
       if (res.success) {
         setIsModalOpen(false);
         // Refresh logs immediately

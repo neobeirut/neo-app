@@ -2019,8 +2019,9 @@ export const api = {
   get86Logs: async (date: string, branch?: string, conceptId?: string) => {
     const rid = getRestaurantId();
     let query = supabase.from('menu_86').select('*');
-    if (date) {
-      query = query.gte('date', `${date}T00:00:00.000Z`).lte('date', `${date}T23:59:59.999Z`);
+    const dateDay = (date || '').split('T')[0].trim();
+    if (dateDay) {
+      query = query.gte('date', `${dateDay}T00:00:00.000Z`).lte('date', `${dateDay}T23:59:59.999Z`);
     }
     if (branch && branch !== 'All') {
       query = query.eq('branch', branch);
@@ -2039,13 +2040,14 @@ export const api = {
   save86: async (branch: string, items: any[], date: string, conceptId?: string) => {
     const rid = getRestaurantId() || '79256f11-a9f8-4fec-901d-69baf929762d';
     const effectiveConceptId = conceptId || '00000000-0000-0000-0000-000000000001';
+    const dateDay = (date || '').split('T')[0].trim() || new Date().toISOString().split('T')[0];
 
     let query = supabase
       .from('menu_86')
       .select('id')
       .eq('branch', branch)
-      .gte('date', `${date}T00:00:00.000Z`)
-      .lte('date', `${date}T23:59:59.999Z`);
+      .gte('date', `${dateDay}T00:00:00.000Z`)
+      .lte('date', `${dateDay}T23:59:59.999Z`);
 
     if (rid) {
       query = query.or(`restaurant_id.eq.${rid},restaurant_id.is.null`);
@@ -2073,7 +2075,7 @@ export const api = {
         .from('menu_86')
         .insert([{
           branch,
-          date: `${date}T00:00:00.000Z`,
+          date: `${dateDay}T00:00:00.000Z`,
           items,
           restaurant_id: rid,
           concept_id: effectiveConceptId,
