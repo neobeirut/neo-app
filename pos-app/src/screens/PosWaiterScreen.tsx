@@ -49,6 +49,7 @@ const safeTimeoutSignal = (ms: number) => typeof AbortSignal !== 'undefined' && 
 import PosPinScreen from '../pos/components/PosPinScreen';
 import { TableTransferModal } from '../pos/components/TableTransferModal';
 import { PosModifierModal, partitionCustomizations } from '../pos/components/PosModifierModal';
+import { usePos86 } from '../pos/hooks/usePos86';
 import {
   Utensils,
   Lock,
@@ -233,6 +234,9 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
     branchId,
     restaurantId
   );
+
+  // FLOW 86 Dynamic Availability Hook
+  const { isProduct86d, isCustomization86d, refetch86 } = usePos86(branchName);
 
   // Load custom role permissions
   useEffect(() => {
@@ -572,7 +576,8 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
     } else {
       const prod = products.find(p => String(p.id) === String(btn.productId)) ||
                    products.find(p => (p.name || '').trim().toLowerCase() === (btn.label || '').trim().toLowerCase());
-      if (!prod || (prod as any).is_active === false || ['deleted', 'archived', 'unavailable', 'unavailable today', 'out_of_stock'].includes(String((prod as any).status || '').toLowerCase())) {
+      const is86d = prod ? isProduct86d(prod) : (isProduct86d(btn.productId) || isProduct86d(btn.label));
+      if (!prod || (prod as any).is_active === false || ['deleted', 'archived', 'unavailable', 'unavailable today', 'out_of_stock'].includes(String((prod as any).status || '').toLowerCase()) || is86d) {
         showNotification(`⚠️ "${btn.label}" is currently unavailable.`, 'error');
         return;
       }
@@ -581,7 +586,8 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
   };
 
   const handleAddItem = (product: PosProduct | { id: any; name: string; unit_price_usd: number; customizations?: any[] }) => {
-    if (!product || (product as any).is_active === false || ['deleted', 'archived', 'unavailable', 'unavailable today', 'out_of_stock'].includes(String((product as any).status || '').toLowerCase())) {
+    const is86d = isProduct86d(product);
+    if (!product || (product as any).is_active === false || ['deleted', 'archived', 'unavailable', 'unavailable today', 'out_of_stock'].includes(String((product as any).status || '').toLowerCase()) || is86d) {
       showNotification(`⚠️ This product is currently unavailable.`, 'error');
       return;
     }
@@ -1525,10 +1531,12 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
                         ? (products.find((p: any) => String(p.id) === String(btn.productId)) ||
                            products.find((p: any) => (p.name || '').trim().toLowerCase() === (btn.label || '').trim().toLowerCase()))
                         : null;
+                      const is86d = matchingProduct ? isProduct86d(matchingProduct) : (isProduct86d(btn.productId) || isProduct86d(btn.label));
                       const isUnavailable = !isSubscreen && (
                         !matchingProduct ||
                         (matchingProduct as any).is_active === false ||
-                        ['deleted', 'archived', 'unavailable', 'unavailable today', 'out_of_stock'].includes(String((matchingProduct as any).status || '').toLowerCase())
+                        ['deleted', 'archived', 'unavailable', 'unavailable today', 'out_of_stock'].includes(String((matchingProduct as any).status || '').toLowerCase()) ||
+                        is86d
                       );
                       const isDisabled = isUnavailable;
 
@@ -1833,6 +1841,7 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
           isOpen={isModifierModalOpen}
           product={modifyingProduct}
           allProducts={products}
+          isCustomization86d={isCustomization86d}
           initialSelectedCustomizations={
             modifyingItemIndex !== null
               ? ticketItems[modifyingItemIndex]?.selectedCustomizations || []

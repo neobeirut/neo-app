@@ -549,8 +549,8 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   }, [user?.branch, activeCashier?.branch, user?.restaurant_id]);
 
   // FLOW 86 Dynamic Availability Hook
-  const { isProduct86d, unavailableProductIds, refetch86 } = usePos86(
-    commerceBranchLink?.flow_branch_name || user?.branch || "Cloud Kitchen"
+  const { isProduct86d, isCustomization86d, unavailableProductIds, refetch86 } = usePos86(
+    commerceBranchLink?.flow_branch_name || user?.branch || "Badaro"
   );
 
   // Persistent POS terminal identity (from localStorage or hardware station ID)
@@ -2849,6 +2849,10 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
 
   const handleToggleOption = (custOption: any, isMultiSelect: boolean, totalSteps: number = 1) => {
     setCustomizationError("");
+    if (isCustomization86d(custOption)) {
+      setCustomizationError(`⚠️ "${custOption.name || custOption.ingredient || 'This option'}" is currently unavailable.`);
+      return;
+    }
     const groupName = custOption.option_group_name;
     if (isMultiSelect) {
       // Checkbox-style: toggle individual option within group
@@ -7129,20 +7133,25 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                             const rawOptName = opt.name || opt.ingredient || '';
                             const displayName = rawOptName.replace(/\s*\(\s*included\s*\)/gi, '').trim();
                             const hasExtraPrice = !isBundle && opt.price > 0;
+                            const isOptUnavailable = isCustomization86d(opt);
 
                             return (
                               <div key={opt.id} className="flex items-center gap-1.5">
                                 <button
                                   type="button"
                                   onClick={() => handleToggleOption(opt, isMultiSelect, totalScreens)}
-                                  className={`w-full p-3.5 rounded-xl text-xs font-bold transition-all border shadow-xs flex items-center justify-between gap-2.5 cursor-pointer min-h-[48px] ${
-                                    isSelected
-                                      ? isRemoveGroup
-                                        ? 'bg-rose-600 text-white border-rose-600 shadow-sm ring-2 ring-rose-300'
-                                        : isMultiSelect
-                                          ? 'bg-blue-600 text-white border-blue-400 shadow-sm ring-2 ring-blue-300'
-                                          : 'bg-pos-primary text-white border-pos-primary shadow-sm ring-2 ring-pos-primary/30'
-                                      : 'bg-white hover:bg-slate-50 text-slate-800 border-slate-200 shadow-xs'
+                                  disabled={isOptUnavailable}
+                                  title={isOptUnavailable ? `⚠️ "${displayName}" is currently unavailable` : displayName}
+                                  className={`w-full p-3.5 rounded-xl text-xs font-bold transition-all border shadow-xs flex items-center justify-between gap-2.5 min-h-[48px] ${
+                                    isOptUnavailable
+                                      ? 'bg-slate-100 border-dashed border-rose-300 opacity-40 cursor-not-allowed text-slate-400'
+                                      : isSelected
+                                        ? isRemoveGroup
+                                          ? 'bg-rose-600 text-white border-rose-600 shadow-sm ring-2 ring-rose-300 cursor-pointer'
+                                          : isMultiSelect
+                                            ? 'bg-blue-600 text-white border-blue-400 shadow-sm ring-2 ring-blue-300 cursor-pointer'
+                                            : 'bg-pos-primary text-white border-pos-primary shadow-sm ring-2 ring-pos-primary/30 cursor-pointer'
+                                        : 'bg-white hover:bg-slate-50 text-slate-800 border-slate-200 shadow-xs cursor-pointer'
                                   }`}
                                 >
                                   <div className="flex items-center gap-2.5 min-w-0 flex-1">
@@ -7155,9 +7164,14 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                                         </span>
                                       )}
                                     </span>
-                                    <span className="text-xs font-bold text-left leading-snug break-words">
+                                    <span className={`text-xs font-bold text-left leading-snug break-words ${isOptUnavailable ? 'line-through text-slate-400' : ''}`}>
                                       {displayName}
                                     </span>
+                                    {isOptUnavailable && (
+                                      <span className="text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 ml-1.5 shrink-0">
+                                        Unavailable
+                                      </span>
+                                    )}
                                   </div>
 
                                   {hasExtraPrice && (

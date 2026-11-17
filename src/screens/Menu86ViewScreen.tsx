@@ -81,6 +81,26 @@ export default function Menu86ViewScreen() {
     setFormItems(formItems.filter((_, idx) => idx !== index));
   };
 
+  const handleDirectRemoveItem = async (logRecord: Menu86Record, itemName: string) => {
+    if (!window.confirm(`Remove "${itemName}" from 86 list? This will make it available again across POS and Waiter tablets.`)) {
+      return;
+    }
+    const updatedItems = (logRecord.items || []).filter(i => i.name !== itemName);
+    try {
+      const res = await api.save86(logRecord.branch, updatedItems, logRecord.date);
+      if (res.success) {
+        const logsRes = await api.get86Logs(date, selectedBranch);
+        if (logsRes.success) {
+          setLogs(logsRes.data || []);
+        }
+      } else {
+        alert(res.error || 'Failed to update 86 record.');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error updating 86 record.');
+    }
+  };
+
   const handleSaveRecord = async () => {
     if (!formBranch) {
       alert('Please select a branch.');
@@ -361,9 +381,31 @@ export default function Menu86ViewScreen() {
                       ) : (
                         <ul style={listStyle}>
                           {menuItems.map((item, index) => (
-                            <li key={index} style={listItemStyle}>
-                              <span style={{ fontWeight: 500, color: '#334155' }}>{item.name}</span>
-                              {renderDepartmentBadge(item.department)}
+                            <li key={index} style={{ ...listItemStyle, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, minWidth: 0 }}>
+                                <span style={{ fontWeight: 500, color: '#334155', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</span>
+                                {renderDepartmentBadge(item.department)}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleDirectRemoveItem(log, item.name)}
+                                style={{
+                                  background: 'none',
+                                  border: 'none',
+                                  color: '#94a3b8',
+                                  cursor: 'pointer',
+                                  padding: '4px',
+                                  borderRadius: '4px',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  transition: 'color 0.2s, background-color 0.2s'
+                                }}
+                                title={`Remove ${item.name} from 86 list (make available)`}
+                                onMouseOver={(e) => { e.currentTarget.style.color = '#ef4444'; e.currentTarget.style.backgroundColor = '#fee2e2'; }}
+                                onMouseOut={(e) => { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.backgroundColor = 'transparent'; }}
+                              >
+                                <Trash2 size={13} />
+                              </button>
                             </li>
                           ))}
                         </ul>
@@ -383,9 +425,31 @@ export default function Menu86ViewScreen() {
                       ) : (
                         <ul style={listStyle}>
                           {ingredients.map((item, index) => (
-                            <li key={index} style={listItemStyle}>
-                              <span style={{ fontWeight: 500, color: '#334155' }}>{item.name}</span>
-                              {renderDepartmentBadge(item.department)}
+                            <li key={index} style={{ ...listItemStyle, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, minWidth: 0 }}>
+                                <span style={{ fontWeight: 500, color: '#334155', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</span>
+                                {renderDepartmentBadge(item.department)}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleDirectRemoveItem(log, item.name)}
+                                style={{
+                                  background: 'none',
+                                  border: 'none',
+                                  color: '#94a3b8',
+                                  cursor: 'pointer',
+                                  padding: '4px',
+                                  borderRadius: '4px',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  transition: 'color 0.2s, background-color 0.2s'
+                                }}
+                                title={`Remove ${item.name} from 86 list (make available)`}
+                                onMouseOver={(e) => { e.currentTarget.style.color = '#ef4444'; e.currentTarget.style.backgroundColor = '#fee2e2'; }}
+                                onMouseOut={(e) => { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.backgroundColor = 'transparent'; }}
+                              >
+                                <Trash2 size={13} />
+                              </button>
                             </li>
                           ))}
                         </ul>

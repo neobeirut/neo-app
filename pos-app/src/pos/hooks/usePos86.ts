@@ -1,7 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../../api/supabase';
 import { getCommerceProductLinks, resolveCommerceProductByRecipeId } from '../services/productMapping';
-import type { CommerceProductLink } from '../types/commerce';
 
 export interface Pos86Item {
   name: string;
@@ -13,50 +12,86 @@ export interface Pos86Item {
 
 export function usePos86(branchName?: string) {
   const [unavailableProductIds, setUnavailableProductIds] = useState<Set<string>>(new Set());
+  const [unavailableProductNames, setUnavailableProductNames] = useState<Set<string>>(new Set());
+  const [unavailableIngredientNames, setUnavailableIngredientNames] = useState<Set<string>>(new Set());
   const [active86Items, setActive86Items] = useState<Pos86Item[]>([]);
   const [loading, setLoading] = useState(false);
   const [unmapped86Items, setUnmapped86Items] = useState<string[]>([]);
 
-  const fetch86Status = useCallback(async () => {
-    if (!branchName) {
-      setUnavailableProductIds(new Set());
-      setActive86Items([]);
-      return;
-    }
+  const effectiveBranch = (branchName && branchName !== 'All') ? branchName.trim() : 'Badaro';
 
+  const fetch86Status = useCallback(async () => {
     setLoading(true);
     try {
-      const today = new Date().toISOString().split('T')[0];
-      
-      // 1. Fetch active 86 record for today or latest
-      const { data: records, error } = await supabase
-        .from('menu_86')
-        .select('*')
-        .eq('branch', branchName)
+      // 1. Fetch active 86 record for branch (or latest)
+      let query = supabase.from('menu_86').select('*');
+      if (effectiveBranch) {
+        query = query.ilike('branch', effectiveBranch);
+      }
+      const { data: records, error } = await query
         .order('date', { ascending: false })
-        .limit(1);
+        .limit(3);
 
       if (error || !records || records.length === 0) {
+        // Fallback: check without branch filter if specific branch had no record
+        const { data: fallbackRecords } = await supabase
+          .from('menu_86')
+          .select('*')
+          .order('date', { ascending: false })
+          .limit(1);
+
+        if (!fallbackRecords || fallbackRecords.length === 0) {
+          setUnavailableProductIds(new Set());
+          setUnavailableProductNames(new Set());
+          setUnavailableIngredientNames(new Set());
+          setActive86Items([]);
+          setUnmapped86Items([]);
+          setLoading(false);
+          return;
+        }
+      }
+
+      const activeRecord = (records && records.length > 0) ? records[0] : null;
+      if (!activeRecord) {
         setUnavailableProductIds(new Set());
+        setUnavailableProductNames(new Set());
+        setUnavailableIngredientNames(new Set());
         setActive86Items([]);
         setUnmapped86Items([]);
         setLoading(false);
         return;
       }
 
-      const latestRecord = records[0];
-      const rawItems: Pos86Item[] = Array.isArray(latestRecord.items) ? latestRecord.items : [];
+      const rawItems: Pos86Item[] = Array.isArray(activeRecord.items) ? activeRecord.items : [];
       setActive86Items(rawItems);
 
-      // 2. Fetch commerce product links
-      const links = await getCommerceProductLinks('ovrload');
+      // 2. Fetch commerce product links (optional enhancement)
+      let links: any[] = [];
+      try {
+        links = await getCommerceProductLinks('ovrload');
+      } catch (linkErr) {
+        // Fallback silently if offline or not using commerce links
+      }
 
       const blockedIds = new Set<string>();
+      const blockedProductNames = new Set<string>();
+      const blockedIngredientNames = new Set<string>();
       const unmapped: string[] = [];
 
       for (const item of rawItems) {
-        // Only consider menu items (ingredients don't directly block whole products unless mapped)
-        if (item.type && item.type !== 'menu') continue;
+        const rawName = (item.name || '').trim();
+        if (!rawName) continue;
+        const normalizedName = rawName.toLowerCase();
+
+        // If it's an ingredient or customization
+        if (item.type === 'ingredient') {
+          blockedIngredientNames.add(normalizedName);
+        } else {
+          // It's a menu item / product
+          blockedProductNames.add(normalizedName);
+          // If marked as menu, also add to ingredients in case a modifier shares the exact name
+          blockedIngredientNames.add(normalizedName);
+        }
 
         let resolvedId: string | null = null;
 
@@ -66,24 +101,21 @@ export function usePos86(branchName?: string) {
         }
 
         // Strategy B: recipe_id mapped via commerce_product_links
-        if (!resolvedId && item.recipe_id) {
+        if (!resolvedId && item.recipe_id && links.length > 0) {
           const link = resolveCommerceProductByRecipeId(item.recipe_id, links);
           if (link) {
             resolvedId = String(link.external_product_id);
           }
         }
 
-        // Strategy C: Historic fallback for records with only display name
-        if (!resolvedId && item.name) {
-          const normalizedName = item.name.toLowerCase().trim();
-          // Find exact or unique match in commerce_product_links
+        // Strategy C: Exact or unique match in commerce_product_links
+        if (!resolvedId && links.length > 0) {
           const exactMatch = links.find(l => 
-            l.external_product_name.toLowerCase().trim() === normalizedName
+            (l.external_product_name || '').toLowerCase().trim() === normalizedName
           );
           if (exactMatch) {
             resolvedId = String(exactMatch.external_product_id);
-          } else {
-            // Flag record as unmapped rather than blindly blocking uncertain products
+          } else if (item.type === 'menu') {
             unmapped.push(item.name);
           }
         }
@@ -94,28 +126,86 @@ export function usePos86(branchName?: string) {
       }
 
       setUnavailableProductIds(blockedIds);
+      setUnavailableProductNames(blockedProductNames);
+      setUnavailableIngredientNames(blockedIngredientNames);
       setUnmapped86Items(unmapped);
     } catch (err) {
       console.error('Error in usePos86:', err);
     } finally {
       setLoading(false);
     }
-  }, [branchName]);
+  }, [effectiveBranch]);
 
   useEffect(() => {
     fetch86Status();
-  }, [fetch86Status]);
 
-  const isProduct86d = useCallback((productId: string | number): boolean => {
-    if (!productId) return false;
-    return unavailableProductIds.has(String(productId));
-  }, [unavailableProductIds]);
+    // Realtime listener on menu_86 table
+    const channel = supabase
+      .channel(`menu_86_realtime_${effectiveBranch}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'menu_86' },
+        () => {
+          fetch86Status();
+        }
+      )
+      .subscribe();
+
+    // Periodic poll every 20 seconds as fallback + window focus
+    const interval = setInterval(fetch86Status, 20000);
+    window.addEventListener('focus', fetch86Status);
+
+    return () => {
+      supabase.removeChannel(channel);
+      clearInterval(interval);
+      window.removeEventListener('focus', fetch86Status);
+    };
+  }, [fetch86Status, effectiveBranch]);
+
+  // Check if a product is 86'd (by ID or name)
+  const isProduct86d = useCallback((productOrId: any): boolean => {
+    if (!productOrId) return false;
+    if (typeof productOrId === 'object') {
+      const pId = String(productOrId.id || productOrId.master_product_id || '');
+      if (pId && unavailableProductIds.has(pId)) return true;
+      const pName = (productOrId.name || productOrId.display_name || '').trim().toLowerCase();
+      if (pName && (unavailableProductNames.has(pName) || unavailableIngredientNames.has(pName))) return true;
+      return false;
+    }
+    const val = String(productOrId).trim();
+    if (unavailableProductIds.has(val)) return true;
+    const lower = val.toLowerCase();
+    if (unavailableProductNames.has(lower) || unavailableIngredientNames.has(lower)) return true;
+    return false;
+  }, [unavailableProductIds, unavailableProductNames, unavailableIngredientNames]);
+
+  // Check if a customization option / ingredient is 86'd
+  const isCustomization86d = useCallback((optOrName: any): boolean => {
+    if (!optOrName) return false;
+    const raw = (typeof optOrName === 'string' ? optOrName : (optOrName?.name || optOrName?.ingredient || '')).trim().toLowerCase();
+    if (!raw) return false;
+    const clean = raw.replace(/\s*\(\s*included\s*\)/gi, '').trim();
+
+    if (unavailableIngredientNames.has(raw) || unavailableIngredientNames.has(clean)) return true;
+    if (unavailableProductNames.has(raw) || unavailableProductNames.has(clean)) return true;
+
+    // Word boundary match: e.g. "Feta" matches "Feta Cheese" or "Feta"
+    for (const ing of unavailableIngredientNames) {
+      if (ing.length >= 3 && clean.includes(ing)) {
+        return true;
+      }
+    }
+    return false;
+  }, [unavailableIngredientNames, unavailableProductNames]);
 
   return {
     unavailableProductIds,
+    unavailableProductNames,
+    unavailableIngredientNames,
     active86Items,
     unmapped86Items,
     isProduct86d,
+    isCustomization86d,
     refetch86: fetch86Status,
     loading86: loading
   };
