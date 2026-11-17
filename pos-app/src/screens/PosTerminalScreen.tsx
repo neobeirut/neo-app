@@ -77,6 +77,7 @@ import { ConceptWorkspaceSwitcher } from "../pos/components/ConceptWorkspaceSwit
 import FullscreenToggleButton from "../pos/components/FullscreenToggleButton";
 import { usePosAutoFit } from "../pos/hooks/usePosAutoFit";
 import { posWorkspaceService, KNOWN_CONCEPT_PROFILES, type TerminalWorkspaceState } from "../pos/services/posWorkspaceService";
+import { Pos86Modal } from "../pos/components/Pos86Modal";
 
 interface PosTerminalScreenProps {
   user?: any;
@@ -660,6 +661,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   const [isSupplierInvoicesModalOpen, setIsSupplierInvoicesModalOpen] = useState(false);
   const [isConceptCashModalOpen, setIsConceptCashModalOpen] = useState(false);
   const [terminalHandoverOrder, setTerminalHandoverOrder] = useState<any | null>(null);
+  const [is86ModalOpen, setIs86ModalOpen] = useState(false);
 
   // Auto popup for closed shift after cashier logs in with PIN
   const [hasPromptedShiftClosed, setHasPromptedShiftClosed] = useState(false);
@@ -5391,9 +5393,9 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
 
             <button
               type="button"
-              onClick={() => { window.open('/new/admin/#/86', '_blank'); }}
+              onClick={() => setIs86ModalOpen(true)}
               className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-800 hover:text-slate-950 text-xs font-bold border border-slate-300 flex items-center gap-1.5 transition active:scale-95 cursor-pointer shadow-xs"
-              title="Open Daily 86 Missing Items Manager in Admin"
+              title="View Daily 86 Missing Items"
             >
               <span>🚫</span>
               <span>86 Items</span>
@@ -9110,6 +9112,16 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
           }}
         />
       )}
+
+      {/* POS 86 MISSING ITEMS MODAL (VIEW DIVIDED BY MENU & INGREDIENTS) */}
+      <Pos86Modal
+        isOpen={is86ModalOpen}
+        onClose={() => setIs86ModalOpen(false)}
+        items={active86Items}
+        conceptName={workspaceState.activeConcept?.name || 'NÉO'}
+        branchName={currentBranchName}
+        onRefresh={refetch86}
+      />
     </div>
   );
 }
