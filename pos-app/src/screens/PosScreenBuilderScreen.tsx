@@ -667,6 +667,16 @@ export default function PosScreenBuilderScreen({ user }: { user?: any }) {
                       const colorTheme = TILE_COLORS.find((c) => c.id === btn.color) || TILE_COLORS[0];
                       const isDragging = draggedBtnIndex === idx;
                       const isDragOver = dragOverBtnIndex === idx && draggedBtnIndex !== idx;
+                      const isSubscreen = btn.type === 'screen';
+                      const matchingProd = !isSubscreen
+                        ? (products.find((p) => String(p.id) === String(btn.productId)) ||
+                           products.find((p) => (p.name || '').trim().toLowerCase() === (btn.label || '').trim().toLowerCase()))
+                        : null;
+                      const isProductDeleted = !isSubscreen && (
+                        !matchingProd ||
+                        (matchingProd as any).is_active === false ||
+                        ['deleted', 'archived'].includes(String((matchingProd as any).status || '').toLowerCase())
+                      );
                       return (
                         <div
                           key={btn.id || idx}
@@ -702,8 +712,10 @@ export default function PosScreenBuilderScreen({ user }: { user?: any }) {
                             setDraggedBtnIndex(null);
                             setDragOverBtnIndex(null);
                           }}
-                          title="Drag and drop to move this button"
-                          className={`relative group rounded-xl border overflow-hidden ${gridDensity.minHeight} ${gridDensity.padding} flex flex-col justify-between transition-all shadow-xs cursor-grab active:cursor-grabbing select-none ${colorTheme.bg} ${colorTheme.border} ${
+                          title={isProductDeleted ? `⚠️ "${btn.label}" is deleted or not found in catalog` : "Drag and drop to move this button"}
+                          className={`relative group rounded-xl border overflow-hidden ${gridDensity.minHeight} ${gridDensity.padding} flex flex-col justify-between transition-all shadow-xs cursor-grab active:cursor-grabbing select-none ${
+                            isProductDeleted ? 'bg-slate-100 border-dashed border-rose-400 opacity-60' : `${colorTheme.bg} ${colorTheme.border}`
+                          } ${
                             isDragging ? 'opacity-40 scale-95' : ''
                           } ${isDragOver ? 'ring-2 ring-emerald-500 border-emerald-500 scale-[1.03]' : ''}`}
                         >
@@ -712,6 +724,11 @@ export default function PosScreenBuilderScreen({ user }: { user?: any }) {
                               <GripVertical size={10} className="text-slate-500" />
                               {btn.type === 'screen' ? '📁 Sub' : '🍽️ Dish'}
                             </span>
+                            {isProductDeleted && (
+                              <span className="text-[9px] uppercase font-black tracking-wider px-1.5 py-0.5 rounded bg-rose-600 text-white shadow-xs">
+                                Deleted
+                              </span>
+                            )}
                             <div className="flex items-center gap-0.5">
                               <button
                                 type="button"
@@ -739,7 +756,7 @@ export default function PosScreenBuilderScreen({ user }: { user?: any }) {
                           </div>
 
                           <div className="my-auto py-1 text-center pointer-events-none">
-                            <span className={`font-black ${gridDensity.fontSize} leading-tight line-clamp-2 ${colorTheme.text || 'text-slate-800'}`}>
+                            <span className={`font-black ${gridDensity.fontSize} leading-tight line-clamp-2 ${isProductDeleted ? 'line-through text-slate-400' : (colorTheme.text || 'text-slate-800')}`}>
                               {btn.label}
                             </span>
                           </div>

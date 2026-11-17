@@ -2382,6 +2382,10 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   });
 
   const handleQuickAddProduct = (product) => {
+    if (!product || product.is_active === false || ['deleted', 'archived'].includes(String(product.status || '').toLowerCase())) {
+      alert(`⚠️ This item is deleted or inactive and cannot be added to the order.`);
+      return;
+    }
     if (!isShiftOpen) {
       setIsOpenShiftModalOpen(true);
       return;
@@ -2494,8 +2498,12 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         return;
       }
       const prod = products.find((p: any) => String(p.id) === String(btn.productId)) ||
-                   products.find((p: any) => (p.name || '').toLowerCase() === (btn.label || '').toLowerCase()) ||
-                   { id: btn.productId || 'item_' + Date.now(), name: btn.label, unit_price_usd: 0, customizations: [] };
+                   products.find((p: any) => (p.name || '').trim().toLowerCase() === (btn.label || '').trim().toLowerCase());
+
+      if (!prod || prod.is_active === false || ['deleted', 'archived'].includes(String(prod.status || '').toLowerCase())) {
+        alert(`⚠️ "${btn.label}" is deleted or not found in the product catalog and cannot be ordered.`);
+        return;
+      }
 
       if (isProduct86d((prod as any).id)) {
         alert(`⚠️ "${(prod as any).name}" is currently 86'd (unavailable) by the kitchen.`);
@@ -5923,7 +5931,17 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                       {activePosScreen.buttons.map((btn, idx) => {
                         const colorTheme = TILE_COLORS.find(c => c.id === btn.color) || TILE_COLORS[0];
                         const isSubscreen = btn.type === 'screen';
-                        const isDisabled = !isShiftOpen && !isSubscreen;
+                        const matchingProduct = !isSubscreen
+                          ? (products.find((p: any) => String(p.id) === String(btn.productId)) ||
+                             products.find((p: any) => (p.name || '').trim().toLowerCase() === (btn.label || '').trim().toLowerCase()))
+                          : null;
+                        const isProductDeleted = !isSubscreen && (
+                          !matchingProduct ||
+                          matchingProduct.is_active === false ||
+                          ['deleted', 'archived'].includes(String(matchingProduct.status || '').toLowerCase())
+                        );
+                        const is86d = matchingProduct ? isProduct86d(matchingProduct.id) : false;
+                        const isDisabled = (!isShiftOpen && !isSubscreen) || isProductDeleted || is86d;
 
                         return (
                           <button
@@ -5931,16 +5949,27 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                             type="button"
                             onClick={() => handleTouchButtonPress(btn)}
                             disabled={isDisabled}
+                            title={isProductDeleted ? `⚠️ "${btn.label}" is deleted or not found in catalog` : (is86d ? `⚠️ "${btn.label}" is 86'd` : btn.label)}
                             className={`${activeGridDensity.minHeight} ${activeGridDensity.padding} rounded-2xl border flex flex-col items-center justify-center text-center shadow-xs transition-all active:scale-95 cursor-pointer relative overflow-hidden group select-none ${
                               isDisabled
-                                ? 'bg-slate-100 border-slate-200 opacity-40 cursor-not-allowed text-slate-400'
+                                ? `bg-slate-100 ${isProductDeleted ? 'border-dashed border-rose-300' : 'border-slate-200'} opacity-40 cursor-not-allowed text-slate-400`
                                 : `${colorTheme.bg} ${colorTheme.border} ${colorTheme.hover} ${colorTheme.text || 'text-slate-800'} hover:shadow-md hover:scale-[1.01]`
                             }`}
                           >
                             {/* PURE BUTTON NAME ONLY */}
-                            <span className={`font-black ${activeGridDensity.fontSize} leading-tight tracking-wide line-clamp-3 ${colorTheme.text || 'text-slate-800'}`}>
+                            <span className={`font-black ${activeGridDensity.fontSize} leading-tight tracking-wide line-clamp-3 ${isProductDeleted ? 'line-through text-slate-400' : (colorTheme.text || 'text-slate-800')}`}>
                               {btn.label}
                             </span>
+                            {isProductDeleted && (
+                              <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 mt-1">
+                                Deleted
+                              </span>
+                            )}
+                            {!isProductDeleted && is86d && (
+                              <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 mt-1">
+                                86'd
+                              </span>
+                            )}
                           </button>
                         );
                       })}

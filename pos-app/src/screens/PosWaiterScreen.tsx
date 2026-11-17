@@ -570,21 +570,21 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
     if (btn.type === 'screen') {
       handleNavigateToSubscreen(btn.targetScreenId);
     } else {
-      const prod = products.find(p => String(p.id) === String(btn.productId));
-      if (prod) {
-        handleAddItem(prod);
-      } else {
-        handleAddItem({
-          id: btn.productId || btn.id,
-          name: btn.label,
-          unit_price_usd: 0,
-          customizations: []
-        });
+      const prod = products.find(p => String(p.id) === String(btn.productId)) ||
+                   products.find(p => (p.name || '').trim().toLowerCase() === (btn.label || '').trim().toLowerCase());
+      if (!prod || (prod as any).is_active === false || ['deleted', 'archived'].includes(String((prod as any).status || '').toLowerCase())) {
+        showNotification(`⚠️ "${btn.label}" is deleted or not found in the catalog.`, 'error');
+        return;
       }
+      handleAddItem(prod);
     }
   };
 
   const handleAddItem = (product: PosProduct | { id: any; name: string; unit_price_usd: number; customizations?: any[] }) => {
+    if (!product || (product as any).is_active === false || ['deleted', 'archived'].includes(String((product as any).status || '').toLowerCase())) {
+      showNotification(`⚠️ This product is deleted or unavailable.`, 'error');
+      return;
+    }
     if (isOtherWaiterTable) {
       if (!hasPosPermission(currentUser, 'add_items_to_other_tables')) {
         setSupervisorAuthRequest({
@@ -1520,16 +1520,34 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
                   >
                     {activePosScreen.buttons.map((btn, idx) => {
                       const colorTheme = TILE_COLORS.find(c => c.id === btn.color) || TILE_COLORS[0];
+                      const isSubscreen = btn.type === 'screen';
+                      const matchingProduct = !isSubscreen
+                        ? (products.find((p: any) => String(p.id) === String(btn.productId)) ||
+                           products.find((p: any) => (p.name || '').trim().toLowerCase() === (btn.label || '').trim().toLowerCase()))
+                        : null;
+                      const isProductDeleted = !isSubscreen && (
+                        !matchingProduct ||
+                        (matchingProduct as any).is_active === false ||
+                        ['deleted', 'archived'].includes(String((matchingProduct as any).status || '').toLowerCase())
+                      );
+                      const isDisabled = isProductDeleted;
+
                       return (
                         <button
                           key={btn.id || idx}
                           type="button"
                           onClick={() => handleTouchButtonPress(btn)}
-                          className={`w-full ${activeGridDensity.minHeight} ${activeGridDensity.padding} rounded-2xl border flex flex-col items-center justify-center text-center shadow-xs transition-all active:scale-95 cursor-pointer select-none overflow-hidden relative group ${colorTheme.bg} ${colorTheme.border} ${colorTheme.hover} ${colorTheme.text || 'text-slate-800'} hover:shadow-md hover:scale-[1.01]`}
+                          disabled={isDisabled}
+                          title={isProductDeleted ? `⚠️ "${btn.label}" is deleted or not found in catalog` : btn.label}
+                          className={`w-full ${activeGridDensity.minHeight} ${activeGridDensity.padding} rounded-2xl border flex flex-col items-center justify-center text-center shadow-xs transition-all active:scale-95 cursor-pointer select-none overflow-hidden relative group ${
+                            isDisabled
+                              ? 'bg-slate-100 border-dashed border-rose-300 opacity-40 cursor-not-allowed text-slate-400'
+                              : `${colorTheme.bg} ${colorTheme.border} ${colorTheme.hover} ${colorTheme.text || 'text-slate-800'} hover:shadow-md hover:scale-[1.01]`
+                          }`}
                         >
                           {/* PURE BUTTON NAME ONLY - NO PRICES - ADAPTIVE TEXT WRAP */}
                           <span
-                            className={`w-full max-w-full ${activeGridDensity.fontSize} leading-tight tracking-normal line-clamp-3 ${colorTheme.text || 'text-slate-800'} px-1`}
+                            className={`w-full max-w-full ${activeGridDensity.fontSize} leading-tight tracking-normal line-clamp-3 ${isDisabled ? 'line-through text-slate-400' : (colorTheme.text || 'text-slate-800')} px-1`}
                             style={{
                               wordBreak: 'break-word',
                               overflowWrap: 'break-word',
@@ -1538,6 +1556,11 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
                           >
                             {btn.label}
                           </span>
+                          {isProductDeleted && (
+                            <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 mt-1">
+                              Deleted
+                            </span>
+                          )}
                         </button>
                       );
                     })}
