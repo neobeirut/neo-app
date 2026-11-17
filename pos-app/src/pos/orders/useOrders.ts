@@ -104,17 +104,25 @@ export function useOrders(options: UseOrdersOptions = {}) {
       }
 
       const directList = await directPromise;
-      // Merge directList (prioritized) and commerceList, deduplicating by ID
+      // Merge directList (prioritized) and commerceList, deduplicating by ID and table code
       const seenIds = new Set<string>();
+      const seenTableCodes = new Set<string>();
       const list: any[] = [];
       for (const ord of directList) {
         if (ord && ord.id && !seenIds.has(String(ord.id))) {
           seenIds.add(String(ord.id));
+          const tCode = (ord.table_label || (ord.customer_name ? ord.customer_name.replace(/^Table\s*/i, '') : '')).trim().toUpperCase().replace(/^T/i, '');
+          if (tCode) seenTableCodes.add(tCode);
           list.push(ord);
         }
       }
       for (const ord of commerceList) {
         if (ord && ord.id && !seenIds.has(String(ord.id))) {
+          const tCode = (ord.table_label || (ord.customer_name ? ord.customer_name.replace(/^Table\s*/i, '') : '')).trim().toUpperCase().replace(/^T/i, '');
+          // If this is a table order and direct pos_orders already has an active order for this table, ignore the legacy duplicate!
+          if (tCode && seenTableCodes.has(tCode)) {
+            continue;
+          }
           seenIds.add(String(ord.id));
           list.push(ord);
         }

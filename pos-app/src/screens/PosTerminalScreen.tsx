@@ -4063,11 +4063,11 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         return;
       }
 
-      // 2. Dual-write to Commerce API mirror (for external reports/analytics)
-      if (HAS_COMMERCE_API && heldOrderId) {
+      // 2. Dual-write to Commerce API mirror (for external reports/analytics) - strictly for non-dine-in, non-blocking
+      if (HAS_COMMERCE_API && heldOrderId && !isDineIn) {
         try {
           const extBranch = commerceBranchLink?.external_branch_id || currentBranchId || commerceBranchLink?.flow_branch_id;
-          await fetch(`${COMMERCE_API_BASE}/api/pos/orders`, {
+          fetch(`${COMMERCE_API_BASE}/api/pos/orders`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -4075,13 +4075,11 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
               restaurant_id: currentRestaurantId,
               concept_id: workspaceState.activeConcept?.id,
               client_order_token: clientOrderToken,
-              orderType: isDineIn ? "dine_in" : (orderType || "takeout"),
-              service_type: isDineIn ? "dine_in" : undefined,
-              table_label: activeTableContext ? activeTableContext.tableCode : undefined,
+              orderType: orderType || "takeout",
               customerName: resolvedCustomerName,
               customerPhone,
               deliveryAddress,
-              status: isDineIn ? "held" : "preparing",
+              status: "preparing",
               subtotal,
               total,
               items: orderPayload.items
@@ -4223,7 +4221,10 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
               });
 
               if (jobs.length > 0) {
-                await dispatchPhysicalPrintJobs(jobs);
+                // Background dispatch without blocking UI
+                dispatchPhysicalPrintJobs(jobs).catch(pe => {
+                  console.warn("Intelligent ticket routing error on order placement:", pe);
+                });
               }
             } catch (pe) {
               console.warn("Intelligent ticket routing error on order placement:", pe);
@@ -4335,24 +4336,11 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         };
 
         let targetOrderIdValue: any;
-        if (!HAS_COMMERCE_API) {
-          const directRes = await createDirectOrder(orderPayload);
-          if (!directRes.success) {
-            throw new Error(directRes.error || `Failed to create dine-in order for Table ${activeTableContext.tableCode}`);
-          }
-          targetOrderIdValue = directRes.orderId;
-        } else {
-          const createRes = await fetch(`${COMMERCE_API_BASE}/api/pos/orders`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(orderPayload)
-          });
-          const createData = await createRes.json();
-          if (!createRes.ok || !createData.success) {
-            throw new Error(createData.error || `Failed to create dine-in order for Table ${activeTableContext.tableCode}`);
-          }
-          targetOrderIdValue = createData.order?.id || createData.orderId;
+        const directRes = await createDirectOrder(orderPayload);
+        if (!directRes.success) {
+          throw new Error(directRes.error || `Failed to create dine-in order for Table ${activeTableContext.tableCode}`);
         }
+        targetOrderIdValue = directRes.order?.id || directRes.orderId;
 
         targetOrderId = targetOrderIdValue;
 
@@ -5298,9 +5286,9 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       {/* UNIFIED TOP POS HEADER: EXACT SAME ACROSS SELL, TABLES, AND ORDERS */}
       <div className="flex items-stretch border-b border-[#E0E3DF] flex-shrink-0 bg-white">
         {/* LEFT SECTION (65% Width) */}
-        <div className="w-[65%] px-4 py-2 bg-white border-r border-[#E0E3DF] flex items-center justify-between gap-3 flex-shrink-0 min-h-[58px]">
+        <div className="w-[65%] min-w-0 px-3 py-2 bg-white border-r border-[#E0E3DF] flex items-center justify-between gap-2 min-h-[58px]">
           {/* LEFT: Concept Switcher THEN Prominently Highlighted Main Menu Breadcrumb */}
-          <div className="flex items-center gap-3 overflow-x-auto no-scrollbar">
+          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar min-w-0">
             {/* Concept Workspace Switcher (Positioned on the FAR LEFT before Main Menu) */}
             <ConceptWorkspaceSwitcher
               workspaceState={workspaceState}
@@ -5378,7 +5366,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
           </div>
 
           {/* RIGHT TOOLS IN 65% SECTION */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 flex-shrink-0">
             {isAdmin && (
               <button
                 type="button"
@@ -5455,13 +5443,13 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
             {/* Cashier Badge */}
             <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-white border border-slate-300 text-xs font-bold text-slate-800 shadow-xs">
               <span className="text-amber-500 text-sm">👤</span>
-              <span className="text-slate-900 font-black max-w-[120px] truncate">{activeCashier?.name || user?.name || "Cashier"}</span>
+              <span className="text-slate-900 font-black max-w-[100px] truncate">{activeCashier?.name || user?.name || "Cashier"}</span>
             </div>
           </div>
         </div>
 
         {/* RIGHT SECTION (35% Width): PRIMARY POS MODE BUTTONS */}
-        <div className="w-[35%] p-2 bg-white flex items-center flex-shrink-0 min-h-[58px] border-l border-[#E0E3DF]">
+        <div className="w-[35%] min-w-0 p-2 bg-white flex items-center min-h-[58px] border-l border-[#E0E3DF]">
           <div className="grid grid-cols-3 gap-2 w-full">
             {isRestaurantMode && (
               <button
@@ -5860,7 +5848,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
             {/* MAIN WORKSPACE: MATRIX ON LEFT & CART ON RIGHT */}
             <div className="flex-1 flex overflow-hidden min-h-0 bg-[#F5F6F4]">
               {/* LEFT AREA (65% Width): Categories Bar + Product Grid */}
-              <div className="w-[65%] flex flex-col h-full overflow-hidden border-r border-[#E0E3DF] bg-[#F5F6F4]">
+              <div className="w-[65%] min-w-0 flex flex-col h-full overflow-hidden border-r border-[#E0E3DF] bg-[#F5F6F4]">
               {/* FLOW UPSELL RECOMMENDATIONS */}
               <UpsellRecommendationBar
                 upsells={activeUpsells}
@@ -6113,7 +6101,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
             </div>
 
         {/* RIGHT PANEL: TICKET CART & CHECKOUT (35% Width) */}
-        <div className="w-[35%] flex flex-col h-full bg-white border-l border-[#E0E3DF] overflow-hidden flex-shrink-0 shadow-lg">
+        <div className="w-[35%] min-w-0 flex flex-col h-full bg-white border-l border-[#E0E3DF] overflow-hidden shadow-lg">
           {/* TICKET HEADER & UNIFIED SMART CHANNEL BAR */}
           <div className="p-3 border-b border-[#E0E3DF] space-y-2 bg-white flex-shrink-0">
 

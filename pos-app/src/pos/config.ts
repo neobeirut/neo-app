@@ -13,7 +13,7 @@ function resolveCommerceApiBase(): string {
   return "https://ovrload-backend-production.up.railway.app";
 }
 
-export const HAS_COMMERCE_API: boolean = true;
+export const HAS_COMMERCE_API: boolean = false;
 export const COMMERCE_API_BASE: string = resolveCommerceApiBase();
 export const DRIVER_DISPATCH_API_BASE: string = COMMERCE_API_BASE;
 

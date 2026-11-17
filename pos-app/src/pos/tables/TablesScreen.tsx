@@ -292,7 +292,37 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
       }
     });
 
-    return list;
+    // Deduplicate by normalized table code: a physical table can only ever appear ONCE
+    const tableOrdersMap = new Map<string, FlowPosOrder>();
+    for (const o of list) {
+      const rawCode = (o.tableLabel || (o.customerName ? o.customerName.replace(/^Table\s*/i, '') : '')).trim().toUpperCase().replace(/^T/i, '');
+      if (!rawCode) continue;
+
+      if (!tableOrdersMap.has(rawCode)) {
+        tableOrdersMap.set(rawCode, o);
+      } else {
+        const existing = tableOrdersMap.get(rawCode)!;
+        // Check which one is authoritative:
+        const existingHasGhostItem = (existing.items || []).some((it: any) => (it.name || '').trim().toLowerCase() === 'item');
+        const candidateHasGhostItem = (o.items || []).some((it: any) => (it.name || '').trim().toLowerCase() === 'item');
+        if (existingHasGhostItem && !candidateHasGhostItem) {
+          tableOrdersMap.set(rawCode, o);
+        } else if (!existingHasGhostItem && candidateHasGhostItem) {
+          // Keep existing
+        } else {
+          // Prefer order with a named waiter (not default anonymous Cashier)
+          const existingHasWaiter = existing.waiterName && existing.waiterName !== 'Cashier';
+          const candidateHasWaiter = o.waiterName && o.waiterName !== 'Cashier';
+          if (!existingHasWaiter && candidateHasWaiter) {
+            tableOrdersMap.set(rawCode, o);
+          } else if ((o.items?.length || 0) > (existing.items?.length || 0)) {
+            tableOrdersMap.set(rawCode, o);
+          }
+        }
+      }
+    }
+
+    return Array.from(tableOrdersMap.values());
   }, [openTableOrders, tables, cashierName, settledKeys]);
 
   // Synchronize active open tables count to POS header and top buttons
