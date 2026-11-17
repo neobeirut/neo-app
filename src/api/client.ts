@@ -2081,6 +2081,51 @@ export const api = {
         }]);
       if (error) return { success: false, error: error.message };
     }
+
+    // Auto-synchronize product catalog status in products table
+    try {
+      const cleanName = (s: string) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const newCleanSet = new Set((items || []).map((it: any) => cleanName(it.name)).filter(Boolean));
+
+      let prodQ = supabase.from('products').select('id, name, status, is_active');
+      if (rid) prodQ = prodQ.eq('restaurant_id', rid);
+      if (effectiveConceptId) prodQ = prodQ.or(`concept_id.eq.${effectiveConceptId},concept_id.is.null`);
+      const { data: allProds } = await prodQ;
+
+      if (allProds && allProds.length > 0) {
+        const toDisableIds: number[] = [];
+        const toEnableIds: number[] = [];
+
+        for (const p of allProds) {
+          const pClean = cleanName(p.name);
+          const shouldBeUnavailable = newCleanSet.has(pClean);
+          const isCurrentlyUnavailable = ['unavailable', 'unavailable today', '86', 'out_of_stock'].includes(String(p.status || '').toLowerCase()) || p.is_active === false;
+
+          if (shouldBeUnavailable && !isCurrentlyUnavailable) {
+            toDisableIds.push(p.id);
+          } else if (!shouldBeUnavailable && isCurrentlyUnavailable && (p.status === 'Unavailable Today' || p.status === '86')) {
+            toEnableIds.push(p.id);
+          }
+        }
+
+        if (toDisableIds.length > 0) {
+          await supabase
+            .from('products')
+            .update({ status: 'Unavailable Today', is_active: false })
+            .in('id', toDisableIds);
+        }
+
+        if (toEnableIds.length > 0) {
+          await supabase
+            .from('products')
+            .update({ status: 'Available', is_active: true })
+            .in('id', toEnableIds);
+        }
+      }
+    } catch (syncErr) {
+      console.warn('[save86] Could not auto-sync product catalog status:', syncErr);
+    }
+
     return { success: true };
   },
 

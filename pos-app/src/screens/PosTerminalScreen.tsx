@@ -5966,7 +5966,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                           !matchingProduct ||
                           matchingProduct.is_active === false ||
                           ['deleted', 'archived', 'unavailable', 'unavailable today', 'out_of_stock'].includes(String(matchingProduct.status || '').toLowerCase()) ||
-                          (matchingProduct ? isProduct86d(matchingProduct.id) : false)
+                          (matchingProduct ? isProduct86d(matchingProduct) : false)
                         );
                         const isDisabled = (!isShiftOpen && !isSubscreen) || isUnavailable;
 

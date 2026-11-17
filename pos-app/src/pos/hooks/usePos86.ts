@@ -171,22 +171,42 @@ export function usePos86(branchName?: string, conceptId?: string) {
     };
   }, [fetch86Status, effectiveBranch]);
 
-  // Check if a product is 86'd (by ID or name)
+  // Check if a product is 86'd (by ID or name with fuzzy normalization)
   const isProduct86d = useCallback((productOrId: any): boolean => {
     if (!productOrId) return false;
+    const cleanStr = (s: string) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
     if (typeof productOrId === 'object') {
       const pId = String(productOrId.id || productOrId.master_product_id || '');
       if (pId && unavailableProductIds.has(pId)) return true;
       const pName = (productOrId.name || productOrId.display_name || '').trim().toLowerCase();
       if (pName && (unavailableProductNames.has(pName) || unavailableIngredientNames.has(pName))) return true;
+      const pClean = cleanStr(pName);
+      if (pClean) {
+        for (const item of active86Items) {
+          const itClean = cleanStr(item.name);
+          if (itClean && (itClean === pClean || (itClean.length >= 3 && pClean.includes(itClean)))) {
+            return true;
+          }
+        }
+      }
       return false;
     }
     const val = String(productOrId).trim();
     if (unavailableProductIds.has(val)) return true;
     const lower = val.toLowerCase();
     if (unavailableProductNames.has(lower) || unavailableIngredientNames.has(lower)) return true;
+    const valClean = cleanStr(lower);
+    if (valClean) {
+      for (const item of active86Items) {
+        const itClean = cleanStr(item.name);
+        if (itClean && (itClean === valClean || (itClean.length >= 3 && valClean.includes(itClean)))) {
+          return true;
+        }
+      }
+    }
     return false;
-  }, [unavailableProductIds, unavailableProductNames, unavailableIngredientNames]);
+  }, [unavailableProductIds, unavailableProductNames, unavailableIngredientNames, active86Items]);
 
   // Check if a customization option / ingredient is 86'd
   const isCustomization86d = useCallback((optOrName: any): boolean => {

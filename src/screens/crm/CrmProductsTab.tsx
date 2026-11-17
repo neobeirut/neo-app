@@ -6,6 +6,7 @@ import {
   Smartphone, Store
 } from 'lucide-react';
 import { crmService } from '../../api/crmService';
+import { api } from '../../api/client';
 import type { Product, Category } from '../../api/crmService';
 import ProductModifierModal from './ProductModifierModal';
 import ConceptProductModal from './ConceptProductModal';
@@ -52,6 +53,7 @@ export default function CrmProductsTab({ onNavigateToModifiers, onProductsCountC
   const [recovering, setRecovering] = useState(false);
   const [recoveryResult, setRecoveryResult] = useState<RecoveryImportResult | null>(null);
   const [recoveryError, setRecoveryError] = useState<string | null>(null);
+  const [active86Items, setActive86Items] = useState<any[]>([]);
 
   useEffect(() => {
     try {
@@ -249,6 +251,19 @@ export default function CrmProductsTab({ onNavigateToModifiers, onProductsCountC
       ]);
       setConceptConfigsMap(dbConfigs);
       setRecoveryPreview(preview);
+      try {
+        const todayStr = new Date().toISOString().split('T')[0];
+        const res86 = await api.get86Logs(todayStr);
+        const active86: any[] = [];
+        if (res86?.success && Array.isArray(res86.data)) {
+          for (const rec of res86.data) {
+            if (Array.isArray(rec.items)) active86.push(...rec.items);
+          }
+        }
+        setActive86Items(active86);
+      } catch {
+        // non-blocking
+      }
     } catch (err) {
       console.error('Failed to load menu products:', err);
     } finally {
@@ -276,8 +291,22 @@ export default function CrmProductsTab({ onNavigateToModifiers, onProductsCountC
     }
   };
 
+  const cleanName = (s: string) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const isProduct86d = (p: Product) => {
+    const rawStatus = (p.status || '').toLowerCase();
+    if (['unavailable', 'unavailable today', '86', 'out_of_stock'].includes(rawStatus) || p.is_active === false) {
+      return true;
+    }
+    const pClean = cleanName(p.name);
+    return active86Items.some(it => {
+      const itClean = cleanName(it.name);
+      return itClean && (itClean === pClean || (itClean.length >= 3 && pClean.includes(itClean)));
+    });
+  };
+
   const handleToggleStatus = async (product: Product) => {
-    const newStatus = product.status === 'Available' ? 'Unavailable Today' : 'Available';
+    const isCurrentlyUnavail = isProduct86d(product);
+    const newStatus = isCurrentlyUnavail ? 'Available' : 'Unavailable Today';
     const newIsActive = newStatus === 'Available';
     try {
       await crmService.updateProduct(product.id, { status: newStatus, is_active: newIsActive });
@@ -897,12 +926,12 @@ export default function CrmProductsTab({ onNavigateToModifiers, onProductsCountC
                         fontWeight: 700,
                         border: 'none',
                         cursor: 'pointer',
-                        backgroundColor: p.status === 'Available' ? 'rgba(22, 163, 74, 0.9)' : 'rgba(217, 119, 6, 0.9)',
+                        backgroundColor: !isProduct86d(p) ? 'rgba(22, 163, 74, 0.9)' : 'rgba(217, 119, 6, 0.95)',
                         color: '#fff',
                         backdropFilter: 'blur(4px)'
                       }}
                     >
-                      {p.status === 'Available' ? '● Available' : '○ Unavailable'}
+                      {!isProduct86d(p) ? '● Available' : '🚫 86 (Unavailable)'}
                     </button>
                   </div>
                 </div>
@@ -1146,11 +1175,11 @@ export default function CrmProductsTab({ onNavigateToModifiers, onProductsCountC
                         gap: '4px',
                         fontSize: '11px',
                         fontWeight: 600,
-                        color: p.status === 'Available' ? '#15803d' : '#d97706'
+                        color: !isProduct86d(p) ? '#15803d' : '#d97706'
                       }}
                     >
-                      {p.status === 'Available' ? <CheckCircle size={14} /> : <XCircle size={14} />}
-                      {p.status}
+                      {!isProduct86d(p) ? <CheckCircle size={14} /> : <AlertTriangle size={14} />}
+                      {!isProduct86d(p) ? 'Available' : '86 (Unavailable)'}
                     </button>
                   </td>
 
