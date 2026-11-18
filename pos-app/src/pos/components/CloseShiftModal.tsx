@@ -702,7 +702,10 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
   const {
     effectiveSalesLbp,
     effectiveOnCreditLbp,
+    totalWalletUsd,
+    totalWalletLbp,
     totalWalletOutflowUsd,
+    totalWalletOutflowLbp,
     totalOpeningUsd,
     openingUsdNum,
     openingLbpNum,
@@ -736,9 +739,10 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
     const salesLbpInUsd = effSalesLbp / currentRate;
     const totalInflowsUsd = totalCashInUsd + salesLbpInUsd;
 
-    const walletOutflowUsd = Object.values(walletInputs).reduce((sum, w: any) => {
-      return sum + n(w.amount_usd) + (n(w.amount_lbp) / currentRate);
-    }, 0);
+    const totalWalletUsd = Object.values(walletInputs).reduce((sum, w: any) => sum + n(w.amount_usd), 0);
+    const totalWalletLbp = Object.values(walletInputs).reduce((sum, w: any) => sum + n(w.amount_lbp), 0);
+    const walletOutflowUsd = totalWalletUsd + (totalWalletLbp / currentRate);
+    const walletOutflowLbp = Math.round(totalWalletLbp + (totalWalletUsd * currentRate));
 
     const paymentsUsdNum = n(paymentsUsd);
     const paymentsLbpNum = n(paymentsLbp);
@@ -774,7 +778,10 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
     return {
       effectiveSalesLbp: effSalesLbp,
       effectiveOnCreditLbp: effCreditLbp,
+      totalWalletUsd,
+      totalWalletLbp,
       totalWalletOutflowUsd: walletOutflowUsd,
+      totalWalletOutflowLbp: walletOutflowLbp,
       totalOpeningUsd,
       openingUsdNum,
       openingLbpNum,
@@ -1602,61 +1609,101 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
 
               {/* DYNAMIC E-WALLETS */}
               {wallets.length > 0 && (
-                <div className="pt-2 border-t border-slate-200/60 space-y-2">
-                  <span className="text-[11px] font-bold text-slate-500 uppercase">E-Wallets (Whish, OMT, etc.)</span>
+                <div className="pt-2 border-t border-slate-200/60 space-y-2.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[11px] font-bold text-slate-500 uppercase">E-Wallets</span>
+                      <span className="text-[10px] text-slate-400 font-semibold">(Whish, OMT, etc.)</span>
+                    </div>
+                    <div className="flex items-center gap-2 bg-white px-2.5 py-1 rounded-xl border border-slate-200 shadow-2xs">
+                      <span className="text-[10px] font-black text-slate-500 uppercase tracking-wide">Total E-Wallets:</span>
+                      <span className="text-xs font-black text-slate-900 font-mono">
+                        ${totalWalletOutflowUsd.toFixed(2)}
+                      </span>
+                      {(totalWalletUsd > 0 || totalWalletLbp > 0) && (
+                        <span className="text-[10px] text-slate-400 font-mono">
+                          (${totalWalletUsd.toFixed(2)} + {totalWalletLbp.toLocaleString()} L.L.)
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    {wallets.map((w) => (
-                      <React.Fragment key={w.id}>
-                        <div>
-                          <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">{w.name} USD</label>
-                          <div
-                            onClick={() => setNumpadField({
-                              label: `${w.name} USD`,
-                              value: walletInputs[w.id]?.amount_usd || '',
-                              setter: (val) => {
-                                setWalletInputs(prev => ({
-                                  ...prev,
-                                  [w.id]: {
-                                    amount_usd: val,
-                                    amount_lbp: prev[w.id]?.amount_lbp || ''
-                                  }
-                                }));
-                              }
-                            })}
-                            className="w-full bg-white border border-slate-200 hover:border-amber-500/60 rounded-xl px-3 py-1.5 text-slate-900 font-mono text-xs font-bold cursor-pointer flex items-center justify-between"
-                          >
-                            <span className={walletInputs[w.id]?.amount_usd ? 'text-slate-900' : 'text-gray-500'}>
-                              {walletInputs[w.id]?.amount_usd || 'Tap to enter'}
-                            </span>
-                            <span className="text-amber-500 text-base">⌨</span>
+                    {wallets.map((w) => {
+                      const lowerName = (w.name || '').trim().toLowerCase();
+                      const isWhishOrSingle = lowerName.includes('wish') || lowerName.includes('whish') || lowerName.includes('wallet') || wallets.length <= 1;
+                      const labelUsd = isWhishOrSingle ? 'E-Wallet USD' : `${w.name} USD`;
+                      const labelLbp = isWhishOrSingle ? 'E-Wallet LBP' : `${w.name} LBP`;
+
+                      return (
+                        <React.Fragment key={w.id}>
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">{labelUsd}</label>
+                            <div
+                              onClick={() => setNumpadField({
+                                label: labelUsd,
+                                value: walletInputs[w.id]?.amount_usd || '',
+                                setter: (val) => {
+                                  setWalletInputs(prev => ({
+                                    ...prev,
+                                    [w.id]: {
+                                      amount_usd: val,
+                                      amount_lbp: prev[w.id]?.amount_lbp || ''
+                                    }
+                                  }));
+                                }
+                              })}
+                              className="w-full bg-white border border-slate-200 hover:border-amber-500/60 rounded-xl px-3 py-1.5 text-slate-900 font-mono text-xs font-bold cursor-pointer flex items-center justify-between"
+                            >
+                              <span className={walletInputs[w.id]?.amount_usd ? 'text-slate-900' : 'text-gray-500'}>
+                                {walletInputs[w.id]?.amount_usd || 'Tap to enter'}
+                              </span>
+                              <span className="text-amber-500 text-base">⌨</span>
+                            </div>
                           </div>
-                        </div>
-                        <div>
-                          <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">{w.name} LBP</label>
-                          <div
-                            onClick={() => setNumpadField({
-                              label: `${w.name} LBP`,
-                              value: walletInputs[w.id]?.amount_lbp || '',
-                              setter: (val) => {
-                                setWalletInputs(prev => ({
-                                  ...prev,
-                                  [w.id]: {
-                                    amount_usd: prev[w.id]?.amount_usd || '',
-                                    amount_lbp: val
-                                  }
-                                }));
-                              }
-                            })}
-                            className="w-full bg-white border border-slate-200 hover:border-amber-500/60 rounded-xl px-3 py-1.5 text-slate-900 font-mono text-xs font-bold cursor-pointer flex items-center justify-between"
-                          >
-                            <span className={walletInputs[w.id]?.amount_lbp ? 'text-slate-900' : 'text-gray-500'}>
-                              {walletInputs[w.id]?.amount_lbp || 'Tap to enter'}
-                            </span>
-                            <span className="text-amber-500 text-base">⌨</span>
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">{labelLbp}</label>
+                            <div
+                              onClick={() => setNumpadField({
+                                label: labelLbp,
+                                value: walletInputs[w.id]?.amount_lbp || '',
+                                setter: (val) => {
+                                  setWalletInputs(prev => ({
+                                    ...prev,
+                                    [w.id]: {
+                                      amount_usd: prev[w.id]?.amount_usd || '',
+                                      amount_lbp: val
+                                    }
+                                  }));
+                                }
+                              })}
+                              className="w-full bg-white border border-slate-200 hover:border-amber-500/60 rounded-xl px-3 py-1.5 text-slate-900 font-mono text-xs font-bold cursor-pointer flex items-center justify-between"
+                            >
+                              <span className={walletInputs[w.id]?.amount_lbp ? 'text-slate-900' : 'text-gray-500'}>
+                                {walletInputs[w.id]?.amount_lbp || 'Tap to enter'}
+                              </span>
+                              <span className="text-amber-500 text-base">⌨</span>
+                            </div>
                           </div>
-                        </div>
-                      </React.Fragment>
-                    ))}
+                        </React.Fragment>
+                      );
+                    })}
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Total E-Wallets USD</label>
+                      <div className="w-full bg-slate-100 border border-slate-200 rounded-xl px-3 py-1.5 text-slate-900 font-mono text-xs font-black flex items-center justify-between">
+                        <span>${totalWalletUsd.toFixed(2)}</span>
+                        <span className="text-[10px] text-slate-400 font-sans font-bold uppercase">USD</span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Total E-Wallets LBP</label>
+                      <div className="w-full bg-slate-100 border border-slate-200 rounded-xl px-3 py-1.5 text-slate-900 font-mono text-xs font-black flex items-center justify-between">
+                        <span>{totalWalletLbp.toLocaleString()} L.L.</span>
+                        <span className="text-[10px] text-slate-400 font-sans font-bold uppercase">LBP</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
@@ -1806,7 +1853,14 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
                     {totalWalletOutflowUsd > 0 && (
                       <div className="flex justify-between">
                         <span>• E-Wallets:</span>
-                        <span className="text-slate-900 font-bold">${totalWalletOutflowUsd.toFixed(2)}</span>
+                        <span className="text-slate-900 font-bold">
+                          ${totalWalletOutflowUsd.toFixed(2)}
+                          {(totalWalletUsd > 0 || totalWalletLbp > 0) && (
+                            <span className="text-gray-500 text-[10px] ml-1">
+                              (${totalWalletUsd.toFixed(2)} + {totalWalletLbp.toLocaleString()} L.L.)
+                            </span>
+                          )}
+                        </span>
                       </div>
                     )}
                   </div>

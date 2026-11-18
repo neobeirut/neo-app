@@ -135,7 +135,7 @@ export const ShiftReportModal: React.FC<ShiftReportModalProps> = ({
                 <span className="text-slate-900 font-bold">{reconciliation.tenders.cash_lbp.toLocaleString()} L.L.</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-600">Whish:</span>
+                <span className="text-slate-600">E-Wallet (Whish):</span>
                 <span className="text-slate-900 font-bold">${reconciliation.tenders.whish_usd.toFixed(2)}</span>
               </div>
               <div className="flex justify-between">
