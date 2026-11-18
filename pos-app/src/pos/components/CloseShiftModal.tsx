@@ -518,6 +518,59 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
           if (res.summary.netSales !== undefined && res.summary.netSales >= 0) {
             setSalesLbp(prev => prev ? prev : String(Math.round(res.summary!.netSales * activeRate)));
           }
+
+          // Automatically enter E-Wallets from POS recorded tenders (can be corrected by cashier)
+          const loadedWallets = walletRes?.success && Array.isArray(walletRes.data) ? walletRes.data : [];
+          if (loadedWallets.length > 0) {
+            const initialWalletInputs: Record<string, { amount_usd: string; amount_lbp: string }> = {};
+            const shiftOrdersList = res.orders || [];
+
+            loadedWallets.forEach((w: any) => {
+              const wName = (w.name || '').toLowerCase().trim();
+              const isWhishWallet = wName.includes('wish') || wName.includes('whish') || loadedWallets.length === 1;
+
+              let walletUsd = 0;
+              let walletLbp = 0;
+
+              shiftOrdersList.forEach((o: any) => {
+                const pm = (o.payment_method || '').toLowerCase().trim();
+                const matchesThisWallet =
+                  (wName && pm.includes(wName)) ||
+                  (isWhishWallet && (pm.includes('wish') || pm.includes('whish') || pm.includes('wallet')));
+
+                if (matchesThisWallet) {
+                  const total = Number(o.total_amount) || 0;
+                  if (pm.includes('lbp')) {
+                    const rate = Number(o.exchange_rate) || activeRate;
+                    walletLbp += Math.round(total * rate);
+                  } else {
+                    walletUsd += total;
+                  }
+                }
+              });
+
+              // Fallback to res.summary.tenders.whish_usd if whish_usd > 0 and per-order check was 0
+              if (isWhishWallet && walletUsd === 0 && res.summary.tenders?.whish_usd && res.summary.tenders.whish_usd > 0) {
+                walletUsd = res.summary.tenders.whish_usd;
+              }
+
+              initialWalletInputs[w.id] = {
+                amount_usd: walletUsd > 0 ? String(parseFloat(walletUsd.toFixed(2))) : '',
+                amount_lbp: walletLbp > 0 ? String(walletLbp) : ''
+              };
+            });
+
+            // Auto-fill wallet inputs while preserving any already entered corrections
+            setWalletInputs(prev => {
+              const merged = { ...prev };
+              Object.entries(initialWalletInputs).forEach(([wId, val]) => {
+                if (!merged[wId] || (!merged[wId].amount_usd && !merged[wId].amount_lbp)) {
+                  merged[wId] = val;
+                }
+              });
+              return merged;
+            });
+          }
         }
 
         // Check Open Tables & Orders, reusing the shift orders already loaded in reconciliation
@@ -669,6 +722,29 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
         setCashInLbp(String(inLbp));
         setCashOutUsd(String(outUsd));
         setCashOutLbp(String(outLbp));
+
+        // Auto-seed e-wallet if currently empty
+        if (reconData?.tenders?.whish_usd && reconData.tenders.whish_usd > 0 && wallets.length > 0) {
+          setWalletInputs(prev => {
+            const hasExisting = Object.values(prev).some(v => v.amount_usd || v.amount_lbp);
+            if (!hasExisting) {
+              const targetWallet = wallets.find((w: any) => {
+                const n = (w.name || '').toLowerCase();
+                return n.includes('wish') || n.includes('whish');
+              }) || wallets[0];
+              if (targetWallet) {
+                return {
+                  ...prev,
+                  [targetWallet.id]: {
+                    amount_usd: String(reconData.tenders.whish_usd),
+                    amount_lbp: prev[targetWallet.id]?.amount_lbp || ''
+                  }
+                };
+              }
+            }
+            return prev;
+          });
+        }
 
         setCashFlowMessage(`✓ Loaded ${records.length} cash flow records: Suppliers ($${supplierUsd.toFixed(2)} / ${supplierLbp.toLocaleString()} LBP), Cash In ($${inUsd.toFixed(2)} / ${inLbp.toLocaleString()} LBP), Cash Out ($${outUsd.toFixed(2)} / ${outLbp.toLocaleString()} LBP)`);
         setTimeout(() => setCashFlowMessage(null), 6000);
