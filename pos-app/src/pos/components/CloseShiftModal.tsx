@@ -987,12 +987,12 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
   ) => (
     <div
       onClick={() => setNumpadField({ label, value, setter })}
-      className={`w-full bg-white border border-slate-200 hover:border-[#1e5c4f] rounded-xl px-3 ${large ? 'py-3' : 'py-2'} text-slate-900 font-mono ${large ? 'text-lg' : 'text-xs'} font-bold cursor-pointer flex items-center justify-between`}
+      className={`w-full bg-white border border-slate-200 hover:border-[#1e5c4f] rounded-xl px-2.5 ${large ? 'py-1.5' : 'py-1'} text-slate-900 font-mono ${large ? 'text-sm' : 'text-xs'} font-bold cursor-pointer flex items-center justify-between transition shadow-2xs`}
     >
-      <span className={value ? 'text-slate-900' : 'text-gray-500'}>{value || 'Tap to enter'}</span>
+      <span className={value ? 'text-slate-900' : 'text-gray-400'}>{value || 'Tap to enter'}</span>
       <div className="flex items-center gap-1">
-        {suffix && <span className="text-gray-500 text-[10px]">{suffix}</span>}
-        <span className="text-slate-400 text-base">⌨</span>
+        {suffix && <span className="text-gray-400 text-[10px]">{suffix}</span>}
+        <span className="text-slate-400 text-xs">⌨</span>
       </div>
     </div>
   );
@@ -1198,33 +1198,33 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
         )}
 
         {/* HEADER BAR */}
-        <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-white flex-shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-slate-100 text-[#1e5c4f] border border-slate-200 flex items-center justify-center text-xl font-black">
+        <div className="px-4 py-2 border-b border-slate-200 flex items-center justify-between bg-white flex-shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-slate-100 text-[#1e5c4f] border border-slate-200 flex items-center justify-center text-lg font-black flex-shrink-0">
               🔒
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-base font-black text-slate-900">Close Shift Cash Session</h2>
+                <h2 className="text-sm font-black text-slate-900 leading-tight">Close Shift Cash Session</h2>
                 {shift.status === 'on_hold' && (
-                  <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 text-[11px] font-bold border border-amber-200">
+                  <span className="px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-800 text-[10px] font-bold border border-amber-200">
                     ⏸️ Auditing Held Shift
                   </span>
                 )}
               </div>
-              <p className="text-xs text-slate-500">
+              <p className="text-[11px] text-slate-500 leading-tight">
                 Reconcile cash drawer, supplier payouts, and payment mix • {branchName}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2">
             {/* Open Entities indicator */}
             {(openTables.length > 0 || openOrders.length > 0) && (
               <button
                 type="button"
                 onClick={() => setShowOpenEntitiesPopup(true)}
-                className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-xl text-xs font-black transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-lg text-xs font-black transition flex items-center gap-1 cursor-pointer shadow-2xs"
                 title="View open tables and orders"
               >
                 ⚠️ {openTables.length + openOrders.length} Open
@@ -1236,399 +1236,365 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
               type="button"
               disabled={fetchingCashFlow}
               onClick={handleFetchCashFlow}
-              className="px-3 py-1.5 bg-white hover:bg-slate-50 text-[#1e5c4f] hover:text-[#16473D] border border-slate-300 rounded-xl text-xs font-black transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+              className="px-2.5 py-1 bg-white hover:bg-slate-50 text-[#1e5c4f] hover:text-[#16473D] border border-slate-300 rounded-lg text-xs font-black transition flex items-center gap-1 cursor-pointer shadow-2xs"
               title="Pull supplier payments and cash in/out from Daily Payments"
             >
-              <RefreshCw size={13} className={fetchingCashFlow ? 'animate-spin' : ''} />
+              <RefreshCw size={12} className={fetchingCashFlow ? 'animate-spin' : ''} />
               <span>{fetchingCashFlow ? 'Fetching...' : '⚡ Get Cash Flow'}</span>
             </button>
 
             <button
               type="button"
               onClick={onClose}
-              className="w-9 h-9 rounded-xl bg-white hover:bg-slate-100 text-slate-500 hover:text-slate-800 border border-slate-300 flex items-center justify-center transition cursor-pointer shadow-xs"
+              className="w-7 h-7 rounded-lg bg-white hover:bg-slate-100 text-slate-500 hover:text-slate-800 border border-slate-300 flex items-center justify-center transition cursor-pointer shadow-2xs"
             >
-              <X size={18} />
+              <X size={16} />
             </button>
           </div>
         </div>
 
-        {/* TWO-COLUMN BODY */}
-        <div className="flex-1 overflow-hidden flex">
+        {/* DASHBOARD BODY (3 COLUMNS TO FIT 100% WITHOUT SCROLL) */}
+        <div className="flex-1 min-h-0 overflow-y-auto lg:overflow-hidden p-2.5">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-2.5 h-full">
 
-          {/* LEFT COLUMN: Shift Context card */}
-          <div className="w-[280px] flex-shrink-0 overflow-y-auto p-4 space-y-4 border-r border-slate-200 bg-white">
-
-            {/* Error / status messages in left column */}
-            {errorMessage && (
-              <div className="p-3 bg-rose-50 border border-rose-200 rounded-2xl text-rose-800 text-xs font-bold flex items-center gap-2">
-                <AlertTriangle size={16} className="text-rose-600 flex-shrink-0" />
-                <span>{errorMessage}</span>
-              </div>
-            )}
-
-            {cashFlowMessage && (
-              <div className="p-3 bg-blue-50 border border-blue-200 rounded-2xl text-blue-800 text-xs font-bold flex items-center gap-2">
-                <span>ℹ️</span>
-                <span>{cashFlowMessage}</span>
-              </div>
-            )}
-
-            {/* CARD 1: SHIFT CONTEXT & PARAMETERS */}
-            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
-              <div className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center justify-between">
-                <span>Shift Context</span>
-                <span className="text-slate-500 font-normal text-[10px]">{cashierName}</span>
-              </div>
-
-              {/* Date */}
-              <div>
-                <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Date</label>
-                <input
-                  type="date"
-                  inputMode="none"
-                  value={date}
-                  readOnly
-                  title="Date of the saved shift being closed"
-                  className="w-full bg-white border border-slate-200 focus:border-[#1e5c4f] rounded-xl px-3 py-2 text-slate-900 font-mono text-xs font-bold outline-none"
-                />
-              </div>
-
-              {/* Shift AM/PM toggle */}
-              <div>
-                <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Shift</label>
-                <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200">
-                  <button
-                    type="button"
-                    disabled={Boolean(s.id)}
-                    onClick={() => setShiftType('AM')}
-                    className={`flex-1 py-1 rounded-lg text-xs font-black transition cursor-pointer ${
-                      shiftType === 'AM' ? 'bg-[#1e5c4f] text-white shadow-xs' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-                    }`}
-                  >
-                    ☀️ AM
-                  </button>
-                  <button
-                    type="button"
-                    disabled={Boolean(s.id)}
-                    onClick={() => setShiftType('PM')}
-                    className={`flex-1 py-1 rounded-lg text-xs font-black transition cursor-pointer ${
-                      shiftType === 'PM' ? 'bg-[#1e5c4f] text-white shadow-xs' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-                    }`}
-                  >
-                    🌙 PM
-                  </button>
+            {/* COLUMN 1: CONTEXT & SALES (3 cols) */}
+            <div className="lg:col-span-3 flex flex-col gap-2 min-h-0 overflow-y-auto pr-0.5">
+              {/* Error / status messages */}
+              {errorMessage && (
+                <div className="p-2 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-[11px] font-bold flex items-center gap-2">
+                  <AlertTriangle size={14} className="text-rose-600 flex-shrink-0" />
+                  <span>{errorMessage}</span>
                 </div>
-              </div>
+              )}
 
-              {/* Exchange Rate */}
-              <div className="relative">
-                <div className="flex items-center justify-between mb-1">
-                  <label className="block text-[11px] font-bold text-slate-500 uppercase">USD Rate (L.L.)</label>
-                  {rate !== systemRate && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setRate(systemRate);
-                        setRateInputStr(String(systemRate));
-                      }}
-                      className="text-[10px] text-[#1e5c4f] hover:text-[#16473D] underline font-bold cursor-pointer"
-                      title="Restore system default exchange rate"
-                    >
-                      Reset ({systemRate.toLocaleString()})
-                    </button>
+              {cashFlowMessage && (
+                <div className="p-2 bg-blue-50 border border-blue-200 rounded-xl text-blue-800 text-[11px] font-bold flex items-center gap-1.5">
+                  <span>ℹ️</span>
+                  <span>{cashFlowMessage}</span>
+                </div>
+              )}
+
+              {/* CARD 1: SHIFT CONTEXT */}
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-2.5 space-y-2">
+                <div className="text-[11px] font-black text-slate-800 uppercase tracking-wider flex items-center justify-between">
+                  <span>Shift Context</span>
+                  <span className="text-slate-500 font-normal text-[10px]">{cashierName}</span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  {/* Date */}
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Date</label>
+                    <input
+                      type="date"
+                      inputMode="none"
+                      value={date}
+                      readOnly
+                      title="Date of the saved shift being closed"
+                      className="w-full bg-white border border-slate-200 focus:border-[#1e5c4f] rounded-xl px-2 py-1 text-slate-900 font-mono text-xs font-bold outline-none"
+                    />
+                  </div>
+
+                  {/* Shift AM/PM toggle */}
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Shift</label>
+                    <div className="flex items-center gap-1 bg-white p-0.5 rounded-xl border border-slate-200">
+                      <button
+                        type="button"
+                        disabled={Boolean(s.id)}
+                        onClick={() => setShiftType('AM')}
+                        className={`flex-1 py-1 rounded-lg text-xs font-black transition cursor-pointer ${
+                          shiftType === 'AM' ? 'bg-[#1e5c4f] text-white shadow-2xs' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                        }`}
+                      >
+                        ☀️ AM
+                      </button>
+                      <button
+                        type="button"
+                        disabled={Boolean(s.id)}
+                        onClick={() => setShiftType('PM')}
+                        className={`flex-1 py-1 rounded-lg text-xs font-black transition cursor-pointer ${
+                          shiftType === 'PM' ? 'bg-[#1e5c4f] text-white shadow-2xs' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                        }`}
+                      >
+                        🌙 PM
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Exchange Rate */}
+                <div className="relative">
+                  <div className="flex items-center justify-between mb-0.5">
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase">USD Rate (L.L.)</label>
+                    {rate !== systemRate && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRate(systemRate);
+                          setRateInputStr(String(systemRate));
+                        }}
+                        className="text-[10px] text-[#1e5c4f] hover:text-[#16473D] underline font-bold cursor-pointer"
+                        title="Restore system default exchange rate"
+                      >
+                        Reset ({systemRate.toLocaleString()})
+                      </button>
+                    )}
+                  </div>
+                  <div
+                    onClick={() => setNumpadField({ label: 'Exchange Rate LBP/USD', value: rateInputStr, setter: (v) => { setRateInputStr(v); const val = Number(v) || 0; setRate(val); } })}
+                    className={`w-full bg-white border rounded-xl px-2.5 py-1 font-mono text-xs font-bold cursor-pointer flex items-center justify-between transition ${
+                      (rate > 200000 || (rate > 0 && rate < 50000))
+                        ? 'border-rose-500 bg-rose-950/20 text-rose-300'
+                        : 'border-slate-200 hover:border-amber-500/60 text-slate-900'
+                    }`}
+                  >
+                    <span>{rateInputStr || 'Tap to enter'}</span>
+                    <span className="text-amber-500 text-xs">⌨</span>
+                  </div>
+                  {rate >= 50000 && rate <= 200000 && (
+                    <span className="text-[10px] text-emerald-600 block mt-0.5 font-bold font-mono">
+                      ✓ {rate.toLocaleString()} LBP / $1
+                    </span>
                   )}
                 </div>
-                <div
-                  onClick={() => setNumpadField({ label: 'Exchange Rate LBP/USD', value: rateInputStr, setter: (v) => { setRateInputStr(v); const val = Number(v) || 0; setRate(val); } })}
-                  className={`w-full bg-white border rounded-xl px-3 py-2 font-mono text-xs font-bold cursor-pointer flex items-center justify-between transition ${
-                    (rate > 200000 || (rate > 0 && rate < 50000))
-                      ? 'border-rose-500 bg-rose-950/20 text-rose-300'
-                      : 'border-slate-200 hover:border-amber-500/60 text-slate-900'
-                  }`}
-                >
-                  <span>{rateInputStr || 'Tap to enter'}</span>
-                  <span className="text-amber-500 text-base">⌨</span>
-                </div>
-                {(rate > 200000 || (rate > 0 && rate < 50000)) && (
-                  <div className="mt-1 p-1.5 bg-rose-950/80 border border-rose-500/50 rounded-lg text-[10px] text-rose-300 font-bold flex items-center justify-between">
-                    <span>⚠️ Rate {rate.toLocaleString()} L.L. seems abnormal!</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setRate(systemRate);
-                        setRateInputStr(String(systemRate));
-                      }}
-                      className="underline text-amber-400 ml-1 cursor-pointer font-extrabold"
-                    >
-                      Use {systemRate.toLocaleString()}
-                    </button>
-                  </div>
-                )}
-                {rate >= 50000 && rate <= 200000 && (
-                  <span className="text-[10px] text-emerald-400 block mt-0.5 font-bold font-mono">
-                    ✓ {rate.toLocaleString()} LBP / $1
-                  </span>
-                )}
               </div>
 
-              {/* Sales and receivables shown in both currencies using the selected shift rate. */}
-              {[
-                { label: 'Total Sales', lbp: salesLbp, usd: salesLbpInUsd, color: 'text-emerald-400' },
-                { label: 'On Credit (Receivables)', lbp: onCreditLbp, usd: onCreditLbpInUsd, color: 'text-amber-400' },
-              ].map(({ label, lbp, usd, color }) => (
-                <div key={label}>
-                  <div className="grid grid-cols-2 gap-3">
-                    <label className="min-w-0">
-                      <span className="block text-[11px] font-bold text-slate-500 uppercase mb-1">{label} (LBP)</span>
-                      <input
-                        type="text"
-                        value={Number(lbp || 0).toLocaleString()}
-                        readOnly
-                        className={`w-full bg-white border border-slate-200 rounded-xl px-3 py-2 ${color} font-mono text-xs font-bold outline-none`}
-                      />
-                    </label>
-                    <label className="min-w-0">
-                      <span className="block text-[11px] font-bold text-slate-500 uppercase mb-1">{label} (USD)</span>
-                      <input
-                        type="text"
-                        value={usd.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
-                        readOnly
-                        className={`w-full bg-white border border-slate-200 rounded-xl px-3 py-2 ${color} font-mono text-xs font-bold outline-none`}
-                      />
-                    </label>
-                  </div>
-                  <span className={`text-[10px] ${color} flex items-center gap-1 mt-0.5 font-bold`}>
-                    <Lock size={11} /> Auto-calculated • USD at the selected exchange rate
-                  </span>
+              {/* CARD: SHIFT SALES & RECEIVABLES */}
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-2.5 space-y-2">
+                <div className="text-[11px] font-black text-slate-800 uppercase tracking-wider">
+                  Shift Sales & Receivables
                 </div>
-              ))}
-              {/* Re-check button */}
-              <div className="pt-1">
-                {openTables.length === 0 && openOrders.length === 0 ? (
-                  <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-xs text-emerald-800 font-bold">
-                    <div className="flex items-center gap-2">
-                      <Check size={14} className="text-emerald-600" />
-                      <span>All tables & orders settled</span>
+
+                {[
+                  { label: 'Total Sales', lbp: salesLbp, usd: salesLbpInUsd, color: 'text-emerald-600' },
+                  { label: 'On Credit (Receivables)', lbp: onCreditLbp, usd: onCreditLbpInUsd, color: 'text-amber-600' },
+                ].map(({ label, lbp, usd, color }) => (
+                  <div key={label}>
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="min-w-0">
+                        <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">{label} (LBP)</span>
+                        <input
+                          type="text"
+                          value={Number(lbp || 0).toLocaleString()}
+                          readOnly
+                          className={`w-full bg-white border border-slate-200 rounded-xl px-2 py-1 ${color} font-mono text-xs font-bold outline-none`}
+                        />
+                      </label>
+                      <label className="min-w-0">
+                        <span className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">{label} (USD)</span>
+                        <input
+                          type="text"
+                          value={usd.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
+                          readOnly
+                          className={`w-full bg-white border border-slate-200 rounded-xl px-2 py-1 ${color} font-mono text-xs font-bold outline-none`}
+                        />
+                      </label>
                     </div>
+                  </div>
+                ))}
+
+                {/* Re-check button */}
+                <div className="pt-0.5">
+                  {openTables.length === 0 && openOrders.length === 0 ? (
+                    <div className="p-1.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-[11px] text-emerald-800 font-bold">
+                      <div className="flex items-center gap-1.5">
+                        <Check size={12} className="text-emerald-600" />
+                        <span>All settled</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => checkOpenEntitiesAndSales(rate || systemRate)}
+                        disabled={checkingEntities}
+                        className="text-[10px] text-emerald-700 hover:text-emerald-900 underline font-bold cursor-pointer"
+                      >
+                        Re-check
+                      </button>
+                    </div>
+                  ) : (
                     <button
                       type="button"
                       onClick={() => checkOpenEntitiesAndSales(rate || systemRate)}
                       disabled={checkingEntities}
-                      className="text-[10px] text-emerald-700 hover:text-emerald-900 underline font-bold cursor-pointer"
+                      className="w-full px-2.5 py-1 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-xl text-xs font-black transition flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
                     >
-                      Re-check
+                      <RefreshCw size={11} className={checkingEntities ? 'animate-spin' : ''} />
+                      <span>Refresh Open Entities</span>
                     </button>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => checkOpenEntitiesAndSales(rate || systemRate)}
-                    disabled={checkingEntities}
-                    className="w-full px-3 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-xl text-xs font-black transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
-                  >
-                    <RefreshCw size={12} className={checkingEntities ? 'animate-spin' : ''} />
-                    <span>Refresh Open Entities</span>
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* AM Shift Cash Handover Reference (PM only) */}
-            {shiftType === 'PM' && (
-              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 space-y-2">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-black text-slate-800 uppercase tracking-wider">
-                      ☀️ AM Handover
-                    </span>
-                    {amShiftData && (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] bg-blue-50 text-blue-700 font-bold border border-blue-200">
-                        ✓ {amShiftData.date?.split('T')[0]}
-                      </span>
-                    )}
-                    {isFetchingAm && (
-                      <span className="text-[10px] text-slate-500 flex items-center gap-1">
-                        <RefreshCw size={10} className="animate-spin" /> Loading AM...
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    {amShiftData && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (amShiftData.actual_usd != null) setOpeningUsd(String(amShiftData.actual_usd));
-                          if (amShiftData.actual_lbp != null) setOpeningLbp(String(amShiftData.actual_lbp));
-                        }}
-                        className="px-2.5 py-1 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 rounded-lg text-[10px] font-bold cursor-pointer transition flex items-center gap-1 shadow-2xs"
-                        title="Set PM opening float from AM actual closing cash"
-                      >
-                        <span>⎘ Copy AM Cash to Opening</span>
-                      </button>
-                    )}
-
-                    {recentAmShifts.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setShowAmShiftPicker(!showAmShiftPicker)}
-                        className="text-[10px] text-amber-400 hover:text-amber-300 underline font-bold cursor-pointer"
-                      >
-                        {showAmShiftPicker ? '▲ Close' : '▼ Switch AM'}
-                      </button>
-                    )}
-                  </div>
+                  )}
                 </div>
+              </div>
 
-                {/* AM Shift Picker Dropdown */}
-                {showAmShiftPicker && (
-                  <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-2 shadow-md">
-                    <div className="flex justify-between items-center text-[10px] text-slate-500 font-bold uppercase">
-                      <span>Select Closed AM Shift:</span>
-                      <span>{recentAmShifts.length} available</span>
+              {/* AM Shift Cash Handover Reference (PM only) */}
+              {shiftType === 'PM' && (
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-2.5 space-y-1.5">
+                  <div className="flex flex-wrap items-center justify-between gap-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[11px] font-black text-slate-800 uppercase tracking-wider">
+                        ☀️ AM Handover
+                      </span>
+                      {amShiftData && (
+                        <span className="px-1.5 py-0.2 rounded-full text-[9px] bg-blue-50 text-blue-700 font-bold border border-blue-200">
+                          ✓ {amShiftData.date?.split('T')[0]}
+                        </span>
+                      )}
                     </div>
-                    <div className="grid grid-cols-1 gap-2 max-h-36 overflow-y-auto pr-1">
-                      {recentAmShifts.map((s) => (
+
+                    <div className="flex items-center gap-1.5">
+                      {amShiftData && (
                         <button
-                          key={s.id}
                           type="button"
                           onClick={() => {
-                            setAmShiftData(s);
-                            if (s.actual_usd != null) setOpeningUsd(String(s.actual_usd));
-                            if (s.actual_lbp != null) setOpeningLbp(String(s.actual_lbp));
-                            setShowAmShiftPicker(false);
+                            if (amShiftData.actual_usd != null) setOpeningUsd(String(amShiftData.actual_usd));
+                            if (amShiftData.actual_lbp != null) setOpeningLbp(String(amShiftData.actual_lbp));
                           }}
-                          className={`text-left p-2.5 rounded-lg text-xs font-mono border transition cursor-pointer ${
-                            amShiftData?.id === s.id
-                              ? 'bg-blue-600/30 border-blue-400 text-slate-900 font-bold'
-                              : 'bg-white border-slate-200 text-slate-700 hover:border-gray-500'
-                          }`}
+                          className="px-2 py-0.5 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 rounded-lg text-[9px] font-bold cursor-pointer transition shadow-2xs"
+                          title="Set PM opening float from AM actual closing cash"
                         >
-                          <div className="flex justify-between items-center">
-                            <span className="font-bold text-amber-400">{s.branch} • {s.date?.split('T')[0]}</span>
-                            <span className="text-[10px] text-slate-500">{s.closed_by || s.user_name || 'Cashier'}</span>
-                          </div>
-                          <div className="text-[10px] text-slate-700 mt-1 flex justify-between">
-                            <span>Cash: ${s.actual_usd || 0} • {Number(s.actual_lbp || 0).toLocaleString()} LBP</span>
-                          </div>
+                          ⎘ Copy AM
                         </button>
-                      ))}
+                      )}
+
+                      {recentAmShifts.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setShowAmShiftPicker(!showAmShiftPicker)}
+                          className="text-[9px] text-amber-500 hover:text-amber-600 underline font-bold cursor-pointer"
+                        >
+                          {showAmShiftPicker ? '▲' : '▼ Switch'}
+                        </button>
+                      )}
                     </div>
                   </div>
-                )}
 
-                <p className="text-[11px] text-slate-700">
-                  PM opening float: <strong>${amShiftData?.actual_usd || 0}</strong> and <strong>{Number(amShiftData?.actual_lbp || 0).toLocaleString()} LBP</strong> from AM cashier.
-                </p>
-              </div>
-            )}
+                  {/* AM Shift Picker Dropdown */}
+                  {showAmShiftPicker && (
+                    <div className="p-2 bg-white rounded-xl border border-slate-200 space-y-1.5 shadow-md">
+                      <div className="grid grid-cols-1 gap-1 max-h-28 overflow-y-auto pr-1">
+                        {recentAmShifts.map((s) => (
+                          <button
+                            key={s.id}
+                            type="button"
+                            onClick={() => {
+                              setAmShiftData(s);
+                              if (s.actual_usd != null) setOpeningUsd(String(s.actual_usd));
+                              if (s.actual_lbp != null) setOpeningLbp(String(s.actual_lbp));
+                              setShowAmShiftPicker(false);
+                            }}
+                            className={`text-left p-1.5 rounded-lg text-[10px] font-mono border transition cursor-pointer ${
+                              amShiftData?.id === s.id
+                                ? 'bg-blue-600/10 border-blue-400 text-slate-900 font-bold'
+                                : 'bg-white border-slate-200 text-slate-700 hover:border-gray-400'
+                            }`}
+                          >
+                            <div className="flex justify-between items-center">
+                              <span className="font-bold text-amber-600">{s.branch} • {s.date?.split('T')[0]}</span>
+                              <span className="text-[9px] text-slate-400">{s.closed_by || s.user_name || 'Cashier'}</span>
+                            </div>
+                            <div className="text-[9px] text-slate-600 mt-0.5">
+                              ${s.actual_usd || 0} • {Number(s.actual_lbp || 0).toLocaleString()} LBP
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
-          </div>
+                  <p className="text-[10px] text-slate-600 leading-tight">
+                    AM Cash: <strong>${amShiftData?.actual_usd || 0}</strong> • <strong>{Number(amShiftData?.actual_lbp || 0).toLocaleString()} LBP</strong>
+                  </p>
+                </div>
+              )}
+            </div>
 
-          {/* RIGHT COLUMN: Financial entry cards */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            {/* COLUMN 2: INFLOWS, OUTFLOWS & E-WALLETS (5 cols) */}
+            <div className="lg:col-span-5 flex flex-col gap-2 min-h-0 overflow-y-auto pr-0.5">
 
-            {/* CARD 2: OPENING & CASH IN */}
-            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
-              <div className="text-xs font-black text-slate-800 uppercase tracking-wider">
-                1. Opening Cash Float & Cash In
-              </div>
+              {/* CARD 2: OPENING & CASH IN */}
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-2.5 space-y-1.5">
+                <div className="text-[11px] font-black text-slate-800 uppercase tracking-wider">
+                  1. Opening Cash Float & Cash In
+                </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Opening Cash USD</label>
-                  <div className="relative">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Opening USD</label>
                     {numField('Opening Cash USD', openingUsd, setOpeningUsd, '$')}
                   </div>
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Opening Cash LBP</label>
-                  <div className="relative">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Opening LBP</label>
                     {numField('Opening Cash LBP', openingLbp, setOpeningLbp, 'LBP')}
                   </div>
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Cash In USD</label>
-                  <div className="relative">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Cash In USD</label>
                     {numField('Cash In USD', cashInUsd, setCashInUsd, '$')}
                   </div>
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Cash In LBP</label>
-                  <div className="relative">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Cash In LBP</label>
                     {numField('Cash In LBP', cashInLbp, setCashInLbp, 'LBP')}
                   </div>
                 </div>
               </div>
-            </div>
 
-            {/* CARD 3: PAYMENTS, CREDIT, CASH OUT, WALLETS */}
-            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-black text-slate-800 uppercase tracking-wider">
-                  2. Payments / Outflows / Credit / E-Wallets
-                </span>
-                <span className="text-[10px] text-slate-500">Auto-filled from Daily Payments & Tenders</span>
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Supplier Payments USD</label>
-                  {numField('Supplier Payments USD', paymentsUsd, setPaymentsUsd, '$')}
+              {/* CARD 3: PAYMENTS, CREDIT, CASH OUT */}
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-2.5 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-black text-slate-800 uppercase tracking-wider">
+                    2. Payments & Outflows
+                  </span>
+                  <span className="text-[9px] text-slate-400">From Daily Payments & Tenders</span>
                 </div>
 
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Supplier Payments LBP</label>
-                  {numField('Supplier Payments LBP', paymentsLbp, setPaymentsLbp, 'LBP')}
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Credit Card USD</label>
-                  {numField('Credit Card USD', creditCardUsd, setCreditCardUsd, '$')}
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Credit Card LBP</label>
-                  {numField('Credit Card LBP', creditCardLbp, setCreditCardLbp, 'LBP')}
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Cash Out USD</label>
-                  {numField('Cash Out USD', cashOutUsd, setCashOutUsd, '$')}
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Cash Out LBP</label>
-                  {numField('Cash Out LBP', cashOutLbp, setCashOutLbp, 'LBP')}
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Supplier USD</label>
+                    {numField('Supplier Payments USD', paymentsUsd, setPaymentsUsd, '$')}
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Credit Card USD</label>
+                    {numField('Credit Card USD', creditCardUsd, setCreditCardUsd, '$')}
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Cash Out USD</label>
+                    {numField('Cash Out USD', cashOutUsd, setCashOutUsd, '$')}
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Supplier LBP</label>
+                    {numField('Supplier Payments LBP', paymentsLbp, setPaymentsLbp, 'LBP')}
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Credit Card LBP</label>
+                    {numField('Credit Card LBP', creditCardLbp, setCreditCardLbp, 'LBP')}
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Cash Out LBP</label>
+                    {numField('Cash Out LBP', cashOutLbp, setCashOutLbp, 'LBP')}
+                  </div>
                 </div>
               </div>
 
-              {/* DYNAMIC E-WALLETS */}
+              {/* CARD: DYNAMIC E-WALLETS */}
               {wallets.length > 0 && (
-                <div className="pt-2 border-t border-slate-200/60 space-y-2.5">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-2.5 space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-1.5">
                     <div className="flex items-center gap-1.5">
-                      <span className="text-[11px] font-bold text-slate-500 uppercase">E-Wallets</span>
-                      <span className="text-[10px] text-slate-400 font-semibold">(Whish, OMT, etc.)</span>
+                      <span className="text-[11px] font-black text-slate-800 uppercase tracking-wider">E-Wallets</span>
+                      <span className="text-[9px] text-slate-400 font-semibold">(Whish, OMT, etc.)</span>
                     </div>
-                    <div className="flex items-center gap-2 bg-white px-2.5 py-1 rounded-xl border border-slate-200 shadow-2xs">
-                      <span className="text-[10px] font-black text-slate-500 uppercase tracking-wide">Total E-Wallets:</span>
+                    <div className="flex items-center gap-1.5 bg-white px-2 py-0.5 rounded-lg border border-slate-200 shadow-2xs">
+                      <span className="text-[9px] font-black text-slate-500 uppercase tracking-wide">Total:</span>
                       <span className="text-xs font-black text-slate-900 font-mono">
                         ${totalWalletOutflowUsd.toFixed(2)}
                       </span>
                       {(totalWalletUsd > 0 || totalWalletLbp > 0) && (
-                        <span className="text-[10px] text-slate-400 font-mono">
+                        <span className="text-[9px] text-slate-400 font-mono">
                           (${totalWalletUsd.toFixed(2)} + {totalWalletLbp.toLocaleString()} L.L.)
                         </span>
                       )}
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     {wallets.map((w) => {
                       const lowerName = (w.name || '').trim().toLowerCase();
                       const isWhishOrSingle = lowerName.includes('wish') || lowerName.includes('whish') || lowerName.includes('wallet') || wallets.length <= 1;
@@ -1638,7 +1604,7 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
                       return (
                         <React.Fragment key={w.id}>
                           <div>
-                            <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">{labelUsd}</label>
+                            <label className="block text-[10px] font-bold text-slate-400 uppercase mb-0.5">{labelUsd}</label>
                             <div
                               onClick={() => setNumpadField({
                                 label: labelUsd,
@@ -1653,16 +1619,17 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
                                   }));
                                 }
                               })}
-                              className="w-full bg-white border border-slate-200 hover:border-amber-500/60 rounded-xl px-3 py-1.5 text-slate-900 font-mono text-xs font-bold cursor-pointer flex items-center justify-between"
+                              className="w-full bg-white border border-slate-200 hover:border-amber-500/60 rounded-xl px-2.5 py-1 text-slate-900 font-mono text-xs font-bold cursor-pointer flex items-center justify-between transition shadow-2xs"
                             >
-                              <span className={walletInputs[w.id]?.amount_usd ? 'text-slate-900' : 'text-gray-500'}>
-                                {walletInputs[w.id]?.amount_usd || 'Tap to enter'}
+                              <span className={walletInputs[w.id]?.amount_usd ? 'text-slate-900' : 'text-gray-400'}>
+                                {walletInputs[w.id]?.amount_usd || '0'}
                               </span>
-                              <span className="text-amber-500 text-base">⌨</span>
+                              <span className="text-amber-500 text-xs">⌨</span>
                             </div>
                           </div>
+
                           <div>
-                            <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">{labelLbp}</label>
+                            <label className="block text-[10px] font-bold text-slate-400 uppercase mb-0.5">{labelLbp}</label>
                             <div
                               onClick={() => setNumpadField({
                                 label: labelLbp,
@@ -1677,12 +1644,12 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
                                   }));
                                 }
                               })}
-                              className="w-full bg-white border border-slate-200 hover:border-amber-500/60 rounded-xl px-3 py-1.5 text-slate-900 font-mono text-xs font-bold cursor-pointer flex items-center justify-between"
+                              className="w-full bg-white border border-slate-200 hover:border-amber-500/60 rounded-xl px-2.5 py-1 text-slate-900 font-mono text-xs font-bold cursor-pointer flex items-center justify-between transition shadow-2xs"
                             >
-                              <span className={walletInputs[w.id]?.amount_lbp ? 'text-slate-900' : 'text-gray-500'}>
-                                {walletInputs[w.id]?.amount_lbp || 'Tap to enter'}
+                              <span className={walletInputs[w.id]?.amount_lbp ? 'text-slate-900' : 'text-gray-400'}>
+                                {walletInputs[w.id]?.amount_lbp || '0'}
                               </span>
-                              <span className="text-amber-500 text-base">⌨</span>
+                              <span className="text-amber-500 text-xs">⌨</span>
                             </div>
                           </div>
                         </React.Fragment>
@@ -1690,323 +1657,317 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
                     })}
 
                     <div>
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Total E-Wallets USD</label>
-                      <div className="w-full bg-slate-100 border border-slate-200 rounded-xl px-3 py-1.5 text-slate-900 font-mono text-xs font-black flex items-center justify-between">
+                      <label className="block text-[10px] font-bold text-slate-400 uppercase mb-0.5">Total E-Wallets USD</label>
+                      <div className="w-full bg-slate-100 border border-slate-200 rounded-xl px-2.5 py-1 text-slate-900 font-mono text-xs font-black flex items-center justify-between shadow-2xs">
                         <span>${totalWalletUsd.toFixed(2)}</span>
-                        <span className="text-[10px] text-slate-400 font-sans font-bold uppercase">USD</span>
+                        <span className="text-[9px] text-slate-400 font-sans font-bold uppercase">USD</span>
                       </div>
                     </div>
 
                     <div>
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Total E-Wallets LBP</label>
-                      <div className="w-full bg-slate-100 border border-slate-200 rounded-xl px-3 py-1.5 text-slate-900 font-mono text-xs font-black flex items-center justify-between">
+                      <label className="block text-[10px] font-bold text-slate-400 uppercase mb-0.5">Total E-Wallets LBP</label>
+                      <div className="w-full bg-slate-100 border border-slate-200 rounded-xl px-2.5 py-1 text-slate-900 font-mono text-xs font-black flex items-center justify-between shadow-2xs">
                         <span>{totalWalletLbp.toLocaleString()} L.L.</span>
-                        <span className="text-[10px] text-slate-400 font-sans font-bold uppercase">LBP</span>
+                        <span className="text-[9px] text-slate-400 font-sans font-bold uppercase">LBP</span>
                       </div>
                     </div>
                   </div>
                 </div>
               )}
+
             </div>
 
-            {/* CARD 4: PHYSICAL DRAWER COUNT */}
-            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-black text-slate-800 uppercase tracking-wider">
-                  3. Physical Drawer Cash Count
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setShowDenomHelper(true)}
-                  className="px-3 py-1 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-xl text-xs font-black transition flex items-center gap-1.5 cursor-pointer shadow-xs"
-                >
-                  <Calculator size={13} />
-                  <span>Denomination Helper</span>
-                </button>
-              </div>
+            {/* COLUMN 3: DRAWER COUNT & RECONCILIATION (4 cols) */}
+            <div className="lg:col-span-4 flex flex-col gap-2 min-h-0 overflow-y-auto pr-0.5">
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-extrabold text-slate-900 uppercase mb-1">
-                    Actual Count USD ($)
-                  </label>
-                  <div className="relative">
-                    {numField('Actual Cash USD', actualUsd, setActualUsd, '$', true)}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-extrabold text-slate-900 uppercase mb-1">
-                    Actual Count LBP (L.L.)
-                  </label>
-                  <div className="relative">
-                    {numField('Actual Cash LBP', actualLbp, setActualLbp, 'LBP', true)}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* CARD 5: RECONCILIATION & VARIANCE DISPLAY */}
-            <div className="bg-slate-50 border-2 border-slate-200 rounded-2xl p-4 space-y-3">
-              <div className="text-xs font-black text-slate-800 uppercase tracking-wider">
-                4. Reconciliation Summary
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 font-mono">
-                <div className="bg-white p-3 rounded-xl border border-slate-200">
-                  <span className="text-[10px] text-slate-500 block font-sans font-bold uppercase">Expected Cash (USD)</span>
-                  <span className="text-base font-black text-slate-900">${expectedUsd.toFixed(2)}</span>
-                  <span className="text-[10px] text-gray-500 block font-sans mt-0.5">
-                    ≈ {Math.round(expectedUsd * currentRate).toLocaleString()} LBP
+              {/* CARD 4: PHYSICAL DRAWER COUNT */}
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-2.5 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-black text-slate-800 uppercase tracking-wider">
+                    3. Physical Drawer Cash Count
                   </span>
-                </div>
-
-                <div className="bg-white p-3 rounded-xl border border-slate-200">
-                  <span className="text-[10px] text-slate-500 block font-sans font-bold uppercase">Actual Counted (USD)</span>
-                  <span className="text-base font-black text-slate-900">${actualTotalUsd.toFixed(2)}</span>
-                  <span className="text-[10px] text-gray-500 block font-sans mt-0.5">
-                    ≈ {Math.round(actualTotalUsd * currentRate).toLocaleString()} LBP
-                  </span>
-                </div>
-
-                <div className={`p-3 rounded-xl border-2 shadow-2xs ${
-                  differenceUsd === 0
-                    ? 'bg-emerald-50 border-emerald-300'
-                    : differenceUsd > 0 
-                    ? 'bg-emerald-50 border-emerald-300' 
-                    : 'bg-rose-50 border-rose-300'
-                }`}>
-                  <span className="text-[10px] text-slate-600 block font-sans font-bold uppercase">Difference / Variance</span>
-                  <span className={`text-base font-black ${
-                    differenceUsd === 0 ? 'text-emerald-700' : differenceUsd > 0 ? 'text-emerald-700' : 'text-rose-700'
-                  }`}>
-                    {differenceUsd >= 0 ? '+' : ''}${differenceUsd.toFixed(2)}
-                  </span>
-                  <span className={`text-[10px] font-bold block font-sans mt-0.5 ${
-                    differenceUsd === 0 ? 'text-emerald-700' : differenceUsd > 0 ? 'text-emerald-700' : 'text-rose-700'
-                  }`}>
-                    {differenceUsd === 0 ? '✓ Balanced' : differenceUsd > 0 ? '🟢 Surplus / Over' : '🔴 Shortage'}
-                  </span>
-                </div>
-              </div>
-
-              {/* FLOW MATHEMATICAL BREAKDOWN TOGGLE */}
-              <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between">
-                <button
-                  type="button"
-                  onClick={() => setShowBreakdown(!showBreakdown)}
-                  className="text-[11px] text-[#1e5c4f] hover:text-[#16473D] font-bold flex items-center gap-1.5 cursor-pointer transition py-0.5"
-                >
-                  <span>{showBreakdown ? '▲ Hide' : '▼ View'} Mathematical Calculation Breakdown</span>
-                  <span className="text-[10px] text-slate-500 font-normal">(Opening + Inflows - Outflows)</span>
-                </button>
-                <span className="text-[10px] text-gray-500 font-mono">
-                  Rate: {currentRate.toLocaleString()} LBP/USD
-                </span>
-              </div>
-
-              {showBreakdown && (
-                <div className="bg-white border border-slate-200 rounded-xl p-3.5 text-xs font-mono space-y-2.5 text-slate-700 shadow-xs animate-in fade-in duration-200">
-                  <div className="flex justify-between items-center text-slate-500 text-[11px] pb-1.5 border-b border-slate-200">
-                    <span className="font-sans font-bold uppercase tracking-wider text-slate-800 font-black">Drawer Cash Equation</span>
-                    <span className="font-sans text-[10px] text-slate-500">Expected = Opening + (Cash In + Sales) - Outflows</span>
-                  </div>
-                  
-                  {/* 1. Opening */}
-                  <div className="flex justify-between items-center">
-                    <span>1. Opening Cash Float:</span>
-                    <span className="text-slate-900 font-bold">${totalOpeningUsd.toFixed(2)} <span className="text-slate-500 text-[10px]">(${openingUsdNum.toFixed(2)} + {openingLbpNum.toLocaleString()} L.L.)</span></span>
-                  </div>
-
-                  {/* 2. Inflows */}
-                  <div className="flex justify-between items-center text-emerald-700">
-                    <span>2. (+) Inflows (Cash In + Shift Sales):</span>
-                    <span className="font-bold">+${totalInflowsUsd.toFixed(2)} <span className="text-emerald-500/80 text-[10px]">(Sales: ${salesLbpInUsd.toFixed(2)} + Cash In: ${totalCashInUsd.toFixed(2)})</span></span>
-                  </div>
-
-                  {/* 3. Outflows */}
-                  <div className="flex justify-between items-center text-rose-700">
-                    <span>3. (-) Outflows & Deductions:</span>
-                    <span className="font-bold">-${totalOutflowsUsd.toFixed(2)}</span>
-                  </div>
-                  <div className="pl-4 text-[11px] text-slate-500 space-y-1 bg-slate-50 p-2 rounded-lg border border-slate-200">
-                    <div className="flex justify-between">
-                      <span>• Supplier / Invoice Payments:</span>
-                      <span className="text-slate-900 font-bold">${totalPaymentsUsd.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>• Safe Drops / Cash Out:</span>
-                      <span className="text-slate-900 font-bold">${totalCashOutUsd.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>• Credit Card (Non-cash revenue):</span>
-                      <span className="text-slate-900 font-bold">
-                        ${totalCreditCardUsd.toFixed(2)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>• On Account / Client Credit (Non-cash):</span>
-                      <span className="text-slate-900 font-bold">
-                        ${onCreditLbpInUsd.toFixed(2)} <span className="text-gray-500 text-[10px] ml-1">({n(onCreditLbp).toLocaleString()} L.L.)</span>
-                      </span>
-                    </div>
-                    {totalWalletOutflowUsd > 0 && (
-                      <div className="flex justify-between">
-                        <span>• E-Wallets:</span>
-                        <span className="text-slate-900 font-bold">
-                          ${totalWalletOutflowUsd.toFixed(2)}
-                          {(totalWalletUsd > 0 || totalWalletLbp > 0) && (
-                            <span className="text-gray-500 text-[10px] ml-1">
-                              (${totalWalletUsd.toFixed(2)} + {totalWalletLbp.toLocaleString()} L.L.)
-                            </span>
-                          )}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Expected */}
-                  <div className="pt-2 border-t border-slate-200 flex justify-between font-bold text-slate-900 text-sm">
-                    <span>(=) Expected Drawer Cash:</span>
-                    <span className="text-slate-900 font-mono text-base">${expectedUsd.toFixed(2)}</span>
-                  </div>
-
-                  {/* Actual */}
-                  <div className="flex justify-between font-bold text-slate-900 text-sm">
-                    <span>Actual Counted Cash:</span>
-                    <span className="text-emerald-700 font-mono text-base">${actualTotalUsd.toFixed(2)} <span className="text-slate-500 text-xs font-normal">(${actualUsdNum.toFixed(2)} + {actualLbpNum.toLocaleString()} L.L.)</span></span>
-                  </div>
-
-                  {/* Diff */}
-                  <div className={`flex justify-between font-extrabold text-sm pt-1.5 border-t border-slate-200 ${differenceUsd >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
-                    <span>Net Shift Shortage / Overage:</span>
-                    <span className="text-base font-mono">{differenceUsd >= 0 ? '+' : ''}${differenceUsd.toFixed(2)}</span>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* MANAGER AUTHORIZATION (IF VARIANCE EXCEEDS THRESHOLD) */}
-            {varianceCheck.requiresManagerApproval && (
-              <div className="p-4 bg-amber-50 border-2 border-amber-300 rounded-2xl space-y-3">
-                <div className="flex items-center gap-2 text-amber-900 font-black text-xs">
-                  <ShieldCheck size={16} />
-                  <span>Manager Authorization Required (Variance Exceeds Threshold)</span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1">Reason for Variance</label>
-                    <select
-                      value={varianceReason}
-                      onChange={(e) => setVarianceReason(e.target.value)}
-                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-900 outline-none"
-                    >
-                      <option value="Counting difference">Counting difference</option>
-                      <option value="Unrecorded payout">Unrecorded payout</option>
-                      <option value="Customer change error">Customer change error</option>
-                      <option value="Approved cashier shortage">Approved cashier shortage</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1">Manager 4-Digit PIN</label>
-                    <div className="flex gap-2">
-                      <input
-                        type="password"
-                        maxLength={6}
-                        value={managerPin}
-                        onChange={(e) => setManagerPin(e.target.value)}
-                        placeholder="••••"
-                        className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-mono font-black text-center tracking-widest outline-none"
-                      />
-                      <button
-                        type="button"
-                        onClick={handleVerifyManager}
-                        disabled={isVerifyingPin}
-                        className={`px-4 py-2 font-black rounded-xl transition cursor-pointer shadow-xs ${managerName ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-amber-600 hover:bg-amber-500 text-white'}`}
-                      >
-                        {managerName ? '✓ Approved' : 'Verify'}
-                      </button>
-                    </div>
-                    {pinError && <span className="text-[10px] text-rose-600 font-bold mt-1 block">{pinError}</span>}
-                    {managerName && <span className="text-[10px] text-emerald-700 font-bold mt-1 block">Authorized by {managerName}</span>}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* FOOTER (embedded in right column bottom) */}
-            <div className="px-0 py-4 border-t border-slate-200 flex items-center justify-between flex-shrink-0">
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="px-5 py-2.5 bg-white hover:bg-slate-100 text-slate-700 font-bold text-xs rounded-xl border border-slate-300 transition cursor-pointer shadow-xs"
-                >
-                  Cancel
-                </button>
-                {onHoldShift && canHoldPreviousPm(shift) && (
                   <button
                     type="button"
-                    disabled={isHolding || isFinalizing}
-                    onClick={async () => {
-                      const reason = window.prompt("Enter handover note for Manager Audit (e.g. AM cashier taking over, PM drawer uncounted):");
-                      if (reason === null) return;
-                      setIsHolding(true);
-                      try {
-                        const res = await onHoldShift(reason);
-                        if (res.success) {
-                          onClose();
-                        } else {
-                          alert(res.error || "Failed to put shift on hold.");
-                        }
-                      } catch (e: any) {
-                        alert(e?.message || "Failed to hold shift.");
-                      } finally {
-                        setIsHolding(false);
-                      }
-                    }}
-                    className="px-4 py-2.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 font-bold text-xs rounded-xl border border-amber-500/30 transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                    title="Put this shift on hold for Manager review and free the terminal"
+                    onClick={() => setShowDenomHelper(true)}
+                    className="px-2 py-0.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-lg text-[10px] font-black transition flex items-center gap-1 cursor-pointer shadow-2xs"
                   >
-                    <PauseCircle size={15} />
-                    <span>{isHolding ? 'Holding...' : '⏸️ Put on Hold for Manager'}</span>
+                    <Calculator size={11} />
+                    <span>Denominations</span>
                   </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10px] font-extrabold text-slate-700 uppercase mb-0.5">
+                      Actual Count USD ($)
+                    </label>
+                    <div className="relative">
+                      {numField('Actual Cash USD', actualUsd, setActualUsd, '$', true)}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-extrabold text-slate-700 uppercase mb-0.5">
+                      Actual Count LBP (L.L.)
+                    </label>
+                    <div className="relative">
+                      {numField('Actual Cash LBP', actualLbp, setActualLbp, 'LBP', true)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* CARD 5: RECONCILIATION & VARIANCE DISPLAY */}
+              <div className="bg-slate-50 border-2 border-slate-200 rounded-2xl p-2.5 space-y-2">
+                <div className="text-[11px] font-black text-slate-800 uppercase tracking-wider">
+                  4. Reconciliation Summary
+                </div>
+
+                <div className="grid grid-cols-3 gap-1.5 font-mono">
+                  <div className="bg-white p-2 rounded-xl border border-slate-200">
+                    <span className="text-[9px] text-slate-500 block font-sans font-bold uppercase">Expected</span>
+                    <span className="text-sm font-black text-slate-900">${expectedUsd.toFixed(2)}</span>
+                    <span className="text-[9px] text-gray-400 block font-sans mt-0.5">
+                      ≈ {Math.round(expectedUsd * currentRate).toLocaleString()} L.L.
+                    </span>
+                  </div>
+
+                  <div className="bg-white p-2 rounded-xl border border-slate-200">
+                    <span className="text-[9px] text-slate-500 block font-sans font-bold uppercase">Actual</span>
+                    <span className="text-sm font-black text-slate-900">${actualTotalUsd.toFixed(2)}</span>
+                    <span className="text-[9px] text-gray-400 block font-sans mt-0.5">
+                      ≈ {Math.round(actualTotalUsd * currentRate).toLocaleString()} L.L.
+                    </span>
+                  </div>
+
+                  <div className={`p-2 rounded-xl border-2 shadow-2xs ${
+                    differenceUsd === 0
+                      ? 'bg-emerald-50 border-emerald-300'
+                      : differenceUsd > 0 
+                      ? 'bg-emerald-50 border-emerald-300' 
+                      : 'bg-rose-50 border-rose-300'
+                  }`}>
+                    <span className="text-[9px] text-slate-600 block font-sans font-bold uppercase">Variance</span>
+                    <span className={`text-sm font-black ${
+                      differenceUsd === 0 ? 'text-emerald-700' : differenceUsd > 0 ? 'text-emerald-700' : 'text-rose-700'
+                    }`}>
+                      {differenceUsd >= 0 ? '+' : ''}${differenceUsd.toFixed(2)}
+                    </span>
+                    <span className={`text-[9px] font-bold block font-sans mt-0.5 ${
+                      differenceUsd === 0 ? 'text-emerald-700' : differenceUsd > 0 ? 'text-emerald-700' : 'text-rose-700'
+                    }`}>
+                      {differenceUsd === 0 ? '✓ Balanced' : differenceUsd > 0 ? 'Surplus' : 'Shortage'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* FLOW MATHEMATICAL BREAKDOWN TOGGLE */}
+                <div className="pt-1 border-t border-slate-200/60 flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={() => setShowBreakdown(!showBreakdown)}
+                    className="text-[10px] text-[#1e5c4f] hover:text-[#16473D] font-bold flex items-center gap-1 cursor-pointer transition py-0.5"
+                  >
+                    <span>{showBreakdown ? '▲ Hide' : '▼ View'} Breakdown</span>
+                  </button>
+                  <span className="text-[9px] text-gray-400 font-mono">
+                    Rate: {currentRate.toLocaleString()} L.L.
+                  </span>
+                </div>
+
+                {showBreakdown && (
+                  <div className="bg-white border border-slate-200 rounded-xl p-2.5 text-[11px] font-mono space-y-1.5 text-slate-700 shadow-xs max-h-36 overflow-y-auto">
+                    <div className="flex justify-between items-center text-slate-500 text-[10px] pb-1 border-b border-slate-200 font-sans font-black uppercase">
+                      <span>Drawer Cash Equation</span>
+                      <span className="text-[9px] text-slate-400 font-normal">Opening + Inflows - Outflows</span>
+                    </div>
+                    
+                    {/* 1. Opening */}
+                    <div className="flex justify-between items-center">
+                      <span>1. Opening Float:</span>
+                      <span className="text-slate-900 font-bold">${totalOpeningUsd.toFixed(2)}</span>
+                    </div>
+
+                    {/* 2. Inflows */}
+                    <div className="flex justify-between items-center text-emerald-700">
+                      <span>2. (+) Inflows:</span>
+                      <span className="font-bold">+${totalInflowsUsd.toFixed(2)}</span>
+                    </div>
+
+                    {/* 3. Outflows */}
+                    <div className="flex justify-between items-center text-rose-700">
+                      <span>3. (-) Outflows:</span>
+                      <span className="font-bold">-${totalOutflowsUsd.toFixed(2)}</span>
+                    </div>
+                    <div className="pl-2 text-[10px] text-slate-500 space-y-0.5 bg-slate-50 p-1.5 rounded-lg border border-slate-200">
+                      <div className="flex justify-between">
+                        <span>• Supplier:</span>
+                        <span className="text-slate-900 font-bold">${totalPaymentsUsd.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>• Cash Out:</span>
+                        <span className="text-slate-900 font-bold">${totalCashOutUsd.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>• Credit Card:</span>
+                        <span className="text-slate-900 font-bold">${totalCreditCardUsd.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>• On Credit:</span>
+                        <span className="text-slate-900 font-bold">${onCreditLbpInUsd.toFixed(2)}</span>
+                      </div>
+                      {totalWalletOutflowUsd > 0 && (
+                        <div className="flex justify-between">
+                          <span>• E-Wallets:</span>
+                          <span className="text-slate-900 font-bold">
+                            ${totalWalletOutflowUsd.toFixed(2)}
+                            {(totalWalletUsd > 0 || totalWalletLbp > 0) && (
+                              <span className="text-gray-400 text-[9px] ml-1">
+                                (${totalWalletUsd.toFixed(2)} + {totalWalletLbp.toLocaleString()} L.L.)
+                              </span>
+                            )}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Expected & Actual */}
+                    <div className="pt-1 border-t border-slate-200 flex justify-between font-bold text-slate-900 text-xs">
+                      <span>(=) Expected:</span>
+                      <span className="font-mono">${expectedUsd.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between font-bold text-slate-900 text-xs">
+                      <span>Actual Counted:</span>
+                      <span className="text-emerald-700 font-mono">${actualTotalUsd.toFixed(2)}</span>
+                    </div>
+                  </div>
                 )}
               </div>
 
-              <div className="flex items-center gap-3">
-                <div role="status" className="text-xs max-w-xs text-amber-800 font-bold">
-                  {checkingPreparation ? 'Checking preparing orders…' : preparingCheckError ? 'Order check unavailable: ' + preparingCheckError
-                    : preparation.pending.length > 0 ? (
-                      <><strong>{preparation.pending.length} preparing / paid awaiting completion.</strong>
-                      <div>{preparation.blocking.length + ' unscheduled orders must be completed before closing.'}</div>
-                      {preparation.future.length > 0 && <div>{preparation.future.length} scheduled orders may remain open, paid or unpaid.</div>}
-                      <div>Orders: {preparation.pending.map(order => '#' + order.id).join(', ')}</div></>
-                    ) : 'No preparing orders.'}
-                </div>
-                {(openTables.length > 0 || openOrders.length > 0) && <span className="text-xs text-rose-700 font-bold">Close all open tables and unscheduled orders before ending this shift.</span>}
+              {/* MANAGER AUTHORIZATION (IF VARIANCE EXCEEDS THRESHOLD) */}
+              {varianceCheck.requiresManagerApproval && (
+                <div className="p-2.5 bg-amber-50 border-2 border-amber-300 rounded-2xl space-y-2">
+                  <div className="flex items-center gap-1.5 text-amber-900 font-black text-xs">
+                    <ShieldCheck size={14} />
+                    <span>Manager PIN Required (Variance)</span>
+                  </div>
 
-                <button
-                  type="button"
-                  disabled={isFinalizing || checkingPreparation || Boolean(preparingCheckError) || (preparation.blocking.length > 0) || (varianceCheck.requiresManagerApproval && !managerName) || (openTables.length > 0 || openOrders.length > 0)}
-                  onClick={handleFinalizeClose}
-                  title={
-                    shiftType === 'PM' && unpaidCount > 0
-                      ? 'All tables and unscheduled orders must be closed. Scheduled orders may remain open.'
-                      : varianceCheck.requiresManagerApproval && !managerName
-                      ? 'Manager authorization PIN required'
-                      : undefined
-                  }
-                  className="px-6 py-2.5 bg-[#1e5c4f] hover:bg-[#16473D] text-white font-black text-xs rounded-xl transition shadow-md flex items-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  {isFinalizing ? <RefreshCw size={16} className="animate-spin" /> : <Check size={16} />}
-                  <span>{isFinalizing ? 'Closing Shift...' : 'Submit & Close Shift'}</span>
-                </button>
-              </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-700 mb-0.5">Reason</label>
+                      <select
+                        value={varianceReason}
+                        onChange={(e) => setVarianceReason(e.target.value)}
+                        className="w-full bg-white border border-slate-200 rounded-xl px-2 py-1 text-slate-900 text-xs outline-none"
+                      >
+                        <option value="Counting difference">Counting difference</option>
+                        <option value="Unrecorded payout">Unrecorded payout</option>
+                        <option value="Customer change error">Customer change error</option>
+                        <option value="Approved cashier shortage">Approved cashier shortage</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-700 mb-0.5">Manager PIN</label>
+                      <div className="flex gap-1.5">
+                        <input
+                          type="password"
+                          maxLength={6}
+                          value={managerPin}
+                          onChange={(e) => setManagerPin(e.target.value)}
+                          placeholder="••••"
+                          className="flex-1 bg-white border border-slate-200 rounded-xl px-2 py-1 text-slate-900 font-mono font-black text-center tracking-widest text-xs outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleVerifyManager}
+                          disabled={isVerifyingPin}
+                          className={`px-3 py-1 font-black text-xs rounded-xl transition cursor-pointer shadow-2xs ${managerName ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-amber-600 hover:bg-amber-500 text-white'}`}
+                        >
+                          {managerName ? '✓' : 'Verify'}
+                        </button>
+                      </div>
+                      {pinError && <span className="text-[9px] text-rose-600 font-bold mt-0.5 block">{pinError}</span>}
+                      {managerName && <span className="text-[9px] text-emerald-700 font-bold mt-0.5 block">By {managerName}</span>}
+                    </div>
+                  </div>
+                </div>
+              )}
+
             </div>
 
+          </div>
+        </div>
+
+        {/* BOTTOM ACTION BAR (PERSISTENT & ALWAYS VISIBLE WITHOUT SCROLL) */}
+        <div className="px-4 py-2 border-t border-slate-200 bg-white flex items-center justify-between flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-1.5 bg-white hover:bg-slate-100 text-slate-700 font-bold text-xs rounded-xl border border-slate-300 transition cursor-pointer shadow-2xs"
+            >
+              Cancel
+            </button>
+            {onHoldShift && canHoldPreviousPm(shift) && (
+              <button
+                type="button"
+                disabled={isHolding || isFinalizing}
+                onClick={async () => {
+                  const reason = window.prompt("Enter handover note for Manager Audit (e.g. AM cashier taking over, PM drawer uncounted):");
+                  if (reason === null) return;
+                  setIsHolding(true);
+                  try {
+                    const res = await onHoldShift(reason);
+                    if (res.success) {
+                      onClose();
+                    } else {
+                      alert(res.error || "Failed to put shift on hold.");
+                    }
+                  } catch (e: any) {
+                    alert(e?.message || "Failed to hold shift.");
+                  } finally {
+                    setIsHolding(false);
+                  }
+                }}
+                className="px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 font-bold text-xs rounded-xl border border-amber-500/30 transition flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                title="Put this shift on hold for Manager review and free the terminal"
+              >
+                <PauseCircle size={14} />
+                <span>{isHolding ? 'Holding...' : '⏸️ Put on Hold'}</span>
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-3">
+            <div role="status" className="text-[11px] max-w-sm text-amber-800 font-bold truncate">
+              {checkingPreparation ? 'Checking preparing orders…' : preparingCheckError ? 'Order check unavailable: ' + preparingCheckError
+                : preparation.pending.length > 0 ? (
+                  <span><strong>{preparation.pending.length} preparing/paid.</strong> {preparation.blocking.length} unscheduled must be completed.</span>
+                ) : null}
+            </div>
+            {(openTables.length > 0 || openOrders.length > 0) && (
+              <span className="text-[11px] text-rose-700 font-bold">
+                ⚠️ Close open tables & orders first
+              </span>
+            )}
+
+            <button
+              type="button"
+              disabled={isFinalizing || checkingPreparation || Boolean(preparingCheckError) || (preparation.blocking.length > 0) || (varianceCheck.requiresManagerApproval && !managerName) || (openTables.length > 0 || openOrders.length > 0)}
+              onClick={handleFinalizeClose}
+              title={
+                shiftType === 'PM' && unpaidCount > 0
+                  ? 'All tables and unscheduled orders must be closed. Scheduled orders may remain open.'
+                  : varianceCheck.requiresManagerApproval && !managerName
+                  ? 'Manager authorization PIN required'
+                  : undefined
+              }
+              className="px-5 py-1.5 bg-[#1e5c4f] hover:bg-[#16473D] text-white font-black text-xs rounded-xl transition shadow-md flex items-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {isFinalizing ? <RefreshCw size={14} className="animate-spin" /> : <Check size={14} />}
+              <span>{isFinalizing ? 'Closing Shift...' : 'Submit & Close Shift'}</span>
+            </button>
           </div>
         </div>
 
