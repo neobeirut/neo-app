@@ -8326,7 +8326,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         branchName={commerceBranchLink?.flow_branch_name || user?.branch || "Cloud Kitchen"}
         cashierName={activeCashier?.name || user?.name || "Cashier"}
         activeShift={activeShift}
-        currentRate={currentRate}
+        currentRate={exchangeRate || 89500}
         onOpenCloseShift={() => {
           setIsShiftDrawerModalOpen(false);
           setIsCloseShiftModalOpen(true);
