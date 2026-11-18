@@ -4,6 +4,7 @@ import {
   DEFAULT_ROLE_PERMISSIONS,
   normalizePosRole,
   resolveEffectivePermissions,
+  checkHasPosTerminalAccess,
   type PosRoleName,
   type PosPermissionKey,
   type EmployeePosConfig,
@@ -93,18 +94,23 @@ export const posPermissionsApi = {
     try {
       const { data: users, error } = await supabase
         .from('users')
-        .select('id, name, display_name, role, branch, branch_id, is_active, pin, pin_code, permissions, admin_permissions')
+        .select('id, name, display_name, role, branch, branch_id, is_active, pin, pin_code, permissions, admin_permissions, department, departments')
         .eq('restaurant_id', rid)
         .order('name');
 
       if (error) return { success: false, error: error.message };
 
-      const rolesRes = await posPermissionsApi.getPosRolePermissions(rid);
+      const [rolesRes, appPermsRes] = await Promise.all([
+        posPermissionsApi.getPosRolePermissions(rid),
+        supabase.from('app_permissions').select('*')
+      ]);
+
       const roleTemplates = rolesRes.success && rolesRes.data ? rolesRes.data : DEFAULT_ROLE_PERMISSIONS;
+      const appPerms = appPermsRes.data || [];
 
       const normalized: EmployeePosConfig[] = (users || []).map((u: any) => {
         const overrides = u.permissions?.pos_overrides || u.admin_permissions?.pos_overrides || {};
-        const canAccessPos = u.permissions?.can_access_pos !== false && u.admin_permissions?.can_access_pos !== false;
+        const canAccessPos = checkHasPosTerminalAccess(u, appPerms);
         const normRole = normalizePosRole(u.role);
         const effective = resolveEffectivePermissions(u.role, overrides, roleTemplates);
 
@@ -182,11 +188,13 @@ export const posPermissionsApi = {
       if (targetName) {
         await supabase
           .from('app_permissions')
-          .update({
+          .upsert({
+            id: `user:${targetName}`,
+            type: 'user',
+            name: targetName,
             can_access_pos: canAccessPos,
             admin_permissions: updatedAdminPermissions
-          })
-          .eq('id', `user:${targetName}`);
+          });
       }
 
       return { success: true };

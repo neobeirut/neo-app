@@ -1383,6 +1383,33 @@ export const api = {
         ...(cleanPayload.admin_permissions || {}),
         can_access_pos: posVal
       };
+
+      // Also sync can_access_pos to matching users table records
+      try {
+        const entityName = cleanPayload.name;
+        if (cleanPayload.type === 'user' && entityName) {
+          supabase
+            .from('users')
+            .select('id, permissions, admin_permissions')
+            .or(`name.eq.${entityName},display_name.eq.${entityName}`)
+            .then(({ data: matchedUsers }) => {
+              if (matchedUsers && matchedUsers.length > 0) {
+                matchedUsers.forEach((mu: any) => {
+                  supabase
+                    .from('users')
+                    .update({
+                      permissions: { ...(mu.permissions || {}), can_access_pos: posVal },
+                      admin_permissions: { ...(mu.admin_permissions || {}), can_access_pos: posVal }
+                    })
+                    .eq('id', mu.id)
+                    .then(() => {});
+                });
+              }
+            });
+        }
+      } catch (syncErr) {
+        console.warn('Syncing can_access_pos to users failed:', syncErr);
+      }
     }
 
     const { error } = await supabase.from('app_permissions').upsert(cleanPayload);
@@ -2056,8 +2083,8 @@ export const api = {
       query = query.or(`concept_id.eq.${effectiveConceptId},concept_id.is.null`);
     }
 
-    const { data: existing, error: findError } = await query.maybeSingle();
-    if (findError) return { success: false, error: findError.message };
+    const { data: existingRows } = await query.order('created_at', { ascending: false });
+    const existing = existingRows && existingRows.length > 0 ? existingRows[0] : null;
 
     if (existing) {
       const { error } = await supabase
@@ -2070,6 +2097,12 @@ export const api = {
         })
         .eq('id', existing.id);
       if (error) return { success: false, error: error.message };
+
+      // Clean up any other duplicate rows for the same date/branch/concept to prevent POS aggregation of stale data
+      if (existingRows.length > 1) {
+        const duplicateIds = existingRows.slice(1).map((r: any) => r.id);
+        await supabase.from('menu_86').delete().in('id', duplicateIds);
+      }
     } else {
       const { error } = await supabase
         .from('menu_86')
@@ -2084,15 +2117,35 @@ export const api = {
       if (error) return { success: false, error: error.message };
     }
 
-    // Auto-synchronize product catalog status in products table
+    // Auto-synchronize product catalog status in products table, branch status, and customization items
     try {
       const cleanName = (s: string) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
       const newCleanSet = new Set((items || []).map((it: any) => cleanName(it.name)).filter(Boolean));
+      const ingredientCleanSet = new Set(
+        (items || [])
+          .filter((it: any) => it.type === 'ingredient')
+          .map((it: any) => cleanName(it.name))
+          .filter(Boolean)
+      );
 
       let prodQ = supabase.from('products').select('id, name, status, is_active');
       if (rid) prodQ = prodQ.eq('restaurant_id', rid);
       if (effectiveConceptId) prodQ = prodQ.or(`concept_id.eq.${effectiveConceptId},concept_id.is.null`);
       const { data: allProds } = await prodQ;
+
+      let targetBranchId: string | null = null;
+      if (branch && branch !== 'All') {
+        const { data: bData } = await supabase
+          .from('branches')
+          .select('id, name')
+          .ilike('name', branch.trim())
+          .maybeSingle();
+        if (bData?.id) {
+          targetBranchId = String(bData.id);
+        } else {
+          targetBranchId = String(branch).trim();
+        }
+      }
 
       if (allProds && allProds.length > 0) {
         const toDisableIds: number[] = [];
@@ -2115,6 +2168,34 @@ export const api = {
             .from('products')
             .update({ status: 'Unavailable Today', is_active: false })
             .in('id', toDisableIds);
+
+          if (targetBranchId) {
+            for (const pid of toDisableIds) {
+              const { data: existingPbs } = await supabase
+                .from('product_branch_status')
+                .select('id')
+                .eq('product_id', pid)
+                .eq('branch_id', targetBranchId)
+                .maybeSingle();
+
+              if (existingPbs) {
+                await supabase
+                  .from('product_branch_status')
+                  .update({ status: 'Unavailable Today', updated_at: new Date().toISOString() })
+                  .eq('id', existingPbs.id);
+              } else {
+                await supabase
+                  .from('product_branch_status')
+                  .insert([{
+                    product_id: pid,
+                    branch_id: targetBranchId,
+                    status: 'Unavailable Today',
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString()
+                  }]);
+              }
+            }
+          }
         }
 
         if (toEnableIds.length > 0) {
@@ -2122,10 +2203,72 @@ export const api = {
             .from('products')
             .update({ status: 'Available', is_active: true })
             .in('id', toEnableIds);
+
+          if (targetBranchId) {
+            for (const pid of toEnableIds) {
+              const { data: existingPbs } = await supabase
+                .from('product_branch_status')
+                .select('id, status')
+                .eq('product_id', pid)
+                .eq('branch_id', targetBranchId)
+                .maybeSingle();
+
+              if (existingPbs && (existingPbs.status === 'Unavailable Today' || existingPbs.status === '86')) {
+                await supabase
+                  .from('product_branch_status')
+                  .update({ status: 'Available', updated_at: new Date().toISOString() })
+                  .eq('id', existingPbs.id);
+              }
+            }
+          }
+        }
+      }
+
+      // Auto-synchronize customization_items (modifiers) status for ingredients
+      const { data: allCustItems } = await supabase
+        .from('customization_items')
+        .select('id, name, is_active');
+
+      if (allCustItems && allCustItems.length > 0) {
+        const custToDisable: number[] = [];
+        const custToEnable: number[] = [];
+
+        for (const ci of allCustItems) {
+          const ciClean = cleanName(ci.name);
+          const shouldBeUnavailable = ingredientCleanSet.has(ciClean);
+          const isCurrentlyDisabled = ci.is_active === false;
+
+          if (shouldBeUnavailable && !isCurrentlyDisabled) {
+            custToDisable.push(ci.id);
+          } else if (!shouldBeUnavailable && isCurrentlyDisabled) {
+            custToEnable.push(ci.id);
+          }
+        }
+
+        if (custToDisable.length > 0) {
+          await supabase
+            .from('customization_items')
+            .update({ is_active: false })
+            .in('id', custToDisable);
+          await supabase
+            .from('product_customizations')
+            .update({ is_active: false })
+            .in('customization_item_id', custToDisable);
+        }
+
+        if (custToEnable.length > 0) {
+          await supabase
+            .from('customization_items')
+            .update({ is_active: true })
+            .in('id', custToEnable);
+          await supabase
+            .from('product_customizations')
+            .update({ is_active: true })
+            .in('customization_item_id', custToEnable);
         }
       }
     } catch (syncErr) {
-      console.warn('[save86] Could not auto-sync product catalog status:', syncErr);
+      console.warn('[save86] Could not auto-sync product/modifier catalog status:', syncErr);
     }
 
     return { success: true };
@@ -4854,13 +4997,68 @@ export const api = {
     return { success: false, error: 'Could not resolve canonical branch and location for stock count.' };
   },
 
-  reconcileStockCount: async (countId: string, userId?: string, userName?: string) => {
-    const { data, error } = await supabase.rpc('process_stock_count_reconciliation', {
+  reconcileStockCount: async (
+    countId: string, 
+    expectedUpdatedAt?: string, 
+    managerPin?: string,
+    userId?: string, 
+    userName?: string
+  ) => {
+    // 1. Resolve header revision timestamp and status if not explicitly passed
+    let revisionTimestamp = expectedUpdatedAt;
+    let headerStatus = 'PENDING_APPROVAL';
+
+    const { data: header } = await supabase
+      .from('inventory_count_headers')
+      .select('count_id, count_status, last_updated, updated_at, restaurant_id')
+      .eq('count_id', countId)
+      .single();
+
+    if (header) {
+      revisionTimestamp = revisionTimestamp || header.last_updated || header.updated_at;
+      headerStatus = header.count_status;
+    }
+
+    if (!revisionTimestamp) {
+      revisionTimestamp = new Date().toISOString();
+    }
+
+    // If sheet is still in DRAFT, transition to PENDING_APPROVAL first so it enters manager review workflow
+    if (headerStatus === 'DRAFT') {
+      const nowIso = new Date().toISOString();
+      await supabase
+        .from('inventory_count_headers')
+        .update({ count_status: 'PENDING_APPROVAL', status: 'Pending Review', last_updated: nowIso })
+        .eq('count_id', countId);
+      revisionTimestamp = nowIso;
+    }
+
+    // 2. Call canonical approve_and_reconcile_stock_count RPC
+    const { data, error } = await supabase.rpc('approve_and_reconcile_stock_count', {
       p_count_header_id: countId,
-      p_user_id: userId || null,
-      p_user_name: userName || 'Admin'
+      p_expected_updated_at: revisionTimestamp,
+      p_manager_pin: managerPin || null,
+      p_calling_user_id: userId || null
     });
-    if (error) return { success: false, error: error.message };
+
+    if (error) {
+      // Fallback for transition compatibility if new RPC is not yet present on target
+      if (error.message?.includes('function public.approve_and_reconcile_stock_count') && error.message?.includes('does not exist')) {
+        const legacyRes = await supabase.rpc('process_stock_count_reconciliation', {
+          p_count_header_id: countId,
+          p_user_id: userId || null,
+          p_user_name: userName || 'Admin'
+        });
+        if (legacyRes.error) return { success: false, error: legacyRes.error.message };
+        return legacyRes.data;
+      }
+      return { success: false, error: error.message };
+    }
+
+    if (data && data.success === false) {
+      return { success: false, error: data.error || data.message || 'Approval and reconciliation failed', details: data };
+    }
+
     return data;
   },
 
@@ -8235,6 +8433,40 @@ export const api = {
     return { success: true, data };
   },
 
+  validateAndPostSupplierInvoice: async (payload: any, userId?: string) => {
+    const rid = payload.restaurant_id || getRestaurantId();
+    const { data, error } = await supabase.rpc('validate_and_post_supplier_invoice', {
+      p_payload: { ...payload, restaurant_id: rid },
+      p_calling_user_id: userId || null
+    });
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  cancelSupplierInvoiceDraft: async (invoiceId: string, reason: string, userId?: string) => {
+    const rid = getRestaurantId();
+    const { data, error } = await supabase.rpc('cancel_supplier_invoice_draft', {
+      p_invoice_id: invoiceId,
+      p_reason: reason || 'Cancelled by manager',
+      p_user_id: userId || null,
+      p_restaurant_id: rid
+    });
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
+  reverseSupplierInvoice: async (invoiceId: string, reason: string, userId?: string) => {
+    const rid = getRestaurantId();
+    const { data, error } = await supabase.rpc('reverse_supplier_invoice', {
+      p_invoice_id: invoiceId,
+      p_reason: reason || 'Reversed by manager',
+      p_user_id: userId || null,
+      p_restaurant_id: rid
+    });
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+  },
+
   postSupplierInvoice: async (payload: any) => {
     const rid = payload.restaurant_id || getRestaurantId();
     const { data, error } = await supabase.rpc('post_pos_supplier_invoice', {
@@ -8271,13 +8503,21 @@ export const api = {
     return { success: true, data };
   },
 
-  getSupplierInvoices: async (params?: { supplier_id?: string; branch_id?: string; status?: string }) => {
+  getSupplierInvoices: async (params?: { 
+    supplier_id?: string; 
+    branch_id?: string; 
+    status?: string; 
+    document_status?: string;
+    payment_status?: string;
+    receipt_status?: string;
+    search?: string;
+  }) => {
     const rid = getRestaurantId();
     let query = supabase
       .from('supplier_invoices')
       .select(`
         *,
-        supplier:suppliers(name, phone),
+        supplier:suppliers(name),
         items:supplier_invoice_items(*)
       `)
       .order('invoice_date', { ascending: false });
@@ -8285,7 +8525,21 @@ export const api = {
     if (rid) query = query.eq('restaurant_id', rid);
     if (params?.supplier_id && params.supplier_id !== 'All') query = query.eq('supplier_id', params.supplier_id);
     if (params?.branch_id && params.branch_id !== 'All') query = query.eq('branch_id', params.branch_id);
-    if (params?.status && params.status !== 'All') query = query.eq('payment_status', params.status);
+    if (params?.document_status && params.document_status !== 'All') query = query.eq('status', params.document_status);
+    if (params?.payment_status && params.payment_status !== 'All') query = query.eq('payment_status', params.payment_status);
+    if (params?.receipt_status && params.receipt_status !== 'All') query = query.eq('receipt_status', params.receipt_status);
+    if (params?.status && params.status !== 'All') {
+      // Backwards compatibility: if status matches document status, filter status, else payment_status
+      if (['DRAFT', 'PROCESSING', 'PENDING_REVIEW', 'POSTED', 'CANCELLED', 'REVERSED'].includes(params.status)) {
+        query = query.eq('status', params.status);
+      } else {
+        query = query.eq('payment_status', params.status);
+      }
+    }
+    if (params?.search && params.search.trim()) {
+      const term = params.search.trim();
+      query = query.or(`invoice_number.ilike.%${term}%,notes.ilike.%${term}%`);
+    }
 
     const { data, error } = await query.limit(500);
     if (error) return { success: false, error: error.message };

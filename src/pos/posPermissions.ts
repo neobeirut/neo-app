@@ -595,3 +595,113 @@ export function resolveEffectivePermissions(
 
   return result;
 }
+
+/**
+ * Resolves whether a user has POS Terminal Access Enabled.
+ * Default is FALSE unless explicitly enabled on user or app_permissions.
+ */
+export function checkHasPosTerminalAccess(user: any, appPermissions: any[] = []): boolean {
+  if (!user || user.is_active === false) return false;
+
+  // 1. Check explicit denial on user object
+  if (
+    user.permissions?.can_access_pos === false ||
+    user.admin_permissions?.can_access_pos === false ||
+    user.can_access_pos === false
+  ) {
+    return false;
+  }
+
+  // 2. Build normalized identifiers for this user
+  const userKeys = new Set<string>();
+  if (user.id) {
+    userKeys.add(`user:${user.id}`.toLowerCase());
+    userKeys.add(`admin_user:${user.id}`.toLowerCase());
+    userKeys.add(String(user.id).toLowerCase());
+  }
+  if (user.name) {
+    userKeys.add(`user:${user.name}`.toLowerCase());
+  }
+  if (user.display_name) {
+    userKeys.add(`user:${user.display_name}`.toLowerCase());
+  }
+
+  const userNameLower = (user.name || '').trim().toLowerCase();
+  const userDisplayNameLower = (user.display_name || '').trim().toLowerCase();
+
+  // Find user-specific permissions in app_permissions
+  const userSpecificPerms = (appPermissions || []).filter((p: any) => {
+    if (!p) return false;
+    const pIdLower = (p.id || '').toLowerCase();
+    if (userKeys.has(pIdLower)) return true;
+    if (p.type === 'user' || p.type === 'admin_user') {
+      const pNameLower = (p.name || '').trim().toLowerCase();
+      if (userNameLower && pNameLower === userNameLower) return true;
+      if (userDisplayNameLower && pNameLower === userDisplayNameLower) return true;
+    }
+    return false;
+  });
+
+  // Check explicit denial in user-specific app_permissions
+  for (const p of userSpecificPerms) {
+    if (
+      p.can_access_pos === false ||
+      p.admin_permissions?.can_access_pos === false ||
+      p.permissions?.can_access_pos === false
+    ) {
+      return false;
+    }
+  }
+
+  // 3. Check explicit grant on user object
+  if (
+    user.permissions?.can_access_pos === true ||
+    user.admin_permissions?.can_access_pos === true ||
+    user.can_access_pos === true
+  ) {
+    return true;
+  }
+
+  // 4. Check explicit grant in user-specific app_permissions
+  for (const p of userSpecificPerms) {
+    if (
+      p.can_access_pos === true ||
+      p.admin_permissions?.can_access_pos === true ||
+      p.permissions?.can_access_pos === true
+    ) {
+      return true;
+    }
+  }
+
+  // 5. Check department-level permissions in app_permissions
+  const userDepts: string[] = [];
+  if (user.department) userDepts.push(user.department);
+  if (typeof user.departments === 'string') {
+    user.departments.split(',').forEach((d: string) => userDepts.push(d.trim()));
+  } else if (Array.isArray(user.departments)) {
+    user.departments.forEach((d: any) => userDepts.push(String(d).trim()));
+  }
+
+  for (const dept of userDepts) {
+    const deptKey = `dept:${dept}`.toLowerCase();
+    const deptPerm = (appPermissions || []).find((p: any) => {
+      if (!p) return false;
+      const pIdLower = (p.id || '').toLowerCase();
+      if (pIdLower === deptKey) return true;
+      if (p.type === 'department' && (p.name || '').trim().toLowerCase() === dept.toLowerCase()) return true;
+      return false;
+    });
+
+    if (deptPerm) {
+      if (deptPerm.can_access_pos === false || deptPerm.admin_permissions?.can_access_pos === false) {
+        return false;
+      }
+      if (deptPerm.can_access_pos === true || deptPerm.admin_permissions?.can_access_pos === true) {
+        return true;
+      }
+    }
+  }
+
+  // Default: if POS Terminal Access is not explicitly enabled, access is false.
+  return false;
+}

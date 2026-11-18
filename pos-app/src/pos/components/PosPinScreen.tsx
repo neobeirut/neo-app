@@ -5,6 +5,7 @@ import { setGlobalRestaurantId } from '../../api/supabase';
 import { sessionLogger } from '../../utils/sessionLogger';
 import { Delete, ArrowRight, ArrowLeft, Shield, Utensils, AlertCircle, Download } from 'lucide-react';
 import FullscreenToggleButton from './FullscreenToggleButton';
+import { checkHasPosTerminalAccess } from '../services/posPermissionService';
 
 interface PosPinScreenProps {
   onSuccess: (user: any) => void;
@@ -59,6 +60,7 @@ export default function PosPinScreen({
   // Step: 'staff' | 'pin'
   const [step, setStep] = useState<'staff' | 'pin'>('staff');
   const [staffList, setStaffList] = useState<StaffUser[]>([]);
+  const [appPermissions, setAppPermissions] = useState<any[]>([]);
   const [staffLoading, setStaffLoading] = useState(true);
   const [selectedUser, setSelectedUser] = useState<StaffUser | null>(null);
 
@@ -98,7 +100,7 @@ export default function PosPinScreen({
       try {
         let { data, error: usersErr } = await supabase
           .from('users')
-          .select('id, name, display_name, role, branch, permissions, admin_permissions')
+          .select('id, name, display_name, role, branch, permissions, admin_permissions, department, departments, is_active')
           .eq('restaurant_id', restaurantId)
           .eq('is_active', true)
           .order('name');
@@ -111,7 +113,7 @@ export default function PosPinScreen({
         if (!data || data.length === 0) {
           const { data: fallbackUsers } = await supabase
             .from('users')
-            .select('id, name, display_name, role, branch, permissions, admin_permissions')
+            .select('id, name, display_name, role, branch, permissions, admin_permissions, department, departments, is_active')
             .eq('is_active', true)
             .order('name');
           data = fallbackUsers || [];
@@ -125,35 +127,20 @@ export default function PosPinScreen({
           return;
         }
 
-        // Build the list of user-permission record IDs (format: "user:{name}")
-        const permIds = data.map((u: any) => `user:${u.display_name || u.name}`);
-
-        const { data: permsData } = await supabase
+        // Fetch app_permissions to evaluate POS Terminal Access
+        const { data: permsData, error: permsErr } = await supabase
           .from('app_permissions')
-          .select('id, admin_permissions')
-          .in('id', permIds);
+          .select('*');
 
-        const posAccessDeniedMap: Record<string, boolean> = {};
-        (permsData || []).forEach((p: any) => {
-          if (p.admin_permissions?.can_access_pos === false) {
-            posAccessDeniedMap[p.id] = true;
-          }
-        });
-
-        // Filter staff who have can_access_pos !== false
-        let posStaff = data.filter((u: any) => {
-          if (u.permissions?.can_access_pos === false || u.admin_permissions?.can_access_pos === false) {
-            return false;
-          }
-          const key = `user:${u.display_name || u.name}`;
-          if (posAccessDeniedMap[key]) return false;
-          return true;
-        });
-
-        // Fallback: If no staff matched permissions, show all active users
-        if (posStaff.length === 0) {
-          posStaff = data;
+        if (permsErr) {
+          console.warn('Error fetching app_permissions:', permsErr);
         }
+
+        const appPerms = permsData || [];
+        setAppPermissions(appPerms);
+
+        // Filter ONLY staff who have POS Terminal Access enabled
+        const posStaff = data.filter((u: any) => checkHasPosTerminalAccess(u, appPerms));
 
         if (!isMounted) return;
 
@@ -165,21 +152,9 @@ export default function PosPinScreen({
         })));
       } catch (err) {
         console.error('Staff loading error:', err);
-        // Resilient fallback on any query exception
-        try {
-          const { data: emergencyUsers } = await supabase
-            .from('users')
-            .select('id, name, display_name, role, branch')
-            .eq('is_active', true);
-          if (emergencyUsers && emergencyUsers.length > 0 && isMounted) {
-            setStaffList(emergencyUsers.map((u: any, i: number) => ({
-              ...u,
-              name: u.display_name || u.name || 'Staff',
-              initials: getInitials(u.display_name || u.name),
-              color: AVATAR_COLORS[i % AVATAR_COLORS.length],
-            })));
-          }
-        } catch {}
+        if (isMounted) {
+          setStaffList([]);
+        }
       } finally {
         if (isMounted) setStaffLoading(false);
       }
@@ -249,8 +224,15 @@ export default function PosPinScreen({
         return;
       }
 
-      if (data.permissions?.can_access_pos === false || data.admin_permissions?.can_access_pos === false) {
-        setError('POS Access is disabled for this account. Contact your manager.');
+      // Verify POS Terminal Access is enabled
+      let currentPerms = appPermissions;
+      if (!currentPerms || currentPerms.length === 0) {
+        const { data: freshPerms } = await supabase.from('app_permissions').select('*');
+        currentPerms = freshPerms || [];
+      }
+
+      if (!checkHasPosTerminalAccess(data, currentPerms)) {
+        setError('POS Terminal Access is disabled for this account. Contact your manager.');
         setPin('');
         setLoading(false);
         return;
@@ -454,7 +436,7 @@ export default function PosPinScreen({
             <div className="w-full max-w-md text-center py-8 px-6 bg-white rounded-2xl border border-slate-200 shadow-sm">
               <AlertCircle size={32} className="text-[#1e5c4f] mx-auto mb-2" />
               <p className="text-base font-black text-slate-900">No Staff Accounts Found</p>
-              <p className="text-xs text-slate-500 mt-1 mb-4">No active staff users found for {restaurantName}.</p>
+              <p className="text-xs text-slate-500 mt-1 mb-4">No active staff members currently have POS Terminal Access enabled for {restaurantName}. Please enable POS Terminal Access in Security / Permissions.</p>
               {onSwitchToPasswordLogin && (
                 <button
                   type="button"

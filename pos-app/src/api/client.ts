@@ -1,4 +1,5 @@
 import { supabase, getGlobalRestaurantId, setGlobalRestaurantId } from './supabase';
+import { checkHasPosTerminalAccess } from '../pos/services/posPermissionService';
 
 export function getRestaurantId(): string | null {
   return getGlobalRestaurantId();
@@ -44,6 +45,12 @@ export const api = {
 
       if (!data) {
         return { success: false, error: 'Invalid PIN code.' };
+      }
+
+      // Verify POS Terminal Access is enabled
+      const { data: userPerms } = await supabase.from('app_permissions').select('*');
+      if (!checkHasPosTerminalAccess(data, userPerms || [])) {
+        return { success: false, error: 'POS Terminal Access is disabled for this account.' };
       }
 
       let userConcept = data.concept || data.concept_id || undefined;
