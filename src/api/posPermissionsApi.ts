@@ -94,7 +94,7 @@ export const posPermissionsApi = {
     try {
       const { data: users, error } = await supabase
         .from('users')
-        .select('id, name, display_name, role, branch, branch_id, is_active, pin, pin_code, permissions, admin_permissions, department, departments')
+        .select('id, name, display_name, role, branch, branch_id, is_active, pin, pin_code, permissions, admin_permissions, departments')
         .eq('restaurant_id', rid)
         .order('name');
 

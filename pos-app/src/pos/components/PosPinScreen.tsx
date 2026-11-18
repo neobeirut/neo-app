@@ -100,7 +100,7 @@ export default function PosPinScreen({
       try {
         let { data, error: usersErr } = await supabase
           .from('users')
-          .select('id, name, display_name, role, branch, permissions, admin_permissions, department, departments, is_active')
+          .select('id, name, display_name, role, branch, permissions, admin_permissions, departments, is_active')
           .eq('restaurant_id', restaurantId)
           .eq('is_active', true)
           .order('name');
@@ -113,7 +113,7 @@ export default function PosPinScreen({
         if (!data || data.length === 0) {
           const { data: fallbackUsers } = await supabase
             .from('users')
-            .select('id, name, display_name, role, branch, permissions, admin_permissions, department, departments, is_active')
+            .select('id, name, display_name, role, branch, permissions, admin_permissions, departments, is_active')
             .eq('is_active', true)
             .order('name');
           data = fallbackUsers || [];
