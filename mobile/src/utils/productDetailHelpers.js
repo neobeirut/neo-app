@@ -285,33 +285,12 @@ export const handleAddToCart = async ({
   if (product.status === "Unavailable Today") {
     Alert.alert(
       "Unavailable Today",
-      `${product.name} is unavailable for orders today. If you schedule delivery/pickup for today, you will not receive this item.`,
+      `${product.name} is currently out of stock and unavailable for orders.`,
       [
         {
-          text: "Cancel",
-          style: "cancel",
+          text: "OK",
           onPress: () =>
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning),
-        },
-        {
-          text: "Add Anyway",
-          onPress: () => {
-            if (typeof onWillAdd === "function") {
-              onWillAdd();
-            }
-            addToCartMutation.mutate({
-              product_id: Number(productId),
-              branch_id: selectedBranch.id,
-              quantity,
-              selected_addons: selectedAddonIds,
-              customizations: allCustomizations,
-              comment: normalizedComment,
-              shouldNavigateBack: false,
-            });
-            if (typeof onSuccess === "function") {
-              onSuccess();
-            }
-          },
         },
       ],
     );

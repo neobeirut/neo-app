@@ -54,7 +54,16 @@ export interface ValidateAndPostInvoicePayload {
   items: SupplierInvoiceItemPayload[];
 }
 
+export function normalizeCurrency(rawCurr?: string): 'USD' | 'LBP' | 'UNKNOWN' {
+  if (!rawCurr) return 'UNKNOWN';
+  const clean = rawCurr.trim().toUpperCase();
+  if (['USD', '$', 'DOLLAR', 'DOLLARS', 'US DOLLARS', 'US$'].some(k => clean === k || clean.includes(k))) return 'USD';
+  if (['LBP', 'LL', 'L.L.', 'LEBANESE', 'LEBANESE POUND', 'LEBANESE POUNDS', 'ل.ل.', 'ليرة', 'ليرة لبنانية'].some(k => clean === k || clean.includes(k))) return 'LBP';
+  return 'UNKNOWN';
+}
+
 export const supplierInvoiceClientService = {
+  normalizeCurrency,
   getRestaurantId(): string {
     return getGlobalRestaurantId() || '79256f11-a9f8-4fec-901d-69baf929762d';
   },

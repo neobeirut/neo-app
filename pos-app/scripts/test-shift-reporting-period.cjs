@@ -1,4 +1,4 @@
-const fs=require('fs'),path=require('path'),vm=require('vm'),assert=require('node:assert/strict'),{test}=require('node:test');const root=process.env.FLOW_POS_ROOT||path.resolve(__dirname,'..'),ts=require(path.join(root,'node_modules/typescript'));
+const fs=require('fs'),path=require('path'),vm=require('vm'),assert=require('node:assert/strict'),{test}=require('node:test');const root=process.env.FLOW_POS_ROOT||path.resolve(__dirname,'..'),ts=require('typescript');
 function load(file,imports={}){const exports={};vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.join(root,file),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports,require:n=>imports[n]||{},Date,Intl,console});return exports;}
 const days=load('src/pos/services/preparingOrders.ts');const {shiftReportingPeriod:period,dayStart}=load('src/pos/services/shiftReportingPeriod.ts',{'./preparingOrders':days});
 const now=new Date('2026-09-28T08:00:00Z'),shift={id:'s',date:'2026-09-27',created_at:'2026-09-27T06:00:00Z'};

@@ -45,7 +45,7 @@ export function getProductsForBranch(
 
       return {
         ...product,
-        status: branchData?.status || "Available",
+        status: branchData?.status || product.status || "Available",
         // Use branch-specific price if available, otherwise use product base price
         price: branchData?.price || product.price,
         base_price: branchData?.base_price || product.price,

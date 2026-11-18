@@ -239,16 +239,16 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
   }, [openTables, openOrders]);
 
   // 1. Check Open Entities (Tables & Orders) and Calculate Shift Sales & On-Account
-  const checkOpenEntitiesAndSales = async (currentRateVal: number) => {
+  const checkOpenEntitiesAndSales = async (currentRateVal: number, preloadedOrders?: any[]) => {
     setCheckingEntities(true);
     try {
-      // 1. Query all orders created in this shift window
-      const aliases = await getDrawerTerminalAliases(branchId || shift.branch_id || '', shift.terminal_id || terminalId);
+      // 1. Query all orders created in this shift window (reusing preloaded orders if available)
+      const aliases = await getDrawerTerminalAliases(branchId || shift?.branch_id || '', shift?.terminal_id || terminalId);
       const period = await loadShiftReportingPeriod(shift, aliases);
       const shiftStartTime = period.startTime;
-      const branchIds = Array.from(new Set([shift.branch_id || branchId, externalBranchId].filter(Boolean).map(String)));
-      const restaurantId = shift.restaurant_id || getGlobalRestaurantId();
-      const shiftOrders = await loadShiftPaymentOrders({ restaurantId, branchIds, terminalIds: aliases, startTime: shiftStartTime, endTime: period.endTime });
+      const branchIds = Array.from(new Set([shift?.branch_id || branchId, externalBranchId].filter(Boolean).map(String)));
+      const restaurantId = shift?.restaurant_id || getGlobalRestaurantId();
+      const shiftOrders = preloadedOrders || await loadShiftPaymentOrders({ restaurantId, branchIds, terminalIds: aliases, startTime: shiftStartTime, endTime: period.endTime });
       const ordersMap = new Map<number, any>();
       shiftOrders.forEach((o: any) => ordersMap.set(o.id, o));
 
@@ -302,7 +302,7 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
         (missingOrders || []).forEach((o: any) => ordersMap.set(o.id, o));
       }
 
-      const isDeliveryConcept = Boolean(s.concept_id && s.concept_id !== '00000000-0000-0000-0000-000000000001');
+      const isDeliveryConcept = Boolean(shift?.concept_id && shift.concept_id !== '00000000-0000-0000-0000-000000000001');
 
       let formattedTables: any[] = [];
       if (!isDeliveryConcept) {
@@ -338,8 +338,8 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
         .lt('created_at', period.endTime);
 
       if (isDeliveryConcept) {
-        ordersQuery = ordersQuery.eq('concept_id', s.concept_id);
-      } else {
+        ordersQuery = ordersQuery.eq('concept_id', shift?.concept_id);
+      } else if (typeof ordersQuery.or === 'function') {
         ordersQuery = ordersQuery.or('concept_id.eq.00000000-0000-0000-0000-000000000001,concept_id.is.null');
       }
 
@@ -464,30 +464,34 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
       setErrorMessage(null);
       try {
         let activeRate = rate;
-        // Exchange Rate
-        const rateRes = shiftReportingPeriod(shift).day < businessDay() && Number(shift.rate) > 0
-          ? { success: true, rate: Number(shift.rate) }
-          : await api.getExchangeRate(shift.restaurant_id);
-        if (rateRes.success && rateRes.rate) {
+        const currentTermId = shift.terminal_id || terminalId;
+
+        // Fetch rate, wallets, settings, and drawer terminal aliases concurrently in parallel
+        const [rateRes, walletRes, settings, aliases] = await Promise.all([
+          shiftReportingPeriod(shift).day < businessDay() && Number(shift.rate) > 0
+            ? { success: true, rate: Number(shift.rate) }
+            : api.getExchangeRate(shift.restaurant_id),
+          getActiveWallets(shift.restaurant_id),
+          getBranchReconSettings(branchId || branchName),
+          getDrawerTerminalAliases(branchId || shift.branch_id || '', currentTermId)
+        ]);
+
+        if (rateRes?.success && rateRes.rate) {
           setSystemRate(rateRes.rate);
           setRate(rateRes.rate);
           setRateInputStr(String(rateRes.rate));
           activeRate = rateRes.rate;
         }
 
-        // Active Wallets
-        const walletRes = await getActiveWallets(shift.restaurant_id);
-        if (walletRes.success && walletRes.data) {
+        if (walletRes?.success && walletRes.data) {
           setWallets(walletRes.data);
         }
 
-        // Branch Settings
-        const settings = await getBranchReconSettings(branchId || branchName);
-        setBranchSettings(settings);
+        if (settings) {
+          setBranchSettings(settings);
+        }
 
         // POS Reconciliation
-        const currentTermId = shift.terminal_id || terminalId;
-        const aliases = await getDrawerTerminalAliases(branchId || shift.branch_id || '', currentTermId);
         const period = await loadShiftReportingPeriod(shift, aliases);
         const res = await calculateShiftReconciliation({
           locationKey,
@@ -510,10 +514,14 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
           if (res.summary.tenders?.card_usd !== undefined && res.summary.tenders.card_usd > 0) {
             setCreditCardUsd(prev => prev ? prev : String(res.summary.tenders.card_usd));
           }
+          // Seed preliminary sales immediately from reconciliation summary so UI does not lag
+          if (res.summary.netSales !== undefined && res.summary.netSales >= 0) {
+            setSalesLbp(prev => prev ? prev : String(Math.round(res.summary!.netSales * activeRate)));
+          }
         }
 
-        // Check Open Tables & Orders, and Compute authoritatively Sales LBP & On Credit LBP
-        await checkOpenEntitiesAndSales(activeRate);
+        // Check Open Tables & Orders, reusing the shift orders already loaded in reconciliation
+        await checkOpenEntitiesAndSales(activeRate, res.orders);
 
         // Load Draft from LocalStorage
         const targetDate = date || shift.date || '';

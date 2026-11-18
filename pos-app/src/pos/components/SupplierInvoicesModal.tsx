@@ -48,8 +48,10 @@ export const SupplierInvoicesModal: React.FC<SupplierInvoicesModalProps> = ({
   const [selectedPoId, setSelectedPoId] = useState('');
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [invoiceDate, setInvoiceDate] = useState(() => new Date().toISOString().split('T')[0]);
-  const [currency, setCurrency] = useState<'USD' | 'LBP'>('USD');
-  const [exchangeRate, setExchangeRate] = useState<number>(89500);
+  const [currency, setCurrency] = useState<'USD' | 'LBP' | 'UNKNOWN'>('USD');
+  const [exchangeRate, setExchangeRate] = useState<number>(0);
+  const [systemExchangeRate, setSystemExchangeRate] = useState<number>(0);
+  const [isExchangeRateOverridden, setIsExchangeRateOverridden] = useState<boolean>(false);
   const [subtotal, setSubtotal] = useState<number>(0);
   const [discountAmount, setDiscountAmount] = useState<number>(0);
   const [notes, setNotes] = useState('');
@@ -78,8 +80,26 @@ export const SupplierInvoicesModal: React.FC<SupplierInvoicesModalProps> = ({
       loadInvoices();
       loadSuppliers();
       loadCatalog();
+      loadCentralizedExchangeRate();
     }
   }, [isOpen, filterStatus]);
+
+  const loadCentralizedExchangeRate = async () => {
+    try {
+      const { data } = await supabase
+        .from('app_settings')
+        .select('setting_value')
+        .in('setting_key', ['exchange_rate', 'exchange_rate_usd_lbp'])
+        .limit(1)
+        .maybeSingle();
+
+      const rate = data ? parseFloat(data.setting_value) : 89500;
+      setSystemExchangeRate(rate);
+      setExchangeRate((prev) => (prev > 0 ? prev : rate));
+    } catch (err) {
+      console.warn('Failed to load dynamic exchange rate:', err);
+    }
+  };
 
   useEffect(() => {
     if (supplierId) {
@@ -277,12 +297,14 @@ export const SupplierInvoicesModal: React.FC<SupplierInvoicesModalProps> = ({
 
       const invNum = parsedData?.invoice_number || ('INV-POS-' + Date.now().toString().slice(-4));
       const invDate = parsedData?.invoice_date || new Date().toISOString().split('T')[0];
-      const invCurr = (parsedData?.currency === 'LBP' ? 'LBP' : 'USD');
+      const invCurr = supplierInvoiceClientService.normalizeCurrency(parsedData?.currency);
+      const exRate = Number(parsedData?.exchange_rate) || 89500;
       const discAmt = parsedData?.discount_amount ? String(parsedData.discount_amount) : '0';
 
       setInvoiceNumber(invNum);
       setInvoiceDate(invDate);
       setCurrency(invCurr);
+      setExchangeRate(exRate);
       setDiscountAmount(Number(discAmt) || 0);
       if (processedItems.length > 0) {
         setItems(processedItems);
@@ -447,6 +469,14 @@ export const SupplierInvoicesModal: React.FC<SupplierInvoicesModalProps> = ({
     }
     if (!invoiceNumber.trim()) {
       alert('Invoice number is required.');
+      return;
+    }
+    if (currency === 'UNKNOWN') {
+      alert('Currency Confirmation Required: Please select whether this invoice is in USD or LBP.');
+      return;
+    }
+    if (currency === 'LBP' && (!exchangeRate || exchangeRate <= 1000)) {
+      alert('Invalid Exchange Rate: A positive exchange rate in LBP per USD (e.g. 89,500) is required for LBP invoices.');
       return;
     }
     if (items.length === 0) {
@@ -836,7 +866,50 @@ export const SupplierInvoicesModal: React.FC<SupplierInvoicesModalProps> = ({
                         className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs font-bold outline-none"
                       />
                     </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Currency *</label>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setCurrency('USD')}
+                          className={`flex-1 py-1.5 px-2 rounded-xl text-xs font-bold transition ${
+                            currency === 'USD' ? 'bg-[#1e5c4f] text-white' : 'bg-slate-900 border border-slate-700 text-slate-400'
+                          }`}
+                        >
+                          USD ($)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCurrency('LBP')}
+                          className={`flex-1 py-1.5 px-2 rounded-xl text-xs font-bold transition ${
+                            currency === 'LBP' ? 'bg-[#1e5c4f] text-white' : 'bg-slate-900 border border-slate-700 text-slate-400'
+                          }`}
+                        >
+                          LBP (L.L.)
+                        </button>
+                      </div>
+                    </div>
+
+                    {currency === 'LBP' && (
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Exchange Rate (LBP/USD) *</label>
+                        <input
+                          type="number"
+                          value={exchangeRate}
+                          onChange={(e) => setExchangeRate(Number(e.target.value) || 89500)}
+                          placeholder="89500"
+                          className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs font-bold outline-none"
+                        />
+                      </div>
+                    )}
                   </div>
+                  {currency === 'UNKNOWN' && (
+                    <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-bold flex items-center gap-2">
+                      <AlertTriangle size={14} />
+                      <span>Currency Unconfirmed: Please explicitly select whether this invoice is in USD or LBP.</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Line Items Table */}
@@ -994,9 +1067,24 @@ export const SupplierInvoicesModal: React.FC<SupplierInvoicesModalProps> = ({
 
                   {/* Summary math */}
                   <div className="text-right space-y-1 text-xs">
-                    <div className="text-slate-400">Subtotal: <b className="text-slate-200">${totals.subtotal.toFixed(2)}</b></div>
-                    <div className="text-slate-400">VAT (11%): <b className="text-slate-200">${totals.vatTotal.toFixed(2)}</b></div>
-                    <div className="text-base font-black text-emerald-400">Total: ${totals.totalAmount.toFixed(2)}</div>
+                    <div className="text-slate-400">
+                      Subtotal: <b className="text-slate-200">
+                        {currency === 'LBP' ? `${totals.subtotal.toLocaleString()} L.L.` : `$${totals.subtotal.toFixed(2)}`}
+                      </b>
+                    </div>
+                    <div className="text-slate-400">
+                      VAT Total: <b className="text-slate-200">
+                        {currency === 'LBP' ? `${totals.vatTotal.toLocaleString()} L.L.` : `$${totals.vatTotal.toFixed(2)}`}
+                      </b>
+                    </div>
+                    <div className="text-base font-black text-emerald-400">
+                      Total: {currency === 'LBP' ? `${totals.totalAmount.toLocaleString()} L.L.` : `$${totals.totalAmount.toFixed(2)}`}
+                    </div>
+                    {currency === 'LBP' && exchangeRate > 0 && (
+                      <div className="text-[11px] font-bold text-slate-400">
+                        ≈ ${(totals.totalAmount / exchangeRate).toFixed(2)} USD @ {exchangeRate.toLocaleString()}
+                      </div>
+                    )}
                   </div>
                 </div>
 

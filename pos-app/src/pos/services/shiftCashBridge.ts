@@ -44,9 +44,11 @@ export interface ShiftCashRecord {
   held_by?: string | null;
   held_notes?: string | null;
   created_at: string;
+  opened_at?: string | null;
   closed_at?: string | null;
   finalized_at?: string | null;
   restaurant_id?: string;
+  concept_id?: string | null;
 }
 
 export interface OpenShiftParams {

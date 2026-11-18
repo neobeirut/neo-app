@@ -28,7 +28,7 @@ interface PurchasingScreenProps {
 }
 
 export default function PurchasingScreen({ user }: PurchasingScreenProps) {
-  const [activeTab, setActiveTab] = useState<'orders' | 'requests_history' | 'catalog'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'invoices' | 'requests_history' | 'catalog'>('orders');
   const [loading, setLoading] = useState(true);
 
   // Common Master Data
@@ -39,6 +39,23 @@ export default function PurchasingScreen({ user }: PurchasingScreenProps) {
   const [packagingOptions, setPackagingOptions] = useState<any[]>([]);
   const [departments, setDepartments] = useState<string[]>([]);
   const [dbVatRate, setDbVatRate] = useState<number>(11);
+
+  // --------------------------------------------------------------------------
+  // TAB: SUPPLIER INVOICES STATE
+  // --------------------------------------------------------------------------
+  const [invoicesList, setInvoicesList] = useState<any[]>([]);
+  const [invoicesLoading, setInvoicesLoading] = useState<boolean>(false);
+  const [invFilterStatus, setInvFilterStatus] = useState<string>('All');
+  const [invFilterReceipt, setInvFilterReceipt] = useState<string>('All');
+  const [invFilterPayment, setInvFilterPayment] = useState<string>('All');
+  const [invFilterSupplier, setInvFilterSupplier] = useState<string>('All');
+  const [invFilterBranch, setInvFilterBranch] = useState<string>('All');
+  const [invSearchQuery, setInvSearchQuery] = useState<string>('');
+
+  // Invoice Inspection Modal
+  const [selectedInvoiceForModal, setSelectedInvoiceForModal] = useState<any | null>(null);
+  const [showInvoiceDetailModal, setShowInvoiceDetailModal] = useState<boolean>(false);
+  const [invActionLoading, setInvActionLoading] = useState<boolean>(false);
 
   // --------------------------------------------------------------------------
   // TAB 1: PURCHASE ORDERS STATE (PHASE 2)
@@ -131,12 +148,156 @@ export default function PurchasingScreen({ user }: PurchasingScreenProps) {
   useEffect(() => {
     if (activeTab === 'orders') {
       loadPurchaseOrders();
+    } else if (activeTab === 'invoices') {
+      loadInvoices();
     } else if (activeTab === 'requests_history') {
       loadHistoricalRequests();
     } else if (activeTab === 'catalog') {
       loadCatalog();
     }
-  }, [activeTab, poFilterStatus, poFilterBranch, poFilterSupplier, histFilterStatus, histFilterBranch, histFilterDept, catalogSearch, catalogDept]);
+  }, [activeTab, poFilterStatus, poFilterBranch, poFilterSupplier, histFilterStatus, histFilterBranch, histFilterDept, catalogSearch, catalogDept, invFilterStatus, invFilterReceipt, invFilterPayment, invFilterSupplier, invFilterBranch, invSearchQuery]);
+
+  const loadInvoices = async () => {
+    setInvoicesLoading(true);
+    try {
+      const res = await api.getSupplierInvoices({
+        supplier_id: invFilterSupplier !== 'All' ? invFilterSupplier : undefined,
+        branch_id: invFilterBranch !== 'All' ? invFilterBranch : undefined,
+        document_status: invFilterStatus !== 'All' ? invFilterStatus : undefined,
+        payment_status: invFilterPayment !== 'All' ? invFilterPayment : undefined,
+        receipt_status: invFilterReceipt !== 'All' ? invFilterReceipt : undefined,
+        search: invSearchQuery.trim() || undefined
+      });
+      if (res.success && res.data) {
+        setInvoicesList(res.data);
+      } else {
+        setInvoicesList([]);
+      }
+    } catch (e) {
+      console.error('Failed to load supplier invoices:', e);
+      setInvoicesList([]);
+    } finally {
+      setInvoicesLoading(false);
+    }
+  };
+
+  const handleValidateAndPostInvoiceFromAdmin = async (inv: any) => {
+    if (!window.confirm(`Are you sure you want to validate and POST supplier invoice #${inv.invoice_number}? This will permanently record the Accounts Payable liability.`)) {
+      return;
+    }
+    setInvActionLoading(true);
+    try {
+      const res = await api.validateAndPostSupplierInvoice({
+        restaurant_id: inv.restaurant_id,
+        branch_id: inv.branch_id,
+        supplier_id: inv.supplier_id,
+        invoice_id: inv.id,
+        invoice_number: inv.invoice_number,
+        invoice_date: inv.invoice_date,
+        due_date: inv.due_date,
+        currency: inv.invoice_currency,
+        exchange_rate: inv.exchange_rate,
+        subtotal: inv.subtotal_amount,
+        tax_amount: inv.tax_amount,
+        total_amount: inv.total_amount,
+        override_review: true,
+        override_reason: 'Approved by Administrator in Web Admin',
+        items: (inv.items || []).map((it: any) => ({
+          ...it,
+          invoiced_quantity: it.invoiced_quantity,
+          unit_price: it.unit_price,
+          line_total: it.line_total
+        }))
+      }, user?.id);
+
+      if (res.success) {
+        alert(`Invoice #${inv.invoice_number} successfully POSTED!`);
+        setShowInvoiceDetailModal(false);
+        loadInvoices();
+      } else {
+        alert('Posting failed: ' + res.error);
+      }
+    } catch (e: any) {
+      alert('Posting error: ' + e.message);
+    } finally {
+      setInvActionLoading(false);
+    }
+  };
+
+  const handleCancelInvoiceDraftFromAdmin = async (inv: any) => {
+    const reason = window.prompt(`Enter reason for cancelling draft invoice #${inv.invoice_number}:`, 'Duplicate / Incorrect draft');
+    if (!reason) return;
+
+    setInvActionLoading(true);
+    try {
+      const res = await api.cancelSupplierInvoiceDraft(inv.id, reason, user?.id);
+      if (res.success) {
+        alert(`Draft #${inv.invoice_number} cancelled.`);
+        setShowInvoiceDetailModal(false);
+        loadInvoices();
+      } else {
+        alert('Cancellation failed: ' + res.error);
+      }
+    } catch (e: any) {
+      alert('Cancellation error: ' + e.message);
+    } finally {
+      setInvActionLoading(false);
+    }
+  };
+
+  const handleReverseInvoiceFromAdmin = async (inv: any) => {
+    const reason = window.prompt(`CRITICAL AUDIT ACTION: Enter formal reason for reversing posted invoice #${inv.invoice_number} (Credit Note adjustment):`, 'Supplier returned goods / billing correction');
+    if (!reason) return;
+
+    setInvActionLoading(true);
+    try {
+      const res = await api.reverseSupplierInvoice(inv.id, reason, user?.id);
+      if (res.success) {
+        alert(`Invoice #${inv.invoice_number} successfully REVERSED.`);
+        setShowInvoiceDetailModal(false);
+        loadInvoices();
+      } else {
+        alert('Reversal failed: ' + res.error);
+      }
+    } catch (e: any) {
+      alert('Reversal error: ' + e.message);
+    } finally {
+      setInvActionLoading(false);
+    }
+  };
+
+  const handleReceivePendingGoodsFromAdmin = async (inv: any) => {
+    if (!window.confirm(`Confirm physical goods receipt for all unreceived items on invoice #${inv.invoice_number}? Inventory stock balances will update authoritatively in USD.`)) {
+      return;
+    }
+    setInvActionLoading(true);
+    try {
+      const itemsToReceive = (inv.items || [])
+        .filter((it: any) => (Number(it.base_quantity) || 0) > (Number(it.received_quantity) || 0))
+        .map((it: any) => ({
+          invoice_item_id: it.id,
+          received_quantity: (Number(it.base_quantity) || 0) - (Number(it.received_quantity) || 0)
+        }));
+
+      const res = await api.receiveInvoiceGoods({
+        invoice_id: inv.id,
+        items: itemsToReceive,
+        received_by_name: user?.name || user?.email || 'Admin'
+      }, user?.id);
+
+      if (res.success) {
+        alert(`Goods successfully received for Invoice #${inv.invoice_number}!`);
+        setShowInvoiceDetailModal(false);
+        loadInvoices();
+      } else {
+        alert('Receiving failed: ' + res.error);
+      }
+    } catch (e: any) {
+      alert('Receiving error: ' + e.message);
+    } finally {
+      setInvActionLoading(false);
+    }
+  };
 
   const loadMasterData = async () => {
     try {
@@ -739,6 +900,22 @@ export default function PurchasingScreen({ user }: PurchasingScreenProps) {
             style={{ 
               width: 'auto', 
               borderRadius: 0,
+              backgroundColor: activeTab === 'invoices' ? 'var(--primary)' : '#ffffff',
+              color: activeTab === 'invoices' ? '#ffffff' : 'var(--text-main)',
+              border: 'none',
+              padding: '10px 18px',
+              fontWeight: 600,
+              fontSize: '14px'
+            }}
+            onClick={() => setActiveTab('invoices')}
+          >
+            Supplier Invoices
+          </button>
+          <button 
+            className="auth-btn" 
+            style={{ 
+              width: 'auto', 
+              borderRadius: 0,
               backgroundColor: activeTab === 'requests_history' ? 'var(--primary)' : '#ffffff',
               color: activeTab === 'requests_history' ? '#ffffff' : 'var(--text-main)',
               border: 'none',
@@ -1254,8 +1431,256 @@ export default function PurchasingScreen({ user }: PurchasingScreenProps) {
       )}
 
       {/* ==================================================================== */}
-      {/* PO DETAIL / MANAGE MODAL (PHASE 2 WORKFLOW) */}
+      {/* TAB 4: SUPPLIER INVOICES (PHASE 5 MANAGEMENT) */}
       {/* ==================================================================== */}
+      {activeTab === 'invoices' && (
+        <>
+          {/* KPI Stat Cards */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', marginBottom: '20px' }}>
+            <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', padding: '16px 20px', border: '1px solid var(--border)' }}>
+              <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Total Invoices</div>
+              <div style={{ fontSize: '24px', fontWeight: 800, color: 'var(--text-main)', marginTop: '4px' }}>
+                {invoicesList.length}
+              </div>
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>Recorded across all branches</div>
+            </div>
+
+            <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', padding: '16px 20px', border: '1px solid var(--border)' }}>
+              <div style={{ fontSize: '12px', fontWeight: 700, color: '#b45309', textTransform: 'uppercase' }}>Open AP Liability (USD)</div>
+              <div style={{ fontSize: '24px', fontWeight: 800, color: '#b45309', marginTop: '4px' }}>
+                ${invoicesList
+                  .filter(inv => inv.status === 'POSTED')
+                  .reduce((sum, inv) => sum + Math.max(0, (Number(inv.total_amount_usd) || 0) - (Number(inv.paid_amount_usd) || 0)), 0)
+                  .toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </div>
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>Unsettled supplier debt</div>
+            </div>
+
+            <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', padding: '16px 20px', border: '1px solid var(--border)' }}>
+              <div style={{ fontSize: '12px', fontWeight: 700, color: '#16a34a', textTransform: 'uppercase' }}>Total Paid to Date (USD)</div>
+              <div style={{ fontSize: '24px', fontWeight: 800, color: '#16a34a', marginTop: '4px' }}>
+                ${invoicesList
+                  .reduce((sum, inv) => sum + (Number(inv.paid_amount_usd) || 0), 0)
+                  .toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </div>
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>Disbursements recorded</div>
+            </div>
+
+            <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', padding: '16px 20px', border: '1px solid var(--border)' }}>
+              <div style={{ fontSize: '12px', fontWeight: 700, color: '#4f46e5', textTransform: 'uppercase' }}>Drafts &amp; Pending Reviews</div>
+              <div style={{ fontSize: '24px', fontWeight: 800, color: '#4f46e5', marginTop: '4px' }}>
+                {invoicesList.filter(inv => ['DRAFT', 'PENDING_REVIEW', 'PROCESSING'].includes(inv.status)).length}
+              </div>
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>Awaiting validation &amp; posting</div>
+            </div>
+          </div>
+
+          {/* Filters Bar */}
+          <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', padding: '16px', border: '1px solid var(--border)', marginBottom: '20px', display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center' }}>
+            <div style={{ flex: '1 1 200px' }}>
+              <input 
+                type="text" 
+                placeholder="Search Invoice # or Notes..." 
+                value={invSearchQuery}
+                onChange={(e) => setInvSearchQuery(e.target.value)}
+                style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '13px' }}
+              />
+            </div>
+
+            <div style={{ width: '160px' }}>
+              <select 
+                value={invFilterStatus} 
+                onChange={(e) => setInvFilterStatus(e.target.value)}
+                style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '13px', backgroundColor: '#ffffff' }}
+              >
+                <option value="All">All Document Statuses</option>
+                <option value="POSTED">POSTED (Active)</option>
+                <option value="DRAFT">DRAFT</option>
+                <option value="PENDING_REVIEW">PENDING REVIEW</option>
+                <option value="REVERSED">REVERSED (Credit Note)</option>
+                <option value="CANCELLED">CANCELLED</option>
+              </select>
+            </div>
+
+            <div style={{ width: '150px' }}>
+              <select 
+                value={invFilterReceipt} 
+                onChange={(e) => setInvFilterReceipt(e.target.value)}
+                style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '13px', backgroundColor: '#ffffff' }}
+              >
+                <option value="All">All Receiving</option>
+                <option value="FULLY_RECEIVED">Fully Received</option>
+                <option value="PARTIALLY_RECEIVED">Partially Received</option>
+                <option value="NO_GOODS_RECEIVED">No Goods Received</option>
+              </select>
+            </div>
+
+            <div style={{ width: '150px' }}>
+              <select 
+                value={invFilterPayment} 
+                onChange={(e) => setInvFilterPayment(e.target.value)}
+                style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '13px', backgroundColor: '#ffffff' }}
+              >
+                <option value="All">All Payments</option>
+                <option value="UNPAID">Unpaid</option>
+                <option value="PARTIALLY_PAID">Partially Paid</option>
+                <option value="PAID">Paid</option>
+              </select>
+            </div>
+
+            <div style={{ width: '180px' }}>
+              <select 
+                value={invFilterSupplier} 
+                onChange={(e) => setInvFilterSupplier(e.target.value)}
+                style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '13px', backgroundColor: '#ffffff' }}
+              >
+                <option value="All">All Suppliers</option>
+                {suppliers.map(s => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <button 
+              onClick={loadInvoices}
+              className="auth-btn"
+              style={{ width: 'auto', padding: '8px 16px', backgroundColor: '#f1f5f9', color: 'var(--text-main)', border: '1px solid var(--border)' }}
+            >
+              <RefreshCw size={14} style={{ marginRight: '6px' }} /> Refresh
+            </button>
+          </div>
+
+          {/* Invoices Table */}
+          <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid var(--border)', overflow: 'hidden' }}>
+            {invoicesLoading ? (
+              <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                <RefreshCw size={24} className="spin" style={{ marginBottom: '8px' }} />
+                <div>Loading supplier invoices...</div>
+              </div>
+            ) : invoicesList.length === 0 ? (
+              <div style={{ padding: '60px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                <FileText size={48} style={{ opacity: 0.3, marginBottom: '12px' }} />
+                <h3 style={{ fontSize: '16px', fontWeight: 600, margin: '0 0 6px 0' }}>No supplier invoices found</h3>
+                <p style={{ fontSize: '13px', margin: 0 }}>Try adjusting your search criteria or record an invoice at POS or Mobile.</p>
+              </div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '1000px' }}>
+                  <thead>
+                    <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid var(--border)' }}>
+                      <th style={tableHeaderStyle}>Invoice #</th>
+                      <th style={tableHeaderStyle}>Date</th>
+                      <th style={tableHeaderStyle}>Supplier</th>
+                      <th style={tableHeaderStyle}>Doc</th>
+                      <th style={{ ...tableHeaderStyle, textAlign: 'right' }}>Native Total</th>
+                      <th style={{ ...tableHeaderStyle, textAlign: 'right' }}>Total (USD)</th>
+                      <th style={{ ...tableHeaderStyle, textAlign: 'right' }}>Rate</th>
+                      <th style={tableHeaderStyle}>Lifecycle</th>
+                      <th style={tableHeaderStyle}>Receiving</th>
+                      <th style={tableHeaderStyle}>Payment</th>
+                      <th style={{ ...tableHeaderStyle, textAlign: 'center' }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {invoicesList.map(inv => {
+                      const isLbp = inv.invoice_currency === 'LBP';
+                      const nativeTotalFormatted = isLbp 
+                        ? `${Number(inv.total_amount || 0).toLocaleString()} L.L.` 
+                        : `$${Number(inv.total_amount_usd || inv.total_amount || 0).toFixed(2)}`;
+
+                      return (
+                        <tr key={inv.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                          <td style={{ ...tableCellStyle, fontWeight: 700, color: 'var(--primary)' }}>
+                            {inv.invoice_number}
+                            {inv.purchase_order_id && (
+                              <span style={{ display: 'block', fontSize: '10px', color: 'var(--text-muted)' }}>
+                                PO linked
+                              </span>
+                            )}
+                          </td>
+                          <td style={tableCellStyle}>
+                            {inv.invoice_date ? new Date(inv.invoice_date).toLocaleDateString() : 'N/A'}
+                          </td>
+                          <td style={{ ...tableCellStyle, fontWeight: 600 }}>
+                            {inv.supplier?.name || 'Unknown Supplier'}
+                          </td>
+                          <td style={tableCellStyle}>
+                            {inv.attachment_url ? (
+                              <span style={{ fontSize: '11px', padding: '2px 6px', borderRadius: '4px', backgroundColor: '#e0f2fe', color: '#0369a1', fontWeight: 600 }}>
+                                📎 Attached
+                              </span>
+                            ) : (
+                              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>—</span>
+                            )}
+                          </td>
+                          <td style={{ ...tableCellStyle, textAlign: 'right', fontWeight: 700 }}>
+                            {nativeTotalFormatted}
+                          </td>
+                          <td style={{ ...tableCellStyle, textAlign: 'right', fontWeight: 800, color: 'var(--primary)' }}>
+                            ${Number(inv.total_amount_usd || 0).toFixed(2)}
+                          </td>
+                          <td style={{ ...tableCellStyle, textAlign: 'right', fontSize: '11px', color: 'var(--text-muted)' }}>
+                            {isLbp ? Number(inv.exchange_rate || 89500).toLocaleString() : '1.0'}
+                          </td>
+                          <td style={tableCellStyle}>
+                            <span style={{
+                              fontSize: '11px',
+                              padding: '3px 8px',
+                              borderRadius: '12px',
+                              fontWeight: 700,
+                              backgroundColor: inv.status === 'POSTED' ? '#dcfce7' : inv.status === 'DRAFT' ? '#fef3c7' : inv.status === 'REVERSED' ? '#fee2e2' : '#f1f5f9',
+                              color: inv.status === 'POSTED' ? '#166534' : inv.status === 'DRAFT' ? '#92400e' : inv.status === 'REVERSED' ? '#991b1b' : '#475569'
+                            }}>
+                              {inv.status}
+                            </span>
+                          </td>
+                          <td style={tableCellStyle}>
+                            <span style={{
+                              fontSize: '11px',
+                              padding: '3px 8px',
+                              borderRadius: '12px',
+                              fontWeight: 700,
+                              backgroundColor: inv.receipt_status === 'FULLY_RECEIVED' ? '#dcfce7' : inv.receipt_status === 'PARTIALLY_RECEIVED' ? '#ffedd5' : '#f1f5f9',
+                              color: inv.receipt_status === 'FULLY_RECEIVED' ? '#166534' : inv.receipt_status === 'PARTIALLY_RECEIVED' ? '#9a3412' : '#475569'
+                            }}>
+                              {inv.receipt_status ? inv.receipt_status.replace(/_/g, ' ') : 'NO GOODS'}
+                            </span>
+                          </td>
+                          <td style={tableCellStyle}>
+                            <span style={{
+                              fontSize: '11px',
+                              padding: '3px 8px',
+                              borderRadius: '12px',
+                              fontWeight: 700,
+                              backgroundColor: inv.payment_status === 'PAID' ? '#dcfce7' : inv.payment_status === 'PARTIALLY_PAID' ? '#ffedd5' : '#fee2e2',
+                              color: inv.payment_status === 'PAID' ? '#166534' : inv.payment_status === 'PARTIALLY_PAID' ? '#9a3412' : '#991b1b'
+                            }}>
+                              {inv.payment_status || 'UNPAID'}
+                            </span>
+                          </td>
+                          <td style={{ ...tableCellStyle, textAlign: 'center' }}>
+                            <button
+                              onClick={() => {
+                                setSelectedInvoiceForModal(inv);
+                                setShowInvoiceDetailModal(true);
+                              }}
+                              className="auth-btn"
+                              style={{ width: 'auto', padding: '6px 12px', fontSize: '12px', backgroundColor: '#e2e8f0', color: 'var(--text-main)', border: 'none', borderRadius: '6px' }}
+                            >
+                              <Eye size={12} style={{ marginRight: '4px' }} /> Inspect
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
       {showPoDetailModal && selectedPo && (
         <div style={modalBackdropStyle}>
           <div style={{ ...modalContainerStyle, maxWidth: '1100px' }}>
@@ -2025,6 +2450,282 @@ export default function PurchasingScreen({ user }: PurchasingScreenProps) {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* ==================================================================== */}
+      {/* SUPPLIER INVOICE INSPECT / AUDIT MODAL (PHASE 5) */}
+      {/* ==================================================================== */}
+      {showInvoiceDetailModal && selectedInvoiceForModal && (
+        <div style={modalBackdropStyle}>
+          <div style={{ ...modalContainerStyle, maxWidth: '1050px' }}>
+            {/* Header */}
+            <div style={modalHeaderStyle}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <h2 style={{ fontSize: '18px', fontWeight: 800, margin: 0 }}>
+                    Supplier Invoice: <span style={{ color: 'var(--primary)' }}>{selectedInvoiceForModal.invoice_number}</span>
+                  </h2>
+                  <span style={{
+                    fontSize: '11px',
+                    padding: '3px 8px',
+                    borderRadius: '12px',
+                    fontWeight: 700,
+                    backgroundColor: selectedInvoiceForModal.status === 'POSTED' ? '#dcfce7' : selectedInvoiceForModal.status === 'DRAFT' ? '#fef3c7' : '#fee2e2',
+                    color: selectedInvoiceForModal.status === 'POSTED' ? '#166534' : selectedInvoiceForModal.status === 'DRAFT' ? '#92400e' : '#991b1b'
+                  }}>
+                    {selectedInvoiceForModal.status}
+                  </span>
+                  <span style={{
+                    fontSize: '11px',
+                    padding: '3px 8px',
+                    borderRadius: '12px',
+                    fontWeight: 700,
+                    backgroundColor: selectedInvoiceForModal.receipt_status === 'FULLY_RECEIVED' ? '#dcfce7' : '#ffedd5',
+                    color: selectedInvoiceForModal.receipt_status === 'FULLY_RECEIVED' ? '#166534' : '#9a3412'
+                  }}>
+                    📦 {selectedInvoiceForModal.receipt_status ? selectedInvoiceForModal.receipt_status.replace(/_/g, ' ') : 'NO GOODS'}
+                  </span>
+                  <span style={{
+                    fontSize: '11px',
+                    padding: '3px 8px',
+                    borderRadius: '12px',
+                    fontWeight: 700,
+                    backgroundColor: selectedInvoiceForModal.payment_status === 'PAID' ? '#dcfce7' : '#fee2e2',
+                    color: selectedInvoiceForModal.payment_status === 'PAID' ? '#166534' : '#991b1b'
+                  }}>
+                    💳 {selectedInvoiceForModal.payment_status || 'UNPAID'}
+                  </span>
+                </div>
+                <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px', margin: 0 }}>
+                  Supplier: <strong>{selectedInvoiceForModal.supplier?.name || 'N/A'}</strong> 
+                  {selectedInvoiceForModal.supplier?.phone && ` (${selectedInvoiceForModal.supplier.phone})`} | 
+                  Date: <strong>{selectedInvoiceForModal.invoice_date}</strong> | 
+                  Source: <strong>{selectedInvoiceForModal.source_client || 'POS'}</strong>
+                </p>
+              </div>
+              <button onClick={() => setShowInvoiceDetailModal(false)} style={iconButtonStyle}>
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ padding: '20px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '18px' }}>
+              
+              {/* Metadata & Attachment Preview Card */}
+              <div style={{ backgroundColor: '#f8fafc', borderRadius: '12px', padding: '16px', border: '1px solid var(--border)', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', alignItems: 'center' }}>
+                <div>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600, display: 'block' }}>ORIGINAL CURRENCY &amp; RATE</span>
+                  <span style={{ fontSize: '14px', fontWeight: 800, color: 'var(--text-main)' }}>
+                    {selectedInvoiceForModal.invoice_currency === 'LBP' ? 'Lebanese Pounds (L.L.)' : 'US Dollars ($)'}
+                  </span>
+                  {selectedInvoiceForModal.invoice_currency === 'LBP' && (
+                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block' }}>
+                      Exchange Rate: {Number(selectedInvoiceForModal.exchange_rate || 89500).toLocaleString()} LBP/USD
+                    </span>
+                  )}
+                </div>
+
+                <div>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600, display: 'block' }}>PURCHASE ORDER REFERENCE</span>
+                  <span style={{ fontSize: '13px', fontWeight: 700, color: selectedInvoiceForModal.purchase_order_id ? 'var(--primary)' : 'var(--text-muted)' }}>
+                    {selectedInvoiceForModal.purchase_order_id ? `Linked PO #${selectedInvoiceForModal.purchase_order_id.slice(-6)}` : 'Direct Purchase (No PO)'}
+                  </span>
+                </div>
+
+                <div>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600, display: 'block' }}>SUPPORTING DOCUMENT</span>
+                  {selectedInvoiceForModal.attachment_url ? (
+                    <a 
+                      href={selectedInvoiceForModal.attachment_url.startsWith('http') ? selectedInvoiceForModal.attachment_url : `https://ilrlychrraagugntqdfr.supabase.co/storage/v1/object/public/${selectedInvoiceForModal.attachment_url}`}
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      style={{ fontSize: '12px', color: 'var(--primary)', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px', textDecoration: 'none' }}
+                    >
+                      📎 View Original Invoice Photo/PDF <ExternalLink size={12} />
+                    </a>
+                  ) : (
+                    <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>No document uploaded</span>
+                  )}
+                </div>
+
+                <div>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600, display: 'block' }}>VALIDATED BY</span>
+                  <span style={{ fontSize: '12px', color: 'var(--text-main)', fontWeight: 600 }}>
+                    {selectedInvoiceForModal.validated_by || 'Pending Validation'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Line Items Table */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <h3 style={{ fontSize: '14px', fontWeight: 700, margin: 0 }}>
+                    Purchased Line Items ({selectedInvoiceForModal.items?.length || 0})
+                  </h3>
+                  <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                    All quantities converted to inventory canonical base units
+                  </span>
+                </div>
+
+                <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid var(--border)', overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '850px' }}>
+                    <thead>
+                      <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid var(--border)' }}>
+                        <th style={tableHeaderStyle}>Catalog Item</th>
+                        <th style={tableHeaderStyle}>Supplier Desc / Code</th>
+                        <th style={{ ...tableHeaderStyle, textAlign: 'right' }}>Invoiced Qty</th>
+                        <th style={{ ...tableHeaderStyle, textAlign: 'right' }}>Unit Price</th>
+                        <th style={{ ...tableHeaderStyle, textAlign: 'right' }}>VAT (11%)</th>
+                        <th style={{ ...tableHeaderStyle, textAlign: 'right' }}>Packaging &rarr; Base Qty</th>
+                        <th style={{ ...tableHeaderStyle, textAlign: 'right' }}>Line Total</th>
+                        <th style={{ ...tableHeaderStyle, textAlign: 'right', color: '#16a34a' }}>Received</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(selectedInvoiceForModal.items || []).map((it: any, idx: number) => {
+                        const isLbp = selectedInvoiceForModal.invoice_currency === 'LBP';
+                        return (
+                          <tr key={it.id || idx} style={{ borderBottom: '1px solid var(--border)' }}>
+                            <td style={{ ...tableCellStyle, fontWeight: 700 }}>
+                              {it.item_name || 'Item'}
+                              {it.price_variance_percentage && Number(it.price_variance_percentage) > 10 && (
+                                <span style={{ display: 'inline-block', marginLeft: '6px', fontSize: '10px', padding: '1px 5px', borderRadius: '4px', backgroundColor: '#fef3c7', color: '#b45309', fontWeight: 700 }}>
+                                  ⚠️ +{it.price_variance_percentage}% Variance
+                                </span>
+                              )}
+                            </td>
+                            <td style={{ ...tableCellStyle, fontSize: '12px', color: 'var(--text-muted)' }}>
+                              {it.supplier_product_desc || it.supplier_product_code || '—'}
+                            </td>
+                            <td style={{ ...tableCellStyle, textAlign: 'right', fontWeight: 700 }}>
+                              {it.invoiced_quantity} {it.purchase_unit}
+                            </td>
+                            <td style={{ ...tableCellStyle, textAlign: 'right' }}>
+                              {isLbp ? `${Number(it.unit_price).toLocaleString()} L.L.` : `$${Number(it.unit_price).toFixed(2)}`}
+                            </td>
+                            <td style={{ ...tableCellStyle, textAlign: 'right', fontSize: '12px' }}>
+                              {isLbp ? `${Number(it.vat_amount || 0).toLocaleString()} L.L.` : `$${Number(it.vat_amount || 0).toFixed(2)}`}
+                            </td>
+                            <td style={{ ...tableCellStyle, textAlign: 'right', fontSize: '12px', color: 'var(--text-muted)' }}>
+                              {it.conversion_factor || 1} &times; = <strong>{it.base_quantity} {it.base_unit}</strong>
+                            </td>
+                            <td style={{ ...tableCellStyle, textAlign: 'right', fontWeight: 700 }}>
+                              {isLbp ? `${Number(it.line_total).toLocaleString()} L.L.` : `$${Number(it.line_total).toFixed(2)}`}
+                            </td>
+                            <td style={{ ...tableCellStyle, textAlign: 'right', fontWeight: 700, color: '#16a34a' }}>
+                              {it.received_quantity || 0} {it.base_unit}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Financial Totals Card */}
+              <div style={{ backgroundColor: '#f8fafc', borderRadius: '12px', padding: '16px', border: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+                <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                  <div>Notes: <em>{selectedInvoiceForModal.notes || 'None'}</em></div>
+                  {selectedInvoiceForModal.replacement_reason && (
+                    <div style={{ marginTop: '4px', color: '#b45309' }}>
+                      Replacement Audit: <strong>{selectedInvoiceForModal.replacement_reason}</strong>
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ textAlign: 'right', minWidth: '240px' }}>
+                  <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                    Subtotal: <strong>
+                      {selectedInvoiceForModal.invoice_currency === 'LBP' 
+                        ? `${Number(selectedInvoiceForModal.subtotal_amount || 0).toLocaleString()} L.L.`
+                        : `$${Number(selectedInvoiceForModal.subtotal_amount || 0).toFixed(2)}`}
+                    </strong>
+                  </div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                    VAT: <strong>
+                      {selectedInvoiceForModal.invoice_currency === 'LBP' 
+                        ? `${Number(selectedInvoiceForModal.tax_amount || 0).toLocaleString()} L.L.`
+                        : `$${Number(selectedInvoiceForModal.tax_amount || 0).toFixed(2)}`}
+                    </strong>
+                  </div>
+                  <div style={{ fontSize: '18px', fontWeight: 800, color: 'var(--primary)', marginTop: '4px' }}>
+                    Grand Total: {selectedInvoiceForModal.invoice_currency === 'LBP' 
+                      ? `${Number(selectedInvoiceForModal.total_amount || 0).toLocaleString()} L.L.`
+                      : `$${Number(selectedInvoiceForModal.total_amount_usd || selectedInvoiceForModal.total_amount || 0).toFixed(2)}`}
+                  </div>
+                  {selectedInvoiceForModal.invoice_currency === 'LBP' && (
+                    <div style={{ fontSize: '12px', fontWeight: 700, color: '#16a34a', marginTop: '2px' }}>
+                      ≈ ${Number(selectedInvoiceForModal.total_amount_usd || 0).toFixed(2)} USD @ {Number(selectedInvoiceForModal.exchange_rate || 89500).toLocaleString()}
+                    </div>
+                  )}
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                    Paid: ${Number(selectedInvoiceForModal.paid_amount_usd || 0).toFixed(2)} | Balance Due: <strong style={{ color: '#b45309' }}>${Math.max(0, (Number(selectedInvoiceForModal.total_amount_usd) || 0) - (Number(selectedInvoiceForModal.paid_amount_usd) || 0)).toFixed(2)}</strong>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+            {/* Modal Footer with Managerial Controls */}
+            <div style={modalFooterStyle}>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                {/* For Drafts / Pending Review */}
+                {['DRAFT', 'PENDING_REVIEW'].includes(selectedInvoiceForModal.status) && (
+                  <>
+                    <button
+                      onClick={() => handleValidateAndPostInvoiceFromAdmin(selectedInvoiceForModal)}
+                      className="auth-btn"
+                      style={{ width: 'auto', padding: '8px 18px', backgroundColor: '#16a34a', color: 'white', border: 'none', fontWeight: 700 }}
+                      disabled={invActionLoading}
+                    >
+                      ✅ Approve &amp; Post Invoice
+                    </button>
+                    <button
+                      onClick={() => handleCancelInvoiceDraftFromAdmin(selectedInvoiceForModal)}
+                      className="auth-btn"
+                      style={{ width: 'auto', padding: '8px 16px', backgroundColor: 'rgba(239, 68, 68, 0.1)', color: 'var(--danger)', border: 'none', fontWeight: 600 }}
+                      disabled={invActionLoading}
+                    >
+                      <Trash2 size={14} style={{ marginRight: '4px' }} /> Discard Draft
+                    </button>
+                  </>
+                )}
+
+                {/* For Posted Invoices */}
+                {selectedInvoiceForModal.status === 'POSTED' && (
+                  <>
+                    {selectedInvoiceForModal.receipt_status !== 'FULLY_RECEIVED' && (
+                      <button
+                        onClick={() => handleReceivePendingGoodsFromAdmin(selectedInvoiceForModal)}
+                        className="auth-btn"
+                        style={{ width: 'auto', padding: '8px 18px', backgroundColor: '#2563eb', color: 'white', border: 'none', fontWeight: 700 }}
+                        disabled={invActionLoading}
+                      >
+                        📦 Receive Pending Goods
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleReverseInvoiceFromAdmin(selectedInvoiceForModal)}
+                      className="auth-btn"
+                      style={{ width: 'auto', padding: '8px 16px', backgroundColor: 'rgba(239, 68, 68, 0.1)', color: 'var(--danger)', border: 'none', fontWeight: 600 }}
+                      disabled={invActionLoading}
+                    >
+                      🔄 Reverse (Credit Adjustment)
+                    </button>
+                  </>
+                )}
+              </div>
+
+              <button
+                onClick={() => setShowInvoiceDetailModal(false)}
+                className="auth-btn"
+                style={{ width: 'auto', padding: '8px 18px', backgroundColor: '#ffffff', color: 'var(--text-main)', border: '1px solid var(--border)' }}
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

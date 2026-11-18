@@ -483,8 +483,7 @@ export default function ProductDetailScreen() {
 
   // Check if product is available
   const isAvailable = product.status === "Available";
-  const canAddToCart =
-    product.status === "Available" || product.status === "Unavailable Today";
+  const canAddToCart = product.status === "Available";
 
   const headerHeight = 88;
 

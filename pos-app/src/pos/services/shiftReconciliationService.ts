@@ -140,7 +140,8 @@ export async function calculateShiftReconciliation(params: {
   terminalId?: string;
   openingUsd: number;
   openingLbp: number;
-}): Promise<{ success: boolean; summary?: ShiftReconciliationSummary; error?: string }> {
+  preloadedOrders?: any[];
+}): Promise<{ success: boolean; summary?: ShiftReconciliationSummary; orders?: any[]; error?: string }> {
   try {
     const end = params.endTime || new Date().toISOString();
 
@@ -161,12 +162,19 @@ export async function calculateShiftReconciliation(params: {
 
     // ── Step 2: Query pos_orders directly from Supabase ──
     let data: any = null;
+    let resolvedOrders: any[] = params.preloadedOrders || [];
     const branchIds = Array.from(new Set([params.branchId, externalBranchId].filter(Boolean).map(String)));
     if (branchIds.length) {
       try {
-        const orders = await loadShiftPaymentOrders({ restaurantId: params.restaurantId || getGlobalRestaurantId(), branchIds,
+        const orders = resolvedOrders.length > 0 ? resolvedOrders : await loadShiftPaymentOrders({
+          restaurantId: params.restaurantId || getGlobalRestaurantId(),
+          branchIds,
           terminalIds: params.terminalIds?.length ? params.terminalIds : (params.terminalId ? [params.terminalId] : []),
-          startTime: params.startTime, endTime: end, endExclusive: params.endExclusive });
+          startTime: params.startTime,
+          endTime: end,
+          endExclusive: params.endExclusive
+        });
+        resolvedOrders = orders;
 
         if (orders && orders.length > 0) {
           // Aggregate tenders by payment method
@@ -368,7 +376,7 @@ export async function calculateShiftReconciliation(params: {
       expectedCashLbp: Math.round(expectedLbp)
     };
 
-    return { success: true, summary };
+    return { success: true, summary, orders: resolvedOrders };
   } catch (err: any) {
     console.error('[shiftReconciliationService] Exception calculating shift reconciliation:', err);
     return { success: false, error: err?.message || 'Error calculating shift reconciliation' };

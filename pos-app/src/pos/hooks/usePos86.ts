@@ -94,9 +94,19 @@ export function usePos86(branchName?: string, conceptId?: string) {
       }
 
       const activeRecords = (records && records.length > 0) ? records : [];
+      // Dedup records: keep only the latest record per branch + concept to prevent resurrecting removed items
+      const latestRecordPerBranch = new Map<string, any>();
+      for (const rec of activeRecords) {
+        const bKey = `${(rec.branch || '').toLowerCase().trim()}_${rec.concept_id || 'default'}`;
+        if (!latestRecordPerBranch.has(bKey)) {
+          latestRecordPerBranch.set(bKey, rec);
+        }
+      }
+      const dedupedRecords = Array.from(latestRecordPerBranch.values());
+
       const rawItemsMap = new Map<string, Pos86Item>();
 
-      for (const rec of activeRecords) {
+      for (const rec of dedupedRecords) {
         if (Array.isArray(rec.items)) {
           for (const it of rec.items) {
             if (it && it.name) {

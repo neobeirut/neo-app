@@ -130,10 +130,19 @@ export default function Menu86ViewScreen() {
       setFormConceptId(existingLog.concept_id || conceptId || KNOWN_CONCEPTS.NEO.id);
       setFormItems(existingLog.items || []);
     } else {
-      setFormBranch(branches[0]?.name || 'Badaro');
+      const defaultBranch = selectedBranch !== 'All' ? selectedBranch : (branches[0]?.name || 'Badaro');
+      const targetCid = (selectedConcept !== 'ALL' ? selectedConcept : null) || conceptId || KNOWN_CONCEPTS.NEO.id;
+      // Pre-load items from today's existing log for this branch & concept if present so adding items appends rather than overwriting
+      const matchingLog = logs.find(l => 
+        l.branch === defaultBranch && 
+        (l.date || '').startsWith(date) && 
+        (!l.concept_id || l.concept_id === targetCid)
+      );
+
+      setFormBranch(defaultBranch);
       setFormDate(date);
-      setFormConceptId(conceptId || KNOWN_CONCEPTS.NEO.id);
-      setFormItems([]);
+      setFormConceptId(targetCid);
+      setFormItems(matchingLog?.items ? [...matchingLog.items] : []);
     }
     
     setNewItemName('');

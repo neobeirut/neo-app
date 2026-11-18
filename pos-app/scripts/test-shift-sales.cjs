@@ -1,5 +1,5 @@
 const fs=require('fs'),path=require('path'),vm=require('vm'),assert=require('node:assert/strict'),{test}=require('node:test');
-const root=process.env.FLOW_POS_ROOT||path.resolve(__dirname,'..'),ts=require(path.join(root,'node_modules/typescript'));
+const root=process.env.FLOW_POS_ROOT||path.resolve(__dirname,'..'),ts=require('typescript');
 test('Close Shift includes current branch sales and excludes other days, branches and drawers',async()=>{
  const source=fs.readFileSync(path.join(root,'src/pos/components/CloseShiftModal.tsx'),'utf8');
  const ast=ts.createSourceFile('modal.tsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);let fn;
