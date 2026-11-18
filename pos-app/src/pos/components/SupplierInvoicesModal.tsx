@@ -267,7 +267,10 @@ export const SupplierInvoicesModal: React.FC<SupplierInvoicesModalProps> = ({
 
           const qty = Number(rawItem.invoiced_quantity) || 1;
           const price = Number(rawItem.unit_price) || 0;
-          const taxRate = Number(rawItem.tax_rate) || 0;
+          let taxRate = Number(rawItem.tax_rate) || 0;
+          if (taxRate > 0 && taxRate <= 1) {
+            taxRate = Math.round(taxRate * 100);
+          }
           const vat = Number(rawItem.vat_amount) || (qty * price * (taxRate / 100));
           const lineTot = Number(rawItem.line_total) || (qty * price + vat);
 

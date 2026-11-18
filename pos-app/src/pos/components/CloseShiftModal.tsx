@@ -204,9 +204,9 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
 
   const [onCreditLbp, setOnCreditLbp] = useState<string>(String(s.on_credit_lbp || ''));
 
-  // Physical Actual Drawer Counts
-  const [actualUsd, setActualUsd] = useState<string>('');
-  const [actualLbp, setActualLbp] = useState<string>('');
+  // Physical Actual Drawer Counts (0 by default)
+  const [actualUsd, setActualUsd] = useState<string>('0');
+  const [actualLbp, setActualLbp] = useState<string>('0');
 
   // Denomination Helper State
   const [showDenomHelper, setShowDenomHelper] = useState(false);
@@ -584,18 +584,18 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
           const draft = JSON.parse(draftStr);
           if (draft.openingUsd) setOpeningUsd(draft.openingUsd);
           if (draft.openingLbp) setOpeningLbp(draft.openingLbp);
-          if (draft.cashInUsd) setCashInUsd(draft.cashInUsd);
-          if (draft.cashInLbp) setCashInLbp(draft.cashInLbp);
-          if (draft.paymentsUsd) setPaymentsUsd(draft.paymentsUsd);
-          if (draft.paymentsLbp) setPaymentsLbp(draft.paymentsLbp);
           if (draft.creditCardUsd) setCreditCardUsd(draft.creditCardUsd);
           if (draft.creditCardLbp) setCreditCardLbp(draft.creditCardLbp);
-          if (draft.cashOutUsd) setCashOutUsd(draft.cashOutUsd);
-          if (draft.cashOutLbp) setCashOutLbp(draft.cashOutLbp);
-          if (draft.actualUsd) setActualUsd(draft.actualUsd);
-          if (draft.actualLbp) setActualLbp(draft.actualLbp);
+          setActualUsd(draft.actualUsd !== undefined && draft.actualUsd !== '' ? draft.actualUsd : '0');
+          setActualLbp(draft.actualLbp !== undefined && draft.actualLbp !== '' ? draft.actualLbp : '0');
           if (draft.walletInputs) setWalletInputs(draft.walletInputs);
+        } else {
+          setActualUsd('0');
+          setActualLbp('0');
         }
+
+        // Auto-fetch payments (Supplier, Cash Out, Cash In) from Daily Payments
+        await handleFetchCashFlow(targetDate, shift.shift || 'AM');
       } catch (err: any) {
         setErrorMessage(err?.message || 'Error initializing close shift data');
       } finally {
@@ -680,14 +680,15 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
     walletInputs, shiftType, date
   ]);
 
-  // 3. Fetch Cash Flow from Daily Payments
-  const handleFetchCashFlow = async () => {
+  // 3. Fetch Payments (Supplier, Cash Out, Cash In) from Daily Payments
+  const handleFetchCashFlow = async (overrideDate?: string, overrideShift?: string) => {
     setFetchingCashFlow(true);
     setCashFlowMessage(null);
     try {
-      const targetDate = date || (shift.date ? (shift.date.includes('T') ? shift.date.split('T')[0] : shift.date.split(' ')[0]) : new Date().toISOString().split('T')[0]);
-      if (!date) setDate(targetDate);
-      const res = await getDailyPayments(branchName, targetDate, shiftType);
+      const targetDate = overrideDate || date || (shift.date ? (shift.date.includes('T') ? shift.date.split('T')[0] : shift.date.split(' ')[0]) : new Date().toISOString().split('T')[0]);
+      const targetShift = overrideShift || shiftType;
+      if (!date && targetDate) setDate(targetDate);
+      const res = await getDailyPayments(branchName, targetDate, targetShift);
       if (res.success && res.data) {
         const records = res.data;
         const isCashOut = (t: string) => t === 'CashOut' || t === 'Cashout Loan' || t === 'Cashout Bank' || t === 'Cashout Salary';
@@ -746,13 +747,19 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
           });
         }
 
-        setCashFlowMessage(`✓ Loaded ${records.length} cash flow records: Suppliers ($${supplierUsd.toFixed(2)} / ${supplierLbp.toLocaleString()} LBP), Cash In ($${inUsd.toFixed(2)} / ${inLbp.toLocaleString()} LBP), Cash Out ($${outUsd.toFixed(2)} / ${outLbp.toLocaleString()} LBP)`);
+        setCashFlowMessage(`✓ Loaded ${records.length} payment records: Suppliers ($${supplierUsd.toFixed(2)} / ${supplierLbp.toLocaleString()} LBP), Cash In ($${inUsd.toFixed(2)} / ${inLbp.toLocaleString()} LBP), Cash Out ($${outUsd.toFixed(2)} / ${outLbp.toLocaleString()} LBP)`);
         setTimeout(() => setCashFlowMessage(null), 6000);
       } else {
+        setPaymentsUsd('0');
+        setPaymentsLbp('0');
+        setCashInUsd('0');
+        setCashInLbp('0');
+        setCashOutUsd('0');
+        setCashOutLbp('0');
         setCashFlowMessage('No daily payments records found for this shift.');
       }
     } catch (err: any) {
-      setErrorMessage(err?.message || 'Failed to fetch cash flow');
+      setErrorMessage(err?.message || 'Failed to fetch payments');
     } finally {
       setFetchingCashFlow(false);
     }
@@ -882,21 +889,6 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
     actualUsd, actualLbp, currentRate
   ]);
 
-  // 2.b. Auto-seed Actual Cash from Expected Cash when closing PM shift
-  // This gives the cashier a starting point — they only correct if the count differs.
-  const [actualSeeded, setActualSeeded] = useState(false);
-  useEffect(() => {
-    if (!isOpen || actualSeeded) return;
-    if (expectedUsd > 0 && (!actualUsd || actualUsd === '0')) {
-      setActualUsd(String(Math.round(expectedUsd * 100) / 100));
-      setActualSeeded(true);
-    }
-  }, [expectedUsd, isOpen, actualSeeded, actualUsd]);
-
-  // Reset seed flag when modal closes so it re-seeds on next open
-  useEffect(() => {
-    if (!isOpen) setActualSeeded(false);
-  }, [isOpen]);
 
   // Manager Approval Check based on actual vs expected difference
   const varianceCheck = useMemo(() => {
@@ -1059,16 +1051,30 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
     value: string,
     setter: (v: string) => void,
     suffix?: string,
-    large?: boolean
+    large?: boolean,
+    readOnly?: boolean
   ) => (
     <div
-      onClick={() => setNumpadField({ label, value, setter })}
-      className={`w-full bg-white border border-slate-200 hover:border-[#1e5c4f] rounded-xl px-2.5 ${large ? 'py-1.5' : 'py-1'} text-slate-900 font-mono ${large ? 'text-sm' : 'text-xs'} font-bold cursor-pointer flex items-center justify-between transition shadow-2xs`}
+      onClick={() => {
+        if (!readOnly) setNumpadField({ label, value, setter });
+      }}
+      className={`w-full ${
+        readOnly
+          ? 'bg-slate-100/90 border-slate-200 cursor-not-allowed opacity-90'
+          : 'bg-white border-slate-200 hover:border-[#1e5c4f] cursor-pointer shadow-2xs'
+      } border rounded-xl px-2.5 ${large ? 'py-1.5' : 'py-1'} text-slate-900 font-mono ${large ? 'text-sm' : 'text-xs'} font-bold flex items-center justify-between transition`}
+      title={readOnly ? 'Locked: Value is fetched from Payments and cannot be edited manually' : undefined}
     >
-      <span className={value ? 'text-slate-900' : 'text-gray-400'}>{value || 'Tap to enter'}</span>
+      <span className={value && value !== '0' ? 'text-slate-900' : 'text-slate-500'}>
+        {value === '0' ? '0' : (value || '0')}
+      </span>
       <div className="flex items-center gap-1">
         {suffix && <span className="text-gray-400 text-[10px]">{suffix}</span>}
-        <span className="text-slate-400 text-xs">⌨</span>
+        {readOnly ? (
+          <span className="text-slate-400 text-[11px]" title="Locked: From Payments">🔒</span>
+        ) : (
+          <span className="text-slate-400 text-xs">⌨</span>
+        )}
       </div>
     </div>
   );
@@ -1307,16 +1313,16 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
               </button>
             )}
 
-            {/* Get Cash Flow Button */}
+            {/* Get Payments Button */}
             <button
               type="button"
               disabled={fetchingCashFlow}
-              onClick={handleFetchCashFlow}
+              onClick={() => handleFetchCashFlow()}
               className="px-2.5 py-1 bg-white hover:bg-slate-50 text-[#1e5c4f] hover:text-[#16473D] border border-slate-300 rounded-lg text-xs font-black transition flex items-center gap-1 cursor-pointer shadow-2xs"
               title="Pull supplier payments and cash in/out from Daily Payments"
             >
               <RefreshCw size={12} className={fetchingCashFlow ? 'animate-spin' : ''} />
-              <span>{fetchingCashFlow ? 'Fetching...' : '⚡ Get Cash Flow'}</span>
+              <span>{fetchingCashFlow ? 'Fetching...' : '⚡ Get Payments'}</span>
             </button>
 
             <button
@@ -1602,12 +1608,18 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
                     {numField('Opening Cash LBP', openingLbp, setOpeningLbp, 'LBP')}
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Cash In USD</label>
-                    {numField('Cash In USD', cashInUsd, setCashInUsd, '$')}
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5 flex items-center justify-between">
+                      <span>Cash In USD</span>
+                      <span className="text-[9px] text-slate-400 font-normal">From Payments</span>
+                    </label>
+                    {numField('Cash In USD', cashInUsd, setCashInUsd, '$', false, true)}
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Cash In LBP</label>
-                    {numField('Cash In LBP', cashInLbp, setCashInLbp, 'LBP')}
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5 flex items-center justify-between">
+                      <span>Cash In LBP</span>
+                      <span className="text-[9px] text-slate-400 font-normal">From Payments</span>
+                    </label>
+                    {numField('Cash In LBP', cashInLbp, setCashInLbp, 'LBP', false, true)}
                   </div>
                 </div>
               </div>
@@ -1623,28 +1635,40 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Supplier USD</label>
-                    {numField('Supplier Payments USD', paymentsUsd, setPaymentsUsd, '$')}
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5 flex items-center justify-between">
+                      <span>Supplier USD</span>
+                      <span className="text-[9px] text-slate-400 font-normal">From Payments</span>
+                    </label>
+                    {numField('Supplier Payments USD', paymentsUsd, setPaymentsUsd, '$', false, true)}
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Credit Card USD</label>
                     {numField('Credit Card USD', creditCardUsd, setCreditCardUsd, '$')}
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Cash Out USD</label>
-                    {numField('Cash Out USD', cashOutUsd, setCashOutUsd, '$')}
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5 flex items-center justify-between">
+                      <span>Cash Out USD</span>
+                      <span className="text-[9px] text-slate-400 font-normal">From Payments</span>
+                    </label>
+                    {numField('Cash Out USD', cashOutUsd, setCashOutUsd, '$', false, true)}
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Supplier LBP</label>
-                    {numField('Supplier Payments LBP', paymentsLbp, setPaymentsLbp, 'LBP')}
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5 flex items-center justify-between">
+                      <span>Supplier LBP</span>
+                      <span className="text-[9px] text-slate-400 font-normal">From Payments</span>
+                    </label>
+                    {numField('Supplier Payments LBP', paymentsLbp, setPaymentsLbp, 'LBP', false, true)}
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Credit Card LBP</label>
                     {numField('Credit Card LBP', creditCardLbp, setCreditCardLbp, 'LBP')}
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Cash Out LBP</label>
-                    {numField('Cash Out LBP', cashOutLbp, setCashOutLbp, 'LBP')}
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5 flex items-center justify-between">
+                      <span>Cash Out LBP</span>
+                      <span className="text-[9px] text-slate-400 font-normal">From Payments</span>
+                    </label>
+                    {numField('Cash Out LBP', cashOutLbp, setCashOutLbp, 'LBP', false, true)}
                   </div>
                 </div>
               </div>
