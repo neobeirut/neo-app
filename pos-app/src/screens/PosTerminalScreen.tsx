@@ -26,6 +26,7 @@ import {
 import { usePosShift } from "../pos/hooks/usePosShift";
 import { OpenShiftModal } from "../pos/components/OpenShiftModal";
 import { CloseShiftModal } from "../pos/components/CloseShiftModal";
+import { ShiftDrawerModal } from "../pos/components/ShiftDrawerModal";
 import { OverdueShiftModal } from "../pos/components/OverdueShiftModal";
 import { ManagerHeldShiftsModal } from "../pos/components/ManagerHeldShiftsModal";
 import type { ShiftCashRecord } from "../pos/services/shiftCashBridge";
@@ -657,6 +658,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   );
 
   const [auditShiftTarget, setAuditShiftTarget] = useState<ShiftCashRecord | null>(null);
+  const [isShiftDrawerModalOpen, setIsShiftDrawerModalOpen] = useState(false);
   const [isDailyPaymentsModalOpen, setIsDailyPaymentsModalOpen] = useState(false);
   const [isSupplierInvoicesModalOpen, setIsSupplierInvoicesModalOpen] = useState(false);
   const [isConceptCashModalOpen, setIsConceptCashModalOpen] = useState(false);
@@ -8317,6 +8319,21 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         prefillSource={shiftEligibility.prefillSource}
       />
 
+      {/* SHIFT & CASH DRAWER HUB (Cash In, Cash Out, Drawer Transactions & Close Shift) */}
+      <ShiftDrawerModal
+        isOpen={isShiftDrawerModalOpen && Boolean(activeShift)}
+        onClose={() => setIsShiftDrawerModalOpen(false)}
+        branchName={commerceBranchLink?.flow_branch_name || user?.branch || "Cloud Kitchen"}
+        cashierName={activeCashier?.name || user?.name || "Cashier"}
+        activeShift={activeShift}
+        currentRate={currentRate}
+        onOpenCloseShift={() => {
+          setIsShiftDrawerModalOpen(false);
+          setIsCloseShiftModalOpen(true);
+        }}
+        restaurantId={currentRestaurantId}
+      />
+
       {/* PHASE 6 CLOSE SHIFT CASH MODAL — only mount when shift data is available */}
       {(isCloseShiftModalOpen && (auditShiftTarget || activeShift)) && (
         <CloseShiftModal
@@ -8770,14 +8787,14 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                   if (!activeShift) {
                     setIsOpenShiftModalOpen(true);
                   } else {
-                    setIsCloseShiftModalOpen(true);
+                    setIsShiftDrawerModalOpen(true);
                   }
                 }}
                 className="p-3 rounded-2xl bg-white hover:bg-slate-50 border border-slate-200 flex flex-col items-center justify-center gap-1 text-center transition active:scale-95 group cursor-pointer shadow-xs"
               >
                 <span className="text-2xl group-hover:scale-110 transition-transform">💼</span>
                 <span className="font-extrabold text-xs text-slate-800 group-hover:text-slate-950">Shift / Drawer</span>
-                <span className="text-[10px] text-slate-500">{activeShift ? 'Close / X-Report' : 'Open Shift Float'}</span>
+                <span className="text-[10px] text-slate-500">{activeShift ? 'Cash In/Out & Close' : 'Open Shift Float'}</span>
               </button>
 
               {/* Held Shifts Audit (Manager) */}

@@ -23,6 +23,7 @@ import {
   printShiftReport
 } from '../services/shiftReconciliationService';
 import type { ShiftReconciliationSummary, BranchReconSettings } from '../services/shiftReconciliationService';
+import { CashInOutModal } from './CashInOutModal';
 import { X, RefreshCw, Calculator, DollarSign, ShieldCheck, Check, AlertTriangle, Lock, PauseCircle } from 'lucide-react';
 import { api } from '../../api/client';
 import { supabase, getGlobalRestaurantId } from '../../api/supabase';
@@ -229,6 +230,7 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
   const [isFinalizing, setIsFinalizing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [cashFlowMessage, setCashFlowMessage] = useState<string | null>(null);
+  const [cashInOutModalMode, setCashInOutModalMode] = useState<'CashIn' | 'CashOut' | null>(null);
 
   // NumPad State
   const [numpadField, setNumpadField] = useState<{ label: string; value: string; setter: (v: string) => void } | null>(null);
@@ -1594,8 +1596,18 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
 
               {/* CARD 2: OPENING & CASH IN */}
               <div className="bg-slate-50 border border-slate-200 rounded-2xl p-2.5 space-y-1.5">
-                <div className="text-[11px] font-black text-slate-800 uppercase tracking-wider">
-                  1. Opening Cash Float & Cash In
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-black text-slate-800 uppercase tracking-wider">
+                    1. Opening Cash Float & Cash In
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setCashInOutModalMode('CashIn')}
+                    className="px-2 py-0.5 rounded-lg text-[10px] font-black bg-emerald-100 hover:bg-emerald-200 text-emerald-800 border border-emerald-300 transition cursor-pointer shadow-2xs flex items-center gap-1"
+                    title="Add Cash In to drawer & Daily Payments"
+                  >
+                    <span>+ Cash In</span>
+                  </button>
                 </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -1630,7 +1642,17 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
                   <span className="text-[11px] font-black text-slate-800 uppercase tracking-wider">
                     2. Payments & Outflows
                   </span>
-                  <span className="text-[9px] text-slate-400">From Daily Payments & Tenders</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[9px] text-slate-400 hidden sm:inline">From Daily Payments & Tenders</span>
+                    <button
+                      type="button"
+                      onClick={() => setCashInOutModalMode('CashOut')}
+                      className="px-2 py-0.5 rounded-lg text-[10px] font-black bg-rose-100 hover:bg-rose-200 text-rose-800 border border-rose-300 transition cursor-pointer shadow-2xs flex items-center gap-1"
+                      title="Add Cash Out from drawer & Daily Payments"
+                    >
+                      <span>- Cash Out</span>
+                    </button>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -2231,6 +2253,21 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
           </div>
         </div>
       )}
+
+      {/* QUICK CASH IN / CASH OUT DIALOG */}
+      <CashInOutModal
+        isOpen={Boolean(cashInOutModalMode)}
+        initialType={cashInOutModalMode || 'CashIn'}
+        onClose={() => setCashInOutModalMode(null)}
+        onSuccess={async () => {
+          await handleFetchCashFlow();
+        }}
+        branchName={branchName}
+        shiftName={shiftType}
+        date={date}
+        cashierName={cashierName}
+        restaurantId={s.concept_id}
+      />
 
     </div>
   );
