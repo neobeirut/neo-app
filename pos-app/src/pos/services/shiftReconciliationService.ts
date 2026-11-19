@@ -92,8 +92,8 @@ export interface BranchReconSettings {
  */
 export async function getBranchReconSettings(branchIdentifier?: string): Promise<BranchReconSettings> {
   const defaults: BranchReconSettings = {
-    allowed_usd_variance: 2.0,
-    allowed_lbp_variance: 100000,
+    allowed_usd_variance: 5.0,
+    allowed_lbp_variance: 450000,
     blind_cash_close_enabled: false,
     denomination_helper_enabled: true
   };
@@ -111,8 +111,8 @@ export async function getBranchReconSettings(branchIdentifier?: string): Promise
     const { data } = await query.limit(1);
     if (data && data.length > 0) {
       return {
-        allowed_usd_variance: data[0].allowed_usd_variance != null ? Number(data[0].allowed_usd_variance) : 2.0,
-        allowed_lbp_variance: data[0].allowed_lbp_variance != null ? Number(data[0].allowed_lbp_variance) : 100000,
+        allowed_usd_variance: data[0].allowed_usd_variance != null ? Number(data[0].allowed_usd_variance) : 5.0,
+        allowed_lbp_variance: data[0].allowed_lbp_variance != null ? Number(data[0].allowed_lbp_variance) : 450000,
         blind_cash_close_enabled: Boolean(data[0].blind_cash_close_enabled),
         denomination_helper_enabled: data[0].denomination_helper_enabled != null ? Boolean(data[0].denomination_helper_enabled) : true
       };

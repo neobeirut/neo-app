@@ -117,8 +117,8 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
   const [isHolding, setIsHolding] = useState(false);
   const [reconData, setReconData] = useState<ShiftReconciliationSummary | null>(null);
   const [branchSettings, setBranchSettings] = useState<BranchReconSettings>({
-    allowed_usd_variance: 2.0,
-    allowed_lbp_variance: 100000,
+    allowed_usd_variance: 5.0,
+    allowed_lbp_variance: 450000,
     blind_cash_close_enabled: false,
     denomination_helper_enabled: true
   });
@@ -894,7 +894,7 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
   // Manager Approval Check based on actual vs expected difference
   const varianceCheck = useMemo(() => {
     const absDiffUsd = Math.abs(differenceUsd);
-    const usdLimit = branchSettings.allowed_usd_variance ?? 2.0;
+    const usdLimit = branchSettings.allowed_usd_variance ?? 5.0;
     const isExceeded = absDiffUsd > usdLimit;
     return {
       exceeded: isExceeded,
@@ -1788,7 +1788,7 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
               <div className="px-3.5 py-2.5 bg-amber-50 border-2 border-amber-300 rounded-2xl flex items-center justify-between gap-3 shrink-0 shadow-2xs">
                 <div className="flex items-center gap-2 text-amber-900 font-black text-xs shrink-0">
                   <ShieldCheck size={16} className="text-amber-700" />
-                  <span>Manager Approval (Variance &gt; ${branchSettings.allowed_usd_variance || 2.00})</span>
+                  <span>Manager Approval (Variance &gt; ${branchSettings.allowed_usd_variance ?? 5.00})</span>
                 </div>
 
                 <div className="flex items-center gap-2 flex-1 justify-end">
