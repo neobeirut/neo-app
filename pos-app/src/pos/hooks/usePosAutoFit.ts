@@ -36,54 +36,85 @@ export function usePosAutoFit(options: UsePosAutoFitOptions = {}): UsePosAutoFit
     height: typeof window !== 'undefined' ? window.innerHeight : baseHeight,
   }));
 
-  // Debounced window resize handler — NEVER listens to visualViewport to prevent Chrome zoom layout loops
+  const [isPortrait, setIsPortrait] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return (
+      (typeof window.matchMedia === 'function' && window.matchMedia('(orientation: portrait)').matches) ||
+      window.innerHeight > window.innerWidth
+    );
+  });
+
+  // Fast & responsive orientation/resize handler with Android Chrome transition support
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const handleResize = () => {
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(() => {
-        const curW = window.innerWidth;
-        const curH = window.innerHeight;
-        setViewport(prev => {
-          if (Math.abs(prev.width - curW) < 6 && Math.abs(prev.height - curH) < 6) {
-            return prev;
-          }
-          return { width: curW, height: curH };
-        });
-      }, 100);
+    const updateMetrics = () => {
+      const curW = window.innerWidth;
+      const curH = window.innerHeight;
+      const portrait =
+        (typeof window.matchMedia === 'function' && window.matchMedia('(orientation: portrait)').matches) ||
+        curH > curW;
+
+      setIsPortrait(portrait);
+      setViewport(prev => {
+        if (Math.abs(prev.width - curW) < 2 && Math.abs(prev.height - curH) < 2) {
+          return prev;
+        }
+        return { width: curW, height: curH };
+      });
     };
 
-    window.addEventListener('resize', handleResize, { passive: true });
-    window.addEventListener('orientationchange', handleResize, { passive: true });
+    let mql: MediaQueryList | null = null;
+    try {
+      mql = window.matchMedia('(orientation: portrait)');
+      if (mql.addEventListener) {
+        mql.addEventListener('change', updateMetrics);
+      } else if ((mql as any).addListener) {
+        (mql as any).addListener(updateMetrics);
+      }
+    } catch {
+      // ignore
+    }
+
+    const handleOrientationChange = () => {
+      updateMetrics();
+      // Android Chrome updates innerWidth/innerHeight asynchronously during orientation transition
+      setTimeout(updateMetrics, 100);
+      setTimeout(updateMetrics, 250);
+      setTimeout(updateMetrics, 500);
+    };
+
+    window.addEventListener('resize', updateMetrics, { passive: true });
+    window.addEventListener('orientationchange', handleOrientationChange, { passive: true });
 
     return () => {
-      if (timer) clearTimeout(timer);
-      window.removeEventListener('resize', handleResize);
-      window.removeEventListener('orientationchange', handleResize);
+      if (mql) {
+        if (mql.removeEventListener) {
+          mql.removeEventListener('change', updateMetrics);
+        } else if ((mql as any).removeListener) {
+          (mql as any).removeListener(updateMetrics);
+        }
+      }
+      window.removeEventListener('resize', updateMetrics);
+      window.removeEventListener('orientationchange', handleOrientationChange);
     };
   }, []);
-
-  const isPortrait = viewport.height > viewport.width;
 
   const scale = useMemo(() => {
     if (!isAutoFit) return 1.0;
 
-    const effectiveBaseW = isPortrait ? (options.baseHeight || 768) : baseWidth;
+    const effectiveBaseW = isPortrait ? 768 : baseWidth;
     const effectiveBaseH = isPortrait ? 1024 : baseHeight;
 
     const scaleW = viewport.width / effectiveBaseW;
     const scaleH = viewport.height / effectiveBaseH;
     const calculated = Math.min(scaleW, scaleH);
 
-    // If calculated scale is close to 1.0 (>= 0.98), snap to 1.0
     if (calculated >= 0.98) return 1.0;
 
     const clamped = Math.min(maxScale, Math.max(minScale, calculated));
-    // Round to 2 decimal places for rock-solid stability
     return Math.round(clamped * 100) / 100;
-  }, [isAutoFit, viewport.width, viewport.height, baseWidth, baseHeight, minScale, maxScale, isPortrait, options.baseHeight]);
+  }, [isAutoFit, viewport.width, viewport.height, baseWidth, baseHeight, minScale, maxScale, isPortrait]);
 
   const toggleAutoFit = useCallback(() => {
     setIsAutoFitState(prev => {
@@ -106,42 +137,16 @@ export function usePosAutoFit(options: UsePosAutoFitOptions = {}): UsePosAutoFit
     }
   }, [storageKey]);
 
+  // Rock-solid 100% viewport container without artificial width bloat (prevents right-edge cart clipping on tablets)
   const containerStyle = useMemo<React.CSSProperties>(() => {
-    if (!isAutoFit || scale >= 0.98) {
-      return {
-        width: '100%',
-        height: '100dvh',
-        maxWidth: '100%',
-        maxHeight: '100dvh',
-        overflow: 'hidden',
-      };
-    }
-
-    const zoomFactor = scale;
-    const zoomPercent = `${Math.round((100 / zoomFactor) * 1000) / 1000}%`;
-
-    const supportsZoom = typeof CSS !== 'undefined' && CSS.supports && CSS.supports('zoom', '1');
-    if (supportsZoom) {
-      return {
-        zoom: zoomFactor,
-        width: zoomPercent,
-        height: zoomPercent,
-        maxWidth: zoomPercent,
-        maxHeight: zoomPercent,
-        overflow: 'hidden',
-      } as any;
-    }
-
     return {
-      transform: `scale(${zoomFactor})`,
-      transformOrigin: 'top left',
-      width: zoomPercent,
-      height: zoomPercent,
-      maxWidth: zoomPercent,
-      maxHeight: zoomPercent,
+      width: '100%',
+      height: '100dvh',
+      maxWidth: '100%',
+      maxHeight: '100dvh',
       overflow: 'hidden',
     };
-  }, [isAutoFit, scale]);
+  }, []);
 
   return {
     scale,

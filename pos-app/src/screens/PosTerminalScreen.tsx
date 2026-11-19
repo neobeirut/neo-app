@@ -5293,7 +5293,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       {/* UNIFIED TOP POS HEADER: EXACT SAME ACROSS SELL, TABLES, AND ORDERS */}
       <div className="flex items-stretch border-b border-[#E0E3DF] flex-shrink-0 bg-white w-full overflow-hidden">
         {/* LEFT SECTION (65% Width) */}
-        <div className={`${isPortrait ? 'w-[58%]' : 'w-[65%]'} min-w-0 px-1.5 sm:px-3 py-1.5 sm:py-2 bg-white border-r border-[#E0E3DF] flex items-center justify-between gap-1 sm:gap-2 min-h-[50px] sm:min-h-[54px] overflow-hidden`}>
+        <div className={`${isPortrait ? 'w-[56%]' : 'w-[65%]'} min-w-0 px-1.5 sm:px-3 py-1.5 sm:py-2 bg-white border-r border-[#E0E3DF] flex items-center justify-between gap-1 sm:gap-2 min-h-[50px] sm:min-h-[54px] overflow-hidden`}>
           {/* LEFT: Concept Switcher THEN Prominently Highlighted Main Menu Breadcrumb */}
           <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar min-w-0">
             {/* Concept Workspace Switcher (Positioned on the FAR LEFT before Main Menu) */}
@@ -5458,7 +5458,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         </div>
 
         {/* RIGHT SECTION (35% Width): PRIMARY POS MODE BUTTONS */}
-        <div className={`${isPortrait ? 'w-[42%]' : 'w-[35%]'} min-w-0 p-1 sm:p-2 bg-white flex items-center min-h-[50px] sm:min-h-[54px] border-l border-[#E0E3DF] flex-shrink-0`}>
+        <div className={`${isPortrait ? 'w-[44%]' : 'w-[35%]'} min-w-0 p-1 sm:p-2 bg-white flex items-center min-h-[50px] sm:min-h-[54px] border-l border-[#E0E3DF] flex-shrink-0`}>
           <div className="grid grid-cols-3 gap-1 sm:gap-2 w-full min-w-0">
             {isRestaurantMode && (
               <button
@@ -5857,7 +5857,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
             {/* MAIN WORKSPACE: MATRIX ON LEFT & CART ON RIGHT */}
             <div className="flex-1 flex overflow-hidden min-h-0 bg-[#F5F6F4]">
               {/* LEFT AREA (65% Width): Categories Bar + Product Grid */}
-              <div className={`${isPortrait ? 'w-[58%]' : 'w-[65%]'} min-w-0 flex flex-col h-full overflow-hidden border-r border-[#E0E3DF] bg-[#F5F6F4]`}>
+              <div className={`${isPortrait ? 'w-[56%]' : 'w-[65%]'} min-w-0 flex flex-col h-full overflow-hidden border-r border-[#E0E3DF] bg-[#F5F6F4]`}>
               {/* FLOW UPSELL RECOMMENDATIONS */}
               <UpsellRecommendationBar
                 upsells={activeUpsells}
@@ -6110,9 +6110,9 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
             </div>
 
         {/* RIGHT PANEL: TICKET CART & CHECKOUT (35% Width) */}
-        <div className={`${isPortrait ? 'w-[42%]' : 'w-[35%]'} min-w-0 flex flex-col h-full bg-white border-l border-[#E0E3DF] overflow-hidden shadow-lg`}>
+        <div className={`${isPortrait ? 'w-[44%]' : 'w-[35%]'} min-w-0 flex flex-col h-full bg-white border-l border-[#E0E3DF] overflow-hidden shadow-lg`}>
           {/* TICKET HEADER & UNIFIED SMART CHANNEL BAR */}
-          <div className="p-3 border-b border-[#E0E3DF] space-y-2 bg-white flex-shrink-0">
+          <div className="p-2 sm:p-3 border-b border-[#E0E3DF] space-y-1.5 sm:space-y-2 bg-white flex-shrink-0 min-w-0">
 
             {(editingOrderId || activeTableContext) && (
               <div className="flex justify-end px-3 py-1.5">
@@ -6124,8 +6124,8 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
             )}
 
             {/* TICKET ACTIONS & STATUS HEADER BAR */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-1 min-w-0">
+              <div className="flex items-center gap-1.5 shrink-0">
                 <span className="text-xs font-black uppercase text-[#242B28] tracking-wider">
                   Current Order
                 </span>
@@ -6139,10 +6139,10 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                 )}
               </div>
 
-              <div className="flex items-center gap-1.5">
+              <div className="flex flex-wrap items-center gap-1 min-w-0">
                 {/* Table # and Seats info — shown when a table context is active */}
                 {activeTableContext && (
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex flex-wrap items-center gap-1 min-w-0">
                     <span style={{ color: primaryColor }} className="font-black text-xs flex items-center gap-1">
                       🪑 <span>{activeTableContext.tableCode ? (
                         activeTableContext.tableCode.toLowerCase().startsWith('table')
@@ -6157,13 +6157,13 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                     ) : null}
                     {isCurrentTableBillRequested && (
                       <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 text-[10px] font-black border border-amber-300 animate-pulse">
-                        🧾 Bill Printed
+                        🧾 Bill
                       </span>
                     )}
                     <button
                       type="button"
                       onClick={() => setIsTransferModalOpen(true)}
-                      className="px-2 py-0.5 rounded-lg bg-sky-50 hover:bg-sky-100 text-sky-900 text-[10px] font-bold border border-sky-300 flex items-center gap-1 transition active:scale-95 cursor-pointer ml-1"
+                      className="px-1.5 py-0.5 rounded-lg bg-sky-50 hover:bg-sky-100 text-sky-900 text-[10px] font-bold border border-sky-300 flex items-center gap-0.5 transition active:scale-95 cursor-pointer shrink-0"
                       title="Transfer Table or Move Selected Items"
                     >
                       <span>🔄</span>
@@ -6182,7 +6182,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                             }));
                           setTicketItems(reverted);
                         }}
-                        className="px-2 py-0.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 text-[10px] font-black border border-rose-300 flex items-center gap-1 transition active:scale-95 cursor-pointer ml-1"
+                        className="px-1.5 py-0.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 text-[10px] font-black border border-rose-300 flex items-center gap-0.5 transition active:scale-95 cursor-pointer shrink-0"
                         title="Discard unplaced draft quantity changes and new items"
                       >
                         <span>✕</span>
@@ -6198,7 +6198,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                         setPosActiveView('tables');
                         refreshFloorTables().catch(() => {});
                       }}
-                      className="px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold border border-slate-300 flex items-center gap-1 transition active:scale-95 cursor-pointer ml-1"
+                      className="px-1.5 py-0.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold border border-slate-300 flex items-center gap-0.5 transition active:scale-95 cursor-pointer shrink-0"
                       title="Close table editor and view Floor Plan"
                     >
                       <span>Exit</span>
@@ -6568,9 +6568,9 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
             {/* Discount & Delivery Fee Quick Inputs */}
             <div className="space-y-1.5 text-xs">
             {/* 2-COLUMN CONTROLS & CALCULATIONS GRID */}
-            <div className="grid grid-cols-2 gap-2.5 pt-1.5 border-t border-[#E0E3DF]">
+            <div className="grid grid-cols-2 gap-1.5 sm:gap-2.5 pt-1.5 border-t border-[#E0E3DF] min-w-0">
               {/* LEFT SIDE: Discount & Delivery Fee Controls */}
-              <div className="space-y-2 text-xs pr-2 border-r border-[#E0E3DF] flex flex-col justify-between">
+              <div className="space-y-1.5 sm:space-y-2 text-xs pr-1.5 sm:pr-2 border-r border-[#E0E3DF] flex flex-col justify-between min-w-0 overflow-hidden">
                 {/* Discount Control (Matching OVRLOAD Reference POS) */}
                 <div className="space-y-1">
                   <div className="flex items-center justify-between">
@@ -6638,7 +6638,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                         <select
                           value={selectValue}
                           onChange={(e) => setDeliveryFee(parseFloat(e.target.value) || 0)}
-                          className="bg-[#F5F6F4] border border-[#E0E3DF] text-[#242B28] text-[11px] font-extrabold rounded-lg px-2 py-1 outline-none flex-1 truncate"
+                          className="bg-[#F5F6F4] border border-[#E0E3DF] text-[#242B28] text-[10px] sm:text-[11px] font-extrabold rounded-lg px-1.5 sm:px-2 py-1 outline-none flex-1 min-w-0 truncate"
                         >
                           <option value={0}>$0.00 (Free Delivery)</option>
                           {deliveryPricingRules.map((r: any) => {
@@ -6679,7 +6679,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
               </div>
 
               {/* RIGHT SIDE: Subtotal, Discount, Delivery Fee, TOTAL */}
-              <div className="space-y-1 text-xs font-semibold text-[#5E6964] flex flex-col justify-between">
+              <div className="space-y-1 text-xs font-semibold text-[#5E6964] flex flex-col justify-between min-w-0 overflow-hidden">
                 <div className="space-y-1">
                   <div className="flex justify-between">
                     <span className="text-[#5E6964]">Subtotal</span>
@@ -6709,11 +6709,11 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
 
                 <div className="flex items-center justify-between pt-1 border-t border-[#E0E3DF]">
                   <span className="font-extrabold text-xs uppercase text-[#242B28] tracking-wider">TOTAL</span>
-                  <div className="text-right">
-                    <span className="font-black text-xl" style={{ color: primaryColor }}>
+                  <div className="text-right min-w-0">
+                    <span className="font-black text-lg sm:text-xl truncate block" style={{ color: primaryColor }}>
                       ${total.toFixed(2)}
                     </span>
-                    <span className="text-[11px] font-bold text-[#5E6964] block -mt-0.5">
+                    <span className="text-[10px] sm:text-[11px] font-bold text-[#5E6964] block -mt-0.5 truncate">
                       ≈ {Math.round(total * (exchangeRate || 90000)).toLocaleString()} LBP
                     </span>
                   </div>

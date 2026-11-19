@@ -51,7 +51,7 @@ import { TableTransferModal } from '../pos/components/TableTransferModal';
 import { PosModifierModal, partitionCustomizations } from '../pos/components/PosModifierModal';
 import { usePos86 } from '../pos/hooks/usePos86';
 import { Pos86Modal } from '../pos/components/Pos86Modal';
-import { KNOWN_CONCEPT_PROFILES } from '../pos/services/posWorkspaceService';
+import { KNOWN_CONCEPT_PROFILES, posWorkspaceService } from '../pos/services/posWorkspaceService';
 import {
   Utensils,
   Lock,
@@ -69,6 +69,8 @@ import {
   Maximize,
   Minimize,
   ChevronLeft,
+  ChevronUp,
+  ChevronDown,
   MoveRight,
   Smartphone
 } from 'lucide-react';
@@ -93,6 +95,7 @@ interface TicketItem {
   isOrdered?: boolean;
   item_added_by?: string;
   item_added_by_id?: string;
+  concept_id?: string;
 }
 
 interface ActiveTableContext {
@@ -105,6 +108,7 @@ interface ActiveTableContext {
   tableId?: string | null;
   isNewlyCreated?: boolean;
   isExistingOccupied?: boolean;
+  conceptId?: string | null;
 }
 
 export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiterScreenProps) {
@@ -241,6 +245,11 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
 
   // Active Concept Context (Unified with PosTerminalScreen)
   const activeConceptId = useMemo(() => {
+    if (activeTableContext?.conceptId) return activeTableContext.conceptId;
+    try {
+      const ws = posWorkspaceService.getInitialWorkspaceState(currentUser);
+      if (ws?.activeConcept?.id) return ws.activeConcept.id;
+    } catch {}
     try {
       const raw = currentUser?.concept_id || currentUser?.concept;
       if (raw) {
@@ -262,7 +271,7 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
       }
     } catch {}
     return '00000000-0000-0000-0000-000000000001';
-  }, [currentUser]);
+  }, [currentUser, activeTableContext?.conceptId]);
 
   // FLOW 86 Dynamic Availability Hook
   const { isProduct86d, isCustomization86d, active86Items = [], refetch86 } = usePos86(branchName, activeConceptId);
@@ -562,6 +571,7 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
         if (ord.id && !tableCtx.orderId) {
           tableCtx.orderId = ord.id;
           tableCtx.isExistingOccupied = true;
+          if (ord.concept_id) tableCtx.conceptId = ord.concept_id;
           setActiveTableContext({ ...tableCtx });
         }
         const rawItems = ord.items || ord.pos_order_items || [];
@@ -705,6 +715,83 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
     };
 
     setTicketItems(prev => [...prev, holdLine]);
+  };
+
+  // Remove item from basket
+  const handleRemoveItem = (index: number) => {
+    const item = ticketItems[index];
+    if (!item) return;
+
+    if (item.isHoldSeparator) {
+      setTicketItems(prev => prev.filter((_, i) => i !== index));
+      return;
+    }
+
+    const originalQty = Number(item.originalQty !== undefined ? item.originalQty : (item.isOrdered && activeTableContext?.orderId ? item.qty : 0));
+
+    // If it's a draft item (not yet sent to kitchen) or newly added quantity:
+    if (!item.isOrdered || !activeTableContext?.orderId || originalQty === 0) {
+      setTicketItems(prev => prev.filter((_, i) => i !== index));
+      setActiveQtyEditorLineId(null);
+      return;
+    }
+
+    // If already placed on table, require void permission or supervisor auth
+    const canVoid = hasPosPermission(currentUser, 'void_sent_items');
+    if (!canVoid) {
+      setSupervisorAuthRequest({
+        actionKey: 'void_sent_items',
+        actionTitle: `Void Sent Item: ${item.name}`,
+        tableNumber: activeTableContext?.tableCode,
+        orderId: activeTableContext?.orderId,
+        previousValue: item.qty,
+        newValue: 0,
+        requireReason: true,
+        defaultReason: 'Customer changed mind',
+        onAuthorized: () => {
+          setTicketItems(prev => prev.filter((_, i) => i !== index));
+          setActiveQtyEditorLineId(null);
+          showNotification(`Voided item: ${item.name}`, 'info');
+        }
+      });
+    } else {
+      if (window.confirm(`Void item "${item.name}" from table?`)) {
+        setTicketItems(prev => prev.filter((_, i) => i !== index));
+        setActiveQtyEditorLineId(null);
+        showNotification(`Voided item: ${item.name}`, 'info');
+      }
+    }
+  };
+
+  // Direct numeric quantity entry
+  const handleSetQtyDirect = (index: number) => {
+    const item = ticketItems[index];
+    if (!item) return;
+    const val = window.prompt(`Enter quantity for "${item.name}":`, String(item.qty));
+    if (val === null) return;
+    const parsed = parseInt(val.trim(), 10);
+    if (isNaN(parsed) || parsed < 0) return;
+    if (parsed === 0) {
+      handleRemoveItem(index);
+      return;
+    }
+    const diff = parsed - item.qty;
+    if (diff !== 0) {
+      handleUpdateQty(index, diff);
+    }
+  };
+
+  // Reorder items / Move hold up & down
+  const handleMoveItem = (index: number, direction: -1 | 1) => {
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= ticketItems.length) return;
+    setTicketItems(prev => {
+      const copy = [...prev];
+      const temp = copy[index];
+      copy[index] = copy[targetIndex];
+      copy[targetIndex] = temp;
+      return copy;
+    });
   };
 
   // Adjust item quantity
@@ -1086,9 +1173,20 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
 
     setIsSubmitting(true);
     try {
+      const calculatedSubtotal = ticketItems.reduce((acc, item) => {
+        const itemTotal = (Number(item.unit_price) || 0) * (Number(item.qty) || 1);
+        const modsTotal = (item.selectedCustomizations || []).reduce((mAcc: number, mod: any) => {
+          return mAcc + (Number(mod.price) || 0) * (Number(item.qty) || 1);
+        }, 0);
+        return acc + itemTotal + modsTotal;
+      }, 0);
+
+      const resolvedConcept = activeTableContext?.conceptId || activeConceptId || '00000000-0000-0000-0000-000000000001';
+
       const orderPayload = {
         branch_id: branchId,
         restaurant_id: restaurantId,
+        concept_id: resolvedConcept,
         orderType: 'dine_in',
         service_type: 'dine_in',
         table_label: activeTableContext?.tableCode,
@@ -1098,11 +1196,12 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
         orderSource: 'POS',
         paymentMethod: 'Cash',
         status: 'held',
-        subtotal: 0,
-        total: 0,
+        subtotal: calculatedSubtotal,
+        total: calculatedSubtotal,
         items: ticketItems.map(item => ({
           line_item_id: item.line_item_id,
           product_id: item.product_id,
+          concept_id: (item as any).concept_id || resolvedConcept,
           name: item.name,
           quantity: item.qty,
           unit_price: item.unit_price,
@@ -1418,16 +1517,7 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
             )}
           </button>
 
-          {/* Quick KDS Button */}
-          <button
-            type="button"
-            onClick={() => { window.location.hash = '#/kds'; }}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#F5F6F4] hover:bg-slate-200 text-[#242B28] border border-[#E0E3DF] text-xs font-bold transition active:scale-95 cursor-pointer"
-            title="View Kitchen Display System (KDS)"
-          >
-            <span>🍳</span>
-            <span className="hidden sm:inline">KDS</span>
-          </button>
+
 
           {/* Quick Lock Button */}
           <button
@@ -1508,7 +1598,7 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
           /* ── VIEW 2: TABLE TICKET & POS SCREEN MATRIX ── */
           <div className="flex-1 flex h-full overflow-hidden">
             {/* ── LEFT PANEL (Adapts to Tablet Direction): Screen Matrix ── */}
-            <div className={`${isPortrait ? 'w-[58%]' : 'w-[65%]'} flex flex-col h-full bg-[#F5F6F4] border-r border-[#E0E3DF] transition-all duration-150`}>
+            <div className={`${isPortrait ? 'w-[56%]' : 'w-[65%]'} flex flex-col h-full bg-[#F5F6F4] border-r border-[#E0E3DF] transition-all duration-150`}>
               {/* Screen Matrix Header & Breadcrumb */}
               <div className="h-12 bg-white border-b border-[#E0E3DF] px-3.5 flex items-center justify-between shrink-0 shadow-sm">
                 <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
@@ -1640,7 +1730,7 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
             </div>
 
             {/* ── RIGHT PANEL (Adapts to Tablet Direction): Order Panel #FFFFFF ── */}
-            <div className={`${isPortrait ? 'w-[42%]' : 'w-[35%]'} flex flex-col h-full bg-white border-l border-[#E0E3DF] transition-all duration-150 shadow-md`}>
+            <div className={`${isPortrait ? 'w-[44%]' : 'w-[35%]'} flex flex-col h-full bg-white border-l border-[#E0E3DF] transition-all duration-150 shadow-md`}>
               {/* Ticket Top: Table & Server info + Hold/Fire controls */}
               <div className="p-3 bg-white border-b border-[#E0E3DF] shrink-0">
                 <div className="flex items-center justify-between mb-2">
@@ -1663,14 +1753,45 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
 
                 {/* Course Break, Fire & Transfer Actions */}
                 <div className="grid grid-cols-3 gap-1.5">
-                  <button
-                    type="button"
-                    onClick={handleAddHoldSeparator}
-                    className="flex items-center justify-center gap-1 py-1.5 px-1.5 rounded-xl bg-[#F5F6F4] hover:bg-slate-200 text-[#242B28] border border-[#E0E3DF] text-[11px] font-bold transition active:scale-95 cursor-pointer"
-                  >
-                    <Layers className="w-3 h-3 text-amber-600" />
-                    <span>+ Hold</span>
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={handleAddHoldSeparator}
+                      className="flex-1 flex items-center justify-center gap-1 py-1.5 px-1 rounded-xl bg-[#F5F6F4] hover:bg-slate-200 text-[#242B28] border border-[#E0E3DF] text-[11px] font-bold transition active:scale-95 cursor-pointer min-w-0"
+                      title="Insert Hold separator between courses"
+                    >
+                      <Layers className="w-3 h-3 text-amber-600 shrink-0" />
+                      <span className="truncate">+ Hold</span>
+                    </button>
+                    {ticketItems.some(it => it.isHoldSeparator) && (
+                      <div className="flex items-center gap-0.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const hIdx = ticketItems.findIndex(it => it.isHoldSeparator);
+                            if (hIdx > 0) handleMoveItem(hIdx, -1);
+                          }}
+                          disabled={ticketItems.findIndex(it => it.isHoldSeparator) <= 0}
+                          className="p-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 disabled:opacity-30 disabled:cursor-not-allowed transition cursor-pointer"
+                          title="Move Hold Up"
+                        >
+                          <ChevronUp className="w-3 h-3" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const hIdx = ticketItems.findIndex(it => it.isHoldSeparator);
+                            if (hIdx >= 0 && hIdx < ticketItems.length - 1) handleMoveItem(hIdx, 1);
+                          }}
+                          disabled={ticketItems.findIndex(it => it.isHoldSeparator) === ticketItems.length - 1}
+                          className="p-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 disabled:opacity-30 disabled:cursor-not-allowed transition cursor-pointer"
+                          title="Move Hold Down"
+                        >
+                          <ChevronDown className="w-3 h-3" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
                   <button
                     type="button"
                     onClick={handleFireCourse}
@@ -1710,16 +1831,39 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
                           className="my-1.5 py-1 px-2.5 rounded-lg bg-amber-50 border border-dashed border-amber-300 flex items-center justify-between text-amber-900 text-[11px] font-bold"
                         >
                           <div className="flex items-center gap-1.5">
-                            <Layers className="w-3 h-3 text-amber-700" />
+                            <Layers className="w-3.5 h-3.5 text-amber-700" />
                             <span>--- ⏸️ HOLD ---</span>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => handleUpdateQty(idx, -1)}
-                            className="p-0.5 text-slate-400 hover:text-rose-600 transition cursor-pointer"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </button>
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => handleMoveItem(idx, -1)}
+                              disabled={idx === 0}
+                              className="px-1.5 py-0.5 rounded bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 text-xs font-black disabled:opacity-30 disabled:cursor-not-allowed transition cursor-pointer flex items-center gap-0.5 shadow-2xs"
+                              title="Move Hold Up"
+                            >
+                              <ChevronUp className="w-3.5 h-3.5" />
+                              <span>Up</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleMoveItem(idx, 1)}
+                              disabled={idx === ticketItems.length - 1}
+                              className="px-1.5 py-0.5 rounded bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 text-xs font-black disabled:opacity-30 disabled:cursor-not-allowed transition cursor-pointer flex items-center gap-0.5 shadow-2xs"
+                              title="Move Hold Down"
+                            >
+                              <ChevronDown className="w-3.5 h-3.5" />
+                              <span>Down</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveItem(idx)}
+                              className="p-1 rounded bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 transition cursor-pointer ml-1"
+                              title="Remove Hold"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
                       );
                     }
@@ -1735,48 +1879,33 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
                             : 'bg-[#F5F6F4] border-[#E0E3DF] hover:border-slate-300'
                         }`}
                       >
-                        {/* Quantity display / Clickable to show +/- stepper */}
-                        <div className="flex items-center shrink-0">
-                          {isSelected ? (
-                            <div
-                              onClick={e => e.stopPropagation()}
-                              className="flex items-center bg-white rounded-lg p-0.5 border border-[#E0E3DF] shadow-inner"
-                            >
-                              <button
-                                type="button"
-                                onClick={() => handleUpdateQty(idx, -1)}
-                                className="w-6 h-6 rounded bg-[#F5F6F4] hover:bg-slate-200 text-[#242B28] font-bold text-xs flex items-center justify-center active:scale-90 transition cursor-pointer border border-[#E0E3DF]"
-                              >
-                                -
-                              </button>
-                              <span
-                                style={{ color: primaryColor }}
-                                className="w-6 text-center font-black text-xs select-none"
-                              >
-                                {item.qty}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => handleUpdateQty(idx, 1)}
-                                className="w-6 h-6 rounded bg-[#F5F6F4] hover:bg-slate-200 text-[#242B28] font-bold text-xs flex items-center justify-center active:scale-90 transition cursor-pointer border border-[#E0E3DF]"
-                              >
-                                +
-                              </button>
-                            </div>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={e => {
-                                e.stopPropagation();
-                                setActiveQtyEditorLineId(item.line_item_id);
-                              }}
-                              style={{ backgroundColor: '#E9F4ED', color: primaryColor, borderColor: `${primaryColor}40` }}
-                              className="px-2 py-0.5 rounded-lg border font-black text-xs min-w-[28px] text-center active:scale-95 transition cursor-pointer"
-                              title="Click to adjust quantity"
-                            >
-                              {item.qty}x
-                            </button>
-                          )}
+                        {/* Quantity Stepper with Direct Tap to Edit */}
+                        <div className="flex items-center bg-white rounded-lg p-0.5 border border-[#E0E3DF] shadow-2xs shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateQty(idx, -1)}
+                            className="w-5 h-5 sm:w-6 sm:h-6 rounded bg-[#F5F6F4] hover:bg-slate-200 text-[#242B28] font-black text-xs flex items-center justify-center active:scale-90 transition cursor-pointer border border-[#E0E3DF]"
+                            title="Decrease quantity"
+                          >
+                            -
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleSetQtyDirect(idx)}
+                            style={{ color: primaryColor }}
+                            className="w-6 sm:w-7 text-center font-black text-xs select-none hover:underline cursor-pointer"
+                            title="Click to type quantity directly"
+                          >
+                            {item.qty}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateQty(idx, 1)}
+                            className="w-5 h-5 sm:w-6 sm:h-6 rounded bg-[#F5F6F4] hover:bg-slate-200 text-[#242B28] font-black text-xs flex items-center justify-center active:scale-90 transition cursor-pointer border border-[#E0E3DF]"
+                            title="Increase quantity"
+                          >
+                            +
+                          </button>
                         </div>
 
                         {/* Item Name & Modifiers (Minimum space, no Draft, no Price) */}
@@ -1837,26 +1966,40 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
                           )}
                         </div>
 
-                        {/* Right: Pen Icon to edit */}
-                        <button
-                          type="button"
-                          onClick={e => {
-                            e.stopPropagation();
-                            const prod = products.find(p => String(p.id) === String(item.product_id)) || {
-                              id: item.product_id,
-                              name: item.name,
-                              unit_price_usd: item.unit_price,
-                              customizations: item.selectedCustomizations || []
-                            };
-                            setModifyingProduct(prod);
-                            setModifyingItemIndex(idx);
-                            setIsModifierModalOpen(true);
-                          }}
-                          className="p-1 rounded-lg text-[#5E6964] hover:text-[#242B28] hover:bg-slate-200 transition active:scale-90 shrink-0 cursor-pointer"
-                          title="Edit modifiers & notes"
-                        >
-                          <Edit3 className="w-3.5 h-3.5" />
-                        </button>
+                        {/* Right: Edit & Remove (Trash) Buttons */}
+                        <div className="flex items-center gap-0.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={e => {
+                              e.stopPropagation();
+                              const prod = products.find(p => String(p.id) === String(item.product_id)) || {
+                                id: item.product_id,
+                                name: item.name,
+                                unit_price_usd: item.unit_price,
+                                customizations: item.selectedCustomizations || []
+                              };
+                              setModifyingProduct(prod);
+                              setModifyingItemIndex(idx);
+                              setIsModifierModalOpen(true);
+                            }}
+                            className="p-1 rounded-lg text-[#5E6964] hover:text-[#242B28] hover:bg-slate-200 transition active:scale-90 cursor-pointer"
+                            title="Edit modifiers & notes"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={e => {
+                              e.stopPropagation();
+                              handleRemoveItem(idx);
+                            }}
+                            className="p-1 rounded-lg text-rose-500 hover:text-rose-700 hover:bg-rose-50 transition active:scale-90 cursor-pointer"
+                            title="Remove item from basket"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
                     );
                   })
@@ -1883,10 +2026,10 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
                     disabled={isSubmitting || ticketItems.length === 0}
                     style={{ backgroundColor: primaryColor, color: primaryText }}
                     className="py-3 px-2 rounded-xl font-black text-xs flex items-center justify-center gap-2 transition active:scale-95 shadow-md disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer hover:opacity-95"
-                    title="Fire round to kitchen and KDS"
+                    title="Send order to kitchen and KDS"
                   >
                     <Send className="w-4 h-4" />
-                    <span className="truncate">Send Kitchen</span>
+                    <span className="truncate">Send Order</span>
                   </button>
                 </div>
               </div>
