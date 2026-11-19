@@ -44,8 +44,6 @@ import {
 } from '../pos/tables';
 import { ThermalReceiptPreviewModal, type ThermalReceiptData } from '../pos/components/ThermalReceiptPreviewModal';
 import { useRestaurantTheme } from '../pos/theme/useRestaurantTheme';
-
-const safeTimeoutSignal = (ms: number) => typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function' ? safeTimeoutSignal(ms) : undefined;
 import PosPinScreen from '../pos/components/PosPinScreen';
 import { TableTransferModal } from '../pos/components/TableTransferModal';
 import { PosModifierModal, partitionCustomizations } from '../pos/components/PosModifierModal';
@@ -75,6 +73,8 @@ import {
   Smartphone
 } from 'lucide-react';
 import { PwaInstallModal } from '../pos/components/PwaInstallModal';
+
+const safeTimeoutSignal = (ms: number) => typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(ms) : undefined;
 
 interface PosWaiterScreenProps {
   user: any;
@@ -116,6 +116,10 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
 
   // Current active staff user on the tablet
   const [currentUser, setCurrentUser] = useState<any>(initialUser);
+
+  // View state: 'floor' | 'ticket' & Active Table Context (declared at top to prevent TDZ ReferenceError)
+  const [view, setView] = useState<'floor' | 'ticket'>('floor');
+  const [activeTableContext, setActiveTableContext] = useState<ActiveTableContext | null>(null);
 
   // Tablet Lock Screen state (Fast Handover between servers)
   const [isLocked, setIsLocked] = useState<boolean>(() => {
@@ -285,9 +289,7 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
     }
   }, [restaurantId]);
 
-  // View state: 'floor' | 'ticket'
-  const [view, setView] = useState<'floor' | 'ticket'>('floor');
-  const [activeTableContext, setActiveTableContext] = useState<ActiveTableContext | null>(null);
+
 
   // Catalog & Screens State (matching POS Terminal matrix)
   const [categories, setCategories] = useState<PosCategory[]>([]);
