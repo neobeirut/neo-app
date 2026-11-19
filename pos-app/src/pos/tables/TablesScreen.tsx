@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import type { FloorArea, PosTable, OrderCheck } from './types';
 import { 
   loadFloorState, 
+  getCachedFloorState,
   openTableSession, 
   transferTable, 
   mergeTables, 
@@ -63,6 +64,7 @@ interface TablesScreenProps {
   isShiftOpen?: boolean;
   onOpenShift?: () => void;
   onOpenTablesCountChange?: (count: number) => void;
+  onFloorTablesLoaded?: (tables: PosTable[]) => void;
 }
 
 export const TablesScreen: React.FC<TablesScreenProps> = ({
@@ -82,16 +84,18 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
   isTableAdmin, getFireState, onFireOrder,
   isShiftOpen,
   onOpenShift,
-  onOpenTablesCountChange
+  onOpenTablesCountChange,
+  onFloorTablesLoaded
 }) => {
   const shiftOpen = typeof isShiftOpen === 'boolean' ? isShiftOpen : Boolean(activeShift);
-  const [areas, setAreas] = useState<FloorArea[]>([]);
-  const [tables, setTables] = useState<PosTable[]>(initialTables);
-  const [activeAreaId, setActiveAreaId] = useState<string | null>(null);
+  const cached = getCachedFloorState(branchId);
+  const [areas, setAreas] = useState<FloorArea[]>(cached?.areas || []);
+  const [tables, setTables] = useState<PosTable[]>(initialTables.length > 0 ? initialTables : (cached?.tables || []));
+  const [activeAreaId, setActiveAreaId] = useState<string | null>(cached?.areas?.[0]?.id || null);
   const [viewMode, setViewMode] = useState<'grid' | 'canvas'>('canvas');
   const [mainTab, setMainTab] = useState<'open_tables' | 'floor_plan'>('open_tables');
   const [isEditorOpen, setIsEditorOpen] = useState(false);
-  const [loading, setLoading] = useState(initialTables.length === 0);
+  const [loading, setLoading] = useState(initialTables.length === 0 && (!cached?.tables || cached.tables.length === 0));
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
 
@@ -103,6 +107,7 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
   // Set of recently settled table codes & order IDs for 0ms instant optimistic dismissal
   const settledKeysRef = useRef<Set<string>>(new Set());
   const [settledKeys, setSettledKeys] = useState<Set<string>>(new Set());
+  const isFetchingRef = useRef<boolean>(false);
 
   // Live query for orders to power the Open Tables view (identical to Orders Page Tables tab)
   const { orders, refreshOrders } = useOrders({
@@ -111,11 +116,14 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
     flowBranchId: branchId,
     branchName,
     activeShift,
-    shiftCutoffTime
+    shiftCutoffTime,
+    pollingIntervalMs: 15000
   });
 
   const fetchState = useCallback(async () => {
     if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
     setErrorMsg(null);
     try {
       const [res, syncs] = await Promise.all([
@@ -145,6 +153,7 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
           return t;
         });
         setTables(sanitized);
+        onFloorTablesLoaded?.(sanitized);
         if (!activeAreaId && res.areas.length > 0) {
           setActiveAreaId(res.areas[0].id);
         }
@@ -157,12 +166,13 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
       setErrorMsg(err?.message || 'Failed to load floor layout');
     } finally {
       setLoading(false);
+      isFetchingRef.current = false;
     }
-  }, [branchId, activeAreaId]);
+  }, [branchId, activeAreaId, onFloorTablesLoaded]);
 
   useEffect(() => {
     fetchState();
-    const interval = setInterval(fetchState, 4000); // 4s live polling
+    const interval = setInterval(fetchState, 8000); // 8s live polling with concurrency lock
     return () => clearInterval(interval);
   }, [fetchState]);
 

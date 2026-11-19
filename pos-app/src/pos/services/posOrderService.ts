@@ -1030,7 +1030,7 @@ export async function fetchOrderWithItems(
 ): Promise<any | null> {
   const rid = restaurantId || getGlobalRestaurantId();
 
-  // 1. If orderId is provided, check direct Supabase pos_orders first
+  // 1. If orderId is provided, check direct Supabase pos_orders first (sub-millisecond local query)
   if (orderId && String(orderId).trim() !== '' && !String(orderId).startsWith('table-')) {
     try {
       const { data, error } = await supabase
@@ -1048,49 +1048,10 @@ export async function fetchOrderWithItems(
     } catch (err) {
       console.warn('[fetchOrderWithItems] Error fetching pos_orders by id:', err);
     }
-
-    // 2. Try legacy orders table in Supabase
-    try {
-      const { data: legData, error: legErr } = await supabase
-        .from('orders')
-        .select('*')
-        .eq('id', orderId)
-        .maybeSingle();
-
-      if (!legErr && legData) {
-        return legData;
-      }
-    } catch (err) {
-      // ignore
-    }
-
-    // 3. Try Commerce API if available
-    if (HAS_COMMERCE_API) {
-      try {
-        const singleRes = await fetch(`${COMMERCE_API_BASE}/api/pos/orders/${orderId}`);
-        if (singleRes.ok) {
-          const sData = await singleRes.json();
-          const ord = sData.order || (sData.id ? sData : null);
-          if (ord) return ord;
-        }
-      } catch {
-        // fallback to list
-      }
-      try {
-        const res = await fetch(`${COMMERCE_API_BASE}/api/pos/orders?type=all`);
-        if (res.ok) {
-          const d = await res.json();
-          const orders = d.orders || (Array.isArray(d) ? d : []);
-          const found = orders.find((o: any) => String(o.id) === String(orderId));
-          if (found) return found;
-        }
-      } catch (err) {
-        console.warn('[fetchOrderWithItems] Error querying Commerce API:', err);
-      }
-    }
   }
 
-  // 4. If tableCode is provided (or orderId was null/not found), search active open order by table_label
+  // 2. If tableCode is provided (or orderId was null/not found), immediately check pos_orders by table_label
+  // Fast indexed lookup avoiding slow external HTTP waterfalls
   if (tableCode) {
     try {
       const clean = String(tableCode).trim();
@@ -1124,6 +1085,39 @@ export async function fetchOrderWithItems(
       }
     } catch (err) {
       console.warn('[fetchOrderWithItems] Error fetching by tableCode:', err);
+    }
+  }
+
+  // 3. Only if not in pos_orders, check single order lookup from Commerce API with short timeout
+  if (HAS_COMMERCE_API && orderId && !String(orderId).startsWith('table-')) {
+    try {
+      const singleRes = await fetch(`${COMMERCE_API_BASE}/api/pos/orders/${orderId}`, {
+        signal: (AbortSignal as any)?.timeout ? (AbortSignal as any).timeout(2500) : undefined
+      });
+      if (singleRes.ok) {
+        const sData = await singleRes.json();
+        const ord = sData.order || (sData.id ? sData : null);
+        if (ord) return ord;
+      }
+    } catch {
+      // timeout or network error, proceed
+    }
+  }
+
+  // 4. Fallback to legacy orders table in Supabase
+  if (orderId && !String(orderId).startsWith('table-')) {
+    try {
+      const { data: legData, error: legErr } = await supabase
+        .from('orders')
+        .select('*')
+        .eq('id', orderId)
+        .maybeSingle();
+
+      if (!legErr && legData) {
+        return legData;
+      }
+    } catch (err) {
+      // ignore
     }
   }
 

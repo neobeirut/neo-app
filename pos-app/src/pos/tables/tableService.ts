@@ -231,6 +231,20 @@ if (typeof window !== 'undefined') {
   });
 }
 
+let cachedFloorState: {
+  branchId: string;
+  areas: FloorArea[];
+  tables: PosTable[];
+  timestamp: number;
+} | null = null;
+
+export function getCachedFloorState(branchId: string): { areas: FloorArea[]; tables: PosTable[] } | null {
+  if (cachedFloorState && cachedFloorState.branchId === branchId) {
+    return { areas: cachedFloorState.areas, tables: cachedFloorState.tables };
+  }
+  return null;
+}
+
 /**
  * Loads floor areas and tables for a given branch, reconciles active sessions from FLOW,
  * and fetches live order financial totals from OVRLOAD.
@@ -242,12 +256,10 @@ export async function loadFloorState(branchId: string): Promise<{
   error?: string;
 }> {
   try {
-    // 0. Automatic reconciliation on floor load
-    try {
-      await reconcilePendingTableSyncs(branchId);
-    } catch (recErr) {
-      console.warn('Pre-load reconciliation notice:', recErr);
-    }
+    // 0. Automatic reconciliation on floor load in background (non-blocking)
+    reconcilePendingTableSyncs(branchId).catch(recErr => {
+      console.warn('Pre-load background reconciliation notice:', recErr);
+    });
 
     // 1, 2, 3: Concurrently fetch floor areas, tables, and active sessions in parallel
     const [areasRes, tablesRes, sessionsRes] = await Promise.all([
@@ -315,11 +327,10 @@ export async function loadFloorState(branchId: string): Promise<{
       }
     });
 
-    // 5. Fetch live order amounts for all candidate dine-in orders
+    // 5. Fetch live order amounts for all candidate dine-in orders from direct Supabase pos_orders
     const orderMap = new Map<string, any>();
     if (activeOrderIds.length > 0) {
       try {
-        // First query direct Supabase pos_orders
         const { data: localOrders } = await supabase
           .from('pos_orders')
           .select('id, total_amount, tendered_amount, status, items_count, special_instructions')
@@ -330,26 +341,6 @@ export async function loadFloorState(branchId: string): Promise<{
             orderMap.set(String(o.id), o);
           }
         });
-
-        // Also query commerce API if available for external tickets
-        if (COMMERCE_API_BASE) {
-          try {
-            const res = await fetch(`${COMMERCE_API_BASE}/api/pos/orders?type=all`);
-            if (res.ok) {
-              const oData = await res.json();
-              (oData.orders || []).forEach((o: any) => {
-                const st = (o.status || '').toLowerCase();
-                if (st !== 'completed' && st !== 'cancelled' && st !== 'closed' && st !== 'voided') {
-                  if (!orderMap.has(String(o.id))) {
-                    orderMap.set(String(o.id), o);
-                  }
-                }
-              });
-            }
-          } catch (commErr) {
-            console.warn('Could not fetch from COMMERCE_API_BASE:', commErr);
-          }
-        }
       } catch (err) {
         console.warn('Could not refresh live order balances for tables:', err);
       }
@@ -435,57 +426,13 @@ export async function loadFloorState(branchId: string): Promise<{
 
     // 7. Directly hydrate any active POS table orders onto tableMap by table_label
     try {
-      const [posOrdersRes, commerceOrdersRes] = await Promise.all([
-        supabase
-          .from('pos_orders')
-          .select('id, table_label, total_amount, tendered_amount, status, items_count, guest_count, waiter_name, special_instructions, created_at')
-          .in('status', ['held', 'preparing', 'new', 'confirmed', 'ready', 'open', 'occupied', 'bill_requested'])
-          .not('table_label', 'is', null),
-        COMMERCE_API_BASE
-          ? fetch(`${COMMERCE_API_BASE}/api/pos/orders?type=all`).then(r => r.ok ? r.json() : { orders: [] }).catch(() => ({ orders: [] }))
-          : Promise.resolve({ orders: [] })
-      ]);
+      const { data: posOrdersData } = await supabase
+        .from('pos_orders')
+        .select('id, table_label, total_amount, tendered_amount, status, items_count, guest_count, waiter_name, special_instructions, created_at')
+        .in('status', ['held', 'preparing', 'new', 'confirmed', 'ready', 'open', 'occupied', 'bill_requested'])
+        .not('table_label', 'is', null);
 
-      const candidateTableOrders: any[] = [];
-
-      (posOrdersRes.data || []).forEach((dOrder: any) => {
-        candidateTableOrders.push({
-          id: dOrder.id,
-          table_label: dOrder.table_label,
-          total_amount: dOrder.total_amount,
-          tendered_amount: dOrder.tendered_amount,
-          status: dOrder.status,
-          guest_count: dOrder.guest_count,
-          waiter_name: dOrder.waiter_name,
-          special_instructions: dOrder.special_instructions,
-          created_at: dOrder.created_at
-        });
-      });
-
-      ((commerceOrdersRes as any)?.orders || []).forEach((cOrder: any) => {
-        const st = (cOrder.status || '').toLowerCase();
-        if (['completed', 'cancelled', 'canceled', 'closed', 'voided'].includes(st)) return;
-        const isDineIn = cOrder.order_type === 'dine_in' || (cOrder.customer_name && /^Table\s+/i.test(cOrder.customer_name));
-        if (!isDineIn) return;
-
-        const tableLabel = cOrder.table_label || (cOrder.customer_name ? cOrder.customer_name.replace(/^Table\s*/i, '') : '');
-        if (!tableLabel) return;
-
-        // Don't duplicate if already added by ID from pos_orders
-        if (candidateTableOrders.some(o => o.id === cOrder.id)) return;
-
-        candidateTableOrders.push({
-          id: cOrder.id,
-          table_label: tableLabel,
-          total_amount: cOrder.total_amount || cOrder.subtotal_amount,
-          tendered_amount: cOrder.tendered_amount,
-          status: cOrder.status,
-          guest_count: cOrder.guest_count,
-          waiter_name: cOrder.waiter_name || cOrder.assigned_waiter,
-          special_instructions: cOrder.special_instructions,
-          created_at: cOrder.created_at
-        });
-      });
+      const candidateTableOrders: any[] = posOrdersData || [];
 
       candidateTableOrders.forEach((dOrder: any) => {
         const cleanLabel = (dOrder.table_label || '').trim().toUpperCase();
@@ -525,10 +472,20 @@ export async function loadFloorState(branchId: string): Promise<{
       console.warn('Could not match direct table orders to floor tables:', directErr);
     }
 
+    const resultTables = Array.from(tableMap.values());
+    const resultAreas = areasData || [];
+
+    cachedFloorState = {
+      branchId,
+      areas: resultAreas,
+      tables: resultTables,
+      timestamp: Date.now()
+    };
+
     return {
       success: true,
-      areas: areasData || [],
-      tables: Array.from(tableMap.values())
+      areas: resultAreas,
+      tables: resultTables
     };
   } catch (err: any) {
     console.error('Error in loadFloorState:', err);

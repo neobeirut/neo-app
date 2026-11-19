@@ -70,7 +70,8 @@ import {
   ChevronUp,
   ChevronDown,
   MoveRight,
-  Smartphone
+  Smartphone,
+  Loader2
 } from 'lucide-react';
 import { PwaInstallModal } from '../pos/components/PwaInstallModal';
 
@@ -305,6 +306,7 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
 
   // Inline +/- stepper editor state for quantity
   const [activeQtyEditorLineId, setActiveQtyEditorLineId] = useState<string | null>(null);
+  const [isTableLoading, setIsTableLoading] = useState(false);
 
   // Supervisor Authorization Modal State
   const [supervisorAuthRequest, setSupervisorAuthRequest] = useState<SupervisorAuthRequest | null>(null);
@@ -402,10 +404,6 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
       console.warn('Could not load floor tables:', e);
     }
   }, [branchId]);
-
-  useEffect(() => {
-    refreshFloorTablesList();
-  }, [refreshFloorTablesList]);
 
   // Fetch Catalog & Screen Layout
   useEffect(() => {
@@ -557,6 +555,7 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
     setActiveTableContext(tableCtx);
     setTicketItems([]);
     setView('ticket');
+    setIsTableLoading(Boolean(orderId || !isNewlyCreated));
 
     // Reset screen navigation to root
     const root = posScreens.find(s => s.isRoot) || posScreens[0];
@@ -608,6 +607,8 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
       } catch (err) {
         console.error('Failed to load table items:', err);
         showNotification('Failed to load table items.', 'error');
+      } finally {
+        setIsTableLoading(false);
       }
     };
 
@@ -1574,31 +1575,31 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
           MAIN CONTENT: FLOOR PLAN OR TABLE TICKET
       ───────────────────────────────────────────────────────────── */}
       <div className="flex-1 flex overflow-hidden">
-        {view === 'floor' ? (
-          /* ── VIEW 1: FLOOR PLAN (TABLE SELECTION) ── */
-          <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#F5F6F4]">
-            <TablesScreen
-              branchId={branchId}
-              branchName={branchName}
-              restaurantId={restaurantId}
-              externalBranchId={externalBranchId}
-              cashierName={currentUser?.name || 'Waiter'}
-              isShiftOpen={isShiftOpen}
-              activeShift={activeShift}
-              canOpenNewTables={hasPosPermission(currentUser, 'open_table')}
-              isTableAdmin={
-                hasPosPermission(currentUser, 'override_order_restrictions') ||
-                hasPosPermission(currentUser, 'transfer_table')
-              }
-              onOpenOrderInCart={handleOpenTableOrder}
-              onPrintPreCheckDoc={table => {
-                handlePrintPreCheckDoc(table);
-              }}
-            />
-          </div>
-        ) : (
-          /* ── VIEW 2: TABLE TICKET & POS SCREEN MATRIX ── */
-          <div className="flex-1 flex h-full overflow-hidden">
+        {/* ── VIEW 1: FLOOR PLAN (TABLE SELECTION) ── */}
+        <div className={`flex-1 flex flex-col h-full overflow-hidden bg-[#F5F6F4] ${view === 'floor' ? '' : 'hidden'}`}>
+          <TablesScreen
+            branchId={branchId}
+            branchName={branchName}
+            restaurantId={restaurantId}
+            externalBranchId={externalBranchId}
+            cashierName={currentUser?.name || 'Waiter'}
+            isShiftOpen={isShiftOpen}
+            activeShift={activeShift}
+            canOpenNewTables={hasPosPermission(currentUser, 'open_table')}
+            isTableAdmin={
+              hasPosPermission(currentUser, 'override_order_restrictions') ||
+              hasPosPermission(currentUser, 'transfer_table')
+            }
+            onOpenOrderInCart={handleOpenTableOrder}
+            onFloorTablesLoaded={setFloorTables}
+            onPrintPreCheckDoc={table => {
+              handlePrintPreCheckDoc(table);
+            }}
+          />
+        </div>
+
+        {/* ── VIEW 2: TABLE TICKET & POS SCREEN MATRIX ── */}
+        <div className={`flex-1 flex h-full overflow-hidden ${view === 'ticket' ? '' : 'hidden'}`}>
             {/* ── LEFT PANEL (Adapts to Tablet Direction): Screen Matrix ── */}
             <div className={`${isPortrait ? 'w-[56%]' : 'w-[65%]'} flex flex-col h-full bg-[#F5F6F4] border-r border-[#E0E3DF] transition-all duration-150`}>
               {/* Screen Matrix Header & Breadcrumb */}
@@ -1817,7 +1818,12 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
 
               {/* Order Basket Items List: Selected items #E9F4ED */}
               <div className="flex-1 p-2 overflow-y-auto space-y-1.5 bg-white">
-                {ticketItems.length === 0 ? (
+                {isTableLoading ? (
+                  <div className="h-full flex flex-col items-center justify-center text-[#5E6964] text-xs gap-2">
+                    <Loader2 className="w-6 h-6 animate-spin text-emerald-600" />
+                    <span className="font-semibold text-slate-600">Opening cart...</span>
+                  </div>
+                ) : ticketItems.length === 0 ? (
                   <div className="h-full flex flex-col items-center justify-center text-[#5E6964] text-xs">
                     <Utensils className="w-7 h-7 mb-1.5 opacity-30" />
                     <span>Table is empty</span>
@@ -2037,7 +2043,6 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
               </div>
             </div>
           </div>
-        )}
       </div>
 
       {/* ─────────────────────────────────────────────────────────────
