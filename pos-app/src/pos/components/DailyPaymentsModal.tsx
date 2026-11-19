@@ -410,6 +410,10 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
       setOpenPurchaseOrders([]);
       return;
     }
+    const sup = suppliers.find(s => s.id === supplierId);
+    if (sup?.default_currency) {
+      setInvCurrency(sup.default_currency === 'LBP' ? 'LBP' : 'USD');
+    }
     try {
       const [poRes, splRes] = await Promise.all([
         api.getOpenPurchaseOrders(supplierId, branchId),
@@ -659,6 +663,7 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
 
     try {
       const idempotencyKey = `INV-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      const invoiceTotal = invItems.reduce((acc, it) => acc + (Number(it.total) || 0), 0);
       const payload = {
         branch_id: branchId,
         supplier_id: invSupplierId,
@@ -667,7 +672,7 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
         due_date: invDueDate || null,
         purchase_order_id: invSelectedPoId || null,
         currency: invCurrency,
-        exchange_rate: invExchangeRate,
+        exchange_rate: invCurrency === 'LBP' ? invExchangeRate : 1.0,
         tax_rate: 0,
         discount_amount: 0,
         notes: invNotes,
@@ -677,6 +682,10 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
         pay_now: invPayNow,
         payment_method: invPaymentMethod,
         shift_id: activeShiftId || null,
+        paid_amount_usd: invPayNow ? (invCurrency === 'USD' ? invoiceTotal : 0) : 0,
+        paid_amount_lbp: invPayNow ? (invCurrency === 'LBP' ? invoiceTotal : 0) : 0,
+        amount_usd: invPayNow ? (invCurrency === 'USD' ? invoiceTotal : 0) : 0,
+        amount_lbp: invPayNow ? (invCurrency === 'LBP' ? invoiceTotal : 0) : 0,
         idempotency_key: idempotencyKey,
         is_direct_purchase: false,
         items: invItems.map(it => {
@@ -1663,7 +1672,7 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
                   Supplier &amp; Purchase Order Information
                 </span>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3">
                   {/* Supplier selector */}
                   <div>
                     <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Supplier *</label>
@@ -1675,7 +1684,9 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
                     >
                       <option value="">-- Choose Supplier --</option>
                       {suppliers.map(s => (
-                        <option key={s.id} value={s.id}>{s.name} {s.phone ? `(${s.phone})` : ''}</option>
+                        <option key={s.id} value={s.id}>
+                          {s.name} {s.phone ? `(${s.phone})` : ''} [{s.default_currency || 'USD'}]
+                        </option>
                       ))}
                     </select>
                   </div>
@@ -1723,7 +1734,57 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
                       className="w-full bg-white border border-slate-300 focus:border-[#1e5c4f] rounded-xl px-3 py-2 text-slate-900 text-xs font-bold outline-none shadow-xs"
                     />
                   </div>
+
+                  {/* Currency Toggle */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Currency *</label>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setInvCurrency('USD')}
+                        className={`flex-1 py-2 px-2 rounded-xl text-xs font-black transition cursor-pointer border ${
+                          invCurrency === 'USD'
+                            ? 'bg-[#1e5c4f] text-white border-[#1e5c4f] shadow-xs'
+                            : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                        }`}
+                      >
+                        USD ($)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setInvCurrency('LBP')}
+                        className={`flex-1 py-2 px-2 rounded-xl text-xs font-black transition cursor-pointer border ${
+                          invCurrency === 'LBP'
+                            ? 'bg-[#1e5c4f] text-white border-[#1e5c4f] shadow-xs'
+                            : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                        }`}
+                      >
+                        LBP (L.L.)
+                      </button>
+                    </div>
+                  </div>
                 </div>
+
+                {invCurrency === 'LBP' && (
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold">LBP Exchange Rate:</span>
+                      <input
+                        type="number"
+                        min="1000"
+                        step="500"
+                        value={invExchangeRate}
+                        onChange={(e) => setInvExchangeRate(Number(e.target.value) || 0)}
+                        placeholder="89500"
+                        className="w-32 bg-white border border-amber-300 rounded-lg px-2.5 py-1 text-slate-900 font-mono font-bold text-xs outline-none"
+                      />
+                      <span className="font-semibold text-slate-600">L.L. / $1</span>
+                    </div>
+                    <span className="text-[11px] text-amber-700">
+                      Standard cost & balances will convert at {invExchangeRate.toLocaleString()} L.L. per USD
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Purchased Items Section */}
@@ -1846,9 +1907,9 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
                           <th className="py-2 px-2">Item Name</th>
                           <th className="py-2 px-2 w-24">Qty Recv</th>
                           <th className="py-2 px-2 w-32">Unit / Packaging</th>
-                          <th className="py-2 px-2 w-28">Unit Price ($)</th>
+                          <th className="py-2 px-2 w-28">Unit Price ({invCurrency === 'USD' ? '$' : 'L.L.'})</th>
                           <th className="py-2 px-2 w-36">Destination Location</th>
-                          <th className="py-2 px-2 w-24 text-right">Total ($)</th>
+                          <th className="py-2 px-2 w-28 text-right">Total ({invCurrency === 'USD' ? '$' : 'L.L.'})</th>
                           <th className="py-2 px-2 w-10"></th>
                         </tr>
                       </thead>
@@ -1944,7 +2005,7 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
                               </select>
                             </td>
                             <td className="py-2 px-2 text-right font-mono font-bold text-slate-900">
-                              ${Number(it.total).toFixed(2)}
+                              {invCurrency === 'LBP' ? `${Math.round(Number(it.total) || 0).toLocaleString()} L.L.` : `$${Number(it.total).toFixed(2)}`}
                             </td>
                             <td className="py-2 px-2 text-center">
                               <button
@@ -1962,7 +2023,7 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
                         <tr className="border-t border-slate-300 font-bold text-xs">
                           <td colSpan={5} className="py-2.5 px-2 text-right text-slate-700">Invoice Total:</td>
                           <td className="py-2.5 px-2 text-right font-mono text-sm text-[#1e5c4f] font-black">
-                            ${invoiceSubtotal.toFixed(2)}
+                            {invCurrency === 'LBP' ? `${Math.round(invoiceSubtotal).toLocaleString()} L.L.` : `$${invoiceSubtotal.toFixed(2)}`}
                           </td>
                           <td />
                         </tr>

@@ -230,6 +230,9 @@ export const SupplierInvoicesModal: React.FC<SupplierInvoicesModalProps> = ({
         if (found) {
           matchedSupplierId = found.id;
           setSupplierId(found.id);
+          if (found.default_currency && !parsedData?.currency) {
+            setCurrency(found.default_currency === 'LBP' ? 'LBP' : 'USD');
+          }
         }
       }
 
@@ -824,12 +827,19 @@ export const SupplierInvoicesModal: React.FC<SupplierInvoicesModalProps> = ({
                       <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Supplier *</label>
                       <select
                         value={supplierId}
-                        onChange={(e) => setSupplierId(e.target.value)}
+                        onChange={(e) => {
+                          const newId = e.target.value;
+                          setSupplierId(newId);
+                          const sup = suppliers.find(s => s.id === newId);
+                          if (sup?.default_currency) {
+                            setCurrency(sup.default_currency === 'LBP' ? 'LBP' : 'USD');
+                          }
+                        }}
                         className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs font-bold outline-none cursor-pointer"
                       >
                         <option value="">-- Choose Supplier --</option>
                         {suppliers.map(s => (
-                          <option key={s.id} value={s.id}>{s.name}</option>
+                          <option key={s.id} value={s.id}>{s.name} [{s.default_currency || 'USD'}]</option>
                         ))}
                       </select>
                     </div>

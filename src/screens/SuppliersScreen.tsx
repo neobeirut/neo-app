@@ -22,6 +22,7 @@ export default function SuppliersScreen({ user, permissions }: { user?: any; per
   const [phone, setPhone] = useState('');
   const [selectedDays, setSelectedDays] = useState<string[]>([]);
   const [timeToDeliver, setTimeToDeliver] = useState('Next day');
+  const [defaultCurrency, setDefaultCurrency] = useState<'USD' | 'LBP'>('USD');
   const [isActive, setIsActive] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -50,6 +51,7 @@ export default function SuppliersScreen({ user, permissions }: { user?: any; per
       setPhone(supplier.phone || '');
       setSelectedDays(supplier.delivery_days ? supplier.delivery_days.split(', ').filter(Boolean) : []);
       setTimeToDeliver(supplier.time_to_deliver || 'Next day');
+      setDefaultCurrency(supplier.default_currency === 'LBP' ? 'LBP' : 'USD');
       setIsActive(supplier.is_active !== false);
     } else {
       setEditingId(null);
@@ -58,6 +60,7 @@ export default function SuppliersScreen({ user, permissions }: { user?: any; per
       setPhone('');
       setSelectedDays([]);
       setTimeToDeliver('Next day');
+      setDefaultCurrency('USD');
       setIsActive(true);
     }
     setShowModal(true);
@@ -77,6 +80,7 @@ export default function SuppliersScreen({ user, permissions }: { user?: any; per
       phone: phone.trim() || null,
       delivery_days: selectedDays.join(', ') || null,
       time_to_deliver: timeToDeliver,
+      default_currency: defaultCurrency,
       is_active: isActive
     } as any;
 
@@ -293,16 +297,29 @@ CREATE POLICY "Enable write access for all authenticated users" ON public.suppli
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
                   <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#0f172a' }}>{supplier.name}</h3>
-                  <span style={{ 
-                    fontSize: '11px', 
-                    fontWeight: 700, 
-                    padding: '4px 8px', 
-                    borderRadius: '12px', 
-                    backgroundColor: supplier.is_active !== false ? '#e6f4ea' : '#fce8e6',
-                    color: supplier.is_active !== false ? '#137333' : '#c5221f'
-                  }}>
-                    {supplier.is_active !== false ? 'Active' : 'Inactive'}
-                  </span>
+                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                    <span style={{
+                      fontSize: '11px',
+                      fontWeight: 800,
+                      padding: '3px 8px',
+                      borderRadius: '8px',
+                      backgroundColor: supplier.default_currency === 'LBP' ? '#fef3c7' : '#ecfdf5',
+                      color: supplier.default_currency === 'LBP' ? '#92400e' : '#065f46',
+                      border: `1px solid ${supplier.default_currency === 'LBP' ? '#fde68a' : '#a7f3d0'}`
+                    }}>
+                      {supplier.default_currency === 'LBP' ? 'LBP (L.L.)' : 'USD ($)'}
+                    </span>
+                    <span style={{ 
+                      fontSize: '11px', 
+                      fontWeight: 700, 
+                      padding: '3px 8px', 
+                      borderRadius: '8px', 
+                      backgroundColor: supplier.is_active !== false ? '#e6f4ea' : '#fce8e6',
+                      color: supplier.is_active !== false ? '#137333' : '#c5221f'
+                    }}>
+                      {supplier.is_active !== false ? 'Active' : 'Inactive'}
+                    </span>
+                  </div>
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', color: '#475569', fontSize: '13.5px', marginBottom: '16px' }}>
@@ -437,7 +454,19 @@ CREATE POLICY "Enable write access for all authenticated users" ON public.suppli
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', alignItems: 'center' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px', alignItems: 'center' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>Default Currency</label>
+                  <select
+                    value={defaultCurrency}
+                    onChange={(e) => setDefaultCurrency(e.target.value as 'USD' | 'LBP')}
+                    style={{ width: '100%', fontWeight: 700 }}
+                  >
+                    <option value="USD">USD ($)</option>
+                    <option value="LBP">LBP (L.L.)</option>
+                  </select>
+                </div>
+
                 <div>
                   <label style={{ display: 'block', fontSize: '13px', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>Time to Deliver</label>
                   <select

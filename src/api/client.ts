@@ -5619,15 +5619,31 @@ export const api = {
     user_id?: string;
     user_name?: string;
   }) => {
-    const { data, error } = await supabase.rpc('complete_production_batch', {
+    // 1. First attempt complete_production_batch_v2 directly (Phase 2 costing & lot valuation engine)
+    const { data: v2Data, error: v2Error } = await supabase.rpc('complete_production_batch_v2', {
       p_batch_id: params.batch_id,
       p_actual_yield_quantity: params.actual_yield_quantity,
       p_actual_yield_unit: params.actual_yield_unit,
-      p_actual_items: params.actual_items ? JSON.stringify(params.actual_items) : null,
-      p_yield_variance_reason: params.yield_variance_reason || null,
+      p_abnormal_waste_quantity: 0,
+      p_abnormal_waste_reason: params.yield_variance_reason || null,
       p_user_id: params.user_id || null,
       p_user_name: params.user_name || 'Admin'
     });
+    if (!v2Error) return v2Data;
+
+    // 2. Fallback to complete_production_batch if v2 is not defined in older environments
+    const rpcPayload: Record<string, any> = {
+      p_batch_id: params.batch_id,
+      p_actual_yield_quantity: params.actual_yield_quantity,
+      p_actual_yield_unit: params.actual_yield_unit,
+      p_yield_variance_reason: params.yield_variance_reason || null,
+      p_user_id: params.user_id || null,
+      p_user_name: params.user_name || 'Admin'
+    };
+    if (params.actual_items) {
+      rpcPayload.p_actual_items = params.actual_items;
+    }
+    const { data, error } = await supabase.rpc('complete_production_batch', rpcPayload);
     if (error) return { success: false, error: error.message };
     return data;
   },
