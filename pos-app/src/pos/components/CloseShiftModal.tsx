@@ -23,7 +23,6 @@ import {
   printShiftReport
 } from '../services/shiftReconciliationService';
 import type { ShiftReconciliationSummary, BranchReconSettings } from '../services/shiftReconciliationService';
-import { CashInOutModal } from './CashInOutModal';
 import { X, RefreshCw, Calculator, DollarSign, ShieldCheck, Check, AlertTriangle, Lock, PauseCircle } from 'lucide-react';
 import { api } from '../../api/client';
 import { supabase, getGlobalRestaurantId } from '../../api/supabase';
@@ -230,7 +229,6 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
   const [isFinalizing, setIsFinalizing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [cashFlowMessage, setCashFlowMessage] = useState<string | null>(null);
-  const [cashInOutModalMode, setCashInOutModalMode] = useState<'CashIn' | 'CashOut' | null>(null);
 
   // NumPad State
   const [numpadField, setNumpadField] = useState<{ label: string; value: string; setter: (v: string) => void } | null>(null);
@@ -1602,7 +1600,6 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
                   </span>
                   <button
                     type="button"
-                    onClick={() => setCashInOutModalMode('CashIn')}
                     className="px-2 py-0.5 rounded-lg text-[10px] font-black bg-emerald-100 hover:bg-emerald-200 text-emerald-800 border border-emerald-300 transition cursor-pointer shadow-2xs flex items-center gap-1"
                     title="Add Cash In to drawer & Daily Payments"
                   >
@@ -1646,7 +1643,6 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
                     <span className="text-[9px] text-slate-400 hidden sm:inline">From Daily Payments & Tenders</span>
                     <button
                       type="button"
-                      onClick={() => setCashInOutModalMode('CashOut')}
                       className="px-2 py-0.5 rounded-lg text-[10px] font-black bg-rose-100 hover:bg-rose-200 text-rose-800 border border-rose-300 transition cursor-pointer shadow-2xs flex items-center gap-1"
                       title="Add Cash Out from drawer & Daily Payments"
                     >
@@ -2254,20 +2250,6 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
         </div>
       )}
 
-      {/* QUICK CASH IN / CASH OUT DIALOG */}
-      <CashInOutModal
-        isOpen={Boolean(cashInOutModalMode)}
-        initialType={cashInOutModalMode || 'CashIn'}
-        onClose={() => setCashInOutModalMode(null)}
-        onSuccess={async () => {
-          await handleFetchCashFlow();
-        }}
-        branchName={branchName}
-        shiftName={shiftType}
-        date={date}
-        cashierName={cashierName}
-        restaurantId={s.concept_id}
-      />
 
     </div>
   );

@@ -16,10 +16,17 @@ import {
   Truck,
   Building,
   Check,
-  ChevronDown
+  ChevronDown,
+  ArrowDownCircle,
+  ArrowUpCircle,
+  User,
+  Lock,
+  Landmark,
+  Wallet,
+  BadgeDollarSign
 } from 'lucide-react';
 import { api } from '../../api/client';
-import { getDailyPayments, deleteDailyPayment } from '../services/shiftCashBridge';
+import { getDailyPayments, deleteDailyPayment, addDailyPayment, getBranchUsers, verifyUserPin } from '../services/shiftCashBridge';
 import { SupplierInvoicesModal } from './SupplierInvoicesModal';
 
 interface DailyPaymentsModalProps {
@@ -45,8 +52,8 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
   branchId,
   restaurantId
 }) => {
-  // Navigation: 4 core modules
-  const [activeTab, setActiveTab] = useState<'invoice' | 'payment' | 'direct' | 'expense'>('invoice');
+  // Navigation: Cash In, Cash Out, and 4 core modules
+  const [activeTab, setActiveTab] = useState<'cashin' | 'cashout' | 'invoice' | 'payment' | 'direct' | 'expense'>('cashin');
   const [isFullInvoicesModalOpen, setIsFullInvoicesModalOpen] = useState(false);
 
   // Shift & Date
@@ -66,6 +73,7 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
   const [catalogItems, setCatalogItems] = useState<any[]>([]);
   const [openPurchaseOrders, setOpenPurchaseOrders] = useState<any[]>([]);
   const [supplierPriceLists, setSupplierPriceLists] = useState<any[]>([]);
+  const [branchUsers, setBranchUsers] = useState<any[]>([]);
   const [loadingMaster, setLoadingMaster] = useState(false);
 
   // Status banners
@@ -132,6 +140,28 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
   }>>([]);
 
   // --------------------------------------------------------------------------
+  // TAB: CASH IN STATE
+  // --------------------------------------------------------------------------
+  const [cashInUserId, setCashInUserId] = useState('');
+  const [cashInPin, setCashInPin] = useState('');
+  const [cashInPinVerified, setCashInPinVerified] = useState(false);
+  const [cashInPinVerifying, setCashInPinVerifying] = useState(false);
+  const [cashInPinError, setCashInPinError] = useState<string | null>(null);
+  const [cashInUsd, setCashInUsd] = useState('');
+  const [cashInLbp, setCashInLbp] = useState('');
+  const [cashInNotes, setCashInNotes] = useState('');
+
+  // --------------------------------------------------------------------------
+  // TAB: CASH OUT STATE
+  // --------------------------------------------------------------------------
+  const [cashOutReason, setCashOutReason] = useState<'Bank' | 'Salary' | 'Loan'>('Bank');
+  const [cashOutUserId, setCashOutUserId] = useState('');
+  const [cashOutBankName, setCashOutBankName] = useState('');
+  const [cashOutUsd, setCashOutUsd] = useState('');
+  const [cashOutLbp, setCashOutLbp] = useState('');
+  const [cashOutNotes, setCashOutNotes] = useState('');
+
+  // --------------------------------------------------------------------------
   // TAB 4: GENERAL EXPENSE STATE (PHASE 7)
   // --------------------------------------------------------------------------
   const [expCategory, setExpCategory] = useState('Operating Expense');
@@ -160,10 +190,11 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
   const loadMasterData = async () => {
     setLoadingMaster(true);
     try {
-      const [supRes, locRes, catRes] = await Promise.all([
+      const [supRes, locRes, catRes, usersRes] = await Promise.all([
         api.getSuppliers(),
         api.getInventoryLocations(),
-        api.getItemCatalog()
+        api.getItemCatalog(),
+        getBranchUsers(restaurantId)
       ]);
       if (supRes.success && supRes.data) setSuppliers(supRes.data);
       if (locRes.success && locRes.data) {
@@ -173,6 +204,7 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
         }
       }
       if (catRes.success && catRes.data) setCatalogItems(catRes.data);
+      if (usersRes?.success && usersRes?.data) setBranchUsers(usersRes.data);
     } catch (e) {
       console.error('Error loading POS payments master data:', e);
     }
@@ -190,6 +222,175 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
       console.error('Error loading daily payments:', e);
     }
     setLoadingPayments(false);
+  };
+
+  // --------------------------------------------------------------------------
+  // CASH IN HANDLERS
+  // --------------------------------------------------------------------------
+  const handleSelectCashInUser = (userId: string) => {
+    setCashInUserId(userId);
+    setCashInPin('');
+    setCashInPinVerified(false);
+    setCashInPinError(null);
+  };
+
+  const handleVerifyCashInPin = async () => {
+    if (!cashInUserId) {
+      setCashInPinError('Please select a user first.');
+      return;
+    }
+    if (!cashInPin.trim()) {
+      setCashInPinError('Please enter your PIN code.');
+      return;
+    }
+    setCashInPinVerifying(true);
+    setCashInPinError(null);
+    try {
+      const res = await verifyUserPin(cashInUserId, cashInPin);
+      if (res.success) {
+        setCashInPinVerified(true);
+        setCashInPinError(null);
+      } else {
+        setCashInPinVerified(false);
+        setCashInPinError(res.error || 'Invalid PIN code. Please try again.');
+      }
+    } catch (err: any) {
+      setCashInPinVerified(false);
+      setCashInPinError(err?.message || 'Verification failed');
+    } finally {
+      setCashInPinVerifying(false);
+    }
+  };
+
+  const handleSubmitCashIn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const usd = parseFloat(cashInUsd) || 0;
+    const lbp = parseFloat(cashInLbp) || 0;
+
+    if (!cashInUserId) {
+      setErrorMsg('Please select a user to authorize Cash In.');
+      return;
+    }
+    if (!cashInPinVerified) {
+      setErrorMsg('PIN must be entered and verified before submitting Cash In.');
+      return;
+    }
+    if (usd <= 0 && lbp <= 0) {
+      setErrorMsg('Please enter an amount in USD or LBP.');
+      return;
+    }
+
+    setSubmitting(true);
+    setErrorMsg(null);
+    try {
+      const userObj = branchUsers.find(u => u.id === cashInUserId);
+      const userName = userObj ? (userObj.display_name || userObj.name) : 'Authorized User';
+
+      const res = await addDailyPayment({
+        date,
+        branch: branchName,
+        shift,
+        supplier: userName,
+        amount_usd: usd,
+        amount_lbp: lbp,
+        type: 'CashIn',
+        has_invoice: false,
+        user_name: cashierName,
+        status: 'Paid',
+        restaurant_id: restaurantId
+      });
+
+      if (res.success) {
+        setSuccessMsg(`Cash In of ${usd > 0 ? `$${usd.toFixed(2)}` : ''} ${lbp > 0 ? `${lbp.toLocaleString()} LBP` : ''} recorded successfully!`);
+        setCashInUserId('');
+        setCashInPin('');
+        setCashInPinVerified(false);
+        setCashInUsd('');
+        setCashInLbp('');
+        setCashInNotes('');
+        loadExpensesList();
+        setTimeout(() => setSuccessMsg(null), 4000);
+      } else {
+        setErrorMsg(res.error || 'Failed to record Cash In.');
+      }
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Error recording Cash In');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // --------------------------------------------------------------------------
+  // CASH OUT HANDLERS
+  // --------------------------------------------------------------------------
+  const handleSubmitCashOut = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const usd = parseFloat(cashOutUsd) || 0;
+    const lbp = parseFloat(cashOutLbp) || 0;
+
+    if (usd <= 0 && lbp <= 0) {
+      setErrorMsg('Please enter an amount in USD or LBP.');
+      return;
+    }
+
+    let payeeName = '';
+    let recordType = 'Cashout Bank';
+
+    if (cashOutReason === 'Bank') {
+      recordType = 'Cashout Bank';
+      payeeName = cashOutBankName.trim() || 'Bank Transfer / Deposit';
+    } else if (cashOutReason === 'Salary') {
+      recordType = 'Cashout Salary';
+      if (!cashOutUserId) {
+        setErrorMsg('Please select an employee recipient for Salary.');
+        return;
+      }
+      const emp = branchUsers.find(u => u.id === cashOutUserId);
+      payeeName = emp ? (emp.display_name || emp.name) : 'Employee Salary';
+    } else if (cashOutReason === 'Loan') {
+      recordType = 'Cashout Loan';
+      if (!cashOutUserId) {
+        setErrorMsg('Please select an employee recipient for Loan.');
+        return;
+      }
+      const emp = branchUsers.find(u => u.id === cashOutUserId);
+      payeeName = emp ? (emp.display_name || emp.name) : 'Employee Loan';
+    }
+
+    setSubmitting(true);
+    setErrorMsg(null);
+    try {
+      const res = await addDailyPayment({
+        date,
+        branch: branchName,
+        shift,
+        supplier: payeeName,
+        amount_usd: usd,
+        amount_lbp: lbp,
+        type: recordType,
+        has_invoice: false,
+        user_name: cashierName,
+        status: 'Paid',
+        restaurant_id: restaurantId
+      });
+
+      if (res.success) {
+        setSuccessMsg(`Cash Out (${cashOutReason}: ${payeeName}) of ${usd > 0 ? `$${usd.toFixed(2)}` : ''} ${lbp > 0 ? `${lbp.toLocaleString()} LBP` : ''} recorded successfully!`);
+        setCashOutUserId('');
+        setCashOutBankName('');
+        setCashOutUsd('');
+        setCashOutLbp('');
+        setCashOutNotes('');
+        loadExpensesList();
+        setTimeout(() => setSuccessMsg(null), 4000);
+      } else {
+        setErrorMsg(res.error || 'Failed to record Cash Out.');
+      }
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Error recording Cash Out');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   // --------------------------------------------------------------------------
@@ -773,6 +974,97 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
     }
   };
 
+  const renderPaymentsList = () => (
+    <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3 mt-4">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-black text-slate-900 uppercase tracking-wider block">
+          Recorded Shift Cash Flow &amp; Payments ({dailyPaymentsList.length})
+        </span>
+        <button
+          type="button"
+          onClick={loadExpensesList}
+          className="text-[11px] font-bold text-slate-500 hover:text-slate-800 flex items-center gap-1 transition cursor-pointer"
+        >
+          <RefreshCw size={12} className={loadingPayments ? 'animate-spin' : ''} />
+          <span>Refresh</span>
+        </button>
+      </div>
+
+      {loadingPayments ? (
+        <div className="py-6 text-center text-slate-500 text-xs">Loading payments...</div>
+      ) : dailyPaymentsList.length === 0 ? (
+        <div className="py-6 text-center text-slate-500 text-xs border border-dashed border-slate-300 rounded-xl">
+          No payments or cash movements recorded for this shift yet.
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {dailyPaymentsList.map(p => {
+            const isCashIn = p.type === 'CashIn';
+            const isCashOut = p.type === 'CashOut' || (typeof p.type === 'string' && p.type.startsWith('Cashout'));
+            return (
+              <div
+                key={p.id}
+                className={`p-3 bg-white border rounded-xl flex items-center justify-between text-xs shadow-xs ${
+                  isCashIn ? 'border-emerald-200 bg-emerald-50/30' : isCashOut ? 'border-amber-200 bg-amber-50/20' : 'border-slate-200'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold ${
+                    isCashIn ? 'bg-emerald-100 text-emerald-800' : isCashOut ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-700'
+                  }`}>
+                    {isCashIn ? <ArrowDownCircle size={16} /> : isCashOut ? <ArrowUpCircle size={16} /> : <Receipt size={14} />}
+                  </div>
+                  <div>
+                    <div className="font-bold text-slate-900 flex items-center gap-2">
+                      <span>{p.supplier || p.reason || 'Payment'}</span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-black ${
+                        isCashIn ? 'bg-emerald-100 text-emerald-800' : isCashOut ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-700'
+                      }`}>
+                        {p.type}
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-slate-500 font-medium">
+                      Cashier: <span className="text-slate-700 font-semibold">{p.user_name}</span>
+                      {p.created_at && (
+                        <span className="ml-2 text-slate-400">
+                          {new Date(p.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4">
+                  <div className="text-right font-mono font-bold">
+                    {parseFloat(p.amount_usd) > 0 && (
+                      <div className={isCashIn ? 'text-emerald-700' : 'text-slate-900'}>
+                        {isCashIn ? '+' : isCashOut ? '-' : ''}${parseFloat(p.amount_usd).toFixed(2)}
+                      </div>
+                    )}
+                    {parseFloat(p.amount_lbp) > 0 && (
+                      <div className="text-emerald-800 text-[11px]">
+                        {isCashIn ? '+' : isCashOut ? '-' : ''}{parseFloat(p.amount_lbp).toLocaleString()} LBP
+                      </div>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteHistoricalDailyPayment(p.id)}
+                    className="text-slate-400 hover:text-rose-600 transition cursor-pointer p-1"
+                    title="Delete record"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+
   if (!isOpen) return null;
 
   return (
@@ -788,7 +1080,7 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
             <div>
               <h2 className="text-base font-black text-slate-900">POS Payments &amp; Receiving Center</h2>
               <p className="text-xs text-slate-500 font-medium">
-                Supplier invoices, payments, direct purchases &amp; daily cash • <strong className="text-slate-700">{branchName}</strong>
+                Cash in/out, supplier invoices, payments &amp; expenses • <strong className="text-slate-700">{branchName}</strong>
               </p>
             </div>
           </div>
@@ -810,8 +1102,34 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
           </div>
         </div>
 
-        {/* 4 PRIMARY NAVIGATION TABS */}
+        {/* 6 NAVIGATION TABS */}
         <div className="flex items-center border-b border-slate-200 bg-slate-50 px-6 gap-2 flex-shrink-0 overflow-x-auto">
+          <button
+            type="button"
+            onClick={() => setActiveTab('cashin')}
+            className={`py-3 px-4 text-xs font-black border-b-2 flex items-center gap-2 transition cursor-pointer whitespace-nowrap ${
+              activeTab === 'cashin'
+                ? 'border-emerald-600 text-emerald-800 bg-emerald-50/80'
+                : 'border-transparent text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <ArrowDownCircle size={15} className="text-emerald-600" />
+            <span>1. Cash In</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('cashout')}
+            className={`py-3 px-4 text-xs font-black border-b-2 flex items-center gap-2 transition cursor-pointer whitespace-nowrap ${
+              activeTab === 'cashout'
+                ? 'border-amber-600 text-amber-800 bg-amber-50/80'
+                : 'border-transparent text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <ArrowUpCircle size={15} className="text-amber-600" />
+            <span>2. Cash Out</span>
+          </button>
+
           <button
             type="button"
             onClick={() => setActiveTab('invoice')}
@@ -822,7 +1140,7 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
             }`}
           >
             <Receipt size={15} />
-            <span>1. Supplier Invoice</span>
+            <span>3. Supplier Invoice</span>
           </button>
 
           <button
@@ -835,7 +1153,7 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
             }`}
           >
             <CreditCard size={15} />
-            <span>2. Supplier Payment</span>
+            <span>4. Supplier Payment</span>
           </button>
 
           <button
@@ -848,7 +1166,7 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
             }`}
           >
             <ShoppingCart size={15} />
-            <span>3. Direct Purchase</span>
+            <span>5. Direct Purchase</span>
           </button>
 
           <button
@@ -861,7 +1179,7 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
             }`}
           >
             <DollarSign size={15} />
-            <span>4. General Expense / Cash</span>
+            <span>6. Expenses</span>
           </button>
         </div>
 
@@ -882,7 +1200,353 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
           )}
 
           {/* ================================================================ */}
-          {/* TAB 1: SUPPLIER INVOICE (PHASE 4) */}
+          {/* TAB: CASH IN */}
+          {/* ================================================================ */}
+          {activeTab === 'cashin' && (
+            <form onSubmit={handleSubmitCashIn} className="space-y-4">
+              <div className="p-5 bg-emerald-50/50 border border-emerald-200 rounded-2xl space-y-4">
+                <div className="flex items-center gap-2">
+                  <ArrowDownCircle size={20} className="text-emerald-700" />
+                  <div>
+                    <span className="text-xs font-black text-emerald-950 uppercase tracking-wider block">
+                      Cash In Authorization &amp; Drawer Deposit
+                    </span>
+                    <span className="text-[11px] text-slate-600 font-medium">
+                      Select authorizing staff member and enter their PIN to deposit cash into the active drawer.
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+                  {/* User Selection */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+                      Authorizing Staff Member *
+                    </label>
+                    <select
+                      value={cashInUserId}
+                      onChange={(e) => handleSelectCashInUser(e.target.value)}
+                      className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-2xs"
+                    >
+                      <option value="">-- Select Staff Member --</option>
+                      {branchUsers.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.display_name || u.name} {u.role ? `(${u.role})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* PIN Entry & Verification */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+                      Staff Member PIN Code *
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <div className="relative flex-1">
+                        <input
+                          type="password"
+                          inputMode="numeric"
+                          maxLength={8}
+                          disabled={!cashInUserId || cashInPinVerified}
+                          value={cashInPin}
+                          onChange={(e) => {
+                            setCashInPin(e.target.value);
+                            setCashInPinVerified(false);
+                            setCashInPinError(null);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleVerifyCashInPin();
+                            }
+                          }}
+                          placeholder={cashInUserId ? 'Enter PIN code' : 'Select user first'}
+                          className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-slate-100 disabled:text-slate-400 shadow-2xs"
+                        />
+                        <Lock size={14} className="absolute right-3 top-3 text-slate-400 pointer-events-none" />
+                      </div>
+
+                      {!cashInPinVerified ? (
+                        <button
+                          type="button"
+                          onClick={handleVerifyCashInPin}
+                          disabled={!cashInUserId || !cashInPin.trim() || cashInPinVerifying}
+                          className="px-4 py-2.5 bg-emerald-700 hover:bg-emerald-800 disabled:bg-slate-200 text-white disabled:text-slate-400 rounded-xl text-xs font-black transition cursor-pointer flex items-center gap-1.5 shadow-xs whitespace-nowrap"
+                        >
+                          {cashInPinVerifying ? (
+                            <RefreshCw size={13} className="animate-spin" />
+                          ) : (
+                            <Check size={14} />
+                          )}
+                          <span>Verify PIN</span>
+                        </button>
+                      ) : (
+                        <div className="px-3.5 py-2.5 bg-emerald-100 border border-emerald-300 text-emerald-800 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-2xs whitespace-nowrap">
+                          <CheckCircle2 size={15} className="text-emerald-700" />
+                          <span>PIN Accepted</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {cashInPinError && (
+                      <p className="text-[11px] text-rose-600 font-bold mt-1.5 flex items-center gap-1">
+                        <AlertCircle size={12} />
+                        {cashInPinError}
+                      </p>
+                    )}
+
+                    {cashInPinVerified && (
+                      <p className="text-[11px] text-emerald-700 font-bold mt-1.5 flex items-center gap-1">
+                        <CheckCircle2 size={12} />
+                        Authorized by {branchUsers.find(u => u.id === cashInUserId)?.display_name || branchUsers.find(u => u.id === cashInUserId)?.name}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Amount inputs */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 pt-2 border-t border-emerald-200/60">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Amount USD ($)</label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        step="any"
+                        min="0"
+                        disabled={!cashInPinVerified}
+                        value={cashInUsd}
+                        onChange={(e) => setCashInUsd(e.target.value)}
+                        placeholder="0.00"
+                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-slate-100 disabled:text-slate-400 shadow-2xs"
+                      />
+                      <span className="absolute right-3 top-2 text-xs font-bold text-slate-400">$</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Amount LBP (L.L.)</label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        step="any"
+                        min="0"
+                        disabled={!cashInPinVerified}
+                        value={cashInLbp}
+                        onChange={(e) => setCashInLbp(e.target.value)}
+                        placeholder="0"
+                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-slate-100 disabled:text-slate-400 shadow-2xs"
+                      />
+                      <span className="absolute right-3 top-2 text-[10px] font-bold text-slate-400">LBP</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Notes / Reason</label>
+                    <input
+                      type="text"
+                      disabled={!cashInPinVerified}
+                      value={cashInNotes}
+                      onChange={(e) => setCashInNotes(e.target.value)}
+                      placeholder="e.g. Float addition, handover, change"
+                      className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-slate-100 disabled:text-slate-400 shadow-2xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-2">
+                  <button
+                    type="submit"
+                    disabled={submitting || !cashInPinVerified || ((parseFloat(cashInUsd) || 0) <= 0 && (parseFloat(cashInLbp) || 0) <= 0)}
+                    className="px-6 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 disabled:bg-slate-200 text-white disabled:text-slate-400 font-black text-xs transition shadow-xs cursor-pointer flex items-center gap-2"
+                  >
+                    {submitting ? <RefreshCw size={14} className="animate-spin" /> : <Plus size={14} />}
+                    <span>Record Cash In</span>
+                  </button>
+                </div>
+              </div>
+
+              {renderPaymentsList()}
+            </form>
+          )}
+
+          {/* ================================================================ */}
+          {/* TAB: CASH OUT */}
+          {/* ================================================================ */}
+          {activeTab === 'cashout' && (
+            <form onSubmit={handleSubmitCashOut} className="space-y-4">
+              <div className="p-5 bg-amber-50/50 border border-amber-200 rounded-2xl space-y-4">
+                <div className="flex items-center gap-2">
+                  <ArrowUpCircle size={20} className="text-amber-700" />
+                  <div>
+                    <span className="text-xs font-black text-amber-950 uppercase tracking-wider block">
+                      Cash Out / Withdrawal
+                    </span>
+                    <span className="text-[11px] text-slate-600 font-medium">
+                      Select reason (Bank, Salary, or Loan) and record money taken from drawer.
+                    </span>
+                  </div>
+                </div>
+
+                {/* Reason Selector (Bank, Salary, Loan) */}
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1.5">
+                    Select Cash Out Reason *
+                  </label>
+                  <div className="grid grid-cols-3 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => { setCashOutReason('Bank'); }}
+                      className={`p-3 rounded-xl border flex flex-col items-center justify-center gap-1.5 transition cursor-pointer text-xs font-black ${
+                        cashOutReason === 'Bank'
+                          ? 'bg-amber-100 border-amber-600 text-amber-950 shadow-xs ring-2 ring-amber-500/20'
+                          : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                      }`}
+                    >
+                      <Building size={18} className={cashOutReason === 'Bank' ? 'text-amber-700' : 'text-slate-400'} />
+                      <span>🏦 Bank</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => { setCashOutReason('Salary'); }}
+                      className={`p-3 rounded-xl border flex flex-col items-center justify-center gap-1.5 transition cursor-pointer text-xs font-black ${
+                        cashOutReason === 'Salary'
+                          ? 'bg-amber-100 border-amber-600 text-amber-950 shadow-xs ring-2 ring-amber-500/20'
+                          : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                      }`}
+                    >
+                      <User size={18} className={cashOutReason === 'Salary' ? 'text-amber-700' : 'text-slate-400'} />
+                      <span>💼 Salary</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => { setCashOutReason('Loan'); }}
+                      className={`p-3 rounded-xl border flex flex-col items-center justify-center gap-1.5 transition cursor-pointer text-xs font-black ${
+                        cashOutReason === 'Loan'
+                          ? 'bg-amber-100 border-amber-600 text-amber-950 shadow-xs ring-2 ring-amber-500/20'
+                          : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                      }`}
+                    >
+                      <CreditCard size={18} className={cashOutReason === 'Loan' ? 'text-amber-700' : 'text-slate-400'} />
+                      <span>🤝 Loan</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Recipient Details based on Reason */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+                  {cashOutReason === 'Bank' ? (
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+                        Bank Name / Details *
+                      </label>
+                      <input
+                        type="text"
+                        value={cashOutBankName}
+                        onChange={(e) => setCashOutBankName(e.target.value)}
+                        placeholder="e.g. BLF, Bank Audi, Byblos Bank..."
+                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-2xs"
+                      />
+                      <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                        {['BLF', 'Bank Audi', 'Byblos Bank', 'SGBL', 'Whish / OMT'].map(bank => (
+                          <button
+                            key={bank}
+                            type="button"
+                            onClick={() => setCashOutBankName(bank)}
+                            className="px-2 py-0.5 bg-white hover:bg-amber-100 border border-slate-200 text-[10px] font-bold text-slate-600 rounded-md cursor-pointer transition shadow-2xs"
+                          >
+                            {bank}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+                        Employee Recipient ({cashOutReason}) *
+                      </label>
+                      <select
+                        value={cashOutUserId}
+                        onChange={(e) => setCashOutUserId(e.target.value)}
+                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-2xs"
+                      >
+                        <option value="">-- Select Employee --</option>
+                        {branchUsers.map((u) => (
+                          <option key={u.id} value={u.id}>
+                            {u.display_name || u.name} {u.role ? `(${u.role})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Notes / Description</label>
+                    <input
+                      type="text"
+                      value={cashOutNotes}
+                      onChange={(e) => setCashOutNotes(e.target.value)}
+                      placeholder={`e.g. ${cashOutReason} withdrawal details`}
+                      className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-2xs"
+                    />
+                  </div>
+                </div>
+
+                {/* Amount inputs */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-amber-200/60">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Amount USD ($)</label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        step="any"
+                        min="0"
+                        value={cashOutUsd}
+                        onChange={(e) => setCashOutUsd(e.target.value)}
+                        placeholder="0.00"
+                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-2xs"
+                      />
+                      <span className="absolute right-3 top-2 text-xs font-bold text-slate-400">$</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Amount LBP (L.L.)</label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        step="any"
+                        min="0"
+                        value={cashOutLbp}
+                        onChange={(e) => setCashOutLbp(e.target.value)}
+                        placeholder="0"
+                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-2xs"
+                      />
+                      <span className="absolute right-3 top-2 text-[10px] font-bold text-slate-400">LBP</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-2">
+                  <button
+                    type="submit"
+                    disabled={submitting || ((parseFloat(cashOutUsd) || 0) <= 0 && (parseFloat(cashOutLbp) || 0) <= 0)}
+                    className="px-6 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:bg-slate-200 text-white disabled:text-slate-400 font-black text-xs transition shadow-xs cursor-pointer flex items-center gap-2"
+                  >
+                    {submitting ? <RefreshCw size={14} className="animate-spin" /> : <Plus size={14} />}
+                    <span>Record Cash Out ({cashOutReason})</span>
+                  </button>
+                </div>
+              </div>
+
+              {renderPaymentsList()}
+            </form>
+          )}
+
+          {/* ================================================================ */}
+          {/* TAB 3: SUPPLIER INVOICE (PHASE 4) */}
           {/* ================================================================ */}
           {activeTab === 'invoice' && (
             <form onSubmit={handleSubmitSupplierInvoice} className="space-y-4">
@@ -1771,51 +2435,7 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
                 </div>
               </form>
 
-              {/* Recorded Payments Log for Active Shift */}
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
-                <span className="text-xs font-black text-slate-900 uppercase tracking-wider block">
-                  Recorded Shift Outflows &amp; Daily Payments ({dailyPaymentsList.length})
-                </span>
-
-                {loadingPayments ? (
-                  <div className="py-6 text-center text-slate-500 text-xs">Loading payments...</div>
-                ) : dailyPaymentsList.length === 0 ? (
-                  <div className="py-6 text-center text-slate-500 text-xs border border-dashed border-slate-300 rounded-xl">
-                    No payments recorded for this shift yet.
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {dailyPaymentsList.map(p => (
-                      <div
-                        key={p.id}
-                        className="p-3 bg-white border border-slate-200 rounded-xl flex items-center justify-between text-xs shadow-xs"
-                      >
-                        <div>
-                          <div className="font-bold text-slate-900">{p.supplier || p.reason || 'Expense'}</div>
-                          <div className="text-[10px] text-slate-500 font-medium">
-                            Type: <span className="text-slate-700 font-semibold">{p.type}</span> • Cashier: <span className="text-slate-700 font-semibold">{p.user_name}</span>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-4">
-                          <div className="text-right font-mono font-bold">
-                            {parseFloat(p.amount_usd) > 0 && <div className="text-slate-900">${parseFloat(p.amount_usd).toFixed(2)}</div>}
-                            {parseFloat(p.amount_lbp) > 0 && <div className="text-emerald-800 text-[11px]">{parseFloat(p.amount_lbp).toLocaleString()} LBP</div>}
-                          </div>
-
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteHistoricalDailyPayment(p.id)}
-                            className="text-slate-400 hover:text-rose-600 transition cursor-pointer"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+              {renderPaymentsList()}
             </div>
           )}
         </div>

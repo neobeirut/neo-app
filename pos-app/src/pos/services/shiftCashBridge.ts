@@ -1215,6 +1215,46 @@ export async function deleteDailyPayment(id: string) {
 /**
  * Fetch active E-Wallets configured in e_wallets table
  */
+/**
+ * Fetch branch users for cash in / cash out recipient selection
+ */
+export async function getBranchUsers(restaurantId?: string) {
+  try {
+    const rid = restaurantId || getGlobalRestaurantId();
+    let query = supabase.from('users').select('id, name, display_name, role, branch, is_active').eq('is_active', true).order('name', { ascending: true });
+    if (rid) {
+      query = query.eq('restaurant_id', rid);
+    }
+    const { data, error } = await query;
+    if (error) return { success: false, error: error.message, data: [] };
+    return { success: true, data: data || [] };
+  } catch (err: any) {
+    return { success: false, error: err?.message, data: [] };
+  }
+}
+
+/**
+ * Verify a selected user's PIN for Cash In authorization
+ */
+export async function verifyUserPin(userId: string, pin: string) {
+  try {
+    const cleanPin = pin.trim();
+    if (!cleanPin) return { success: false, error: 'Please enter a PIN code.' };
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, name, display_name')
+      .eq('id', userId)
+      .or(`pin.eq.${cleanPin},pin_code.eq.${cleanPin}`)
+      .maybeSingle();
+
+    if (error) return { success: false, error: error.message };
+    if (!data) return { success: false, error: 'Incorrect PIN code.' };
+    return { success: true, user: data };
+  } catch (err: any) {
+    return { success: false, error: err?.message };
+  }
+}
+
 export async function getActiveWallets(restaurantId?: string) {
   try {
     const rid = restaurantId || getGlobalRestaurantId();
