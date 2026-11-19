@@ -40,6 +40,7 @@ import {
   TablesScreen,
   requestBill,
   loadFloorState,
+  closeTableSession,
   type PosTable
 } from '../pos/tables';
 import { ThermalReceiptPreviewModal, type ThermalReceiptData } from '../pos/components/ThermalReceiptPreviewModal';
@@ -71,7 +72,8 @@ import {
   ChevronDown,
   MoveRight,
   Smartphone,
-  Loader2
+  Loader2,
+  RotateCcw
 } from 'lucide-react';
 import { PwaInstallModal } from '../pos/components/PwaInstallModal';
 
@@ -611,6 +613,29 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
         setIsTableLoading(false);
       }
     };
+
+  // Cancel Current Table Operation & Return to Floor Plan
+  const handleCancelTableOperation = async () => {
+    const unsavedItems = ticketItems.filter(i => !i.isOrdered && !i.isHoldSeparator);
+    if (unsavedItems.length > 0) {
+      if (!window.confirm('Discard unsaved items and cancel this table operation?')) {
+        return;
+      }
+    }
+
+    if (activeTableContext?.isNewlyCreated && activeTableContext?.sessionId && !activeTableContext?.isExistingOccupied) {
+      try {
+        await closeTableSession(activeTableContext.sessionId);
+      } catch (e) {
+        console.warn('Could not release empty table session:', e);
+      }
+    }
+
+    setView('floor');
+    setActiveTableContext(null);
+    setTicketItems([]);
+    refreshFloorTablesList().catch(() => {});
+  };
 
   // Add Item to Ticket (triggered from touch matrix button)
   const handleTouchButtonPress = (btn: PosScreenButton) => {
@@ -1444,13 +1469,22 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
               className="flex items-center gap-2 px-3 py-1.5 rounded-xl border shadow-sm"
               style={{ backgroundColor: '#E9F4ED', borderColor: `${primaryColor}40` }}
             >
-              <span className="text-xs font-black uppercase tracking-wider" style={{ color: primaryColor }}>
-                {activeTableContext.tableCode ? (
-                  activeTableContext.tableCode.toLowerCase().startsWith('table')
-                    ? activeTableContext.tableCode
-                    : `Table ${activeTableContext.tableCode.replace(/^[Tt]/, '')}`
-                ) : 'Table'}
-              </span>
+              <button
+                type="button"
+                onClick={() => setIsTransferModalOpen(true)}
+                className="flex items-center gap-1 text-xs font-black uppercase tracking-wider hover:opacity-80 transition cursor-pointer"
+                style={{ color: primaryColor }}
+                title="Change Table Number"
+              >
+                <span>
+                  {activeTableContext.tableCode ? (
+                    activeTableContext.tableCode.toLowerCase().startsWith('table')
+                      ? activeTableContext.tableCode
+                      : `Table ${activeTableContext.tableCode.replace(/^[Tt]/, '')}`
+                  ) : 'Table'}
+                </span>
+                <RotateCcw className="w-3 h-3 ml-0.5" />
+              </button>
               <span className="text-[#5E6964]">•</span>
               <span className="text-xs font-semibold text-[#5E6964]">
                 {activeTableContext.guestCount} Guests
@@ -1737,20 +1771,36 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
               {/* Ticket Top: Table & Server info + Hold/Fire controls */}
               <div className="p-3 bg-white border-b border-[#E0E3DF] shrink-0">
                 <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-sm font-black text-[#242B28]">
-                      {activeTableContext?.tableCode ? (
-                        activeTableContext.tableCode.toLowerCase().startsWith('table')
-                          ? activeTableContext.tableCode
-                          : `Table ${activeTableContext.tableCode.replace(/^[Tt]/, '')}`
-                      ) : 'Table'}
-                    </span>
-                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-[#F5F6F4] text-[#242B28] font-bold border border-[#E0E3DF]">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <button
+                      type="button"
+                      onClick={() => setIsTransferModalOpen(true)}
+                      className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-[#E9F4ED] hover:bg-[#d8ece0] border border-[#1e5c4f]/30 text-[#1e5c4f] font-black text-xs transition active:scale-95 cursor-pointer shadow-2xs"
+                      title="Click to Change Table Number"
+                    >
+                      <RotateCcw className="w-3 h-3 text-[#1e5c4f]" />
+                      <span className="truncate">
+                        {activeTableContext?.tableCode ? (
+                          activeTableContext.tableCode.toLowerCase().startsWith('table')
+                            ? activeTableContext.tableCode
+                            : `Table ${activeTableContext.tableCode.replace(/^[Tt]/, '')}`
+                        ) : 'Table'}
+                      </span>
+                    </button>
+                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-[#F5F6F4] text-[#242B28] font-bold border border-[#E0E3DF] shrink-0">
                       {activeTableContext?.guestCount}p
                     </span>
                   </div>
-                  <div className="text-[11px] text-[#5E6964] font-medium truncate max-w-[120px]">
-                    {activeTableContext?.waiterName || currentUser?.name}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={handleCancelTableOperation}
+                      className="px-2.5 py-1 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[11px] font-bold transition active:scale-95 cursor-pointer flex items-center gap-1 shadow-2xs"
+                      title="Cancel Table Operation"
+                    >
+                      <X className="w-3.5 h-3.5 text-rose-600" />
+                      <span>Cancel</span>
+                    </button>
                   </div>
                 </div>
 
