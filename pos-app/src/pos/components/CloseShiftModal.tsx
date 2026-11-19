@@ -230,7 +230,8 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [cashFlowMessage, setCashFlowMessage] = useState<string | null>(null);
 
-  // NumPad State
+  // NumPad / Integrated Keypad State
+  const [activeKeypadField, setActiveKeypadField] = useState<string>('actualUsd');
   const [numpadField, setNumpadField] = useState<{ label: string; value: string; setter: (v: string) => void } | null>(null);
 
   // Auto-dismiss open entities popup when no open entities
@@ -1045,44 +1046,284 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
     }
   };
 
-  // Helper to render a numpad-trigger field with touch-friendly ergonomics
-  const numField = (
-    label: string,
-    value: string,
-    setter: (v: string) => void,
-    suffix?: string,
-    large?: boolean,
-    readOnly?: boolean
-  ) => (
-    <div
-      onClick={() => {
-        if (!readOnly) setNumpadField({ label, value, setter });
-      }}
-      className={`w-full ${
-        readOnly
-          ? 'bg-slate-100/90 border-slate-200 cursor-not-allowed opacity-90'
-          : 'bg-white border-slate-300 hover:border-[#1e5c4f] cursor-pointer shadow-2xs hover:shadow-xs'
-      } border rounded-xl px-3 ${large ? 'py-2.5 min-h-[48px]' : 'py-2 min-h-[42px]'} text-slate-900 font-mono font-bold flex items-center justify-between transition`}
-      title={readOnly ? 'Locked: Value is fetched from Payments and cannot be edited manually' : undefined}
-    >
-      <span className={`${large ? 'text-base sm:text-lg' : 'text-sm sm:text-base'} font-black ${value && value !== '0' ? 'text-slate-900' : 'text-slate-400'}`}>
-        {value === '0' ? '0' : (value || '0')}
-      </span>
-      <div className="flex items-center gap-1.5 shrink-0">
-        {suffix && <span className="text-slate-500 text-xs font-bold">{suffix}</span>}
-        {readOnly ? (
-          <span className="text-slate-400 text-xs" title="Locked: From Payments">🔒</span>
-        ) : (
-          <span className="text-slate-400 text-xs bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">⌨</span>
-        )}
+  // Active keypad field configuration helper
+  const getActiveFieldInfo = () => {
+    switch (activeKeypadField) {
+      case 'actualUsd':
+        return {
+          id: 'actualUsd',
+          label: 'Actual Cash USD ($)',
+          shortLabel: 'Actual USD',
+          value: actualUsd,
+          currency: 'USD',
+          symbol: '$',
+          isUsd: true,
+          allowDecimal: true,
+          isPin: false,
+          setValue: (v: string) => setActualUsd(v),
+          next: 'actualLbp'
+        };
+      case 'actualLbp':
+        return {
+          id: 'actualLbp',
+          label: 'Actual Cash LBP (L.L.)',
+          shortLabel: 'Actual LBP',
+          value: actualLbp,
+          currency: 'LBP',
+          symbol: 'L.L.',
+          isUsd: false,
+          allowDecimal: false,
+          isPin: false,
+          setValue: (v: string) => setActualLbp(v),
+          next: 'openingUsd'
+        };
+      case 'openingUsd':
+        return {
+          id: 'openingUsd',
+          label: 'Opening Cash Float USD ($)',
+          shortLabel: 'Opening USD',
+          value: openingUsd,
+          currency: 'USD',
+          symbol: '$',
+          isUsd: true,
+          allowDecimal: true,
+          isPin: false,
+          setValue: (v: string) => setOpeningUsd(v),
+          next: 'openingLbp'
+        };
+      case 'openingLbp':
+        return {
+          id: 'openingLbp',
+          label: 'Opening Cash Float LBP (L.L.)',
+          shortLabel: 'Opening LBP',
+          value: openingLbp,
+          currency: 'LBP',
+          symbol: 'L.L.',
+          isUsd: false,
+          allowDecimal: false,
+          isPin: false,
+          setValue: (v: string) => setOpeningLbp(v),
+          next: 'creditCardUsd'
+        };
+      case 'creditCardUsd':
+        return {
+          id: 'creditCardUsd',
+          label: 'Credit Card USD ($)',
+          shortLabel: 'Card USD',
+          value: creditCardUsd,
+          currency: 'USD',
+          symbol: '$',
+          isUsd: true,
+          allowDecimal: true,
+          isPin: false,
+          setValue: (v: string) => setCreditCardUsd(v),
+          next: 'creditCardLbp'
+        };
+      case 'creditCardLbp':
+        return {
+          id: 'creditCardLbp',
+          label: 'Credit Card LBP (L.L.)',
+          shortLabel: 'Card LBP',
+          value: creditCardLbp,
+          currency: 'LBP',
+          symbol: 'L.L.',
+          isUsd: false,
+          allowDecimal: false,
+          isPin: false,
+          setValue: (v: string) => setCreditCardLbp(v),
+          next: 'rate'
+        };
+      case 'rate':
+        return {
+          id: 'rate',
+          label: 'USD Exchange Rate (LBP / $1)',
+          shortLabel: 'Exchange Rate',
+          value: rateInputStr,
+          currency: 'LBP',
+          symbol: 'L.L.',
+          isUsd: false,
+          allowDecimal: false,
+          isPin: false,
+          setValue: (v: string) => {
+            setRateInputStr(v);
+            setRate(Number(v) || 0);
+          },
+          next: varianceCheck.requiresManagerApproval ? 'managerPin' : 'actualUsd'
+        };
+      case 'managerPin':
+        return {
+          id: 'managerPin',
+          label: 'Manager Authorization PIN',
+          shortLabel: 'Manager PIN',
+          value: managerPin,
+          currency: 'PIN',
+          symbol: '🔑',
+          isUsd: false,
+          allowDecimal: false,
+          isPin: true,
+          setValue: (v: string) => setManagerPin(v.slice(0, 6)),
+          next: 'actualUsd'
+        };
+      default:
+        if (activeKeypadField.startsWith('wallet_')) {
+          const parts = activeKeypadField.split('_');
+          const walletId = parts[1];
+          const curr = parts[2];
+          const w = wallets.find(x => x.id === walletId);
+          const isUsd = curr === 'usd';
+          return {
+            id: activeKeypadField,
+            label: `${w?.name || 'Wallet'} ${isUsd ? 'USD ($)' : 'LBP (L.L.)'}`,
+            shortLabel: `${w?.name || 'Wallet'} ${isUsd ? 'USD' : 'LBP'}`,
+            value: walletInputs[walletId]?.[isUsd ? 'amount_usd' : 'amount_lbp'] || '',
+            currency: isUsd ? 'USD' : 'LBP',
+            symbol: isUsd ? '$' : 'L.L.',
+            isUsd,
+            allowDecimal: isUsd,
+            isPin: false,
+            setValue: (v: string) => {
+              setWalletInputs(prev => ({
+                ...prev,
+                [walletId]: {
+                  amount_usd: isUsd ? v : (prev[walletId]?.amount_usd || ''),
+                  amount_lbp: !isUsd ? v : (prev[walletId]?.amount_lbp || '')
+                }
+              }));
+            },
+            next: 'actualUsd'
+          };
+        }
+        return {
+          id: 'actualUsd',
+          label: 'Actual Cash USD ($)',
+          shortLabel: 'Actual USD',
+          value: actualUsd,
+          currency: 'USD',
+          symbol: '$',
+          isUsd: true,
+          allowDecimal: true,
+          isPin: false,
+          setValue: (v: string) => setActualUsd(v),
+          next: 'actualLbp'
+        };
+    }
+  };
+
+  const handleKeypadKey = (key: string) => {
+    const info = getActiveFieldInfo();
+    const val = String(info.value ?? '');
+
+    if (key === 'CLR') {
+      info.setValue('0');
+      return;
+    }
+    if (key === 'DEL') {
+      const nextVal = val.slice(0, -1);
+      info.setValue(nextVal === '' ? '0' : nextVal);
+      return;
+    }
+    if (key === 'NEXT') {
+      setActiveKeypadField(info.next);
+      return;
+    }
+    if (key === '.') {
+      if (!info.allowDecimal) return;
+      if (val.includes('.')) return;
+      info.setValue((val === '0' || val === '' ? '0' : val) + '.');
+      return;
+    }
+    if (key === '00') {
+      if (val === '0' || val === '') return;
+      info.setValue(val + '00');
+      return;
+    }
+    // Digits 0-9
+    if (info.isPin) {
+      if (val.length >= 6) return;
+      info.setValue(val + key);
+      return;
+    }
+    if (val === '0' || val === '') {
+      info.setValue(key);
+    } else {
+      info.setValue(val + key);
+    }
+  };
+
+  const handleQuickAdd = (num: number) => {
+    const info = getActiveFieldInfo();
+    if (info.isPin) return;
+    const current = Number(info.value) || 0;
+    const next = current + num;
+    info.setValue(info.allowDecimal ? next.toFixed(2).replace(/\.00$/, '') : String(Math.round(next)));
+  };
+
+  // Helper to render touch-tappable data entry field (No virtual OS keyboard!)
+  const renderTouchField = (fieldKey: string, label: string, value: string, suffix?: string, subtitle?: string) => {
+    const isActive = activeKeypadField === fieldKey;
+    const hasValue = value && value !== '0';
+    return (
+      <div
+        onClick={() => setActiveKeypadField(fieldKey)}
+        className={`p-2 rounded-xl border transition cursor-pointer select-none flex items-center justify-between min-h-[42px] ${
+          isActive
+            ? 'bg-emerald-50/80 border-[#1e5c4f] ring-2 ring-[#1e5c4f] shadow-xs'
+            : 'bg-white border-slate-200 hover:border-slate-300 shadow-2xs'
+        }`}
+      >
+        <div className="min-w-0 pr-1.5 flex-1">
+          <div className="flex items-center justify-between">
+            <span className={`text-[11px] font-bold uppercase tracking-wider truncate ${isActive ? 'text-[#1e5c4f]' : 'text-slate-600'}`}>
+              {label}
+            </span>
+            {subtitle && <span className="text-[10px] text-slate-400 font-medium truncate ml-1">{subtitle}</span>}
+          </div>
+          <div className={`text-base font-black font-mono leading-tight truncate ${hasValue ? 'text-slate-900' : 'text-slate-400'}`}>
+            {hasValue ? (suffix === '$' ? `$${value}` : suffix === 'LBP' ? `${Number(value).toLocaleString()}` : value) : '0'}
+          </div>
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          {suffix && <span className="text-[11px] font-bold text-slate-400 uppercase">{suffix}</span>}
+          {isActive ? (
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" title="Active for Keypad" />
+          ) : (
+            <span className="text-slate-400 text-[10px] bg-slate-100 px-1 py-0.5 rounded border border-slate-200">⌨</span>
+          )}
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
+
+  // Helper to render locked / read-only fields from Daily Payments
+  const renderReadOnlyField = (label: string, value: string | number, suffix?: string, subtitle?: string) => {
+    const numVal = Number(value) || 0;
+    return (
+      <div className="p-2 rounded-xl border border-slate-200 bg-slate-50/90 flex items-center justify-between min-h-[42px] select-none">
+        <div className="min-w-0 pr-1.5 flex-1">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 truncate">
+              {label}
+            </span>
+            {subtitle && <span className="text-[10px] text-slate-400 font-medium truncate ml-1">{subtitle}</span>}
+          </div>
+          <div className={`text-base font-black font-mono leading-tight truncate ${numVal > 0 ? 'text-slate-900' : 'text-slate-400'}`}>
+            {suffix === '$' ? `$${numVal.toFixed(2)}` : `${Math.round(numVal).toLocaleString()}`}
+          </div>
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          {suffix && <span className="text-[11px] font-bold text-slate-400 uppercase">{suffix}</span>}
+          <span className="text-slate-400 text-xs" title="Auto-calculated from Payments">🔒</span>
+        </div>
+      </div>
+    );
+  };
 
   if (!isOpen || !shift) return null;
 
+  const activeInfo = getActiveFieldInfo();
+
   return (
-    <div className="fixed inset-0 bg-[#F5F6F4] z-50 flex flex-col text-slate-900">
+    <div className="fixed inset-0 bg-[#F5F6F4] z-50 flex flex-col h-screen max-h-screen overflow-hidden text-slate-900 select-none">
       <div className="w-full h-full flex flex-col overflow-hidden relative">
 
         {/* OPEN ENTITIES INFO POPUP — fixed overlay above the full-screen modal */}
@@ -1268,307 +1509,292 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
                     </div>
                   </div>
                 )}
-
-                {/* Continue button */}
-                <div className="pt-2 flex justify-end">
-                  <button
-                    type="button"
-                    onClick={() => setShowOpenEntitiesPopup(false)}
-                    className="px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-slate-900 font-black text-xs rounded-xl transition shadow-lg cursor-pointer"
-                  >
-                    Continue to Close Shift →
-                  </button>
-                </div>
               </div>
             </div>
           </div>
         )}
 
-        {/* HEADER BAR */}
-        <div className="px-5 py-3 border-b border-slate-200 flex items-center justify-between bg-white flex-shrink-0 shadow-xs">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-[#E9F4ED] text-[#1e5c4f] border border-[#1e5c4f]/20 flex items-center justify-center text-xl font-black flex-shrink-0 shadow-2xs">
+        {/* COMPACT TOP HEADER BAR (h-12 / 48px shrink-0) */}
+        <div className="h-12 px-4 border-b border-slate-200 flex items-center justify-between bg-white shrink-0 shadow-2xs">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-[#E9F4ED] text-[#1e5c4f] border border-[#1e5c4f]/20 flex items-center justify-center text-base font-black shrink-0 shadow-2xs">
               🔒
             </div>
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-base sm:text-lg font-black text-slate-900 leading-tight">Close Shift Cash Session</h2>
-                <span className={`px-2 py-0.5 rounded-lg text-xs font-black uppercase tracking-wider ${
-                  shiftType === 'PM' ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' : 'bg-amber-50 text-amber-700 border border-amber-200'
-                }`}>
-                  {shiftType === 'PM' ? '🌙 PM Shift' : '☀️ AM Shift'}
-                </span>
-                {shift.status === 'on_hold' && (
-                  <span className="px-2 py-0.5 rounded-lg bg-amber-100 text-amber-800 text-xs font-bold border border-amber-300">
-                    ⏸️ Auditing Held Shift
-                  </span>
-                )}
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm sm:text-base font-black text-slate-900 leading-tight">Close Shift Cash Session</h2>
+              <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+                <button
+                  type="button"
+                  disabled={Boolean(s.id)}
+                  onClick={() => setShiftType('AM')}
+                  className={`px-2 py-0.5 rounded text-[11px] font-black transition ${
+                    shiftType === 'AM' ? 'bg-[#1e5c4f] text-white shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  ☀️ AM
+                </button>
+                <button
+                  type="button"
+                  disabled={Boolean(s.id)}
+                  onClick={() => setShiftType('PM')}
+                  className={`px-2 py-0.5 rounded text-[11px] font-black transition ${
+                    shiftType === 'PM' ? 'bg-[#1e5c4f] text-white shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  🌙 PM
+                </button>
               </div>
-              <p className="text-xs text-slate-500 font-medium leading-tight mt-0.5">
-                Reconcile cash drawer, supplier payouts, and payment mix • <strong className="text-slate-700">{branchName}</strong> • Cashier: <strong className="text-slate-700">{cashierName}</strong>
-              </p>
+              <span className="hidden sm:inline text-xs text-slate-500 font-medium">
+                • <strong className="text-slate-700">{branchName}</strong> • {cashierName} • {date}
+              </span>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Open Entities indicator */}
+            {/* Open Entities Indicator */}
             {(openTables.length > 0 || openOrders.length > 0) && (
               <button
                 type="button"
                 onClick={() => setShowOpenEntitiesPopup(true)}
-                className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-xl text-xs font-black transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
-                title="View open tables and orders"
+                className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-lg text-xs font-black transition flex items-center gap-1 cursor-pointer shadow-2xs"
               >
-                <AlertTriangle size={14} className="text-amber-600" />
-                <span>{openTables.length + openOrders.length} Open Tables/Orders</span>
+                <AlertTriangle size={13} className="text-amber-600" />
+                <span>{openTables.length + openOrders.length} Open</span>
               </button>
             )}
+
+            {/* Live Exchange Rate Pill */}
+            <div
+              onClick={() => setActiveKeypadField('rate')}
+              className={`px-2.5 py-1 rounded-lg border text-xs font-mono font-bold cursor-pointer transition flex items-center gap-1.5 shadow-2xs ${
+                activeKeypadField === 'rate'
+                  ? 'bg-emerald-50 border-[#1e5c4f] text-[#1e5c4f] ring-1 ring-[#1e5c4f]'
+                  : 'bg-white border-slate-300 text-slate-700 hover:border-slate-400'
+              }`}
+              title="Click to edit exchange rate via keypad"
+            >
+              <span className="text-slate-400 font-sans text-[11px]">Rate:</span>
+              <span>{Number(rate || systemRate).toLocaleString()} L.L.</span>
+            </div>
 
             {/* Get Payments Button */}
             <button
               type="button"
               disabled={fetchingCashFlow}
               onClick={() => handleFetchCashFlow()}
-              className="px-3.5 py-1.5 bg-white hover:bg-slate-50 text-[#1e5c4f] hover:text-[#16473D] border border-slate-300 rounded-xl text-xs font-black transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+              className="px-2.5 py-1 bg-white hover:bg-slate-50 text-[#1e5c4f] hover:text-[#16473D] border border-slate-300 rounded-lg text-xs font-black transition flex items-center gap-1 cursor-pointer shadow-2xs"
               title="Pull supplier payments and cash in/out from Daily Payments"
             >
-              <RefreshCw size={13} className={fetchingCashFlow ? 'animate-spin' : ''} />
+              <RefreshCw size={12} className={fetchingCashFlow ? 'animate-spin' : ''} />
               <span>{fetchingCashFlow ? 'Fetching...' : '⚡ Get Payments'}</span>
             </button>
 
+            {/* Close Modal Button */}
             <button
               type="button"
               onClick={onClose}
-              className="w-9 h-9 rounded-xl bg-white hover:bg-slate-100 text-slate-500 hover:text-slate-800 border border-slate-300 flex items-center justify-center transition cursor-pointer shadow-2xs"
+              className="w-8 h-8 rounded-lg bg-white hover:bg-slate-100 text-slate-500 hover:text-slate-800 border border-slate-300 flex items-center justify-center transition cursor-pointer shadow-2xs"
               title="Close modal"
             >
-              <X size={18} />
+              <X size={16} />
             </button>
           </div>
         </div>
 
-        {/* DASHBOARD BODY */}
-        <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-5 bg-[#F5F6F4] space-y-4">
-          {/* Status & Error Messages */}
-          {errorMessage && (
-            <div className="p-3 bg-rose-50 border border-rose-200 rounded-2xl text-rose-800 text-xs sm:text-sm font-bold flex items-center gap-2 shadow-xs">
-              <AlertTriangle size={16} className="text-rose-600 shrink-0" />
+        {/* STATUS / NOTICE MESSAGES (shrink-0) */}
+        {errorMessage && (
+          <div className="px-4 py-1.5 bg-rose-50 border-b border-rose-200 text-rose-800 text-xs font-bold flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2">
+              <AlertTriangle size={14} className="text-rose-600 shrink-0" />
               <span>{errorMessage}</span>
             </div>
-          )}
-
-          {cashFlowMessage && (
-            <div className="p-3 bg-blue-50 border border-blue-200 rounded-2xl text-blue-800 text-xs sm:text-sm font-bold flex items-center gap-2 shadow-xs">
-              <span className="text-base">ℹ️</span>
+            <button type="button" onClick={() => setErrorMessage(null)} className="text-rose-600 hover:text-rose-900 text-xs">✕</button>
+          </div>
+        )}
+        {cashFlowMessage && (
+          <div className="px-4 py-1.5 bg-blue-50 border-b border-blue-200 text-blue-800 text-xs font-bold flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2">
+              <span>ℹ️</span>
               <span>{cashFlowMessage}</span>
             </div>
-          )}
+            <button type="button" onClick={() => setCashFlowMessage(null)} className="text-blue-600 hover:text-blue-900 text-xs">✕</button>
+          </div>
+        )}
 
-          {/* TOP SECTION: HERO PHYSICAL COUNT & RECONCILIATION */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-            {/* HERO 1: PHYSICAL CASH COUNT (7 cols) */}
-            <div className="lg:col-span-7 bg-white border border-slate-200 rounded-3xl p-4 sm:p-5 shadow-xs space-y-3">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center text-base font-bold">
-                    💵
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider">
-                      Physical Cash Drawer Count
-                    </h3>
-                    <p className="text-xs text-slate-500 font-medium">Count the actual cash currently inside the cash drawer</p>
-                  </div>
-                </div>
+        {/* MAIN BODY: 2 COLUMNS (FLEX-1 MIN-H-0 OVERFLOW-HIDDEN ZERO SCROLL) */}
+        <div className="flex-1 min-h-0 flex flex-col md:flex-row overflow-hidden p-2.5 sm:p-3 gap-2.5 sm:gap-3 bg-[#F5F6F4]">
 
-                <button
-                  type="button"
-                  onClick={() => setShowDenomHelper(true)}
-                  className="px-3 py-1.5 bg-[#E9F4ED] hover:bg-[#d8ece0] text-[#1e5c4f] border border-[#1e5c4f]/30 rounded-xl text-xs font-black transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
-                  title="Open denomination calculator to count bills"
-                >
-                  <Calculator size={14} />
-                  <span>Denomination Counter</span>
-                </button>
-              </div>
+          {/* LEFT COLUMN: RECONCILIATION & FINANCIAL OVERVIEW (65% width) */}
+          <div className="flex-1 min-w-0 flex flex-col justify-between overflow-hidden gap-2.5">
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                {/* ACTUAL USD COUNT CARD */}
-                <div
-                  onClick={() => setNumpadField({ label: 'Actual Cash USD ($)', value: actualUsd, setter: setActualUsd })}
-                  className="p-3.5 bg-slate-50 hover:bg-white border-2 border-slate-200 hover:border-[#1e5c4f] rounded-2xl cursor-pointer transition shadow-2xs group flex flex-col justify-between min-h-[90px]"
-                >
-                  <div className="flex items-center justify-between text-xs font-bold text-slate-600 uppercase">
-                    <span>Actual USD ($)</span>
-                    <span className="text-xs text-slate-400 group-hover:text-[#1e5c4f] flex items-center gap-1 font-sans">
-                      <span>Tap to enter</span>
-                      <span className="bg-white px-1.5 py-0.5 rounded border border-slate-200 text-xs">⌨</span>
-                    </span>
-                  </div>
-                  <div className="flex items-baseline justify-between font-mono mt-2">
-                    <span className="text-2xl sm:text-3xl font-black text-slate-900">
-                      ${actualUsd || '0'}
-                    </span>
-                    <span className="text-xs font-bold text-slate-400 uppercase">USD</span>
-                  </div>
-                </div>
-
-                {/* ACTUAL LBP COUNT CARD */}
-                <div
-                  onClick={() => setNumpadField({ label: 'Actual Cash LBP (L.L.)', value: actualLbp, setter: setActualLbp })}
-                  className="p-3.5 bg-slate-50 hover:bg-white border-2 border-slate-200 hover:border-[#1e5c4f] rounded-2xl cursor-pointer transition shadow-2xs group flex flex-col justify-between min-h-[90px]"
-                >
-                  <div className="flex items-center justify-between text-xs font-bold text-slate-600 uppercase">
-                    <span>Actual LBP (L.L.)</span>
-                    <span className="text-xs text-slate-400 group-hover:text-[#1e5c4f] flex items-center gap-1 font-sans">
-                      <span>Tap to enter</span>
-                      <span className="bg-white px-1.5 py-0.5 rounded border border-slate-200 text-xs">⌨</span>
-                    </span>
-                  </div>
-                  <div className="flex items-baseline justify-between font-mono mt-2">
-                    <span className="text-2xl sm:text-3xl font-black text-slate-900 truncate">
-                      {Number(actualLbp || 0).toLocaleString()}
-                    </span>
-                    <span className="text-xs font-bold text-slate-400 uppercase">L.L.</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* HERO 2: RECONCILIATION RESULT CARDS (5 cols) */}
-            <div className="lg:col-span-5 flex flex-col gap-3">
-              <div className="grid grid-cols-2 gap-3 flex-1">
-                {/* Expected in Drawer */}
-                <div className="bg-white border border-slate-200 rounded-2xl p-3.5 shadow-xs flex flex-col justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                    Expected in Drawer
+            {/* 1. HERO CASH RECONCILIATION STRIP (4 CARDS) */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 shrink-0">
+              {/* CARD 1: ACTUAL USD (TAPPABLE -> KEYPAD) */}
+              <div
+                onClick={() => setActiveKeypadField('actualUsd')}
+                className={`p-3 rounded-2xl border-2 transition cursor-pointer select-none flex flex-col justify-between min-h-[92px] ${
+                  activeKeypadField === 'actualUsd'
+                    ? 'bg-emerald-50/90 border-[#1e5c4f] ring-2 ring-[#1e5c4f] shadow-md'
+                    : 'bg-white border-slate-200 hover:border-[#1e5c4f]/50 shadow-2xs'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className={`text-xs font-black uppercase tracking-wider ${
+                    activeKeypadField === 'actualUsd' ? 'text-[#1e5c4f]' : 'text-slate-600'
+                  }`}>
+                    Actual Cash USD
                   </span>
-                  <div className="mt-1">
-                    <div className="text-xl sm:text-2xl font-black font-mono text-slate-900">
-                      ${expectedUsd.toFixed(2)}
-                    </div>
-                    <div className="text-xs text-slate-500 font-mono font-medium mt-0.5">
-                      ≈ {Math.round(expectedUsd * currentRate).toLocaleString()} L.L.
-                    </div>
-                  </div>
-                </div>
-
-                {/* Actual Counted */}
-                <div className="bg-white border border-slate-200 rounded-2xl p-3.5 shadow-xs flex flex-col justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                    Actual Counted Total
+                  <span className={`text-[10px] font-black px-1.5 py-0.5 rounded uppercase ${
+                    activeKeypadField === 'actualUsd' ? 'bg-[#1e5c4f] text-white animate-pulse' : 'bg-slate-100 text-slate-500'
+                  }`}>
+                    {activeKeypadField === 'actualUsd' ? '● Active' : 'Tap to edit'}
                   </span>
-                  <div className="mt-1">
-                    <div className="text-xl sm:text-2xl font-black font-mono text-slate-900">
-                      ${actualTotalUsd.toFixed(2)}
-                    </div>
-                    <div className="text-xs text-slate-500 font-mono font-medium mt-0.5">
-                      ≈ {Math.round(actualTotalUsd * currentRate).toLocaleString()} L.L.
-                    </div>
+                </div>
+                <div className="flex items-baseline justify-between mt-1">
+                  <div className="text-2xl sm:text-3xl font-black font-mono text-slate-900 tracking-tight">
+                    ${actualUsd || '0'}
+                  </div>
+                  <span className="text-xs font-bold text-slate-400 uppercase font-mono">USD ($)</span>
+                </div>
+              </div>
+
+              {/* CARD 2: ACTUAL LBP (TAPPABLE -> KEYPAD) */}
+              <div
+                onClick={() => setActiveKeypadField('actualLbp')}
+                className={`p-3 rounded-2xl border-2 transition cursor-pointer select-none flex flex-col justify-between min-h-[92px] ${
+                  activeKeypadField === 'actualLbp'
+                    ? 'bg-emerald-50/90 border-[#1e5c4f] ring-2 ring-[#1e5c4f] shadow-md'
+                    : 'bg-white border-slate-200 hover:border-[#1e5c4f]/50 shadow-2xs'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className={`text-xs font-black uppercase tracking-wider ${
+                    activeKeypadField === 'actualLbp' ? 'text-[#1e5c4f]' : 'text-slate-600'
+                  }`}>
+                    Actual Cash LBP
+                  </span>
+                  <span className={`text-[10px] font-black px-1.5 py-0.5 rounded uppercase ${
+                    activeKeypadField === 'actualLbp' ? 'bg-[#1e5c4f] text-white animate-pulse' : 'bg-slate-100 text-slate-500'
+                  }`}>
+                    {activeKeypadField === 'actualLbp' ? '● Active' : 'Tap to edit'}
+                  </span>
+                </div>
+                <div className="flex items-baseline justify-between mt-1">
+                  <div className="text-xl sm:text-2xl font-black font-mono text-slate-900 tracking-tight truncate">
+                    {Number(actualLbp || 0).toLocaleString()}
+                  </div>
+                  <span className="text-xs font-bold text-slate-400 uppercase font-mono shrink-0 ml-1">L.L.</span>
+                </div>
+              </div>
+
+              {/* CARD 3: EXPECTED IN DRAWER */}
+              <div className="p-3 rounded-2xl border border-slate-200 bg-white shadow-2xs flex flex-col justify-between min-h-[92px] select-none">
+                <div className="flex items-center justify-between text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  <span>Expected in Drawer</span>
+                  <span className="text-[10px] text-slate-400 font-sans">Formula</span>
+                </div>
+                <div>
+                  <div className="text-2xl sm:text-3xl font-black font-mono text-slate-900 tracking-tight">
+                    ${expectedUsd.toFixed(2)}
+                  </div>
+                  <div className="text-xs text-slate-500 font-mono font-medium truncate mt-0.5">
+                    ≈ {Math.round(expectedUsd * currentRate).toLocaleString()} L.L.
                   </div>
                 </div>
               </div>
 
-              {/* VARIANCE RESULT CARD */}
-              <div className={`border-2 rounded-2xl p-3.5 shadow-xs flex items-center justify-between ${
+              {/* CARD 4: CASH VARIANCE */}
+              <div className={`p-3 rounded-2xl border-2 shadow-2xs flex flex-col justify-between min-h-[92px] select-none ${
                 differenceUsd === 0
                   ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
                   : differenceUsd > 0
                   ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
                   : 'bg-rose-50 border-rose-300 text-rose-900'
               }`}>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black uppercase tracking-wider">Variance</span>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                    differenceUsd === 0
+                      ? 'bg-emerald-200 text-emerald-900'
+                      : differenceUsd > 0
+                      ? 'bg-emerald-200 text-emerald-900'
+                      : 'bg-rose-200 text-rose-900'
+                  }`}>
+                    {differenceUsd === 0 ? '✓ Balanced' : differenceUsd > 0 ? 'Surplus' : 'Shortage'}
+                  </span>
+                </div>
                 <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs font-bold uppercase tracking-wider">
-                      Cash Variance
-                    </span>
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-black uppercase ${
-                      differenceUsd === 0
-                        ? 'bg-emerald-200 text-emerald-900'
-                        : differenceUsd > 0
-                        ? 'bg-emerald-200 text-emerald-900'
-                        : 'bg-rose-200 text-rose-900'
-                    }`}>
-                      {differenceUsd === 0 ? '✓ Balanced' : differenceUsd > 0 ? 'Surplus' : 'Shortage'}
-                    </span>
+                  <div className={`text-2xl sm:text-3xl font-black font-mono tracking-tight ${
+                    differenceUsd === 0 ? 'text-emerald-700' : differenceUsd > 0 ? 'text-emerald-700' : 'text-rose-700'
+                  }`}>
+                    {differenceUsd >= 0 ? '+' : ''}${differenceUsd.toFixed(2)}
                   </div>
-                  <div className="text-xs font-mono font-medium opacity-80">
+                  <div className="text-xs font-mono font-medium opacity-80 truncate mt-0.5">
                     {differenceUsd >= 0 ? '+' : ''}{Math.round(differenceUsd * currentRate).toLocaleString()} L.L.
                   </div>
                 </div>
-
-                <div className={`text-2xl sm:text-3xl font-black font-mono ${
-                  differenceUsd === 0 ? 'text-emerald-700' : differenceUsd > 0 ? 'text-emerald-700' : 'text-rose-700'
-                }`}>
-                  {differenceUsd >= 0 ? '+' : ''}${differenceUsd.toFixed(2)}
-                </div>
               </div>
             </div>
-          </div>
 
-          {/* MANAGER AUTHORIZATION (IF VARIANCE EXCEEDS THRESHOLD) */}
-          {varianceCheck.requiresManagerApproval && (
-            <div className="p-4 bg-amber-50 border-2 border-amber-300 rounded-3xl space-y-3 shadow-sm">
-              <div className="flex items-center gap-2 text-amber-900 font-black text-sm">
-                <ShieldCheck size={18} className="text-amber-700" />
-                <span>Manager Authorization Required (Variance exceeds allowed ${branchSettings.allowed_usd_variance || 2.00})</span>
-              </div>
+            {/* 2. MANAGER AUTHORIZATION STRIP (IF VARIANCE EXCEEDS THRESHOLD, shrink-0) */}
+            {varianceCheck.requiresManagerApproval && (
+              <div className="px-3.5 py-2.5 bg-amber-50 border-2 border-amber-300 rounded-2xl flex items-center justify-between gap-3 shrink-0 shadow-2xs">
+                <div className="flex items-center gap-2 text-amber-900 font-black text-xs shrink-0">
+                  <ShieldCheck size={16} className="text-amber-700" />
+                  <span>Manager Approval (Variance &gt; ${branchSettings.allowed_usd_variance || 2.00})</span>
+                </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Variance Reason</label>
+                <div className="flex items-center gap-2 flex-1 justify-end">
                   <select
                     value={varianceReason}
                     onChange={(e) => setVarianceReason(e.target.value)}
-                    className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-slate-900 text-xs font-bold outline-none shadow-2xs"
+                    className="bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-slate-900 text-xs font-bold outline-none shadow-2xs max-w-[180px]"
                   >
                     <option value="Counting difference">Counting difference</option>
                     <option value="Unrecorded payout">Unrecorded payout</option>
                     <option value="Customer change error">Customer change error</option>
                     <option value="Approved cashier shortage">Approved cashier shortage</option>
                   </select>
-                </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Manager PIN</label>
-                  <div className="flex gap-2">
-                    <input
-                      type="password"
-                      maxLength={6}
-                      value={managerPin}
-                      onChange={(e) => setManagerPin(e.target.value)}
-                      placeholder="••••"
-                      className="flex-1 bg-white border border-slate-300 rounded-xl px-3 py-2 text-slate-900 font-mono font-black text-center tracking-widest text-base outline-none shadow-2xs"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleVerifyManager}
-                      disabled={isVerifyingPin}
-                      className={`px-4 py-2 font-black text-xs rounded-xl transition cursor-pointer shadow-2xs ${managerName ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-amber-600 hover:bg-amber-500 text-white'}`}
-                    >
-                      {managerName ? '✓ Approved' : 'Verify PIN'}
-                    </button>
+                  <div
+                    onClick={() => setActiveKeypadField('managerPin')}
+                    className={`px-3 py-1.5 rounded-lg border font-mono font-black text-sm tracking-widest cursor-pointer transition min-w-[90px] text-center shadow-2xs ${
+                      activeKeypadField === 'managerPin'
+                        ? 'bg-amber-100 border-amber-500 text-amber-950 ring-2 ring-amber-400'
+                        : 'bg-white border-slate-300 text-slate-800'
+                    }`}
+                    title="Tap to type PIN on Keypad"
+                  >
+                    {managerPin ? '●'.repeat(managerPin.length) : <span className="text-slate-400 text-xs tracking-normal font-sans">PIN...</span>}
                   </div>
-                  {pinError && <span className="text-xs text-rose-600 font-bold mt-1 block">{pinError}</span>}
-                  {managerName && <span className="text-xs text-emerald-700 font-bold mt-1 block">Approved by Manager: {managerName}</span>}
+
+                  <button
+                    type="button"
+                    onClick={handleVerifyManager}
+                    disabled={isVerifyingPin || !managerPin}
+                    className={`px-3 py-1.5 rounded-lg font-black text-xs transition cursor-pointer shadow-2xs ${
+                      managerName ? 'bg-emerald-600 text-white' : 'bg-amber-600 hover:bg-amber-500 text-white'
+                    }`}
+                  >
+                    {managerName ? '✓ Approved' : isVerifyingPin ? '...' : 'Verify'}
+                  </button>
+                  {managerName && <span className="text-xs text-emerald-800 font-bold shrink-0">({managerName})</span>}
+                  {pinError && <span className="text-xs text-rose-600 font-bold shrink-0">{pinError}</span>}
                 </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* LOWER DETAILS SECTION: 2 EQUAL COLUMNS */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* 3. COMPACT FINANCIAL DETAILS GRID (2 EQUAL CARDS, FLEX-1 OVERFLOW-HIDDEN) */}
+            <div className="flex-1 min-h-0 grid grid-cols-1 sm:grid-cols-2 gap-2.5 overflow-hidden">
 
-            {/* LEFT COLUMN: INFLOWS, OUTFLOWS & E-WALLETS */}
-            <div className="space-y-4">
-              {/* CARD 1: OPENING FLOAT & CASH IN */}
-              <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3 shadow-xs">
-                <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                  <div className="flex items-center gap-2">
-                    <span className="text-base">📥</span>
-                    <span className="text-xs font-black text-slate-800 uppercase tracking-wider">
-                      1. Opening Cash Float & Cash In
-                    </span>
+              {/* CARD A: FLOAT & CASH INFLOWS / OUTFLOWS */}
+              <div className="bg-white border border-slate-200 rounded-2xl p-3 flex flex-col justify-between overflow-hidden shadow-2xs">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-100 shrink-0">
+                  <div className="flex items-center gap-1.5">
+                    <span>📥</span>
+                    <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">
+                      Opening Float & Cash Flow
+                    </h3>
                   </div>
                   {shiftType === 'PM' && amShiftData && (
                     <button
@@ -1577,382 +1803,243 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
                         if (amShiftData.actual_usd != null) setOpeningUsd(String(amShiftData.actual_usd));
                         if (amShiftData.actual_lbp != null) setOpeningLbp(String(amShiftData.actual_lbp));
                       }}
-                      className="px-2.5 py-1 bg-[#E9F4ED] hover:bg-[#d8ece0] border border-[#1e5c4f]/30 text-[#1e5c4f] rounded-lg text-xs font-bold cursor-pointer transition shadow-2xs"
+                      className="px-2 py-0.5 bg-[#E9F4ED] hover:bg-[#d8ece0] border border-[#1e5c4f]/30 text-[#1e5c4f] rounded text-[10px] font-bold cursor-pointer transition"
                       title="Set PM opening float from AM actual closing cash"
                     >
-                      ⎘ Copy AM Closing Float
+                      ⎘ Copy AM Float
                     </button>
                   )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Opening USD ($)</label>
-                    {numField('Opening Cash USD', openingUsd, setOpeningUsd, '$')}
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Opening LBP (L.L.)</label>
-                    {numField('Opening Cash LBP', openingLbp, setOpeningLbp, 'LBP')}
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-600 uppercase mb-1 flex items-center justify-between">
-                      <span>Cash In USD</span>
-                      <span className="text-xs text-slate-500 font-medium">From Payments</span>
-                    </label>
-                    {numField('Cash In USD', cashInUsd, setCashInUsd, '$', false, true)}
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-600 uppercase mb-1 flex items-center justify-between">
-                      <span>Cash In LBP</span>
-                      <span className="text-xs text-slate-500 font-medium">From Payments</span>
-                    </label>
-                    {numField('Cash In LBP', cashInLbp, setCashInLbp, 'LBP', false, true)}
-                  </div>
+                <div className="grid grid-cols-2 gap-2 flex-1 pt-1.5 overflow-hidden">
+                  {/* EDITABLE OPENING FLOAT */}
+                  {renderTouchField('openingUsd', 'Opening USD', openingUsd, '$', 'Float')}
+                  {renderTouchField('openingLbp', 'Opening LBP', openingLbp, 'LBP', 'Float')}
+
+                  {/* CASH IN (FROM PAYMENTS) */}
+                  {renderReadOnlyField('Cash In USD', cashInUsd, '$', 'From Payments')}
+                  {renderReadOnlyField('Cash In LBP', cashInLbp, 'LBP', 'From Payments')}
+
+                  {/* SUPPLIER PAYOUTS (FROM PAYMENTS) */}
+                  {renderReadOnlyField('Supplier USD', paymentsUsd, '$', 'Payout')}
+                  {renderReadOnlyField('Supplier LBP', paymentsLbp, 'LBP', 'Payout')}
+
+                  {/* CASH OUT (FROM PAYMENTS) */}
+                  {renderReadOnlyField('Cash Out USD', cashOutUsd, '$', 'Expense')}
+                  {renderReadOnlyField('Cash Out LBP', cashOutLbp, 'LBP', 'Expense')}
                 </div>
               </div>
 
-              {/* CARD 2: PAYMENTS & OUTFLOWS */}
-              <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3 shadow-xs">
-                <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                  <div className="flex items-center gap-2">
-                    <span className="text-base">📤</span>
-                    <span className="text-xs font-black text-slate-800 uppercase tracking-wider">
-                      2. Supplier Payouts & Non-Cash Tenders
-                    </span>
-                  </div>
-                  <span className="text-xs text-slate-400 font-medium hidden sm:inline">From Daily Payments & Tenders</span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-600 uppercase mb-1 flex items-center justify-between">
-                      <span>Supplier USD</span>
-                      <span className="text-xs text-slate-500 font-medium">Payments</span>
-                    </label>
-                    {numField('Supplier Payments USD', paymentsUsd, setPaymentsUsd, '$', false, true)}
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-600 uppercase mb-1 flex items-center justify-between">
-                      <span>Supplier LBP</span>
-                      <span className="text-xs text-slate-500 font-medium">Payments</span>
-                    </label>
-                    {numField('Supplier Payments LBP', paymentsLbp, setPaymentsLbp, 'LBP', false, true)}
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-slate-600 uppercase mb-1 flex items-center justify-between">
-                      <span>Cash Out USD</span>
-                      <span className="text-xs text-slate-500 font-medium">Payout</span>
-                    </label>
-                    {numField('Cash Out USD', cashOutUsd, setCashOutUsd, '$', false, true)}
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-600 uppercase mb-1 flex items-center justify-between">
-                      <span>Cash Out LBP</span>
-                      <span className="text-xs text-slate-500 font-medium">Payout</span>
-                    </label>
-                    {numField('Cash Out LBP', cashOutLbp, setCashOutLbp, 'LBP', false, true)}
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Credit Card USD</label>
-                    {numField('Credit Card USD', creditCardUsd, setCreditCardUsd, '$')}
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Credit Card LBP</label>
-                    {numField('Credit Card LBP', creditCardLbp, setCreditCardLbp, 'LBP')}
-                  </div>
-                </div>
-              </div>
-
-              {/* CARD 3: E-WALLETS */}
-              {wallets.length > 0 && (
-                <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3 shadow-xs">
-                  <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                    <div className="flex items-center gap-2">
-                      <span className="text-base">💳</span>
-                      <div>
-                        <span className="text-xs font-black text-slate-800 uppercase tracking-wider">E-Wallets</span>
-                        <span className="text-xs text-slate-500 font-medium ml-1.5">(Whish, OMT)</span>
-                      </div>
-                    </div>
-                    <div className="bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200 text-xs font-black text-slate-900 font-mono">
-                      Total: ${totalWalletOutflowUsd.toFixed(2)}
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    {wallets.map((w) => {
-                      const lowerName = (w.name || '').trim().toLowerCase();
-                      const isWhishOrSingle = lowerName.includes('wish') || lowerName.includes('whish') || lowerName.includes('wallet') || wallets.length <= 1;
-                      const labelUsd = isWhishOrSingle ? 'E-Wallet USD' : `${w.name} USD`;
-                      const labelLbp = isWhishOrSingle ? 'E-Wallet LBP' : `${w.name} LBP`;
-
-                      return (
-                        <React.Fragment key={w.id}>
-                          <div>
-                            <label className="block text-xs font-bold text-slate-600 uppercase mb-1">{labelUsd}</label>
-                            <div
-                              onClick={() => setNumpadField({
-                                label: labelUsd,
-                                value: walletInputs[w.id]?.amount_usd || '',
-                                setter: (val) => {
-                                  setWalletInputs(prev => ({
-                                    ...prev,
-                                    [w.id]: {
-                                      amount_usd: val,
-                                      amount_lbp: prev[w.id]?.amount_lbp || ''
-                                    }
-                                  }));
-                                }
-                              })}
-                              className="w-full bg-white border border-slate-300 hover:border-[#1e5c4f] rounded-xl px-3 py-2 text-slate-900 font-mono text-sm font-bold cursor-pointer flex items-center justify-between transition shadow-2xs min-h-[42px]"
-                            >
-                              <span className={walletInputs[w.id]?.amount_usd ? 'text-slate-900' : 'text-slate-400'}>
-                                {walletInputs[w.id]?.amount_usd || '0'}
-                              </span>
-                              <span className="text-slate-400 text-xs bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">⌨</span>
-                            </div>
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-bold text-slate-600 uppercase mb-1">{labelLbp}</label>
-                            <div
-                              onClick={() => setNumpadField({
-                                label: labelLbp,
-                                value: walletInputs[w.id]?.amount_lbp || '',
-                                setter: (val) => {
-                                  setWalletInputs(prev => ({
-                                    ...prev,
-                                    [w.id]: {
-                                      amount_usd: prev[w.id]?.amount_usd || '',
-                                      amount_lbp: val
-                                    }
-                                  }));
-                                }
-                              })}
-                              className="w-full bg-white border border-slate-300 hover:border-[#1e5c4f] rounded-xl px-3 py-2 text-slate-900 font-mono text-sm font-bold cursor-pointer flex items-center justify-between transition shadow-2xs min-h-[42px]"
-                            >
-                              <span className={walletInputs[w.id]?.amount_lbp ? 'text-slate-900' : 'text-slate-400'}>
-                                {walletInputs[w.id]?.amount_lbp || '0'}
-                              </span>
-                              <span className="text-slate-400 text-xs bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">⌨</span>
-                            </div>
-                          </div>
-                        </React.Fragment>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* RIGHT COLUMN: SHIFT CONTEXT, SALES & EQUATION AUDIT */}
-            <div className="space-y-4">
-              {/* CARD 4: SHIFT SETTINGS & RATE */}
-              <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3 shadow-xs">
-                <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                  <div className="flex items-center gap-2">
-                    <span className="text-base">⚙️</span>
-                    <span className="text-xs font-black text-slate-800 uppercase tracking-wider">
-                      Shift Details & Exchange Rate
-                    </span>
-                  </div>
-                  <span className="text-xs text-slate-500 font-bold">{cashierName}</span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Shift Date</label>
-                    <input
-                      type="date"
-                      inputMode="none"
-                      value={date}
-                      readOnly
-                      title="Date of the saved shift being closed"
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-mono text-sm font-bold outline-none min-h-[42px]"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Shift Period</label>
-                    <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200 min-h-[42px]">
-                      <button
-                        type="button"
-                        disabled={Boolean(s.id)}
-                        onClick={() => setShiftType('AM')}
-                        className={`flex-1 py-1.5 rounded-lg text-xs font-black transition cursor-pointer ${
-                          shiftType === 'AM' ? 'bg-[#1e5c4f] text-white shadow-2xs' : 'text-slate-600 hover:text-slate-900'
-                        }`}
-                      >
-                        ☀️ AM
-                      </button>
-                      <button
-                        type="button"
-                        disabled={Boolean(s.id)}
-                        onClick={() => setShiftType('PM')}
-                        className={`flex-1 py-1.5 rounded-lg text-xs font-black transition cursor-pointer ${
-                          shiftType === 'PM' ? 'bg-[#1e5c4f] text-white shadow-2xs' : 'text-slate-600 hover:text-slate-900'
-                        }`}
-                      >
-                        🌙 PM
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Exchange Rate Box */}
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="block text-xs font-bold text-slate-600 uppercase">
-                      USD Exchange Rate (L.L.)
-                    </label>
-                    {rate !== systemRate && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setRate(systemRate);
-                          setRateInputStr(String(systemRate));
-                        }}
-                        className="text-xs text-[#1e5c4f] hover:text-[#16473D] underline font-bold cursor-pointer"
-                        title="Restore system default exchange rate"
-                      >
-                        Reset ({systemRate.toLocaleString()})
-                      </button>
-                    )}
-                  </div>
-                  <div
-                    onClick={() => setNumpadField({ label: 'Exchange Rate LBP/USD', value: rateInputStr, setter: (v) => { setRateInputStr(v); const val = Number(v) || 0; setRate(val); } })}
-                    className="w-full bg-white border border-slate-300 hover:border-[#1e5c4f] rounded-xl px-3 py-2 font-mono text-sm font-bold cursor-pointer flex items-center justify-between transition min-h-[42px] shadow-2xs"
-                  >
-                    <span className="text-base font-black text-slate-900">
-                      {rateInputStr ? `${Number(rateInputStr).toLocaleString()} LBP / $1` : 'Tap to enter'}
-                    </span>
-                    <span className="text-slate-400 text-xs bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">⌨</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* CARD 5: SHIFT SALES & ON CREDIT */}
-              <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3 shadow-xs">
-                <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                  <div className="flex items-center gap-2">
-                    <span className="text-base">📊</span>
-                    <span className="text-xs font-black text-slate-800 uppercase tracking-wider">
-                      Shift Sales & Receivables
-                    </span>
+              {/* CARD B: NON-CASH TENDERS, SALES & AUDIT */}
+              <div className="bg-white border border-slate-200 rounded-2xl p-3 flex flex-col justify-between overflow-hidden shadow-2xs">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-100 shrink-0">
+                  <div className="flex items-center gap-1.5">
+                    <span>💳</span>
+                    <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">
+                      Non-Cash Tenders & Sales
+                    </h3>
                   </div>
                   <button
                     type="button"
                     onClick={() => checkOpenEntitiesAndSales(rate || systemRate)}
                     disabled={checkingEntities}
-                    className="px-2.5 py-1 text-xs text-[#1e5c4f] hover:text-[#16473D] border border-slate-300 hover:bg-slate-50 font-bold rounded-lg cursor-pointer transition flex items-center gap-1 shadow-2xs"
+                    className="text-[11px] text-[#1e5c4f] hover:underline font-bold flex items-center gap-1"
                   >
-                    <RefreshCw size={12} className={checkingEntities ? 'animate-spin' : ''} />
+                    <RefreshCw size={11} className={checkingEntities ? 'animate-spin' : ''} />
                     <span>Re-check</span>
                   </button>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="p-3 bg-emerald-50/60 border border-emerald-200 rounded-xl space-y-1">
-                    <span className="text-xs font-bold text-emerald-800 uppercase block">Total Sales</span>
-                    <div className="text-lg font-black font-mono text-emerald-900">
-                      ${salesLbpInUsd.toFixed(2)}
-                    </div>
-                    <div className="text-xs font-mono text-emerald-700">
-                      {Number(salesLbp || 0).toLocaleString()} L.L.
-                    </div>
-                  </div>
+                <div className="grid grid-cols-2 gap-2 flex-1 pt-1.5 overflow-hidden">
+                  {/* CREDIT CARDS (EDITABLE VIA KEYPAD) */}
+                  {renderTouchField('creditCardUsd', 'Credit Card USD', creditCardUsd, '$')}
+                  {renderTouchField('creditCardLbp', 'Credit Card LBP', creditCardLbp, 'LBP')}
 
-                  <div className="p-3 bg-amber-50/60 border border-amber-200 rounded-xl space-y-1">
-                    <span className="text-xs font-bold text-amber-800 uppercase block">On Credit (Receivable)</span>
-                    <div className="text-lg font-black font-mono text-amber-900">
-                      ${onCreditLbpInUsd.toFixed(2)}
-                    </div>
-                    <div className="text-xs font-mono text-amber-700">
-                      {Number(onCreditLbp || 0).toLocaleString()} L.L.
-                    </div>
-                  </div>
-                </div>
-              </div>
+                  {/* SALES TOTALS (READ-ONLY) */}
+                  {renderReadOnlyField('Shift Sales', salesLbpInUsd, '$', `${Number(salesLbp || 0).toLocaleString()} L.L.`)}
+                  {renderReadOnlyField('On Credit', onCreditLbpInUsd, '$', `${Number(onCreditLbp || 0).toLocaleString()} L.L.`)}
 
-              {/* CARD 6: MATHEMATICAL CASH EQUATION BREAKDOWN */}
-              <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3 shadow-xs">
-                <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                  <div className="flex items-center gap-2">
-                    <span className="text-base">🧮</span>
-                    <span className="text-xs font-black text-slate-800 uppercase tracking-wider">
-                      Drawer Cash Equation Audit
+                  {/* EQUATION FORMULA SUMMARY (COMPACT) */}
+                  <div className="col-span-2 p-2 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-xs font-mono text-slate-700">
+                    <span className="font-sans font-bold text-slate-500 text-[11px]">Equation:</span>
+                    <span className="font-bold">
+                      Float (${totalOpeningUsd.toFixed(0)}) + In (${(Number(cashInUsd) + (Number(cashInLbp)/currentRate)).toFixed(0)}) - Out (${((Number(paymentsUsd)+Number(cashOutUsd)) + ((Number(paymentsLbp)+Number(cashOutLbp))/currentRate)).toFixed(0)}) = <strong className="text-slate-900">${expectedUsd.toFixed(2)}</strong>
                     </span>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowBreakdown(!showBreakdown)}
-                    className="text-xs font-bold text-[#1e5c4f] hover:text-[#16473D] underline cursor-pointer"
-                  >
-                    {showBreakdown ? '▲ Collapse' : '▼ Expand'}
-                  </button>
-                </div>
-
-                <div className="space-y-2 text-xs font-mono">
-                  <div className="flex justify-between items-center py-1 border-b border-slate-100 text-slate-700">
-                    <span className="font-sans font-bold text-slate-600">1. Opening Float:</span>
-                    <span className="text-sm font-black text-slate-900">${totalOpeningUsd.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between items-center py-1 border-b border-slate-100 text-emerald-700">
-                    <span className="font-sans font-bold">2. (+) Cash Inflows:</span>
-                    <span className="text-sm font-black">+${totalInflowsUsd.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between items-center py-1 border-b border-slate-100 text-rose-700">
-                    <span className="font-sans font-bold">3. (-) Cash Outflows:</span>
-                    <span className="text-sm font-black">-${totalOutflowsUsd.toFixed(2)}</span>
-                  </div>
-
-                  {showBreakdown && (
-                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5 text-xs text-slate-600">
-                      <div className="flex justify-between">
-                        <span>• Supplier Payouts:</span>
-                        <span className="font-bold text-slate-800">${totalPaymentsUsd.toFixed(2)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>• Cash Out Payouts:</span>
-                        <span className="font-bold text-slate-800">${totalCashOutUsd.toFixed(2)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>• Credit Card Payments:</span>
-                        <span className="font-bold text-slate-800">${totalCreditCardUsd.toFixed(2)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>• On Credit (Uncollected):</span>
-                        <span className="font-bold text-slate-800">${onCreditLbpInUsd.toFixed(2)}</span>
-                      </div>
-                      {totalWalletOutflowUsd > 0 && (
-                        <div className="flex justify-between">
-                          <span>• E-Wallets:</span>
-                          <span className="font-bold text-slate-800">${totalWalletOutflowUsd.toFixed(2)}</span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  <div className="flex justify-between items-center pt-2 font-black text-slate-900 text-sm">
-                    <span className="font-sans">(=) Expected Drawer Cash:</span>
-                    <span className="text-base text-[#1e5c4f]">${expectedUsd.toFixed(2)}</span>
-                  </div>
                 </div>
               </div>
+
             </div>
 
           </div>
+
+          {/* RIGHT COLUMN: DEDICATED POS ON-SCREEN KEYPAD (35% width, w-[360px] to w-[390px]) */}
+          <div className="w-full md:w-[350px] lg:w-[380px] shrink-0 flex flex-col bg-white border border-slate-200 rounded-2xl p-3 shadow-xs justify-between overflow-hidden">
+
+            {/* KEYPAD HEADER: CURRENTLY ACTIVE FIELD DISPLAY */}
+            <div className="bg-slate-50 border-2 border-[#1e5c4f]/30 rounded-xl p-3 shrink-0 shadow-2xs">
+              <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <span className="text-[11px] font-black uppercase tracking-wider text-slate-700 truncate max-w-[200px]">
+                    {activeInfo.shortLabel}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowDenomHelper(true)}
+                  className="px-2 py-0.5 bg-[#E9F4ED] hover:bg-[#d8ece0] text-[#1e5c4f] border border-[#1e5c4f]/30 rounded text-[10px] font-black transition flex items-center gap-1 cursor-pointer"
+                  title="Open denomination calculator to count bills"
+                >
+                  <Calculator size={11} />
+                  <span>Bills Counter</span>
+                </button>
+              </div>
+
+              <div className="flex items-baseline justify-between font-mono mt-1">
+                <span className="text-xs font-bold text-slate-400 uppercase">{activeInfo.symbol}</span>
+                <span className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight truncate">
+                  {activeInfo.isPin ? ('●'.repeat(activeInfo.value.length) || '••••') : (activeInfo.value || '0')}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleKeypadKey('CLR')}
+                  className="text-xs text-slate-400 hover:text-slate-800 font-bold px-1.5 py-0.5 rounded hover:bg-slate-200 transition"
+                  title="Clear field to 0"
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+
+            {/* QUICK SHORTCUT BUTTONS (USD OR LBP BILLS) */}
+            <div className="grid grid-cols-6 gap-1 my-2 shrink-0">
+              {activeInfo.isUsd ? (
+                <>
+                  {[1, 5, 10, 20, 50, 100].map(amt => (
+                    <button
+                      key={amt}
+                      type="button"
+                      onClick={() => handleQuickAdd(amt)}
+                      className="py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-black font-mono text-xs transition active:scale-95 shadow-2xs"
+                    >
+                      +${amt}
+                    </button>
+                  ))}
+                </>
+              ) : activeInfo.id === 'managerPin' ? (
+                <div className="col-span-6 text-center text-xs text-amber-800 font-bold py-1 bg-amber-50 rounded-lg border border-amber-200">
+                  Enter 4 to 6 digit Manager PIN
+                </div>
+              ) : (
+                <>
+                  {[10000, 20000, 50000, 100000, 500000, 1000000].map(amt => (
+                    <button
+                      key={amt}
+                      type="button"
+                      onClick={() => handleQuickAdd(amt)}
+                      className="py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 font-black font-mono text-xs transition active:scale-95 shadow-2xs truncate"
+                    >
+                      +{amt >= 1000000 ? '1M' : `${amt/1000}k`}
+                    </button>
+                  ))}
+                </>
+              )}
+            </div>
+
+            {/* MAIN NUMERIC KEYPAD GRID (3 COLUMNS x 4 ROWS) */}
+            <div className="grid grid-cols-3 gap-2 flex-1 min-h-0">
+              {['7', '8', '9', '4', '5', '6', '1', '2', '3'].map(k => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => handleKeypadKey(k)}
+                  className="rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-900 font-black font-mono text-xl sm:text-2xl flex items-center justify-center transition active:scale-95 shadow-2xs select-none"
+                >
+                  {k}
+                </button>
+              ))}
+
+              {/* ROW 4: DECIMAL (OR EMPTY IF NOT ALLOWED), 0, 00 */}
+              <button
+                type="button"
+                onClick={() => handleKeypadKey('.')}
+                disabled={!activeInfo.allowDecimal}
+                className={`rounded-xl border font-black font-mono text-xl sm:text-2xl flex items-center justify-center transition active:scale-95 select-none ${
+                  activeInfo.allowDecimal
+                    ? 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-900 shadow-2xs'
+                    : 'bg-slate-100 border-slate-200 text-slate-300 cursor-not-allowed'
+                }`}
+              >
+                .
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleKeypadKey('0')}
+                className="rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-900 font-black font-mono text-xl sm:text-2xl flex items-center justify-center transition active:scale-95 shadow-2xs select-none"
+              >
+                0
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleKeypadKey('00')}
+                disabled={activeInfo.isPin}
+                className={`rounded-xl border font-black font-mono text-lg sm:text-xl flex items-center justify-center transition active:scale-95 select-none ${
+                  !activeInfo.isPin
+                    ? 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-900 shadow-2xs'
+                    : 'bg-slate-100 border-slate-200 text-slate-300 cursor-not-allowed'
+                }`}
+                title="Add 00"
+              >
+                00
+              </button>
+            </div>
+
+            {/* KEYPAD BOTTOM ACTION BAR */}
+            <div className="grid grid-cols-3 gap-2 pt-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => handleKeypadKey('DEL')}
+                className="h-12 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200 font-black text-sm flex items-center justify-center gap-1 transition active:scale-95 shadow-2xs"
+                title="Backspace (Delete last digit)"
+              >
+                <span>⌫</span>
+                <span>Del</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleKeypadKey('CLR')}
+                className="h-12 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 font-bold text-sm flex items-center justify-center transition active:scale-95 shadow-2xs"
+                title="Reset field to 0"
+              >
+                Clear
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleKeypadKey('NEXT')}
+                className="h-12 rounded-xl bg-[#1e5c4f] hover:bg-[#16473D] text-white font-black text-sm flex items-center justify-center gap-1 transition active:scale-95 shadow-xs"
+                title="Advance to next field"
+              >
+                <span>Next</span>
+                <span>❯</span>
+              </button>
+            </div>
+
+          </div>
+
         </div>
 
-        {/* BOTTOM ACTION BAR */}
-        <div className="px-5 py-3 border-t border-slate-200 bg-white flex items-center justify-between flex-shrink-0 shadow-lg">
-          <div className="flex items-center gap-2.5">
+        {/* BOTTOM ACTION BAR (h-[52px] shrink-0) */}
+        <div className="h-[52px] px-4 border-t border-slate-200 bg-white flex items-center justify-between shrink-0 shadow-xs">
+          <div className="flex items-center gap-3">
             <button
               type="button"
               onClick={onClose}
-              className="h-11 px-5 bg-white hover:bg-slate-100 text-slate-700 font-bold text-xs sm:text-sm rounded-xl border border-slate-300 transition active:scale-95 cursor-pointer shadow-2xs"
+              className="h-9 px-4 bg-white hover:bg-slate-100 text-slate-700 font-bold text-xs rounded-xl border border-slate-300 shadow-2xs transition cursor-pointer"
             >
               Cancel
             </button>
@@ -1961,7 +2048,7 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
                 type="button"
                 disabled={isHolding || isFinalizing}
                 onClick={async () => {
-                  const reason = window.prompt("Enter handover note for Manager Audit (e.g. AM cashier taking over, PM drawer uncounted):");
+                  const reason = window.prompt("Enter handover note for Manager Audit (e.g. night shift pending count):");
                   if (reason === null) return;
                   setIsHolding(true);
                   try {
@@ -1977,31 +2064,31 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
                     setIsHolding(false);
                   }
                 }}
-                className="h-11 px-4 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-xs sm:text-sm rounded-xl border border-amber-300 transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-2xs"
+                className="h-9 px-3 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-xs rounded-xl border border-amber-300 shadow-2xs transition flex items-center gap-1 cursor-pointer"
                 title="Put this shift on hold for Manager review and free the terminal"
               >
-                <PauseCircle size={16} />
+                <PauseCircle size={14} />
                 <span>{isHolding ? 'Holding...' : '⏸️ Put on Hold'}</span>
               </button>
             )}
+
+            <div role="status" className="text-xs text-amber-800 font-bold hidden sm:inline truncate max-w-xs">
+              {checkingPreparation ? 'Checking preparing orders…' : preparingCheckError ? `⚠️ ${preparingCheckError}` : preparation.pending.length > 0 ? (
+                <span><strong>{preparation.pending.length} preparing/paid.</strong></span>
+              ) : null}
+            </div>
           </div>
 
           <div className="flex items-center gap-3">
-            <div role="status" className="text-xs max-w-sm text-amber-800 font-bold truncate">
-              {checkingPreparation ? 'Checking preparing orders…' : preparingCheckError ? 'Order check unavailable: ' + preparingCheckError
-                : preparation.pending.length > 0 ? (
-                  <span><strong>{preparation.pending.length} preparing/paid.</strong> {preparation.blocking.length} unscheduled must be completed.</span>
-                ) : null}
-            </div>
             {(openTables.length > 0 || openOrders.length > 0) && (
-              <span className="text-xs text-rose-700 font-black">
+              <span className="text-xs text-rose-700 font-black hidden sm:inline">
                 ⚠️ Close open tables & orders first
               </span>
             )}
 
             <button
               type="button"
-              disabled={isFinalizing || checkingPreparation || Boolean(preparingCheckError) || (preparation.blocking.length > 0) || (varianceCheck.requiresManagerApproval && !managerName) || (openTables.length > 0 || openOrders.length > 0)}
+              disabled={isFinalizing || checkingPreparation || Boolean(preparingCheckError) || (shiftType === 'PM' && unpaidCount > 0) || (varianceCheck.requiresManagerApproval && !managerName)}
               onClick={handleFinalizeClose}
               title={
                 shiftType === 'PM' && unpaidCount > 0
@@ -2010,9 +2097,9 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
                   ? 'Manager authorization PIN required'
                   : undefined
               }
-              className="h-11 px-6 bg-[#1e5c4f] hover:bg-[#16473D] text-white font-black text-xs sm:text-sm rounded-xl transition shadow-md flex items-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
+              className="h-9 px-6 bg-[#1e5c4f] hover:bg-[#16473D] text-white font-black text-xs sm:text-sm rounded-xl shadow-xs transition flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer active:scale-95"
             >
-              {isFinalizing ? <RefreshCw size={16} className="animate-spin" /> : <Check size={16} />}
+              {isFinalizing ? <RefreshCw size={14} className="animate-spin" /> : <Check size={14} />}
               <span>{isFinalizing ? 'Closing Shift...' : 'Submit & Close Shift'}</span>
             </button>
           </div>
@@ -2071,130 +2158,161 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
           </div>
         )}
 
-        {/* NUMPAD */}
-        {numpadField && (
-          <NumPad
-            value={numpadField.value}
-            onChange={(v) => {
-              numpadField.setter(v);
-              setNumpadField(prev => prev ? { ...prev, value: v } : null);
-            }}
-            onClose={() => setNumpadField(null)}
-            label={numpadField.label}
-            allowDecimal={numpadField.label.includes('USD') || numpadField.label.includes('Rate')}
-          />
+        {/* DENOMINATION HELPER MODAL (TOUCH-FRIENDLY ZERO-KEYBOARD STEP COUNTERS) */}
+        {showDenomHelper && (
+          <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-[70] flex items-center justify-center p-4 animate-in fade-in">
+            <div className="bg-[#F5F6F4] border border-slate-300 rounded-3xl w-full max-w-2xl max-h-[92vh] flex flex-col p-5 text-slate-900 shadow-2xl space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-200 pb-3 shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-amber-50 border border-amber-200 rounded-xl text-amber-600">
+                    <Calculator size={18} />
+                  </div>
+                  <div>
+                    <h3 className="font-black text-base text-slate-900 leading-tight">Cash Denomination Breakdown</h3>
+                    <p className="text-xs text-slate-500">Tap + or - to count bills effortlessly (No keyboard needed)</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowDenomHelper(false)}
+                  className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-800 hover:bg-slate-200 text-lg transition-colors"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1 min-h-0 overflow-y-auto pr-1">
+                {/* USD Bills */}
+                <div className="space-y-2 bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs">
+                  <div className="flex items-center justify-between pb-1 border-b border-slate-100">
+                    <span className="text-xs font-black text-emerald-700 uppercase tracking-wider">USD Bills</span>
+                    <button
+                      type="button"
+                      onClick={() => setUsdDenoms({ '100': 0, '50': 0, '20': 0, '10': 0, '5': 0, '1': 0 })}
+                      className="text-[10px] text-slate-400 hover:text-rose-600 font-bold underline"
+                    >
+                      Reset USD
+                    </button>
+                  </div>
+                  <div className="space-y-1.5">
+                    {['100', '50', '20', '10', '5', '1'].map((bill) => (
+                      <div key={bill} className="flex items-center justify-between gap-1.5 py-0.5 text-xs">
+                        <span className="w-10 font-bold font-mono text-slate-700">${bill}</span>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setUsdDenoms(prev => ({ ...prev, [bill]: Math.max(0, (prev[bill] || 0) - 1) }))}
+                            className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-black text-xs flex items-center justify-center border border-slate-200 active:scale-95 cursor-pointer"
+                          >
+                            -
+                          </button>
+                          <span className="w-8 text-center font-mono font-black text-sm text-slate-900">
+                            {usdDenoms[bill] || 0}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setUsdDenoms(prev => ({ ...prev, [bill]: (prev[bill] || 0) + 1 }))}
+                            className="w-7 h-7 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-black text-xs flex items-center justify-center border border-emerald-300 active:scale-95 cursor-pointer"
+                          >
+                            +
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setUsdDenoms(prev => ({ ...prev, [bill]: (prev[bill] || 0) + 5 }))}
+                            className="px-1.5 h-7 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-600 font-bold text-[10px] flex items-center justify-center border border-slate-200 active:scale-95 cursor-pointer"
+                          >
+                            +5
+                          </button>
+                        </div>
+                        <span className="w-16 text-right font-mono font-bold text-slate-600 text-xs">
+                          ${(Number(bill) * (usdDenoms[bill] || 0)).toFixed(0)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="pt-2 border-t border-slate-200 flex justify-between items-center font-bold text-xs">
+                    <span className="text-slate-600">USD Total:</span>
+                    <span className="text-emerald-700 font-mono text-sm font-black">${calcDenomUsd()}</span>
+                  </div>
+                </div>
+
+                {/* LBP Bills */}
+                <div className="space-y-2 bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs">
+                  <div className="flex items-center justify-between pb-1 border-b border-slate-100">
+                    <span className="text-xs font-black text-amber-700 uppercase tracking-wider">LBP Banknotes</span>
+                    <button
+                      type="button"
+                      onClick={() => setLbpDenoms({ '100000': 0, '50000': 0, '20000': 0, '10000': 0, '5000': 0 })}
+                      className="text-[10px] text-slate-400 hover:text-rose-600 font-bold underline"
+                    >
+                      Reset LBP
+                    </button>
+                  </div>
+                  <div className="space-y-1.5">
+                    {['100000', '50000', '20000', '10000', '5000'].map((bill) => (
+                      <div key={bill} className="flex items-center justify-between gap-1.5 py-0.5 text-xs">
+                        <span className="w-10 font-bold font-mono text-slate-700">{(Number(bill)/1000)}k</span>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setLbpDenoms(prev => ({ ...prev, [bill]: Math.max(0, (prev[bill] || 0) - 1) }))}
+                            className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-black text-xs flex items-center justify-center border border-slate-200 active:scale-95 cursor-pointer"
+                          >
+                            -
+                          </button>
+                          <span className="w-8 text-center font-mono font-black text-sm text-slate-900">
+                            {lbpDenoms[bill] || 0}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setLbpDenoms(prev => ({ ...prev, [bill]: (prev[bill] || 0) + 1 }))}
+                            className="w-7 h-7 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 font-black text-xs flex items-center justify-center border border-amber-300 active:scale-95 cursor-pointer"
+                          >
+                            +
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setLbpDenoms(prev => ({ ...prev, [bill]: (prev[bill] || 0) + 5 }))}
+                            className="px-1.5 h-7 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-600 font-bold text-[10px] flex items-center justify-center border border-slate-200 active:scale-95 cursor-pointer"
+                          >
+                            +5
+                          </button>
+                        </div>
+                        <span className="w-20 text-right font-mono font-bold text-slate-600 text-[11px]">
+                          {(Number(bill) * (lbpDenoms[bill] || 0)).toLocaleString()}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="pt-2 border-t border-slate-200 flex justify-between items-center font-bold text-xs">
+                    <span className="text-slate-600">LBP Total:</span>
+                    <span className="text-amber-700 font-mono text-sm font-black">{calcDenomLbp().toLocaleString()} L.L.</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-2 flex justify-end gap-2 border-t border-slate-200 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setShowDenomHelper(false)}
+                  className="px-4 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 font-bold text-xs rounded-xl shadow-2xs transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={applyDenomTotals}
+                  className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-xl shadow-xs transition-all active:scale-[0.98]"
+                >
+                  Apply Count to Drawer
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
       </div>
-
-      {/* DENOMINATION HELPER MODAL */}
-      {showDenomHelper && (
-        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-[60] flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-[#F5F6F4] border border-slate-300 rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6 text-slate-900 shadow-2xl space-y-5">
-            <div className="flex items-center justify-between border-b border-slate-200 pb-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-600">
-                  <Calculator size={20} />
-                </div>
-                <div>
-                  <h3 className="font-black text-lg text-slate-900 leading-tight">Cash Denomination Breakdown</h3>
-                  <p className="text-xs text-slate-500">Count individual bills to calculate drawer totals automatically</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowDenomHelper(false)}
-                className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-800 hover:bg-slate-200 text-lg transition-colors"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-              {/* USD Bills */}
-              <div className="space-y-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-black text-emerald-700 uppercase tracking-wider">USD Bills</span>
-                  <span className="text-xs font-mono font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md">USD ($)</span>
-                </div>
-                <div className="space-y-2">
-                  {['100', '50', '20', '10', '5', '1'].map((bill) => (
-                    <div key={bill} className="flex items-center justify-between gap-3 text-sm">
-                      <span className="w-12 font-bold font-mono text-slate-700">${bill}</span>
-                      <input
-                        type="number"
-                        inputMode="numeric"
-                        min="0"
-                        value={usdDenoms[bill] || ''}
-                        onChange={(e) => setUsdDenoms(prev => ({ ...prev, [bill]: parseInt(e.target.value) || 0 }))}
-                        placeholder="0"
-                        className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-center font-mono text-sm font-bold text-slate-900 focus:bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 outline-none transition-all"
-                      />
-                      <span className="w-20 text-right font-mono font-semibold text-slate-600 text-sm">
-                        ${(Number(bill) * (usdDenoms[bill] || 0)).toFixed(0)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-                <div className="pt-3 border-t border-slate-200 flex justify-between items-center font-bold text-sm">
-                  <span className="text-slate-700">USD Total:</span>
-                  <span className="text-emerald-700 font-mono text-base font-black">${calcDenomUsd()}</span>
-                </div>
-              </div>
-
-              {/* LBP Bills */}
-              <div className="space-y-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-black text-amber-700 uppercase tracking-wider">LBP Banknotes</span>
-                  <span className="text-xs font-mono font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-md">LBP (L.L.)</span>
-                </div>
-                <div className="space-y-2">
-                  {['100000', '50000', '20000', '10000', '5000'].map((bill) => (
-                    <div key={bill} className="flex items-center justify-between gap-3 text-sm">
-                      <span className="w-14 font-bold font-mono text-slate-700">{(Number(bill)/1000)}k</span>
-                      <input
-                        type="number"
-                        inputMode="numeric"
-                        min="0"
-                        value={lbpDenoms[bill] || ''}
-                        onChange={(e) => setLbpDenoms(prev => ({ ...prev, [bill]: parseInt(e.target.value) || 0 }))}
-                        placeholder="0"
-                        className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-center font-mono text-sm font-bold text-slate-900 focus:bg-white focus:border-amber-500 focus:ring-2 focus:ring-amber-100 outline-none transition-all"
-                      />
-                      <span className="w-24 text-right font-mono font-semibold text-slate-600 text-xs sm:text-sm">
-                        {(Number(bill) * (lbpDenoms[bill] || 0)).toLocaleString()}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-                <div className="pt-3 border-t border-slate-200 flex justify-between items-center font-bold text-sm">
-                  <span className="text-slate-700">LBP Total:</span>
-                  <span className="text-amber-700 font-mono text-base font-black">{calcDenomLbp().toLocaleString()} L.L.</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="pt-3 flex justify-end gap-3 border-t border-slate-200">
-              <button
-                type="button"
-                onClick={() => setShowDenomHelper(false)}
-                className="px-5 py-2.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 font-bold text-sm rounded-xl shadow-xs transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={applyDenomTotals}
-                className="px-6 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-sm rounded-xl shadow-md transition-all active:scale-[0.98]"
-              >
-                Apply Count to Drawer
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-
     </div>
   );
 };
+
