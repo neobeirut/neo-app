@@ -85,6 +85,12 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
 
   // --------------------------------------------------------------------------
   // TAB 1: SUPPLIER INVOICE STATE (PHASE 4)
+  // Today's Invoices in Daily Payments
+  const [todaysInvoices, setTodaysInvoices] = useState<any[]>([]);
+  const [loadingInvoices, setLoadingInvoices] = useState<boolean>(false);
+  const [expandedInvoiceId, setExpandedInvoiceId] = useState<string | null>(null);
+  const [invoiceSubView, setInvoiceSubView] = useState<'form' | 'todays_list'>('form');
+
   // --------------------------------------------------------------------------
   const [invSupplierId, setInvSupplierId] = useState('');
   const [invSelectedPoId, setInvSelectedPoId] = useState('');
@@ -197,8 +203,36 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
       }
       loadMasterData();
       loadExpensesList();
+      loadTodaysInvoices();
     }
   }, [isOpen, activeShiftDate, activeShiftName, branchName]);
+
+  
+  const loadTodaysInvoices = async () => {
+    setLoadingInvoices(true);
+    try {
+      const targetDate = date || (activeShiftDate ? String(activeShiftDate).split('T')[0] : '') || new Date().toISOString().split('T')[0];
+      const localDate = new Date().toLocaleDateString('en-CA');
+      const res = await api.getSupplierInvoices({ branch_id: branchId });
+      if (res && res.success && Array.isArray(res.data)) {
+        const filtered = res.data.filter((inv: any) => {
+          const invDateStr = inv.invoice_date ? String(inv.invoice_date).split('T')[0] : '';
+          const createdDateStr = inv.created_at ? String(inv.created_at).split('T')[0] : '';
+          return (
+            invDateStr === targetDate ||
+            invDateStr === localDate ||
+            createdDateStr === targetDate ||
+            createdDateStr === localDate
+          );
+        });
+        setTodaysInvoices(filtered);
+      }
+    } catch (err) {
+      console.error('Failed to load today invoices:', err);
+    } finally {
+      setLoadingInvoices(false);
+    }
+  };
 
   const loadMasterData = async () => {
     setLoadingMaster(true);
@@ -734,6 +768,8 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
         setInvNotes('');
         setInvPayNow(false);
         loadExpensesList();
+        loadTodaysInvoices();
+        setInvoiceSubView('todays_list');
         setTimeout(() => setSuccessMsg(null), 4000);
       } else {
         setErrorMsg(res?.error || 'Failed to post supplier invoice.');
@@ -1248,6 +1284,11 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
           >
             <Receipt size={15} />
             <span>3. Supplier Invoice</span>
+            {todaysInvoices.length > 0 && (
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
+                {todaysInvoices.length}
+              </span>
+            )}
           </button>
 
           <button
@@ -1660,7 +1701,7 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
           {/* TAB 3: SUPPLIER INVOICE (PHASE 4) */}
           {/* ================================================================ */}
           {activeTab === 'invoice' && (
-            <form onSubmit={handleSubmitSupplierInvoice} className="space-y-4">
+            <div className="space-y-4">
               {/* Centralized Engine Quick Launcher */}
               <div className="p-3.5 bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
                 <div className="flex items-center gap-3">
@@ -1680,6 +1721,64 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
                   <Plus size={14} /> Open Scanner &amp; History
                 </button>
               </div>
+
+              {/* Sub-view toggle: Enter / Scan Invoice vs Today's Invoices */}
+              <div className="flex items-center justify-between bg-slate-100 p-1.5 rounded-2xl border border-slate-200 shadow-2xs">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setInvoiceSubView('form')}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-black transition cursor-pointer flex items-center gap-2 ${
+                      invoiceSubView === 'form'
+                        ? 'bg-white text-slate-900 shadow-xs border border-slate-200/80'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <Plus size={14} className={invoiceSubView === 'form' ? 'text-emerald-700' : ''} />
+                    <span>Enter / Manual Invoice</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setInvoiceSubView('todays_list')}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-black transition cursor-pointer flex items-center gap-2 ${
+                      invoiceSubView === 'todays_list'
+                        ? 'bg-white text-slate-900 shadow-xs border border-slate-200/80'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <FileText size={14} className={invoiceSubView === 'todays_list' ? 'text-emerald-700' : ''} />
+                    <span>Today's Invoices</span>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                      invoiceSubView === 'todays_list'
+                        ? 'bg-emerald-600 text-white'
+                        : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                    }`}>
+                      {todaysInvoices.length}
+                    </span>
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2 pr-1">
+                  <span className="text-[11px] font-bold text-slate-500 hidden sm:inline">
+                    {date || 'Today'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={loadTodaysInvoices}
+                    disabled={loadingInvoices}
+                    className="p-1.5 rounded-lg bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 transition cursor-pointer"
+                    title="Refresh Today's Invoices"
+                  >
+                    <RefreshCw size={13} className={loadingInvoices ? 'animate-spin' : ''} />
+                  </button>
+                </div>
+              </div>
+
+              {invoiceSubView === 'todays_list' ? (
+                renderTodaysInvoicesList()
+              ) : (
+                <form onSubmit={handleSubmitSupplierInvoice} className="space-y-4">
 
               <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
                 <span className="text-xs font-black text-slate-900 uppercase tracking-wider block">
@@ -2119,6 +2218,8 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
                 </button>
               </div>
             </form>
+              )}
+            </div>
           )}
 
           {/* ================================================================ */}

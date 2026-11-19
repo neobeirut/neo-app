@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 export interface UsePosAutoFitOptions {
   baseWidth?: number;  // Ideal unconstrained width (default: 1366)
   baseHeight?: number; // Ideal unconstrained height (default: 768)
-  minScale?: number;   // Minimum downscale factor (default: 0.65)
+  minScale?: number;   // Minimum downscale factor (default: 0.50)
   maxScale?: number;   // Maximum scale factor (default: 1.0)
   storageKey?: string; // Local storage toggle key
 }
@@ -16,13 +16,14 @@ export interface UsePosAutoFitReturn {
   containerStyle: React.CSSProperties;
   viewportWidth: number;
   viewportHeight: number;
+  isPortrait: boolean;
 }
 
 export function usePosAutoFit(options: UsePosAutoFitOptions = {}): UsePosAutoFitReturn {
   const {
     baseWidth = 1366,
     baseHeight = 768,
-    minScale = 0.65,
+    minScale = 0.50,
     maxScale = 1.0,
     storageKey = 'flow_pos_autofit',
   } = options;
@@ -64,11 +65,16 @@ export function usePosAutoFit(options: UsePosAutoFitOptions = {}): UsePosAutoFit
     };
   }, []);
 
+  const isPortrait = viewport.height > viewport.width;
+
   const scale = useMemo(() => {
     if (!isAutoFit) return 1.0;
 
-    const scaleW = viewport.width / baseWidth;
-    const scaleH = viewport.height / baseHeight;
+    const effectiveBaseW = isPortrait ? (options.baseHeight || 768) : baseWidth;
+    const effectiveBaseH = isPortrait ? 1024 : baseHeight;
+
+    const scaleW = viewport.width / effectiveBaseW;
+    const scaleH = viewport.height / effectiveBaseH;
     const calculated = Math.min(scaleW, scaleH);
 
     // If calculated scale is close to 1.0 (>= 0.98), snap to 1.0
@@ -77,7 +83,7 @@ export function usePosAutoFit(options: UsePosAutoFitOptions = {}): UsePosAutoFit
     const clamped = Math.min(maxScale, Math.max(minScale, calculated));
     // Round to 2 decimal places for rock-solid stability
     return Math.round(clamped * 100) / 100;
-  }, [isAutoFit, viewport.width, viewport.height, baseWidth, baseHeight, minScale, maxScale]);
+  }, [isAutoFit, viewport.width, viewport.height, baseWidth, baseHeight, minScale, maxScale, isPortrait, options.baseHeight]);
 
   const toggleAutoFit = useCallback(() => {
     setIsAutoFitState(prev => {
@@ -103,10 +109,10 @@ export function usePosAutoFit(options: UsePosAutoFitOptions = {}): UsePosAutoFit
   const containerStyle = useMemo<React.CSSProperties>(() => {
     if (!isAutoFit || scale >= 0.98) {
       return {
-        width: '100vw',
-        height: '100vh',
-        maxWidth: '100vw',
-        maxHeight: '100vh',
+        width: '100%',
+        height: '100dvh',
+        maxWidth: '100%',
+        maxHeight: '100dvh',
         overflow: 'hidden',
       };
     }
@@ -145,5 +151,6 @@ export function usePosAutoFit(options: UsePosAutoFitOptions = {}): UsePosAutoFit
     containerStyle,
     viewportWidth: viewport.width,
     viewportHeight: viewport.height,
+    isPortrait,
   };
 }

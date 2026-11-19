@@ -218,8 +218,9 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     scale: autoFitScale,
     isAutoFit,
     toggleAutoFit,
-    containerStyle: autoFitContainerStyle
-  } = usePosAutoFit({ baseWidth: 1366, baseHeight: 768, minScale: 0.65 });
+    containerStyle: autoFitContainerStyle,
+    isPortrait
+  } = usePosAutoFit({ baseWidth: 1366, baseHeight: 768, minScale: 0.5 });
 
   // FLOW Branch Mapping State
   const [commerceBranchLink, setCommerceBranchLink] = useState<CommerceBranchLink | null>(null);
@@ -2463,12 +2464,18 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   }, [posScreens, currentScreenId]);
 
   const activeGridConfig = useMemo(() => {
+    const btnCount = activePosScreen?.buttons?.length || 0;
+    if (isPortrait) {
+      if (btnCount <= 9) return { cols: 3, rows: 4, totalSlots: 12 };
+      if (btnCount <= 16) return { cols: 4, rows: 4, totalSlots: 16 };
+      return { cols: 4, rows: 5, totalSlots: 20 };
+    }
     return calculateDynamicGrid(
-      activePosScreen?.buttons?.length || 0,
+      btnCount,
       activePosScreen?.gridCols,
       activePosScreen?.gridRows
     );
-  }, [activePosScreen?.buttons?.length, activePosScreen?.gridCols, activePosScreen?.gridRows]);
+  }, [activePosScreen?.buttons?.length, activePosScreen?.gridCols, activePosScreen?.gridRows, isPortrait]);
 
   const activeGridDensity = useMemo(() => {
     return getGridButtonDensity(activeGridConfig.cols, activeGridConfig.rows);
@@ -5286,7 +5293,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       {/* UNIFIED TOP POS HEADER: EXACT SAME ACROSS SELL, TABLES, AND ORDERS */}
       <div className="flex items-stretch border-b border-[#E0E3DF] flex-shrink-0 bg-white w-full overflow-hidden">
         {/* LEFT SECTION (65% Width) */}
-        <div className="w-[65%] min-w-0 px-2 sm:px-3 py-1.5 sm:py-2 bg-white border-r border-[#E0E3DF] flex items-center justify-between gap-1.5 sm:gap-2 min-h-[54px] overflow-hidden">
+        <div className={`${isPortrait ? 'w-[58%]' : 'w-[65%]'} min-w-0 px-1.5 sm:px-3 py-1.5 sm:py-2 bg-white border-r border-[#E0E3DF] flex items-center justify-between gap-1 sm:gap-2 min-h-[50px] sm:min-h-[54px] overflow-hidden`}>
           {/* LEFT: Concept Switcher THEN Prominently Highlighted Main Menu Breadcrumb */}
           <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar min-w-0">
             {/* Concept Workspace Switcher (Positioned on the FAR LEFT before Main Menu) */}
@@ -5451,7 +5458,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         </div>
 
         {/* RIGHT SECTION (35% Width): PRIMARY POS MODE BUTTONS */}
-        <div className="w-[35%] min-w-0 p-1.5 sm:p-2 bg-white flex items-center min-h-[54px] border-l border-[#E0E3DF] flex-shrink-0">
+        <div className={`${isPortrait ? 'w-[42%]' : 'w-[35%]'} min-w-0 p-1 sm:p-2 bg-white flex items-center min-h-[50px] sm:min-h-[54px] border-l border-[#E0E3DF] flex-shrink-0`}>
           <div className="grid grid-cols-3 gap-1 sm:gap-2 w-full min-w-0">
             {isRestaurantMode && (
               <button
@@ -5850,7 +5857,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
             {/* MAIN WORKSPACE: MATRIX ON LEFT & CART ON RIGHT */}
             <div className="flex-1 flex overflow-hidden min-h-0 bg-[#F5F6F4]">
               {/* LEFT AREA (65% Width): Categories Bar + Product Grid */}
-              <div className="w-[65%] min-w-0 flex flex-col h-full overflow-hidden border-r border-[#E0E3DF] bg-[#F5F6F4]">
+              <div className={`${isPortrait ? 'w-[58%]' : 'w-[65%]'} min-w-0 flex flex-col h-full overflow-hidden border-r border-[#E0E3DF] bg-[#F5F6F4]`}>
               {/* FLOW UPSELL RECOMMENDATIONS */}
               <UpsellRecommendationBar
                 upsells={activeUpsells}
@@ -5883,11 +5890,11 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                     </div>
                   ) : (
                     <div
-                      className="w-full flex-1"
+                      className="w-full content-start"
                       style={{
                         display: 'grid',
                         gridTemplateColumns: `repeat(${activeGridConfig.cols}, minmax(0, 1fr))`,
-                        gridAutoRows: 'minmax(54px, 1fr)',
+                        gridAutoRows: 'minmax(60px, auto)',
                         gap: activeGridDensity.gap
                       }}
                     >
@@ -5913,7 +5920,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                             onClick={() => handleTouchButtonPress(btn)}
                             disabled={isDisabled}
                             title={isUnavailable ? `⚠️ "${btn.label}" is unavailable` : btn.label}
-                            className={`${activeGridDensity.minHeight} ${activeGridDensity.padding} rounded-2xl border flex flex-col items-center justify-center text-center shadow-xs transition-all active:scale-95 cursor-pointer relative overflow-hidden group select-none ${
+                            className={`${activeGridDensity.minHeight} max-h-[105px] sm:max-h-[115px] ${activeGridDensity.padding} rounded-2xl border flex flex-col items-center justify-center text-center shadow-xs transition-all active:scale-95 cursor-pointer relative overflow-hidden group select-none ${
                               isDisabled
                                 ? `bg-slate-100 ${isUnavailable ? 'border-dashed border-rose-300' : 'border-slate-200'} opacity-40 cursor-not-allowed text-slate-400`
                                 : `${colorTheme.bg} ${colorTheme.border} ${colorTheme.hover} ${colorTheme.text || 'text-slate-800'} hover:shadow-md hover:scale-[1.01]`
@@ -5936,16 +5943,16 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                 </div>
 
                 {/* 6 ACTION BUTTONS DOCK (EMBEDDED IN LEFT 65% PANEL) */}
-                <div className="h-[52px] sm:h-14 bg-white border-t-2 border-[#E0E3DF] px-2 py-1.5 flex items-center gap-1 sm:gap-1.5 flex-shrink-0 z-20 shadow-md">
+                <div className="h-[48px] sm:h-[52px] md:h-14 bg-white border-t-2 border-[#E0E3DF] px-1 sm:px-2 py-1 flex items-center gap-1 sm:gap-1.5 flex-shrink-0 z-20 shadow-md overflow-x-auto no-scrollbar">
                   {/* 0 - Quick 1-Tap Lock (Far Left) */}
                   <button
                     type="button"
                     onClick={handleQuickLock}
-                    className="h-full px-2.5 sm:px-3 rounded-xl bg-amber-50 hover:bg-amber-100 active:scale-95 text-amber-900 font-black text-xs sm:text-sm font-black tracking-wider flex items-center justify-center gap-1.5 border border-amber-300 shadow-sm transition cursor-pointer flex-shrink-0"
+                    className="h-full px-2 sm:px-2.5 md:px-3 rounded-xl bg-amber-50 hover:bg-amber-100 active:scale-95 text-amber-900 font-black text-xs sm:text-sm tracking-wider flex items-center justify-center gap-1 sm:gap-1.5 border border-amber-300 shadow-sm transition cursor-pointer shrink-0"
                     title="Lock Terminal immediately so another user must enter their PIN"
                   >
-                    <span className="text-sm sm:text-base">🔒</span>
-                    <span className="hidden sm:inline">Lock</span>
+                    <span className="text-sm sm:text-base shrink-0">🔒</span>
+                    <span className="hidden md:inline">Lock</span>
                   </button>
 
                   {/* 1 - Features (Protected by POS Permission: access_features) */}
@@ -5953,10 +5960,10 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                     <button
                       type="button"
                       onClick={() => setIsFeaturesModalOpen(true)}
-                      className="flex-1 min-w-0 h-full rounded-xl bg-[#F5F6F4] hover:bg-slate-200 active:scale-98 text-[#242B28] font-black text-xs sm:text-sm font-black tracking-wider flex items-center justify-center gap-1 sm:gap-1.5 border border-[#E0E3DF] shadow-sm transition cursor-pointer px-1"
+                      className="flex-1 min-w-[50px] sm:min-w-0 h-full rounded-xl bg-[#F5F6F4] hover:bg-slate-200 active:scale-98 text-[#242B28] font-black text-xs sm:text-sm tracking-wider flex items-center justify-center gap-1 sm:gap-1.5 border border-[#E0E3DF] shadow-sm transition cursor-pointer px-1 shrink-0 sm:shrink"
                       title="Open POS Features: History, Store Control, Shift, Tables, Orders"
                     >
-                      <span className="text-sm sm:text-base">⚙️</span>
+                      <span className="text-sm sm:text-base shrink-0">⚙️</span>
                       <span className="truncate">Features</span>
                     </button>
                   )}
@@ -5966,7 +5973,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                     type="button"
                     onClick={handleInsertHold}
                     disabled={ticketItems.length === 0 || isSubmitting || !isShiftOpen}
-                    className={`flex-1 min-w-0 h-full rounded-xl font-black text-xs sm:text-sm font-black tracking-wider flex items-center justify-center gap-1 sm:gap-1.5 border shadow-sm transition px-1 ${
+                    className={`flex-1 min-w-[50px] sm:min-w-0 h-full rounded-xl font-black text-xs sm:text-sm tracking-wider flex items-center justify-center gap-1 sm:gap-1.5 border shadow-sm transition px-1 shrink-0 sm:shrink ${
                       ticketItems.length === 0 || isSubmitting || !isShiftOpen
                         ? 'bg-[#F5F6F4] text-slate-400 border-[#E0E3DF] opacity-40 cursor-not-allowed'
                         : 'bg-purple-50 hover:bg-purple-100 active:scale-98 text-purple-900 border-purple-300 cursor-pointer'
@@ -5979,7 +5986,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                         : "Choose when to prepare this order without taking payment"
                     }
                   >
-                    <span className="text-sm sm:text-base">⏳</span>
+                    <span className="text-sm sm:text-base shrink-0">⏳</span>
                     <span className="truncate">{activeTableContext ? "Hold" : "Schedule"}</span>
                   </button>
 
@@ -5989,7 +5996,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                       type="button"
                       onClick={() => handleKitchenFireChit()}
                       disabled={!isFireActive || !isShiftOpen}
-                      className={`flex-[1.05] min-w-0 h-full rounded-xl active:scale-98 font-black text-xs sm:text-sm font-black tracking-wider flex items-center justify-center gap-1 sm:gap-1.5 border shadow-sm transition px-1 ${
+                      className={`flex-[1.05] min-w-[50px] sm:min-w-0 h-full rounded-xl active:scale-98 font-black text-xs sm:text-sm tracking-wider flex items-center justify-center gap-1 sm:gap-1.5 border shadow-sm transition px-1 shrink-0 sm:shrink ${
                         isFireActive && isShiftOpen
                           ? 'bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 text-white border-red-400 shadow-red-900/50 animate-pulse cursor-pointer'
                           : 'bg-[#F5F6F4] text-slate-400 border-[#E0E3DF] opacity-40 cursor-not-allowed'
@@ -6004,7 +6011,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                           : `All held courses have been fired (${currentTableFires}/${currentTableHolds})`
                       }
                     >
-                      <span className="text-sm sm:text-lg">🔥</span>
+                      <span className="text-sm sm:text-lg shrink-0">🔥</span>
                       <span className="truncate">Fire {isFireActive && isShiftOpen ? `(${remainingFires})` : ''}</span>
                     </button>
                   )}
@@ -6049,14 +6056,14 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                     }}
                     disabled={ticketItems.length === 0 || !isShiftOpen}
                     style={{ backgroundColor: primaryColor, color: primaryText }}
-                    className="flex-[1.15] min-w-0 h-full rounded-xl hover:opacity-95 active:scale-98 font-black text-xs sm:text-sm font-black tracking-wider flex items-center justify-center gap-1 sm:gap-1.5 border border-black/10 shadow-md transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer px-1.5"
+                    className="flex-[1.15] min-w-[65px] sm:min-w-0 h-full rounded-xl hover:opacity-95 active:scale-98 font-black text-xs sm:text-sm tracking-wider flex items-center justify-center gap-1 sm:gap-1.5 border border-black/10 shadow-md transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer px-1 sm:px-1.5 shrink-0 sm:shrink"
                     title={!isShiftOpen ? "Shift is closed - settlement disabled" : ticketItems.length === 0 ? "Cart is empty - add items to settle" : "Collect payment and settle order / table"}
                   >
-                    <span className="text-sm sm:text-base">💳</span>
+                    <span className="text-sm sm:text-base shrink-0">💳</span>
                     <span className="truncate">
                       {["toters", "noknok"].includes((selectedChannel || "").toLowerCase())
-                        ? `Complete ${selectedChannel}`
-                        : "Settle & close"}
+                        ? `${selectedChannel}`
+                        : <>Settle<span className="hidden xl:inline"> & close</span></>}
                     </span>
                   </button>
 
@@ -6080,7 +6087,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                       color: (ticketItems.length > 0 && !isSubmitting && isShiftOpen) ? primaryColor : '#5E6964',
                       borderColor: (ticketItems.length > 0 && !isSubmitting && isShiftOpen) ? `${primaryColor}40` : '#E0E3DF'
                     }}
-                    className={`flex-[1.25] min-w-0 h-full rounded-xl font-black text-xs sm:text-sm font-black tracking-wider flex items-center justify-center gap-1 sm:gap-1.5 border shadow-sm transition px-1 hover:opacity-90 cursor-pointer ${
+                    className={`flex-[1.25] min-w-[65px] sm:min-w-0 h-full rounded-xl font-black text-xs sm:text-sm tracking-wider flex items-center justify-center gap-1 sm:gap-1.5 border shadow-sm transition px-1 hover:opacity-90 cursor-pointer shrink-0 sm:shrink ${
                       ticketItems.length === 0 || isSubmitting || !isShiftOpen
                         ? 'opacity-40 cursor-not-allowed'
                         : 'active:scale-98'
@@ -6095,15 +6102,15 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                         : "Place and send order to kitchen"
                     }
                   >
-                    <span className="text-sm sm:text-base">🍽️</span>
-                    <span className="truncate">{isSubmitting ? 'Placing...' : 'Place order'}</span>
+                    <span className="text-sm sm:text-base shrink-0">🍽️</span>
+                    <span className="truncate">{isSubmitting ? 'Placing...' : <>Order<span className="hidden xl:inline"> order</span></>}</span>
                   </button>
                 </div>
               </div>
             </div>
 
         {/* RIGHT PANEL: TICKET CART & CHECKOUT (35% Width) */}
-        <div className="w-[35%] min-w-0 flex flex-col h-full bg-white border-l border-[#E0E3DF] overflow-hidden shadow-lg">
+        <div className={`${isPortrait ? 'w-[42%]' : 'w-[35%]'} min-w-0 flex flex-col h-full bg-white border-l border-[#E0E3DF] overflow-hidden shadow-lg`}>
           {/* TICKET HEADER & UNIFIED SMART CHANNEL BAR */}
           <div className="p-3 border-b border-[#E0E3DF] space-y-2 bg-white flex-shrink-0">
 
@@ -8811,22 +8818,6 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                 <span className="font-extrabold text-xs text-slate-800 group-hover:text-slate-950">Daily Payments</span>
                 <span className="text-[10px] text-slate-500">Payouts & Cash In/Out</span>
               </button>
-
-              {/* Centralized Supplier Invoices (Stage E) */}
-              <button
-                type="button"
-                onClick={() => {
-                  setIsFeaturesModalOpen(false);
-                  setIsSupplierInvoicesModalOpen(true);
-                }}
-                className="p-3 rounded-2xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 flex flex-col items-center justify-center gap-1 text-center transition active:scale-95 group cursor-pointer shadow-xs"
-              >
-                <span className="text-2xl group-hover:scale-110 transition-transform">🧾</span>
-                <span className="font-extrabold text-xs text-emerald-950 group-hover:text-emerald-900">Supplier Invoices</span>
-                <span className="text-[10px] text-emerald-700">Scan, Match & Post</span>
-              </button>
-
-
 
               {/* Screen Layout Builder */}
               <button
