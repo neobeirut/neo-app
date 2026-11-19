@@ -615,8 +615,12 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
           item_name: it.item_name,
           po_item_id: it.po_item_id || null,
           quantity: Number(it.quantity),
-          unit: it.unit,
+          purchase_quantity: Number(it.quantity),
+          unit: it.unit || 'pcs',
+          purchase_unit: it.unit || 'pcs',
+          base_unit: it.unit || 'pcs',
           unit_price: Number(it.unit_price),
+          line_total: Number((Number(it.quantity) * Number(it.unit_price)).toFixed(4)),
           location_id: it.location_id
         }))
       };
@@ -883,8 +887,12 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
           item_id: it.item_id,
           item_name: it.item_name,
           quantity: Number(it.quantity),
-          unit: it.unit,
+          purchase_quantity: Number(it.quantity),
+          unit: it.unit || 'pcs',
+          purchase_unit: it.unit || 'pcs',
+          base_unit: it.unit || 'pcs',
           unit_price: Number(it.unit_price),
+          line_total: Number((Number(it.quantity) * Number(it.unit_price)).toFixed(4)),
           location_id: dirLocationId || locations[0]?.id
         }))
       };
