@@ -343,7 +343,9 @@ export const api = {
     const rid = getRestaurantId();
     let query = supabase.from('supplier_price_lists').select('*').eq('is_active', true);
     if (rid) query = query.eq('restaurant_id', rid);
-    if (supplierId) query = query.eq('supplier_id', supplierId);
+    if (supplierId) {
+      query = query.or(`supplier_id.eq.${supplierId},supplier_id.is.null`);
+    }
     const { data, error } = await query;
     if (error) return { success: false, error: error.message };
     return { success: true, data: data || [] };

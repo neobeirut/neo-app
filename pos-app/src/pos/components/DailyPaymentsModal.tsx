@@ -104,6 +104,10 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
     ordered_quantity?: number;
     unit: string;
     unit_price: number;
+    conversion_factor?: number;
+    base_unit?: string;
+    base_quantity?: number;
+    packaging_option_id?: string | null;
     location_id: string;
     total: number;
   }>>([]);
@@ -190,11 +194,12 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
   const loadMasterData = async () => {
     setLoadingMaster(true);
     try {
-      const [supRes, locRes, catRes, usersRes] = await Promise.all([
+      const [supRes, locRes, catRes, usersRes, splRes] = await Promise.all([
         api.getSuppliers(),
         api.getInventoryLocations(),
         api.getItemCatalog(),
-        getBranchUsers(restaurantId)
+        getBranchUsers(restaurantId),
+        api.getSupplierPriceLists()
       ]);
       if (supRes.success && supRes.data) setSuppliers(supRes.data);
       if (locRes.success && locRes.data) {
@@ -205,6 +210,7 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
       }
       if (catRes.success && catRes.data) setCatalogItems(catRes.data);
       if (usersRes?.success && usersRes?.data) setBranchUsers(usersRes.data);
+      if (splRes?.success && splRes?.data) setSupplierPriceLists(splRes.data);
     } catch (e) {
       console.error('Error loading POS payments master data:', e);
     }
@@ -402,7 +408,6 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
     setInvItems([]);
     if (!supplierId) {
       setOpenPurchaseOrders([]);
-      setSupplierPriceLists([]);
       return;
     }
     try {
@@ -416,9 +421,13 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
         setOpenPurchaseOrders([]);
       }
       if (splRes.success && splRes.data) {
-        setSupplierPriceLists(splRes.data);
-      } else {
-        setSupplierPriceLists([]);
+        // Merge with existing packaging options so we never lose universal/other options
+        setSupplierPriceLists(prev => {
+          const map = new Map<string, any>();
+          prev.forEach(p => map.set(p.id, p));
+          splRes.data.forEach((p: any) => map.set(p.id, p));
+          return Array.from(map.values());
+        });
       }
     } catch (e) {
       console.error('Error loading POs / price lists for supplier:', e);
@@ -440,32 +449,94 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
       const received = Number(it.received_purchase_quantity) || 0;
       const outstanding = Math.max(0, ordered - received);
       const price = Number(it.purchase_unit_price) || 0;
+      const factor = Number(it.conversion_factor) || Number(it.base_quantity_per_purchase_unit) || 1;
+      const baseUnit = it.base_unit || it.purchase_unit || 'Unit';
+      const effectiveQty = outstanding > 0 ? outstanding : ordered;
 
       return {
         item_id: it.item_id,
         item_name: it.item_name,
         po_item_id: it.id,
-        quantity: outstanding > 0 ? outstanding : ordered,
+        quantity: effectiveQty,
         ordered_quantity: ordered,
         unit: it.purchase_unit || 'Unit',
         unit_price: price,
+        conversion_factor: factor,
+        base_unit: baseUnit,
+        base_quantity: effectiveQty * factor,
         location_id: po.destination_location_id || defaultLoc,
-        total: Number(((outstanding > 0 ? outstanding : ordered) * price).toFixed(4))
+        total: Number((effectiveQty * price).toFixed(4))
       };
     });
 
     setInvItems(newItems);
   };
 
-  const handleAddManualItemToInvoice = (itemId: string) => {
+  // Match selected supplier by ID as well as alias/duplicate suppliers with same normalized name or phone
+  const matchedSupplierIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (invSupplierId) {
+      ids.add(invSupplierId);
+      const selSupplier = suppliers.find(s => s.id === invSupplierId);
+      if (selSupplier) {
+        const cleanName = (selSupplier.name || '').toLowerCase().replace(/^(al|el)\s+/, '').trim();
+        const cleanPhone = (selSupplier.phone || '').replace(/\D/g, '');
+        suppliers.forEach(s => {
+          const sCleanName = (s.name || '').toLowerCase().replace(/^(al|el)\s+/, '').trim();
+          const sCleanPhone = (s.phone || '').replace(/\D/g, '');
+          if ((cleanName && sCleanName === cleanName) || (cleanPhone && sCleanPhone && cleanPhone.length > 5 && sCleanPhone === cleanPhone)) {
+            ids.add(s.id);
+          }
+        });
+      }
+    }
+    return ids;
+  }, [invSupplierId, suppliers]);
+
+  // Helper to resolve packaging options for an item, sorted so preferred/default purchase packaging comes first
+  const getItemPackagingOptions = (itemId: string) => {
+    const options = supplierPriceLists.filter(p => p.item_id === itemId && p.is_active !== false);
+    return options.sort((a, b) => {
+      const aIsSupDef = Boolean(a.supplier_id && (a.supplier_id === invSupplierId || matchedSupplierIds.has(a.supplier_id)) && a.is_default);
+      const bIsSupDef = Boolean(b.supplier_id && (b.supplier_id === invSupplierId || matchedSupplierIds.has(b.supplier_id)) && b.is_default);
+      if (aIsSupDef && !bIsSupDef) return -1;
+      if (!aIsSupDef && bIsSupDef) return 1;
+
+      const aIsSup = Boolean(a.supplier_id && (a.supplier_id === invSupplierId || matchedSupplierIds.has(a.supplier_id)));
+      const bIsSup = Boolean(b.supplier_id && (b.supplier_id === invSupplierId || matchedSupplierIds.has(b.supplier_id)));
+      if (aIsSup && !bIsSup) return -1;
+      if (!aIsSup && bIsSup) return 1;
+
+      const aIsUnivDef = Boolean(!a.supplier_id && a.is_default);
+      const bIsUnivDef = Boolean(!b.supplier_id && b.is_default);
+      if (aIsUnivDef && !bIsUnivDef) return -1;
+      if (!aIsUnivDef && bIsUnivDef) return 1;
+
+      const aIsUniv = !a.supplier_id;
+      const bIsUniv = !b.supplier_id;
+      if (aIsUniv && !bIsUniv) return -1;
+      if (!aIsUniv && bIsUniv) return 1;
+
+      if (a.is_default && !b.is_default) return -1;
+      if (!a.is_default && b.is_default) return 1;
+
+      return 0;
+    });
+  };
+
+  const handleAddManualItemToInvoice = (itemId: string, selectedSplId?: string) => {
     const it = catalogItems.find(i => i.id === itemId);
     if (!it) return;
     const defaultLoc = locations[0]?.id || '';
     
-    // Check if supplier has negotiated price in supplier_price_lists
-    const spl = supplierPriceLists.find(p => p.item_id === it.id && p.supplier_id === invSupplierId);
-    const price = spl?.purchase_unit_price != null ? Number(spl.purchase_unit_price) : (Number(it.price_usd) || 0);
+    // Propose purchase packaging option by default
+    const options = getItemPackagingOptions(it.id);
+    const spl = selectedSplId ? options.find(p => p.id === selectedSplId) : options[0];
+
     const unit = spl?.purchase_unit || it.unit || 'Unit';
+    const price = spl?.purchase_unit_price != null ? Number(spl.purchase_unit_price) : (Number(it.price_usd) || 0);
+    const factor = spl?.base_quantity_per_purchase_unit != null ? Number(spl.base_quantity_per_purchase_unit) : 1;
+    const baseUnit = spl?.base_unit || it.base_unit || it.unit || unit;
 
     setInvItems(prev => [
       ...prev,
@@ -475,6 +546,10 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
         quantity: 1,
         unit: unit,
         unit_price: price,
+        conversion_factor: factor,
+        base_unit: baseUnit,
+        base_quantity: factor,
+        packaging_option_id: spl?.id || null,
         location_id: defaultLoc,
         total: price
       }
@@ -484,24 +559,6 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
   // Sorted and filtered items for Supplier Invoice (Supplier items listed first, then others)
   const supplierInvoiceItemsList = useMemo(() => {
     if (!catalogItems || catalogItems.length === 0) return { supplierItems: [], otherItems: [] };
-
-    // Match selected supplier by ID as well as alias/duplicate suppliers with same normalized name or phone
-    const matchedSupplierIds = new Set<string>();
-    if (invSupplierId) {
-      matchedSupplierIds.add(invSupplierId);
-      const selSupplier = suppliers.find(s => s.id === invSupplierId);
-      if (selSupplier) {
-        const cleanName = (selSupplier.name || '').toLowerCase().replace(/^(al|el)\s+/, '').trim();
-        const cleanPhone = (selSupplier.phone || '').replace(/\D/g, '');
-        suppliers.forEach(s => {
-          const sCleanName = (s.name || '').toLowerCase().replace(/^(al|el)\s+/, '').trim();
-          const sCleanPhone = (s.phone || '').replace(/\D/g, '');
-          if ((cleanName && sCleanName === cleanName) || (cleanPhone && sCleanPhone && cleanPhone.length > 5 && sCleanPhone === cleanPhone)) {
-            matchedSupplierIds.add(s.id);
-          }
-        });
-      }
-    }
 
     const supplierItemIds = new Set<string>();
     if (matchedSupplierIds.size > 0) {
@@ -528,14 +585,20 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
 
     filtered.forEach(it => {
       const isSupplierItem = supplierItemIds.has(it.id);
-      const spl = supplierPriceLists.find(p => p.item_id === it.id && matchedSupplierIds.has(p.supplier_id));
+      const options = getItemPackagingOptions(it.id);
+      const spl = options[0];
+
       const displayPrice = spl?.purchase_unit_price != null ? Number(spl.purchase_unit_price) : (Number(it.price_usd) || 0);
+      const displayUnit = spl?.purchase_unit || it.unit || 'Unit';
+      const displayPackDesc = spl ? `${spl.purchase_unit} (${spl.base_quantity_per_purchase_unit} ${spl.base_unit || it.base_unit || it.unit})` : '';
 
       const enhanced = {
         ...it,
         isSupplierItem,
         displayPrice,
-        displayUnit: spl?.purchase_unit || it.unit || 'Unit'
+        displayUnit,
+        displayPackDesc,
+        hasPackagingOption: Boolean(spl)
       };
 
       if (isSupplierItem) {
@@ -546,7 +609,7 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
     });
 
     return { supplierItems, otherItems };
-  }, [catalogItems, invSupplierId, suppliers, supplierPriceLists, invItemSearch]);
+  }, [catalogItems, invSupplierId, suppliers, supplierPriceLists, invItemSearch, matchedSupplierIds]);
 
   const handleUpdateInvoiceItem = (index: number, field: string, value: any) => {
     setInvItems(prev => {
@@ -556,6 +619,12 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
         const q = Number(cur.quantity) || 0;
         const p = Number(cur.unit_price) || 0;
         cur.total = Number((q * p).toFixed(4));
+        cur.base_quantity = Number((q * (Number(cur.conversion_factor) || 1)).toFixed(4));
+      }
+      if (field === 'conversion_factor') {
+        const q = Number(cur.quantity) || 0;
+        const f = Number(value) || 1;
+        cur.base_quantity = Number((q * f).toFixed(4));
       }
       updated[index] = cur;
       return updated;
@@ -610,19 +679,26 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
         shift_id: activeShiftId || null,
         idempotency_key: idempotencyKey,
         is_direct_purchase: false,
-        items: invItems.map(it => ({
-          item_id: it.item_id,
-          item_name: it.item_name,
-          po_item_id: it.po_item_id || null,
-          quantity: Number(it.quantity),
-          purchase_quantity: Number(it.quantity),
-          unit: it.unit || 'pcs',
-          purchase_unit: it.unit || 'pcs',
-          base_unit: it.unit || 'pcs',
-          unit_price: Number(it.unit_price),
-          line_total: Number((Number(it.quantity) * Number(it.unit_price)).toFixed(4)),
-          location_id: it.location_id
-        }))
+        items: invItems.map(it => {
+          const qty = Number(it.quantity) || 1;
+          const factor = Number(it.conversion_factor) || 1;
+          return {
+            item_id: it.item_id,
+            item_name: it.item_name,
+            po_item_id: it.po_item_id || null,
+            quantity: qty,
+            purchase_quantity: qty,
+            unit: it.unit || 'pcs',
+            purchase_unit: it.unit || 'pcs',
+            base_unit: it.base_unit || it.unit || 'pcs',
+            conversion_factor: factor,
+            base_quantity_per_purchase_unit: factor,
+            base_quantity: Number((qty * factor).toFixed(4)),
+            unit_price: Number(it.unit_price),
+            line_total: Number((qty * Number(it.unit_price)).toFixed(4)),
+            location_id: it.location_id
+          };
+        })
       };
 
       const res = await api.postSupplierInvoice(payload);
@@ -1690,7 +1766,7 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
                         <optgroup label="⭐ Items from Selected Supplier">
                           {supplierInvoiceItemsList.supplierItems.map(it => (
                             <option key={it.id} value={it.id}>
-                              ⭐ {it.name} ({it.displayUnit}) - ${it.displayPrice.toFixed(2)}
+                              ⭐ {it.name} ({it.displayPackDesc || it.displayUnit}) - ${it.displayPrice.toFixed(2)}
                             </option>
                           ))}
                         </optgroup>
@@ -1698,7 +1774,7 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
                       <optgroup label={supplierInvoiceItemsList.supplierItems.length > 0 ? "Other Catalog Items" : "Catalog Items"}>
                         {supplierInvoiceItemsList.otherItems.map(it => (
                           <option key={it.id} value={it.id}>
-                            {it.name} ({it.unit || 'Unit'}) {it.price_usd ? `- $${Number(it.price_usd).toFixed(2)}` : ''}
+                            {it.name} ({it.displayPackDesc || it.displayUnit || it.unit || 'Unit'}) - ${it.displayPrice.toFixed(2)}
                           </option>
                         ))}
                       </optgroup>
@@ -1736,7 +1812,7 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
                         }}
                         className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-lg text-[11px] font-bold flex items-center gap-1 cursor-pointer transition shadow-2xs"
                       >
-                        ⭐ {it.name} (${it.displayPrice.toFixed(2)}) +
+                        ⭐ {it.name} ({it.displayPackDesc || it.displayUnit}: ${it.displayPrice.toFixed(2)}) +
                       </button>
                     ))}
                     {supplierInvoiceItemsList.otherItems.slice(0, 6).map(it => (
@@ -1749,7 +1825,7 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
                         }}
                         className="px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 rounded-lg text-[11px] font-medium flex items-center gap-1 cursor-pointer transition shadow-2xs"
                       >
-                        {it.name} +
+                        {it.name} ({it.displayPackDesc || it.displayUnit}: ${it.displayPrice.toFixed(2)}) +
                       </button>
                     ))}
                     {supplierInvoiceItemsList.supplierItems.length === 0 && supplierInvoiceItemsList.otherItems.length === 0 && (
@@ -1769,7 +1845,7 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
                         <tr className="border-b border-slate-200 text-slate-600 font-bold">
                           <th className="py-2 px-2">Item Name</th>
                           <th className="py-2 px-2 w-24">Qty Recv</th>
-                          <th className="py-2 px-2 w-24">Unit</th>
+                          <th className="py-2 px-2 w-32">Unit / Packaging</th>
                           <th className="py-2 px-2 w-28">Unit Price ($)</th>
                           <th className="py-2 px-2 w-36">Destination Location</th>
                           <th className="py-2 px-2 w-24 text-right">Total ($)</th>
@@ -1786,6 +1862,11 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
                                   PO Ordered: {it.ordered_quantity} {it.unit}
                                 </span>
                               )}
+                              {it.conversion_factor && it.conversion_factor > 1 && (
+                                <span className="inline-flex items-center gap-1 text-[11px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded font-semibold mt-0.5 border border-emerald-200">
+                                  📦 1 {it.unit} = {it.conversion_factor} {it.base_unit || 'unit'} (Total: {((Number(it.quantity) || 1) * Number(it.conversion_factor)).toFixed(2)} {it.base_unit || 'unit'})
+                                </span>
+                              )}
                             </td>
                             <td className="py-2 px-2">
                               <input
@@ -1797,7 +1878,50 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
                                 className="w-full bg-white border border-slate-300 rounded-lg px-2 py-1 text-slate-900 font-mono text-xs font-bold outline-none shadow-xs"
                               />
                             </td>
-                            <td className="py-2 px-2 text-slate-600 font-bold">{it.unit}</td>
+                            <td className="py-2 px-2">
+                              {getItemPackagingOptions(it.item_id).length > 0 ? (
+                                <select
+                                  value={it.packaging_option_id || ''}
+                                  onChange={(e) => {
+                                    const chosenId = e.target.value;
+                                    const opts = getItemPackagingOptions(it.item_id);
+                                    const chosen = opts.find(o => o.id === chosenId);
+                                    const q = Number(it.quantity) || 1;
+                                    if (chosen) {
+                                      const factor = Number(chosen.base_quantity_per_purchase_unit) || 1;
+                                      const pPrice = Number(chosen.purchase_unit_price) || 0;
+                                      handleUpdateInvoiceItem(idx, 'unit', chosen.purchase_unit);
+                                      handleUpdateInvoiceItem(idx, 'unit_price', pPrice);
+                                      handleUpdateInvoiceItem(idx, 'conversion_factor', factor);
+                                      handleUpdateInvoiceItem(idx, 'base_unit', chosen.base_unit || it.base_unit);
+                                      handleUpdateInvoiceItem(idx, 'base_quantity', q * factor);
+                                      handleUpdateInvoiceItem(idx, 'packaging_option_id', chosen.id);
+                                      handleUpdateInvoiceItem(idx, 'total', q * pPrice);
+                                    } else {
+                                      const cat = catalogItems.find(c => c.id === it.item_id);
+                                      const bPrice = Number(cat?.price_usd) || 0;
+                                      handleUpdateInvoiceItem(idx, 'unit', cat?.unit || 'Unit');
+                                      handleUpdateInvoiceItem(idx, 'unit_price', bPrice);
+                                      handleUpdateInvoiceItem(idx, 'conversion_factor', 1);
+                                      handleUpdateInvoiceItem(idx, 'base_unit', cat?.base_unit || cat?.unit || 'Unit');
+                                      handleUpdateInvoiceItem(idx, 'base_quantity', q);
+                                      handleUpdateInvoiceItem(idx, 'packaging_option_id', null);
+                                      handleUpdateInvoiceItem(idx, 'total', q * bPrice);
+                                    }
+                                  }}
+                                  className="w-full bg-white border border-slate-300 rounded-lg px-2 py-1 text-slate-900 font-bold text-xs outline-none shadow-xs cursor-pointer"
+                                >
+                                  {getItemPackagingOptions(it.item_id).map(opt => (
+                                    <option key={opt.id} value={opt.id}>
+                                      {opt.purchase_unit} ({opt.base_quantity_per_purchase_unit} {opt.base_unit || 'unit'}) - ${Number(opt.purchase_unit_price).toFixed(2)}
+                                    </option>
+                                  ))}
+                                  <option value="">Base ({catalogItems.find(c => c.id === it.item_id)?.unit || 'unit'})</option>
+                                </select>
+                              ) : (
+                                <span className="text-slate-600 font-bold">{it.unit}</span>
+                              )}
+                            </td>
                             <td className="py-2 px-2">
                               <input
                                 type="number"

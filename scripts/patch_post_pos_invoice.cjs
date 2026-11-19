@@ -212,12 +212,20 @@ BEGIN
         DECLARE
             v_line_unit TEXT;
             v_line_base_unit TEXT;
+            v_conversion_factor NUMERIC;
+            v_base_quantity NUMERIC;
         BEGIN
             v_line_unit := COALESCE(v_elem->>'unit', v_elem->>'purchase_unit', 'pcs');
             SELECT COALESCE(base_unit, unit, v_line_unit) INTO v_line_base_unit FROM public.items WHERE id = (v_elem->>'item_id')::uuid;
             IF v_line_base_unit IS NULL OR v_line_base_unit = '' THEN
                 v_line_base_unit := v_line_unit;
             END IF;
+
+            v_conversion_factor := COALESCE((v_elem->>'conversion_factor')::numeric, (v_elem->>'base_quantity_per_purchase_unit')::numeric, 1.0);
+            IF v_conversion_factor <= 0 THEN
+                v_conversion_factor := 1.0;
+            END IF;
+            v_base_quantity := COALESCE((v_elem->>'base_quantity')::numeric, v_qty * v_conversion_factor);
 
             INSERT INTO public.supplier_invoice_items (
                 invoice_id, po_item_id, item_id, item_name, invoiced_quantity,
@@ -233,7 +241,7 @@ BEGIN
                 CASE WHEN v_confirm_goods_received THEN v_qty ELSE 0 END,
                 v_line_unit,
                 v_line_base_unit,
-                v_qty,
+                v_base_quantity,
                 v_price,
                 COALESCE((v_elem->>'discount_rate')::numeric, 0),
                 COALESCE((v_elem->>'tax_rate')::numeric, 0),
@@ -270,7 +278,12 @@ BEGIN
                 COALESCE(sii.purchase_unit, 'pcs') AS purchase_unit,
                 sii.unit_price,
                 COALESCE(sii.base_unit, i.base_unit, sii.purchase_unit, 'pcs') AS effective_base_unit,
-                COALESCE(sii.base_quantity, sii.invoiced_quantity, 1) AS effective_base_quantity
+                COALESCE(sii.base_quantity, sii.invoiced_quantity, 1) AS effective_base_quantity,
+                CASE 
+                    WHEN COALESCE(sii.base_quantity, sii.invoiced_quantity, 1) > 0 
+                    THEN ROUND((sii.invoiced_quantity * sii.unit_price) / COALESCE(sii.base_quantity, sii.invoiced_quantity, 1), 4)
+                    ELSE sii.unit_price 
+                END AS effective_base_unit_cost
             FROM public.supplier_invoice_items sii
             LEFT JOIN public.items i ON i.id = sii.item_id
             WHERE sii.invoice_id = v_invoice_id
@@ -288,7 +301,7 @@ BEGIN
                 v_item.unit_price,
                 v_item.effective_base_quantity,
                 v_item.effective_base_unit,
-                v_item.unit_price,
+                v_item.effective_base_unit_cost,
                 v_item.invoiced_quantity * v_item.unit_price,
                 v_item.id
             );
