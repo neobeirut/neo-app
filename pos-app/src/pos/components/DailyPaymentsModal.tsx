@@ -2378,7 +2378,6 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
                       <option value="Cleaning & Supplies">Cleaning &amp; Supplies</option>
                       <option value="Maintenance & Gas">Maintenance &amp; Gas</option>
                       <option value="Staff Advance / Loan">Staff Advance / Loan</option>
-                      <option value="Cash In / Float">Cash In (Float Top-up)</option>
                     </select>
                   </div>
 
