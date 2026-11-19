@@ -338,7 +338,7 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
 
     if (cashOutReason === 'Bank') {
       recordType = 'Cashout Bank';
-      payeeName = cashOutBankName.trim() || 'Bank Transfer / Deposit';
+      payeeName = cashOutBankName.trim() || 'Bank';
     } else if (cashOutReason === 'Salary') {
       recordType = 'Cashout Salary';
       if (!cashOutUserId) {
@@ -1454,16 +1454,20 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
                         type="text"
                         value={cashOutBankName}
                         onChange={(e) => setCashOutBankName(e.target.value)}
-                        placeholder="e.g. BLF, Bank Audi, Byblos Bank..."
+                        placeholder="e.g. Bank, Petty Cash..."
                         className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-2xs"
                       />
-                      <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-                        {['BLF', 'Bank Audi', 'Byblos Bank', 'SGBL', 'Whish / OMT'].map(bank => (
+                      <div className="flex items-center gap-2 mt-2 flex-wrap">
+                        {['Bank', 'Petty Cash'].map(bank => (
                           <button
                             key={bank}
                             type="button"
                             onClick={() => setCashOutBankName(bank)}
-                            className="px-2 py-0.5 bg-white hover:bg-amber-100 border border-slate-200 text-[10px] font-bold text-slate-600 rounded-md cursor-pointer transition shadow-2xs"
+                            className={`px-3 py-1 border text-xs font-bold rounded-lg cursor-pointer transition shadow-2xs ${
+                              cashOutBankName === bank
+                                ? 'bg-amber-100 border-amber-600 text-amber-950 ring-1 ring-amber-500'
+                                : 'bg-white hover:bg-amber-50 border-slate-200 text-slate-700'
+                            }`}
                           >
                             {bank}
                           </button>
