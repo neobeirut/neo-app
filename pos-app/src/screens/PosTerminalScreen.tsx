@@ -342,8 +342,9 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
 
   // Admin & Role helper
   const currentUserRole = (activeCashier?.role || user?.role || '').toLowerCase();
-  const isAdmin = currentUserRole === 'admin' || currentUserRole === 'manager' || currentUserRole === 'superadmin' || Boolean(user?.is_super_admin);
-  const isTableAdmin = (currentUserRole === 'admin' || currentUserRole === 'superadmin' || Boolean(user?.is_super_admin)) && currentUserRole !== 'manager';
+  const isManager = currentUserRole === 'admin' || currentUserRole === 'manager' || currentUserRole === 'superadmin' || currentUserRole === 'supervisor' || currentUserRole === 'floor_supervisor' || Boolean(user?.is_super_admin) || Boolean(user?.is_manager) || Boolean(activeCashier?.is_manager);
+  const isAdmin = currentUserRole === 'admin' || currentUserRole === 'superadmin' || Boolean(user?.is_super_admin);
+  const isTableAdmin = isAdmin || isManager || Boolean(user?.can_manage_tables);
 
   // Multi-Concept Workspace State (Phase 2)
   const [workspaceState, setWorkspaceState] = useState<TerminalWorkspaceState>(() => {
@@ -2019,7 +2020,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
 
   const handleRejectPendingOrder = (orderId: string | number) => {
     const staffUser = activeCashier || user;
-    const canCancel = hasPosPermission(staffUser, 'cancel_entire_order');
+    const canCancel = isManager || hasPosPermission(staffUser, 'cancel_entire_order');
 
     const executeReject = () => {
       const order = (pendingOrders || []).find((o: any) => o.id === orderId);
@@ -2058,7 +2059,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
 
   const handleDeleteHeldOrder = (orderId: string | number) => {
     const staffUser = activeCashier || user;
-    const canCancel = hasPosPermission(staffUser, 'cancel_entire_order');
+    const canCancel = isManager || hasPosPermission(staffUser, 'cancel_entire_order');
 
     const executeDelete = () => {
       const order = (heldOrders || []).find((o: any) => o.id === orderId);
@@ -2099,7 +2100,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     const staffUser = activeCashier || user;
     const isCompleted = order.statusGroup === 'COMPLETED' || order.rawOrder?.status === 'completed';
     const requiredPermission = isCompleted ? 'refund_payment' : 'cancel_entire_order';
-    const canVoid = hasPosPermission(staffUser, requiredPermission);
+    const canVoid = isManager || hasPosPermission(staffUser, requiredPermission);
 
     const executeDirectVoid = () => {
       const raw = order.rawOrder || order;
@@ -2411,7 +2412,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     const tableAssignedWaiter = activeTableContext?.waiterName;
     const currentStaffName = staffUser?.name;
     const isOtherWaitersTable = Boolean(tableAssignedWaiter && currentStaffName && tableAssignedWaiter.toLowerCase() !== currentStaffName.toLowerCase());
-    if (isOtherWaitersTable && !hasPosPermission(staffUser, 'add_items_to_other_tables')) {
+    if (isOtherWaitersTable && !isManager && !hasPosPermission(staffUser, 'add_items_to_other_tables')) {
       alert(`⚠️ You do not have permission to add items to another server's table (Table ${activeTableContext?.tableCode} assigned to ${tableAssignedWaiter}).`);
       return;
     }
@@ -2794,7 +2795,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     const tableAssignedWaiter = activeTableContext?.waiterName;
     const currentStaffName = staffUser?.name;
     const isOtherWaitersTable = Boolean(tableAssignedWaiter && currentStaffName && tableAssignedWaiter.toLowerCase() !== currentStaffName.toLowerCase());
-    if (itemIndex === null && isOtherWaitersTable && !hasPosPermission(staffUser, 'add_items_to_other_tables')) {
+    if (itemIndex === null && isOtherWaitersTable && !isManager && !hasPosPermission(staffUser, 'add_items_to_other_tables')) {
       alert(`⚠️ You do not have permission to add items to another server's table (Table ${activeTableContext?.tableCode} assigned to ${tableAssignedWaiter}).`);
       return;
     }
@@ -3091,7 +3092,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     if (isOrderedItem) {
       const actualQtyToVoid = Math.min(origQty, qtyToVoid && qtyToVoid > 0 ? qtyToVoid : origQty);
       const staffUser = activeCashier || user;
-      const canVoidDirect = hasPosPermission(staffUser, 'void_sent_items');
+      const canVoidDirect = isManager || hasPosPermission(staffUser, 'void_sent_items');
 
       const triggerItemVoid = () => {
         setVoidModalState({
@@ -3191,7 +3192,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     setIsFeaturesModalOpen(false);
 
     const staffUser = activeCashier || user;
-    const canVoid = hasPosPermission(staffUser, 'cancel_entire_order') || hasPosPermission(staffUser, 'void_sent_items');
+    const canVoid = isManager || hasPosPermission(staffUser, 'cancel_entire_order') || hasPosPermission(staffUser, 'void_sent_items');
 
     const triggerTableVoid = () => {
       setVoidModalState({
@@ -3243,7 +3244,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
 
       // If only ordered items remain, wiping cart requires manager void authorization
       const staffUser = activeCashier || user;
-      const canVoid = hasPosPermission(staffUser, 'cancel_entire_order') || hasPosPermission(staffUser, 'void_sent_items');
+      const canVoid = isManager || hasPosPermission(staffUser, 'cancel_entire_order') || hasPosPermission(staffUser, 'void_sent_items');
 
       const triggerCartWipe = () => {
         setVoidModalState({

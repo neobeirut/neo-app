@@ -512,14 +512,36 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
     if (target) setCurrentScreenId(target);
   };
 
+  // Manager check for Waiter App
+  const isCurrentUserManager = useMemo(() => {
+    const role = (currentUser?.role || '').toLowerCase();
+    return (
+      role === 'manager' ||
+      role === 'admin' ||
+      role === 'administrator' ||
+      role === 'superadmin' ||
+      role === 'owner' ||
+      role === 'floor_supervisor' ||
+      Boolean(currentUser?.is_manager) ||
+      Boolean(currentUser?.is_admin) ||
+      hasPosPermission(currentUser, 'authorize_restricted_action') ||
+      hasPosPermission(currentUser, 'override_order_restrictions')
+    );
+  }, [currentUser]);
+
+  const isTableOwnedByOther = useCallback((waiterName?: string | null) => {
+    if (!waiterName) return false;
+    const cleanWaiter = waiterName.toLowerCase().trim();
+    if (['cashier', 'staff', 'unassigned', ''].includes(cleanWaiter)) return false;
+    const currentName = (currentUser?.name || '').toLowerCase().trim();
+    return cleanWaiter !== currentName;
+  }, [currentUser]);
+
   // Check if active table belongs to someone else
   const isOtherWaiterTable = useMemo(() => {
     if (!activeTableContext) return false;
-    if (!activeTableContext.waiterName || activeTableContext.waiterName === 'Cashier' || activeTableContext.waiterName === 'Staff') {
-      return false;
-    }
-    return activeTableContext.waiterName.toLowerCase().trim() !== (currentUser?.name || '').toLowerCase().trim();
-  }, [activeTableContext, currentUser]);
+    return isTableOwnedByOther(activeTableContext.waiterName);
+  }, [activeTableContext, isTableOwnedByOther]);
 
   // ─────────────────────────────────────────────────────────────
   // Action Handlers
@@ -535,12 +557,10 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
     tableId?: string,
     isNewlyCreated?: boolean
   ) => {
-    const isOther = waiterName && waiterName !== 'Cashier' && waiterName.toLowerCase().trim() !== (currentUser?.name || '').toLowerCase().trim();
-    if (isOther && orderId) {
-      if (!hasPosPermission(currentUser, 'view_other_tables') && !hasPosPermission(currentUser, 'view_all_tables')) {
-        showNotification(`You do not have permission to view tables assigned to ${waiterName}.`, 'error');
-        return;
-      }
+    const isOther = isTableOwnedByOther(waiterName);
+    if (isOther && (orderId || !isNewlyCreated) && !isCurrentUserManager) {
+      showNotification(`🔒 Table ${tableCode} belongs to ${waiterName}. You can only edit tables you created.`, 'error');
+      return;
     }
 
     const tableCtx: ActiveTableContext = {
@@ -659,19 +679,9 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
       showNotification(`⚠️ This product is currently unavailable.`, 'error');
       return;
     }
-    if (isOtherWaiterTable) {
-      if (!hasPosPermission(currentUser, 'add_items_to_other_tables')) {
-        setSupervisorAuthRequest({
-          actionKey: 'add_items_to_other_tables',
-          actionTitle: `Add Items to Table ${activeTableContext?.tableCode} (${activeTableContext?.waiterName})`,
-          tableNumber: activeTableContext?.tableCode,
-          orderId: activeTableContext?.orderId,
-          onAuthorized: () => {
-            triggerAddItemOrModifier(product);
-          }
-        });
-        return;
-      }
+    if (isOtherWaiterTable && !isCurrentUserManager) {
+      showNotification(`🔒 Table ${activeTableContext?.tableCode} belongs to ${activeTableContext?.waiterName}. You can only edit tables you created.`, 'error');
+      return;
     }
 
     triggerAddItemOrModifier(product);
@@ -750,12 +760,23 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
     const item = ticketItems[index];
     if (!item) return;
 
+    if (isOtherWaiterTable && !isCurrentUserManager) {
+      showNotification(`🔒 Table ${activeTableContext?.tableCode} belongs to ${activeTableContext?.waiterName}. You can only edit tables you created.`, 'error');
+      return;
+    }
+
     if (item.isHoldSeparator) {
       setTicketItems(prev => prev.filter((_, i) => i !== index));
       return;
     }
 
     const originalQty = Number(item.originalQty !== undefined ? item.originalQty : (item.isOrdered && activeTableContext?.orderId ? item.qty : 0));
+
+    // Ordered items cannot be deleted from the waiter app!
+    if (item.isOrdered && activeTableContext?.orderId && originalQty > 0) {
+      showNotification('⚠️ Ordered items cannot be deleted from the Waiter app. They can only be deleted from the POS version by a manager.', 'error');
+      return;
+    }
 
     // If it's a draft item (not yet sent to kitchen) or newly added quantity:
     if (!item.isOrdered || !activeTableContext?.orderId || originalQty === 0) {
@@ -764,30 +785,14 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
       return;
     }
 
-    // If already placed on table, require void permission or supervisor auth
-    const canVoid = hasPosPermission(currentUser, 'void_sent_items');
-    if (!canVoid) {
-      setSupervisorAuthRequest({
-        actionKey: 'void_sent_items',
-        actionTitle: `Void Sent Item: ${item.name}`,
-        tableNumber: activeTableContext?.tableCode,
-        orderId: activeTableContext?.orderId,
-        previousValue: item.qty,
-        newValue: 0,
-        requireReason: true,
-        defaultReason: 'Customer changed mind',
-        onAuthorized: () => {
-          setTicketItems(prev => prev.filter((_, i) => i !== index));
-          setActiveQtyEditorLineId(null);
-          showNotification(`Voided item: ${item.name}`, 'info');
-        }
-      });
-    } else {
-      if (window.confirm(`Void item "${item.name}" from table?`)) {
-        setTicketItems(prev => prev.filter((_, i) => i !== index));
-        setActiveQtyEditorLineId(null);
-        showNotification(`Voided item: ${item.name}`, 'info');
-      }
+    // If extra draft quantity was added on top of an ordered item:
+    if (item.qty > originalQty) {
+      const updated = [...ticketItems];
+      updated[index].qty = originalQty;
+      setTicketItems(updated);
+      setActiveQtyEditorLineId(null);
+      showNotification(`Discarded unsent draft quantity for ${item.name}`, 'info');
+      return;
     }
   };
 
@@ -795,10 +800,24 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
   const handleSetQtyDirect = (index: number) => {
     const item = ticketItems[index];
     if (!item) return;
+
+    if (isOtherWaiterTable && !isCurrentUserManager) {
+      showNotification(`🔒 Table ${activeTableContext?.tableCode} belongs to ${activeTableContext?.waiterName}. You can only edit tables you created.`, 'error');
+      return;
+    }
+
+    const originalQty = Number(item.originalQty !== undefined ? item.originalQty : (item.isOrdered && activeTableContext?.orderId ? item.qty : 0));
+
     const val = window.prompt(`Enter quantity for "${item.name}":`, String(item.qty));
     if (val === null) return;
     const parsed = parseInt(val.trim(), 10);
     if (isNaN(parsed) || parsed < 0) return;
+
+    if (originalQty > 0 && parsed < originalQty) {
+      showNotification('⚠️ Ordered items cannot be reduced from the Waiter app. They can only be deleted or reduced from the POS version by a manager.', 'error');
+      return;
+    }
+
     if (parsed === 0) {
       handleRemoveItem(index);
       return;
@@ -827,6 +846,11 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
     const item = ticketItems[index];
     if (!item) return;
 
+    if (isOtherWaiterTable && !isCurrentUserManager) {
+      showNotification(`🔒 Table ${activeTableContext?.tableCode} belongs to ${activeTableContext?.waiterName}. You can only edit tables you created.`, 'error');
+      return;
+    }
+
     if (item.isHoldSeparator) {
       setTicketItems(prev => prev.filter((_, i) => i !== index));
       return;
@@ -836,45 +860,14 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
 
     if (delta < 0) {
       const newQty = item.qty + delta;
-      // Only require supervisor void if trying to reduce below already placed original quantity!
+      // Ordered items cannot be reduced below originalQty in the Waiter app!
       if (originalQty > 0 && newQty < originalQty) {
-        const canVoid = hasPosPermission(currentUser, 'void_sent_items');
-        if (!canVoid) {
-          setSupervisorAuthRequest({
-            actionKey: 'void_sent_items',
-            actionTitle: `Void Sent Item: ${item.name}`,
-            tableNumber: activeTableContext?.tableCode,
-            orderId: activeTableContext?.orderId,
-            previousValue: item.qty,
-            newValue: item.qty - 1,
-            requireReason: true,
-            defaultReason: 'Customer changed mind',
-            onAuthorized: () => {
-              executeVoidSentItem(index);
-            }
-          });
-          return;
-        } else {
-          executeVoidSentItem(index);
-          return;
-        }
+        showNotification('⚠️ Ordered items cannot be reduced or deleted from the Waiter app. They can only be deleted from the POS version by a manager.', 'error');
+        return;
       }
 
       // Decrement unplaced draft quantity freely
       applyDraftQtyChange(index, delta);
-      return;
-    }
-
-    if (isOtherWaiterTable && !hasPosPermission(currentUser, 'edit_other_tables')) {
-      setSupervisorAuthRequest({
-        actionKey: 'edit_other_tables',
-        actionTitle: `Modify Order on Table ${activeTableContext?.tableCode}`,
-        tableNumber: activeTableContext?.tableCode,
-        orderId: activeTableContext?.orderId,
-        onAuthorized: () => {
-          applyDraftQtyChange(index, delta);
-        }
-      });
       return;
     }
 
@@ -909,6 +902,11 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
   const handleFireCourse = async () => {
     if (!activeTableContext?.orderId) {
       showNotification('Please send the order to kitchen before firing courses.', 'error');
+      return;
+    }
+
+    if (isOtherWaiterTable && !isCurrentUserManager) {
+      showNotification(`🔒 Table ${activeTableContext?.tableCode} belongs to ${activeTableContext?.waiterName}. You can only edit tables you created.`, 'error');
       return;
     }
 
@@ -1191,6 +1189,11 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
   const handleSendToKitchen = async () => {
     if (ticketItems.length === 0) {
       showNotification('Cart is empty. Add items before sending.', 'error');
+      return;
+    }
+
+    if (isOtherWaiterTable && !isCurrentUserManager) {
+      showNotification(`🔒 Table ${activeTableContext?.tableCode} belongs to ${activeTableContext?.waiterName}. You can only edit tables you created.`, 'error');
       return;
     }
 
@@ -1620,10 +1623,7 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
             isShiftOpen={isShiftOpen}
             activeShift={activeShift}
             canOpenNewTables={hasPosPermission(currentUser, 'open_table')}
-            isTableAdmin={
-              hasPosPermission(currentUser, 'override_order_restrictions') ||
-              hasPosPermission(currentUser, 'transfer_table')
-            }
+            isTableAdmin={isCurrentUserManager}
             onOpenOrderInCart={handleOpenTableOrder}
             onFloorTablesLoaded={setFloorTables}
             onPrintPreCheckDoc={table => {
@@ -1633,7 +1633,23 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
         </div>
 
         {/* ── VIEW 2: TABLE TICKET & POS SCREEN MATRIX ── */}
-        <div className={`flex-1 flex h-full overflow-hidden ${view === 'ticket' ? '' : 'hidden'}`}>
+        <div className={`flex-1 flex flex-col h-full overflow-hidden ${view === 'ticket' ? '' : 'hidden'}`}>
+          {isOtherWaiterTable && !isCurrentUserManager && (
+            <div className="bg-amber-500 text-white px-4 py-2 flex items-center justify-between text-xs font-black shadow-md shrink-0">
+              <div className="flex items-center gap-2">
+                <Lock className="w-4 h-4 shrink-0" />
+                <span>🔒 READ-ONLY: Table {activeTableContext?.tableCode} was opened by {activeTableContext?.waiterName}. You can only edit tables you created.</span>
+              </div>
+              <button
+                type="button"
+                onClick={handleCancelTableOperation}
+                className="px-2.5 py-1 rounded-lg bg-white text-amber-900 font-bold hover:bg-amber-100 cursor-pointer text-xs"
+              >
+                Return to Floor
+              </button>
+            </div>
+          )}
+          <div className="flex-1 flex h-full overflow-hidden">
             {/* ── LEFT PANEL (Adapts to Tablet Direction): Screen Matrix ── */}
             <div className={`${isPortrait ? 'w-[56%]' : 'w-[65%]'} flex flex-col h-full bg-[#F5F6F4] border-r border-[#E0E3DF] transition-all duration-150`}>
               {/* Screen Matrix Header & Breadcrumb */}
@@ -1942,8 +1958,21 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
                           <button
                             type="button"
                             onClick={() => handleUpdateQty(idx, -1)}
-                            className="w-5 h-5 sm:w-6 sm:h-6 rounded bg-[#F5F6F4] hover:bg-slate-200 text-[#242B28] font-black text-xs flex items-center justify-center active:scale-90 transition cursor-pointer border border-[#E0E3DF]"
-                            title="Decrease quantity"
+                            disabled={Boolean(
+                              (isOtherWaiterTable && !isCurrentUserManager) ||
+                              (item.isOrdered && activeTableContext?.orderId && item.qty <= Number(item.originalQty || 0))
+                            )}
+                            className={`w-5 h-5 sm:w-6 sm:h-6 rounded font-black text-xs flex items-center justify-center transition border border-[#E0E3DF] ${
+                              (isOtherWaiterTable && !isCurrentUserManager) ||
+                              (item.isOrdered && activeTableContext?.orderId && item.qty <= Number(item.originalQty || 0))
+                                ? "bg-slate-100 text-slate-300 cursor-not-allowed"
+                                : "bg-[#F5F6F4] hover:bg-slate-200 text-[#242B28] active:scale-90 cursor-pointer"
+                            }`}
+                            title={
+                              item.isOrdered && activeTableContext?.orderId && item.qty <= Number(item.originalQty || 0)
+                                ? "Ordered items cannot be reduced from Waiter app (POS only)"
+                                : "Decrease quantity"
+                            }
                           >
                             -
                           </button>
@@ -1959,7 +1988,12 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
                           <button
                             type="button"
                             onClick={() => handleUpdateQty(idx, 1)}
-                            className="w-5 h-5 sm:w-6 sm:h-6 rounded bg-[#F5F6F4] hover:bg-slate-200 text-[#242B28] font-black text-xs flex items-center justify-center active:scale-90 transition cursor-pointer border border-[#E0E3DF]"
+                            disabled={Boolean(isOtherWaiterTable && !isCurrentUserManager)}
+                            className={`w-5 h-5 sm:w-6 sm:h-6 rounded font-black text-xs flex items-center justify-center transition border border-[#E0E3DF] ${
+                              isOtherWaiterTable && !isCurrentUserManager
+                                ? "bg-slate-100 text-slate-300 cursor-not-allowed"
+                                : "bg-[#F5F6F4] hover:bg-slate-200 text-[#242B28] active:scale-90 cursor-pointer"
+                            }`}
                             title="Increase quantity"
                           >
                             +
@@ -2026,37 +2060,55 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
 
                         {/* Right: Edit & Remove (Trash) Buttons */}
                         <div className="flex items-center gap-0.5 shrink-0">
-                          <button
-                            type="button"
-                            onClick={e => {
-                              e.stopPropagation();
-                              const prod = products.find(p => String(p.id) === String(item.product_id)) || {
-                                id: item.product_id,
-                                name: item.name,
-                                unit_price_usd: item.unit_price,
-                                customizations: item.selectedCustomizations || []
-                              };
-                              setModifyingProduct(prod);
-                              setModifyingItemIndex(idx);
-                              setIsModifierModalOpen(true);
-                            }}
-                            className="p-1 rounded-lg text-[#5E6964] hover:text-[#242B28] hover:bg-slate-200 transition active:scale-90 cursor-pointer"
-                            title="Edit modifiers & notes"
-                          >
-                            <Edit3 className="w-3.5 h-3.5" />
-                          </button>
+                          {(!isOtherWaiterTable || isCurrentUserManager) && (
+                            <button
+                              type="button"
+                              onClick={e => {
+                                e.stopPropagation();
+                                const prod = products.find(p => String(p.id) === String(item.product_id)) || {
+                                  id: item.product_id,
+                                  name: item.name,
+                                  unit_price_usd: item.unit_price,
+                                  customizations: item.selectedCustomizations || []
+                                };
+                                setModifyingProduct(prod);
+                                setModifyingItemIndex(idx);
+                                setIsModifierModalOpen(true);
+                              }}
+                              className="p-1 rounded-lg text-[#5E6964] hover:text-[#242B28] hover:bg-slate-200 transition active:scale-90 cursor-pointer"
+                              title="Edit modifiers & notes"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
 
-                          <button
-                            type="button"
-                            onClick={e => {
-                              e.stopPropagation();
-                              handleRemoveItem(idx);
-                            }}
-                            className="p-1 rounded-lg text-rose-500 hover:text-rose-700 hover:bg-rose-50 transition active:scale-90 cursor-pointer"
-                            title="Remove item from basket"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          {Boolean(
+                            (isOtherWaiterTable && !isCurrentUserManager) ||
+                            (item.isOrdered && activeTableContext?.orderId && item.qty <= Number(item.originalQty || 0))
+                          ) ? (
+                            <div
+                              className="p-1 rounded-lg text-slate-400 bg-slate-100 flex items-center justify-center cursor-not-allowed"
+                              title={
+                                isOtherWaiterTable && !isCurrentUserManager
+                                  ? "Cannot edit another user's table"
+                                  : "Ordered item (can only be deleted in POS by manager)"
+                              }
+                            >
+                              <Lock className="w-3.5 h-3.5" />
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={e => {
+                                e.stopPropagation();
+                                handleRemoveItem(idx);
+                              }}
+                              className="p-1 rounded-lg text-rose-500 hover:text-rose-700 hover:bg-rose-50 transition active:scale-90 cursor-pointer"
+                              title={item.isOrdered ? "Discard unsent draft quantity" : "Remove item from basket"}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                         </div>
                       </div>
                     );
@@ -2081,7 +2133,7 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
                   <button
                     type="button"
                     onClick={handleSendToKitchen}
-                    disabled={isSubmitting || ticketItems.length === 0}
+                    disabled={isSubmitting || ticketItems.length === 0 || Boolean(isOtherWaiterTable && !isCurrentUserManager)}
                     style={{ backgroundColor: primaryColor, color: primaryText }}
                     className="py-3 px-2 rounded-xl font-black text-xs flex items-center justify-center gap-2 transition active:scale-95 shadow-md disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer hover:opacity-95"
                     title="Send order to kitchen and KDS"
@@ -2093,6 +2145,7 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
               </div>
             </div>
           </div>
+        </div>
       </div>
 
       {/* ─────────────────────────────────────────────────────────────

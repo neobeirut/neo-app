@@ -28,7 +28,8 @@ import {
   DollarSign, 
   Sparkles, 
   Save,
-  RotateCcw
+  RotateCcw,
+  Lock
 } from 'lucide-react';
 
 interface TableKeypadPanelProps {
@@ -220,6 +221,16 @@ export const TableKeypadPanel: React.FC<TableKeypadPanelProps> = ({
   const isOpenNoProduct = matchedTable && matchedTable.status === 'open';
   const isAvailable = matchedTable && matchedTable.status === 'available';
   const isNewTable = !matchedTable && Boolean(debouncedTableInput.trim());
+
+  // Check if matched table is assigned to another user (creator lock)
+  const isOwnedByOther = useMemo(() => {
+    if (!matchedTable || !matchedTable.assigned_waiter) return false;
+    const cleanWaiter = matchedTable.assigned_waiter.toLowerCase().trim();
+    if (['cashier', 'staff', 'unassigned'].includes(cleanWaiter)) return false;
+    const cleanCashier = (cashierName || '').toLowerCase().trim();
+    if (isTableAdmin) return false;
+    return cleanWaiter !== cleanCashier;
+  }, [matchedTable, cashierName, isTableAdmin]);
 
   // In-place Seat Selection Mode: active when an available or new table is confirmed
   const isSelectingSeats = !isTransferMode && activeTab === 'action' && isTableConfirmed && (isAvailable || isNewTable);
@@ -440,6 +451,13 @@ export const TableKeypadPanel: React.FC<TableKeypadPanelProps> = ({
   // 2. Open / Edit Occupied Order in POS Sell Mode
   const handleOpenOccupiedOrder = () => {
     if (!matchedTable || !onOpenOrderInCart) return;
+    if (isOwnedByOther) {
+      setFeedbackMessage({
+        type: 'error',
+        text: `🔒 Table ${matchedTable.table_code} belongs to ${matchedTable.assigned_waiter}. You can only edit tables you created.`
+      });
+      return;
+    }
     onOpenOrderInCart(
       matchedTable.commerce_order_id || null,
       matchedTable.table_code,
@@ -454,6 +472,13 @@ export const TableKeypadPanel: React.FC<TableKeypadPanelProps> = ({
   // 2b. Open / Add Products to Open Table (no products ordered yet)
   const handleOpenOpenTable = () => {
     if (!matchedTable || !onOpenOrderInCart) return;
+    if (isOwnedByOther) {
+      setFeedbackMessage({
+        type: 'error',
+        text: `🔒 Table ${matchedTable.table_code} belongs to ${matchedTable.assigned_waiter}. You can only edit tables you created.`
+      });
+      return;
+    }
     onOpenOrderInCart(
       null,
       matchedTable.table_code,
@@ -604,6 +629,13 @@ export const TableKeypadPanel: React.FC<TableKeypadPanelProps> = ({
   // 7. Execute Table Transfer
   const handleExecuteTransfer = async () => {
     if (!matchedTable || !matchedTransferTarget || isSubmitting) return;
+    if (isOwnedByOther) {
+      setFeedbackMessage({
+        type: 'error',
+        text: `🔒 Cannot transfer Table ${matchedTable.table_code}: assigned to ${matchedTable.assigned_waiter}.`
+      });
+      return;
+    }
     if (matchedTransferTarget.status !== 'available') {
       setFeedbackMessage({ type: 'error', text: `Destination Table ${matchedTransferTarget.table_code} is occupied.` });
       return;
@@ -1127,10 +1159,17 @@ export const TableKeypadPanel: React.FC<TableKeypadPanelProps> = ({
               </div>
             </div>
 
+            {isOwnedByOther && (
+              <div className="p-2 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-800 font-bold flex items-center gap-1.5">
+                <Lock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                <span>Assigned to {matchedTable.assigned_waiter}. Only creator can edit.</span>
+              </div>
+            )}
+
             {/* PRIMARY BUTTON: ADD PRODUCTS / START ORDER */}
             <button
               type="button"
-              disabled={!isShiftOpen}
+              disabled={!isShiftOpen || isOwnedByOther}
               onClick={() => {
                 if (!isShiftOpen) {
                   onOpenShift?.();
@@ -1138,15 +1177,24 @@ export const TableKeypadPanel: React.FC<TableKeypadPanelProps> = ({
                 }
                 handleOpenOpenTable();
               }}
-              style={isShiftOpen ? { backgroundColor: primaryColor, color: primaryText } : undefined}
+              style={isShiftOpen && !isOwnedByOther ? { backgroundColor: primaryColor, color: primaryText } : undefined}
               className={`w-full h-10 font-black text-xs md:text-sm rounded-xl transition shadow flex items-center justify-center gap-2 ${
-                !isShiftOpen
-                  ? "bg-slate-200 text-slate-400 opacity-40 cursor-not-allowed"
+                !isShiftOpen || isOwnedByOther
+                  ? "bg-slate-200 text-slate-500 opacity-60 cursor-not-allowed"
                   : "hover:opacity-90 active:scale-95 cursor-pointer"
               }`}
             >
-              <Play className="w-4 h-4 fill-current" />
-              <span>Add Products to Table {matchedTable.table_code}</span>
+              {isOwnedByOther ? (
+                <>
+                  <Lock className="w-4 h-4 text-slate-500" />
+                  <span>🔒 Locked ({matchedTable.assigned_waiter})</span>
+                </>
+              ) : (
+                <>
+                  <Play className="w-4 h-4 fill-current" />
+                  <span>Add Products to Table {matchedTable.table_code}</span>
+                </>
+              )}
             </button>
 
             {/* SECONDARY ACTIONS: TRANSFER TABLE & CANCEL / CLEAR TABLE */}
@@ -1307,10 +1355,17 @@ export const TableKeypadPanel: React.FC<TableKeypadPanelProps> = ({
               </button>
             )}
 
+            {isOwnedByOther && (
+              <div className="p-2 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-800 font-bold flex items-center gap-1.5">
+                <Lock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                <span>Assigned to {matchedTable.assigned_waiter}. Only creator can edit.</span>
+              </div>
+            )}
+
             {/* PRIMARY BUTTON at bottom: OPEN / EDIT ORDER IN POS */}
             <button
               type="button"
-              disabled={!isShiftOpen}
+              disabled={!isShiftOpen || isOwnedByOther}
               onClick={() => {
                 if (!isShiftOpen) {
                   onOpenShift?.();
@@ -1318,14 +1373,21 @@ export const TableKeypadPanel: React.FC<TableKeypadPanelProps> = ({
                 }
                 handleOpenOccupiedOrder();
               }}
-              style={isShiftOpen ? { backgroundColor: primaryColor, color: primaryText } : undefined}
+              style={isShiftOpen && !isOwnedByOther ? { backgroundColor: primaryColor, color: primaryText } : undefined}
               className={`w-full h-10 font-black text-xs sm:text-sm rounded-xl transition-all shadow flex items-center justify-center gap-2 ${
-                !isShiftOpen
-                  ? "bg-slate-200 text-slate-400 opacity-40 cursor-not-allowed"
+                !isShiftOpen || isOwnedByOther
+                  ? "bg-slate-200 text-slate-500 opacity-60 cursor-not-allowed"
                   : "hover:opacity-90 active:scale-95 cursor-pointer"
               }`}
             >
-              <span>📝 Open / Edit Order in POS</span>
+              {isOwnedByOther ? (
+                <>
+                  <Lock className="w-4 h-4 text-slate-500" />
+                  <span>🔒 Locked ({matchedTable.assigned_waiter})</span>
+                </>
+              ) : (
+                <span>📝 Open / Edit Order in POS</span>
+              )}
             </button>
             <button
               type="button"
