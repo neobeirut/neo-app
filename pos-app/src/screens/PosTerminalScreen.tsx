@@ -8357,6 +8357,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         activeShiftName={activeShift?.shift || 'AM'}
         activeShiftDate={activeShift?.date}
         activeShiftId={activeShift?.id}
+        systemExchangeRate={exchangeRate}
         restaurantId={currentRestaurantId}
       />
 
@@ -9095,7 +9096,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
           activeCashierId={activeCashier?.id || user?.id}
           activeCashierName={activeCashier?.name || user?.name || "Cashier"}
           activeShiftId={activeShift?.id}
-          exchangeRate={89500}
+          exchangeRate={exchangeRate || 90000}
           onHandoverSuccess={async () => {
             setTerminalHandoverOrder(null);
             await checkShift();

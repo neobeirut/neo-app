@@ -855,7 +855,7 @@ export async function openShift(params: OpenShiftParams): Promise<{ success: boo
 
     if (isDeliveryConcept) {
       // DELIVERY CONCEPT (OVRLOAD / WICKD): Completely independent cash session
-      const defaultRate = params.rate || 89500;
+      const defaultRate = params.rate || 90000;
       const conceptCode = params.conceptId === '00000000-0000-0000-0000-000000000002' ? 'OVRLOAD' : 'WICKD';
       const conceptTag = `[CONCEPT:${params.conceptId}]`;
 
@@ -970,7 +970,7 @@ export async function openShift(params: OpenShiftParams): Promise<{ success: boo
       return { success: false, error: "Today's AM shift is already closed. Open the PM shift instead." };
     }
 
-    const defaultRate = params.rate || 89500;
+    const defaultRate = params.rate || 90000;
     const newRecord: any = {
       date: todayStr,
       branch: params.branchName,

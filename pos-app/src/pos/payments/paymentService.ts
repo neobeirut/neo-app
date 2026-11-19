@@ -456,7 +456,7 @@ export async function submitPayment(
       p_collection_party: collectionParty,
       p_platform_id: null,
       p_provider_payment_reference: params.payment.reference || null,
-      p_exchange_rate_applied: Number(params.payment.exchangeRate || 89500)
+      p_exchange_rate_applied: Number(params.payment.exchangeRate || 90000)
     });
 
     if (tenderErr) {

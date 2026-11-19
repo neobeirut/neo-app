@@ -39,6 +39,7 @@ interface DailyPaymentsModalProps {
   activeShiftId?: string;
   branchId?: string;
   restaurantId?: string;
+  systemExchangeRate?: number;
 }
 
 export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
@@ -50,7 +51,8 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
   activeShiftDate,
   activeShiftId,
   branchId,
-  restaurantId
+  restaurantId,
+  systemExchangeRate
 }) => {
   // Navigation: Cash In, Cash Out, and 4 core modules
   const [activeTab, setActiveTab] = useState<'cashin' | 'cashout' | 'invoice' | 'payment' | 'direct' | 'expense'>('cashin');
@@ -90,7 +92,7 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
   const [invDate, setInvDate] = useState(new Date().toISOString().split('T')[0]);
   const [invDueDate, setInvDueDate] = useState('');
   const [invCurrency, setInvCurrency] = useState<'USD' | 'LBP'>('USD');
-  const [invExchangeRate, setInvExchangeRate] = useState<number>(89500);
+  const [invExchangeRate, setInvExchangeRate] = useState<number>(systemExchangeRate || 90000);
   const [invConfirmReceived, setInvConfirmReceived] = useState<boolean>(true);
   const [invPayNow, setInvPayNow] = useState<boolean>(false);
   const [invPaymentMethod, setInvPaymentMethod] = useState<string>('CASH_USD');
@@ -122,7 +124,7 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
   const [payPaymentMethod, setPayPaymentMethod] = useState<string>('CASH_USD');
   const [payAmountUsd, setPayAmountUsd] = useState<string>('');
   const [payAmountLbp, setPayAmountLbp] = useState<string>('');
-  const [payExchangeRate, setPayExchangeRate] = useState<number>(89500);
+  const [payExchangeRate, setPayExchangeRate] = useState<number>(systemExchangeRate || 90000);
   const [payNotes, setPayNotes] = useState<string>('');
   const [payAllocations, setPayAllocations] = useState<{ [invoiceId: string]: number }>({});
 
@@ -178,6 +180,13 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
 
   // Initialize
   useEffect(() => {
+    if (systemExchangeRate && systemExchangeRate > 0) {
+      setInvExchangeRate(systemExchangeRate);
+      setPayExchangeRate(systemExchangeRate);
+    }
+  }, [systemExchangeRate]);
+
+  useEffect(() => {
     if (isOpen) {
       if (activeShiftDate) {
         const d = activeShiftDate.includes('T') ? activeShiftDate.split('T')[0] : (activeShiftDate.includes(' ') ? activeShiftDate.split(' ')[0] : activeShiftDate);
@@ -194,12 +203,13 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
   const loadMasterData = async () => {
     setLoadingMaster(true);
     try {
-      const [supRes, locRes, catRes, usersRes, splRes] = await Promise.all([
+      const [supRes, locRes, catRes, usersRes, splRes, rateRes] = await Promise.all([
         api.getSuppliers(),
         api.getInventoryLocations(),
         api.getItemCatalog(),
         getBranchUsers(restaurantId),
-        api.getSupplierPriceLists()
+        api.getSupplierPriceLists(),
+        api.getExchangeRate(restaurantId)
       ]);
       if (supRes.success && supRes.data) setSuppliers(supRes.data);
       if (locRes.success && locRes.data) {
@@ -211,6 +221,10 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
       if (catRes.success && catRes.data) setCatalogItems(catRes.data);
       if (usersRes?.success && usersRes?.data) setBranchUsers(usersRes.data);
       if (splRes?.success && splRes?.data) setSupplierPriceLists(splRes.data);
+      if (rateRes?.success && rateRes?.rate && rateRes.rate > 0) {
+        setInvExchangeRate(rateRes.rate);
+        setPayExchangeRate(rateRes.rate);
+      }
     } catch (e) {
       console.error('Error loading POS payments master data:', e);
     }
@@ -958,7 +972,7 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
         invoice_date: date,
         purchase_order_id: null,
         currency: dirPaymentMethod === 'CASH_LBP' ? 'LBP' : 'USD',
-        exchange_rate: 89500,
+        exchange_rate: invExchangeRate || 90000,
         notes: `Direct Purchase: ${dirSupplierName.trim()}${dirNotes ? ` - ${dirNotes}` : ''}`,
         user_id: cashierName,
         user_name: cashierName,
@@ -1775,7 +1789,7 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
                         step="500"
                         value={invExchangeRate}
                         onChange={(e) => setInvExchangeRate(Number(e.target.value) || 0)}
-                        placeholder="89500"
+                        placeholder="90000"
                         className="w-32 bg-white border border-amber-300 rounded-lg px-2.5 py-1 text-slate-900 font-mono font-bold text-xs outline-none"
                       />
                       <span className="font-semibold text-slate-600">L.L. / $1</span>

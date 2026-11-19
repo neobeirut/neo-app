@@ -322,7 +322,7 @@ export function formatEscPosText(data: ThermalReceiptData): string {
   lines.push(divider('-'));
 
   lines.push(cols('TOTAL USD:', fmtMoney(total)));
-  const rate = Number(data.exchange_rate || data.rate || 89500);
+  const rate = Number(data.exchange_rate || data.rate || 90000);
   if (rate > 0) {
     const totalLbp = Math.round(total * rate);
     lines.push(cols('TOTAL LBP:', `${totalLbp.toLocaleString('en-US')} LBP`));
@@ -356,7 +356,7 @@ export const ThermalReceiptPreviewModal: React.FC<Props> = ({ isOpen, onClose, d
   const restoName = (data.restaurant_name || (typeof window !== 'undefined' ? localStorage.getItem('flow_pos_restaurant_name') : null) || 'Neo Beirut').toUpperCase();
   const legalName = data.company_legal_name || (typeof window !== 'undefined' ? localStorage.getItem('flow_pos_company_legal_name') : null) || 'Neo Beirut S.A.L.';
   const mofNumber = data.mof_number || (typeof window !== 'undefined' ? localStorage.getItem('flow_pos_mof_number') : null) || '382910-601';
-  const exchangeRate = Number(data.exchange_rate || data.rate || 89500);
+  const exchangeRate = Number(data.exchange_rate || data.rate || 90000);
   const serverName = data.served_by || data.waiter_name || data.waiter || data.server_name || data.server || data.cashier_name || 'Staff';
   const tableCode = data.table_code || data.table_label || data.table;
   const guestCount = data.guest_count || 1;

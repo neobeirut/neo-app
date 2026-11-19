@@ -94,7 +94,7 @@ export const TerminalPaymentModal: React.FC<TerminalPaymentModalProps> = ({
   currentRestaurantName = "",
   currentBranchName = "",
   onApplyDiscount,
-  exchangeRate = 89500,
+  exchangeRate = 90000,
   isTable,
   tableCode,
   guestCount = 1,
@@ -147,7 +147,7 @@ export const TerminalPaymentModal: React.FC<TerminalPaymentModalProps> = ({
   const [schedTime, setSchedTime] = useState<string>(() => scheduledOrderTime || "");
   const [schedNote, setSchedNote] = useState<string>(() => scheduledOrderNote || "");
 
-  const rate = exchangeRate && exchangeRate > 0 ? exchangeRate : 89500;
+  const rate = exchangeRate && exchangeRate > 0 ? exchangeRate : 90000;
   const totalLbp = useMemo(() => Math.round(totalUsd * rate), [totalUsd, rate]);
 
   // Reset tender input, client name, and schedule when modal opens or method changes

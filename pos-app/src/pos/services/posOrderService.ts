@@ -172,7 +172,7 @@ export async function createDirectOrder(payload: CreateOrderPayload) {
       tendered_currency: payload.tendered_currency || 'USD',
       change_amount: payload.change_amount || 0,
       change_currency: payload.change_currency || 'USD',
-      exchange_rate: 89500,
+      exchange_rate: payload.exchange_rate || 90000,
       table_label: payload.table_label || null,
       guest_count: payload.guest_count || 1,
       waiter_name: payload.waiter_reference || payload.cashierName || 'Cashier',
@@ -307,7 +307,7 @@ export async function createDirectOrder(payload: CreateOrderPayload) {
           tenderedCurrency: payload.tendered_currency || 'USD',
           changeAmount: payload.change_amount || 0,
           changeCurrency: payload.change_currency || 'USD',
-          exchangeRate: 89500,
+          exchangeRate: payload.exchange_rate || 90000,
           clientOrderToken: payload.client_order_token
         });
       } catch (tenderErr) {
@@ -429,7 +429,7 @@ export async function updateDirectOrderStatus(orderId: number | string, patch: a
         if (!['paid', 'completed', 'delivered', 'closed'].includes(existingOrder.status)) await recordOrderTenderReceivable({ restaurantId: data.restaurant_id, branchId: data.branch_id, orderId: Number(orderId),
           paymentMethod: data.payment_method || 'Cash USD', total: Number(data.total_amount || 0),
           tenderedAmount: Number(data.tendered_amount ?? data.total_amount ?? 0), tenderedCurrency: data.tendered_currency || 'USD',
-          changeAmount: Number(data.change_amount || 0), changeCurrency: data.change_currency || 'USD', exchangeRate: 89500 });
+          changeAmount: Number(data.change_amount || 0), changeCurrency: data.change_currency || 'USD', exchangeRate: Number(data.exchange_rate) || 90000 });
       } catch (error) { console.warn('[updateDirectOrderStatus] Tender recording warning:', error); }
 
       // Concept Invoice Number Allocation (Atomic gapless sequencing)
@@ -847,7 +847,7 @@ export async function recordOrderTenderReceivable(params: {
     p_collection_party: collectionParty,
     p_platform_id: null,
     p_provider_payment_reference: params.clientOrderToken || null,
-    p_exchange_rate_applied: Number(params.exchangeRate || 89500)
+    p_exchange_rate_applied: Number(params.exchangeRate || 90000)
   });
 
   if (error) {

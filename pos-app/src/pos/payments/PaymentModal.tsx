@@ -97,21 +97,21 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
     setStagedTenders([]);
     setIsSplitMode(false);
 
-    // Fetch exchange rate from FLOW app_settings / restaurants (fallback: 89500)
+    // Fetch exchange rate from FLOW app_settings / restaurants (fallback: 90000)
     api.getExchangeRate()
       .then(res => {
         if (isMounted) {
           if (res.success && res.rate && res.rate > 0) {
             setExchangeRate(res.rate);
           } else {
-            setExchangeRate(89500);
+            setExchangeRate(90000);
           }
           setRateLoading(false);
         }
       })
       .catch(() => {
         if (isMounted) {
-          setExchangeRate(89500);
+          setExchangeRate(90000);
           setRateLoading(false);
         }
       });

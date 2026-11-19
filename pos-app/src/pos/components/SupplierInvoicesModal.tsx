@@ -86,18 +86,14 @@ export const SupplierInvoicesModal: React.FC<SupplierInvoicesModalProps> = ({
 
   const loadCentralizedExchangeRate = async () => {
     try {
-      const { data } = await supabase
-        .from('app_settings')
-        .select('setting_value')
-        .in('setting_key', ['exchange_rate', 'exchange_rate_usd_lbp'])
-        .limit(1)
-        .maybeSingle();
-
-      const rate = data ? parseFloat(data.setting_value) : 89500;
+      const res = await api.getExchangeRate(restaurantId);
+      const rate = (res && res.success && res.rate && res.rate > 0) ? res.rate : 90000;
       setSystemExchangeRate(rate);
       setExchangeRate((prev) => (prev > 0 ? prev : rate));
     } catch (err) {
       console.warn('Failed to load dynamic exchange rate:', err);
+      setSystemExchangeRate(90000);
+      setExchangeRate((prev) => (prev > 0 ? prev : 90000));
     }
   };
 
@@ -183,7 +179,7 @@ export const SupplierInvoicesModal: React.FC<SupplierInvoicesModalProps> = ({
       vatTotal: Number(calcVat.toFixed(2)),
       totalAmount: Number(grandTotal.toFixed(2)),
       totalAmountUsd: currency === 'USD' ? grandTotal : grandTotal / (exchangeRate || 1),
-      totalAmountLbp: currency === 'LBP' ? grandTotal : grandTotal * (exchangeRate || 89500)
+      totalAmountLbp: currency === 'LBP' ? grandTotal : grandTotal * (exchangeRate || systemExchangeRate || 90000)
     };
   }, [items, discountAmount, currency, exchangeRate]);
 
@@ -304,7 +300,7 @@ export const SupplierInvoicesModal: React.FC<SupplierInvoicesModalProps> = ({
       const invNum = parsedData?.invoice_number || ('INV-POS-' + Date.now().toString().slice(-4));
       const invDate = parsedData?.invoice_date || new Date().toISOString().split('T')[0];
       const invCurr = supplierInvoiceClientService.normalizeCurrency(parsedData?.currency);
-      const exRate = Number(parsedData?.exchange_rate) || 89500;
+      const exRate = Number(parsedData?.exchange_rate) || systemExchangeRate || 90000;
       const discAmt = parsedData?.discount_amount ? String(parsedData.discount_amount) : '0';
 
       setInvoiceNumber(invNum);
@@ -910,8 +906,8 @@ export const SupplierInvoicesModal: React.FC<SupplierInvoicesModalProps> = ({
                         <input
                           type="number"
                           value={exchangeRate}
-                          onChange={(e) => setExchangeRate(Number(e.target.value) || 89500)}
-                          placeholder="89500"
+                          onChange={(e) => setExchangeRate(Number(e.target.value) || systemExchangeRate || 90000)}
+                          placeholder={String(systemExchangeRate || 90000)}
                           className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs font-bold outline-none"
                         />
                       </div>

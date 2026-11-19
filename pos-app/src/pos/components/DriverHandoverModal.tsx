@@ -20,7 +20,7 @@ export const DriverHandoverModal: React.FC<DriverHandoverModalProps> = ({
   activeCashierId,
   activeCashierName,
   activeShiftId,
-  exchangeRate = 89500,
+  exchangeRate = 90000,
   onHandoverSuccess
 }) => {
   const [tenderedUsd, setTenderedUsd] = useState<string>('');
@@ -65,7 +65,7 @@ export const DriverHandoverModal: React.FC<DriverHandoverModalProps> = ({
   const deliveryFee = rawDeliveryFee;
 
   // Rate resolution
-  const effectiveRate = Number(order?.exchange_rate || exchangeRate || 89500);
+  const effectiveRate = Number(order?.exchange_rate || exchangeRate || 90000);
 
   // Initialize tender when modal opens
   useEffect(() => {
