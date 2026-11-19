@@ -1103,6 +1103,37 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
           allowDecimal: false,
           isPin: false,
           setValue: (v: string) => setOpeningLbp(v),
+          next: 'dailySalesUsd'
+        };
+      case 'dailySalesUsd':
+        return {
+          id: 'dailySalesUsd',
+          label: 'Daily Sales USD ($)',
+          shortLabel: 'Daily Sales USD',
+          value: salesLbpInUsd > 0 ? (salesLbpInUsd.toFixed(2).replace(/\.00$/, '')) : (salesLbp ? (Number(salesLbp)/currentRate).toFixed(2).replace(/\.00$/, '') : '0'),
+          currency: 'USD',
+          symbol: '$',
+          isUsd: true,
+          allowDecimal: true,
+          isPin: false,
+          setValue: (v: string) => {
+            const usdVal = Number(v) || 0;
+            setSalesLbp(String(Math.round(usdVal * currentRate)));
+          },
+          next: 'dailySalesLbp'
+        };
+      case 'dailySalesLbp':
+        return {
+          id: 'dailySalesLbp',
+          label: 'Daily Sales LBP (L.L.)',
+          shortLabel: 'Daily Sales LBP',
+          value: salesLbp || '0',
+          currency: 'LBP',
+          symbol: 'L.L.',
+          isUsd: false,
+          allowDecimal: false,
+          isPin: false,
+          setValue: (v: string) => setSalesLbp(v),
           next: 'creditCardUsd'
         };
       case 'creditCardUsd':
@@ -1544,6 +1575,22 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
                   🌙 PM
                 </button>
               </div>
+
+              {/* PROMINENT DAILY SALES BADGE IN HEADER */}
+              <div
+                onClick={() => setActiveKeypadField('dailySalesUsd')}
+                className={`hidden md:flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg border text-xs font-mono font-black shadow-2xs cursor-pointer transition ${
+                  activeKeypadField.startsWith('dailySales')
+                    ? 'bg-emerald-100 border-[#1e5c4f] text-[#1e5c4f] ring-1 ring-[#1e5c4f]'
+                    : 'bg-emerald-50 border-emerald-200 text-emerald-800 hover:border-emerald-300'
+                }`}
+                title="Daily Sales (Tap to edit on keypad)"
+              >
+                <span className="font-sans font-black text-emerald-700 uppercase text-[10px]">Daily Sales:</span>
+                <span>${salesLbpInUsd.toFixed(2)}</span>
+                <span className="text-emerald-600 font-bold text-[11px]">({Number(salesLbp || 0).toLocaleString()} L.L.)</span>
+              </div>
+
               <span className="hidden sm:inline text-xs text-slate-500 font-medium">
                 • <strong className="text-slate-700">{branchName}</strong> • {cashierName} • {date}
               </span>
@@ -1830,40 +1877,57 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
                 </div>
               </div>
 
-              {/* CARD B: NON-CASH TENDERS, SALES & AUDIT */}
+              {/* CARD B: DAILY SALES & NON-CASH TENDERS */}
               <div className="bg-white border border-slate-200 rounded-2xl p-3 flex flex-col justify-between overflow-hidden shadow-2xs">
                 <div className="flex items-center justify-between pb-2 border-b border-slate-100 shrink-0">
                   <div className="flex items-center gap-1.5">
-                    <span>💳</span>
+                    <span>📊</span>
                     <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">
-                      Non-Cash Tenders & Sales
+                      Daily Sales & Non-Cash Tenders
                     </h3>
                   </div>
                   <button
                     type="button"
                     onClick={() => checkOpenEntitiesAndSales(rate || systemRate)}
                     disabled={checkingEntities}
-                    className="text-[11px] text-[#1e5c4f] hover:underline font-bold flex items-center gap-1"
+                    className="text-[11px] text-[#1e5c4f] hover:underline font-bold flex items-center gap-1 cursor-pointer"
+                    title="Refresh sales directly from POS orders"
                   >
                     <RefreshCw size={11} className={checkingEntities ? 'animate-spin' : ''} />
-                    <span>Re-check</span>
+                    <span>Sync Orders</span>
                   </button>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2 flex-1 pt-1.5 overflow-hidden">
+                  {/* DAILY SALES (USD & LBP, TAP-EDITABLE VIA KEYPAD & AUTO-SEEDED FROM ORDERS) */}
+                  {renderTouchField(
+                    'dailySalesUsd',
+                    'Daily Sales USD',
+                    salesLbpInUsd > 0 ? salesLbpInUsd.toFixed(2).replace(/\.00$/, '') : (salesLbp ? (Number(salesLbp)/currentRate).toFixed(2).replace(/\.00$/, '') : '0'),
+                    '$',
+                    'From Orders'
+                  )}
+                  {renderTouchField(
+                    'dailySalesLbp',
+                    'Daily Sales LBP',
+                    salesLbp || '0',
+                    'LBP',
+                    'From Orders'
+                  )}
+
                   {/* CREDIT CARDS (EDITABLE VIA KEYPAD) */}
                   {renderTouchField('creditCardUsd', 'Credit Card USD', creditCardUsd, '$')}
                   {renderTouchField('creditCardLbp', 'Credit Card LBP', creditCardLbp, 'LBP')}
 
-                  {/* SALES TOTALS (READ-ONLY) */}
-                  {renderReadOnlyField('Shift Sales', salesLbpInUsd, '$', `${Number(salesLbp || 0).toLocaleString()} L.L.`)}
-                  {renderReadOnlyField('On Credit', onCreditLbpInUsd, '$', `${Number(onCreditLbp || 0).toLocaleString()} L.L.`)}
+                  {/* ON CREDIT / RECEIVABLES */}
+                  {renderReadOnlyField('On Credit USD', onCreditLbpInUsd, '$', 'Receivable')}
+                  {renderReadOnlyField('On Credit LBP', onCreditLbp, 'LBP', 'Receivable')}
 
-                  {/* EQUATION FORMULA SUMMARY (COMPACT) */}
+                  {/* EQUATION FORMULA SUMMARY WITH DAILY SALES EXPLICITLY INCLUDED */}
                   <div className="col-span-2 p-2 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-xs font-mono text-slate-700">
                     <span className="font-sans font-bold text-slate-500 text-[11px]">Equation:</span>
-                    <span className="font-bold">
-                      Float (${totalOpeningUsd.toFixed(0)}) + In (${(Number(cashInUsd) + (Number(cashInLbp)/currentRate)).toFixed(0)}) - Out (${((Number(paymentsUsd)+Number(cashOutUsd)) + ((Number(paymentsLbp)+Number(cashOutLbp))/currentRate)).toFixed(0)}) = <strong className="text-slate-900">${expectedUsd.toFixed(2)}</strong>
+                    <span className="font-bold truncate">
+                      Float (${totalOpeningUsd.toFixed(0)}) + Sales (${salesLbpInUsd.toFixed(0)}) + In (${totalCashInUsd.toFixed(0)}) - Out (${totalOutflowsUsd.toFixed(0)}) = <strong className="text-slate-900">${expectedUsd.toFixed(2)}</strong>
                     </span>
                   </div>
                 </div>
