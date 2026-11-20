@@ -67,7 +67,8 @@ export default function CompanySettingsScreen({ user, onUpdateUser }: CompanySet
           'receipt_restaurant_name',
           'receipt_footer_text',
           'exchange_rate',
-          'vat_rate'
+          'vat_rate',
+          'logo_url'
         ]);
 
       if (appErr) {
@@ -120,7 +121,8 @@ export default function CompanySettingsScreen({ user, onUpdateUser }: CompanySet
       setIsVatSubscribed(resolvedVatSub);
 
       if (restoData?.name) setRestaurantName(restoData.name);
-      if (restoData?.logo_url) setLogoUrl(restoData.logo_url);
+      if (settingsMap['logo_url']) setLogoUrl(settingsMap['logo_url']);
+      else if (restoData?.logo_url) setLogoUrl(restoData.logo_url);
       if (restoData?.primary_color) setPrimaryColor(restoData.primary_color);
 
     } catch (err: any) {
@@ -153,7 +155,8 @@ export default function CompanySettingsScreen({ user, onUpdateUser }: CompanySet
         { setting_key: 'receipt_restaurant_name', setting_value: trimmedHeader, updated_at: new Date().toISOString() },
         { setting_key: 'receipt_footer_text', setting_value: trimmedFooter, updated_at: new Date().toISOString() },
         { setting_key: 'exchange_rate', setting_value: exchangeRate.toString(), updated_at: new Date().toISOString() },
-        { setting_key: 'vat_rate', setting_value: vatRate.toString(), updated_at: new Date().toISOString() }
+        { setting_key: 'vat_rate', setting_value: vatRate.toString(), updated_at: new Date().toISOString() },
+        { setting_key: 'logo_url', setting_value: logoUrl.trim(), updated_at: new Date().toISOString() }
       ];
 
       const { error: upsertErr } = await supabase
@@ -207,6 +210,7 @@ export default function CompanySettingsScreen({ user, onUpdateUser }: CompanySet
       localStorage.setItem('flow_pos_company_legal_name', trimmedLegal);
       localStorage.setItem('flow_pos_mof_number', trimmedMof);
       localStorage.setItem('flow_pos_receipt_footer', trimmedFooter);
+      localStorage.setItem('flow_pos_logo_url', logoUrl.trim());
 
       setSavedSuccess(true);
       setTimeout(() => setSavedSuccess(false), 4000);
@@ -585,8 +589,21 @@ export default function CompanySettingsScreen({ user, onUpdateUser }: CompanySet
             <div className="bg-[#faf8f5] border-2 border-dashed border-slate-300 rounded-2xl p-6 font-mono text-slate-800 text-xs shadow-md select-none space-y-3">
               {/* Slip Header */}
               <div className="text-center space-y-1 pb-3 border-b border-dashed border-slate-300">
-                <div className="text-base font-black uppercase tracking-wider text-slate-900">
-                  {receiptRestaurantName || 'NEO BEIRUT'}
+                {logoUrl ? (
+                  <div className="flex justify-center mb-1">
+                    <img
+                      src={logoUrl}
+                      alt={receiptRestaurantName || 'Logo'}
+                      className="max-h-12 max-w-[160px] object-contain filter grayscale contrast-125"
+                    />
+                  </div>
+                ) : (
+                  <div className="text-base font-black uppercase tracking-wider text-slate-900">
+                    {receiptRestaurantName || 'NEO BEIRUT'}
+                  </div>
+                )}
+                <div className="text-[12px] font-bold text-slate-700 mt-1">
+                  *** RECEIPT ***
                 </div>
                 <div className="text-[11px] text-slate-600 font-sans">
                   Branch: Downtown Beirut • Register #01
@@ -599,19 +616,19 @@ export default function CompanySettingsScreen({ user, onUpdateUser }: CompanySet
                 </div>
               </div>
 
-              {/* Sample Items */}
-              <div className="space-y-1.5 py-1 text-[11px]">
-                <div className="flex justify-between">
+              {/* Sample Items - Increased Font */}
+              <div className="space-y-1.5 py-1 text-[13px]">
+                <div className="flex justify-between font-bold text-slate-900">
                   <span>1x Double Espresso</span>
-                  <span className="font-bold">$4.00</span>
+                  <span>$4.00</span>
                 </div>
-                <div className="flex justify-between">
+                <div className="flex justify-between font-bold text-slate-900">
                   <span>1x Chicken Avocado Salad</span>
-                  <span className="font-bold">$12.50</span>
+                  <span>$12.50</span>
                 </div>
-                <div className="flex justify-between">
+                <div className="flex justify-between font-bold text-slate-900">
                   <span>1x Sparkling Water</span>
-                  <span className="font-bold">$2.50</span>
+                  <span>$2.50</span>
                 </div>
               </div>
 
@@ -639,16 +656,16 @@ export default function CompanySettingsScreen({ user, onUpdateUser }: CompanySet
                 </div>
               </div>
 
-              {/* Fiscal Block (MOF, Rate, Legal Entity) */}
+              {/* Fiscal Block (Company Name, MOF, then Rate under MOF) */}
               <div className="border-t-2 border-slate-900 pt-3 text-center space-y-1 text-[11px]">
+                <div className="font-bold text-slate-900 text-[11px] uppercase">
+                  {companyLegalName || 'Neo Beirut S.A.L.'}
+                </div>
                 <div className="font-black text-slate-900 tracking-wider">
                   M.O.F: {mofNumber || '382910-601'}
                 </div>
                 <div className="font-bold text-slate-800 text-[10px]">
                   Rate: 1 USD = {Number(exchangeRate).toLocaleString()} LBP
-                </div>
-                <div className="font-bold text-slate-700 text-[10px] uppercase pt-0.5">
-                  {companyLegalName || 'Neo Beirut S.A.L.'}
                 </div>
                 {commercialRegister && (
                   <div className="text-[10px] text-slate-500">

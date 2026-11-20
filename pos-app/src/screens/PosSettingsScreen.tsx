@@ -409,7 +409,7 @@ export default function PosSettingsScreen({ user }: { user?: any }) {
     supabase
       .from('app_settings')
       .select('setting_key, setting_value')
-      .in('setting_key', ['receipt_restaurant_name', 'company_legal_name', 'mof_number', 'receipt_footer_text'])
+      .in('setting_key', ['receipt_restaurant_name', 'company_legal_name', 'mof_number', 'receipt_footer_text', 'logo_url'])
       .then(({ data }) => {
         if (data) {
           data.forEach(item => {
@@ -429,6 +429,9 @@ export default function PosSettingsScreen({ user }: { user?: any }) {
               setReceiptFooterText(item.setting_value);
               localStorage.setItem('flow_pos_receipt_footer', item.setting_value);
             }
+            if (item.setting_key === 'logo_url' && item.setting_value) {
+              localStorage.setItem('flow_pos_logo_url', item.setting_value);
+            }
           });
         }
       });
@@ -436,10 +439,13 @@ export default function PosSettingsScreen({ user }: { user?: any }) {
     if (currentRestaurantId) {
       supabase
         .from('restaurants')
-        .select('name, settings')
+        .select('name, logo_url, settings')
         .eq('id', currentRestaurantId)
         .maybeSingle()
         .then(({ data }) => {
+          if (data?.logo_url) {
+            localStorage.setItem('flow_pos_logo_url', data.logo_url);
+          }
           if (data?.settings) {
             const s = data.settings as any;
             if (s.company_legal_name) {

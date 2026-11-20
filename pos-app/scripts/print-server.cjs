@@ -126,7 +126,12 @@ async function syncAdminSettings() {
         if (!isNaN(vat)) adminSettings.vat_rate = vat;
       }
       if (sMap.receipt_footer) adminSettings.receipt_footer = sMap.receipt_footer;
+      if (sMap.receipt_footer_text) adminSettings.receipt_footer = sMap.receipt_footer_text;
       if (sMap.restaurant_name) adminSettings.restaurant_name = sMap.restaurant_name;
+      if (sMap.receipt_restaurant_name) adminSettings.restaurant_name = sMap.receipt_restaurant_name;
+      if (sMap.company_legal_name || sMap.company_name) adminSettings.company_legal_name = sMap.company_legal_name || sMap.company_name;
+      if (sMap.mof_number) adminSettings.mof_number = sMap.mof_number;
+      if (sMap.logo_url) adminSettings.logo_url = sMap.logo_url;
     }
 
     if (branchRes.status === 'fulfilled' && branchRes.value.data) {
@@ -220,18 +225,10 @@ function formatCustomerBill(json, paperWidth = 80) {
   out += ALIGN_CENTER + BOLD_ON;
   out += (json.restaurant_name || adminSettings.restaurant_name || 'NÉO BEIRUT').toUpperCase() + '\n';
   out += NORMAL;
-  if (json.company_legal_name || adminSettings.company_legal_name) {
-    out += `${json.company_legal_name || adminSettings.company_legal_name}\n`;
-  }
-  if (json.mof_number || adminSettings.mof_number) {
-    out += `MOF: ${json.mof_number || adminSettings.mof_number}\n`;
-  }
 
   out += divider('=', W);
   out += BOLD_ON + DOUBLE_SIZE;
-  out += isPreCheck ? 'GUEST CHECK\n' : 'TAX INVOICE\n';
-  out += NORMAL + BOLD_ON;
-  if (isPreCheck) out += '(NOT A TAX RECEIPT - PAY AT CASHIER)\n';
+  out += isPreCheck ? 'GUEST CHECK\n' : 'RECEIPT\n';
   out += NORMAL + divider('=', W);
 
   out += ALIGN_LEFT;
@@ -254,7 +251,8 @@ function formatCustomerBill(json, paperWidth = 80) {
     const nameStr = item.name || item.product_name || 'Item';
     const priceStr = `$${lineTotal.toFixed(2)}`;
 
-    out += padLine(`${qtyStr} ${nameStr}`, priceStr, W);
+    // Increased prominence/font weight for item line
+    out += BOLD_ON + padLine(`${qtyStr} ${nameStr}`, priceStr, W) + BOLD_OFF;
 
     if (Array.isArray(item.customizations_print_text) && item.customizations_print_text.length > 0) {
       for (const line of item.customizations_print_text) {
@@ -283,15 +281,33 @@ function formatCustomerBill(json, paperWidth = 80) {
 
   const total = Number(json.total || json.total_amount || (subtotal - discount + deliveryFee + vat));
   out += divider('=', W);
-  out += BOLD_ON + DOUBLE_SIZE + padLine('TOTAL:', `$${total.toFixed(2)}`, W) + NORMAL;
 
+  // Total in USD displayed on the same line as TOTAL
+  out += BOLD_ON + padLine('TOTAL USD:', `$${total.toFixed(2)}`, W) + '\n' + BOLD_OFF;
+
+  // Live currency conversion from Admin exchange rate setting
   const rate = Number(json.exchange_rate || adminSettings.exchange_rate || 90000);
-  const totalLbp = Math.round(total * rate);
-  out += BOLD_ON + padLine('Total LBP:', `${totalLbp.toLocaleString()} L.L.`, W) + BOLD_OFF;
-  out += padLine('Exchange Rate:', `1 USD = ${rate.toLocaleString()} LBP`, W);
+  if (rate > 0) {
+    const totalLbp = Math.round(total * rate);
+    out += BOLD_ON + padLine('TOTAL LBP:', `${totalLbp.toLocaleString()} L.L.`, W) + '\n' + BOLD_OFF;
+  }
 
+  // Company Name, MOF, and Exchange Rate at the bottom
   out += divider('-', W);
   out += ALIGN_CENTER;
+  const compLegalName = json.company_legal_name || adminSettings.company_legal_name;
+  if (compLegalName) {
+    out += BOLD_ON + `${compLegalName}\n` + BOLD_OFF;
+  }
+  const mof = json.mof_number || adminSettings.mof_number;
+  if (mof) {
+    out += `MOF: ${mof}\n`;
+  }
+  if (rate > 0) {
+    out += `Rate: 1 USD = ${rate.toLocaleString()} LBP\n`;
+  }
+
+  out += divider('-', W);
   out += (json.footer || json.footer_message || adminSettings.receipt_footer) + '\n';
   out += FEED + CUT;
   return out;
@@ -546,15 +562,27 @@ async function detectLocalWindowsPrinters() {
 async function processPrintJob(jobPayload, source = 'cloud') {
   const idempKey = jobPayload.idempotency_key || jobPayload.content?.idempotency_key;
 
-  if (idempKey && journalEntries.has(idempKey)) {
-    const existing = journalEntries.get(idempKey);
-    console.log(`[PrintServer] Deduplication: Skipped duplicate job "${idempKey}" (Status: ${existing.status})`);
-    return {
-      success: true,
-      duplicate: true,
-      status: existing.status || 'confirmed',
-      message: 'Job previously processed'
-    };
+  if (idempKey) {
+    if (journalEntries.has(idempKey)) {
+      const existing = journalEntries.get(idempKey);
+      if (existing.status === 'in_flight' || existing.status === 'confirmed' || existing.status === 'success') {
+        console.log(`[PrintServer] Deduplication: Skipped duplicate job "${idempKey}" (Status: ${existing.status})`);
+        return {
+          success: true,
+          duplicate: true,
+          status: existing.status || 'confirmed',
+          message: 'Job previously processed or in-flight'
+        };
+      }
+    }
+    // Mark in-flight immediately to prevent concurrent duplicate execution
+    journalEntries.set(idempKey, {
+      idempotency_key: idempKey,
+      printer: jobPayload.printer?.name || 'Resolving...',
+      source,
+      status: 'in_flight',
+      recorded_at: new Date().toISOString()
+    });
   }
 
   let printerInfo = jobPayload.printer || {};
@@ -606,13 +634,20 @@ async function processPrintJob(jobPayload, source = 'cloud') {
     result = await sendToNetworkPrinter(targetIp, targetPort, formattedData);
   }
 
+  // Fallback to Fallback Printer if primary fails
+  const isBillOrReceipt = content.isCustomerBill || jobPayload.job_type === 'receipt' || jobPayload.job_type === 'bill' || jobPayload.job_type === 'pre_check';
+
   if (!result.success && adminSettings.fallbackPrinter && adminSettings.fallbackPrinter.id !== printerInfo.id) {
-    const fb = adminSettings.fallbackPrinter;
-    console.warn(`[PrintServer] Primary printer failed. Failing over to Fallback "${fb.name}" (${fb.ip_address})...`);
-    if (fb.connection_type === 'windows_driver' || fb.windows_printer_name) {
-      result = await sendToWindowsSpooler(fb.windows_printer_name || fb.name, formattedData);
+    if (isBillOrReceipt) {
+      console.warn(`[PrintServer] Main receipt printer failed (${result.error}). Will NOT fallback customer bill to kitchen printer.`);
     } else {
-      result = await sendToNetworkPrinter(fb.ip_address, fb.port || 9100, formattedData);
+      const fb = adminSettings.fallbackPrinter;
+      console.warn(`[PrintServer] Primary printer failed. Failing over to Fallback "${fb.name}" (${fb.ip_address})...`);
+      if (fb.connection_type === 'windows_driver' || fb.windows_printer_name) {
+        result = await sendToWindowsSpooler(fb.windows_printer_name || fb.name, formattedData);
+      } else {
+        result = await sendToNetworkPrinter(fb.ip_address, fb.port || 9100, formattedData);
+      }
     }
   }
 

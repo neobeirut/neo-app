@@ -57,11 +57,13 @@ import {
   buildCancellationPrintJobs,
   dispatchPhysicalPrintJobs,
   loadBranchPrinterConfig,
-  isCourseHoldItem
+  isCourseHoldItem,
+  getPrintedTicketsHistory,
+  isVirtualPrintModeActive
 } from "../pos/services/ticketRoutingService";
 
 const safeTimeoutSignal = (ms: number) => typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function' ? safeTimeoutSignal(ms) : undefined;
-import { fireOrderRound, getBranchLocationKey } from "../pos/kds";
+import { fireOrderRound, getBranchLocationKey, KdsScreen } from "../pos/kds";
 import { CustomerSearchModal } from "../pos/components/CustomerSearchModal";
 import {
   hasPosPermission,
@@ -276,10 +278,13 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     fetchAvailableBranches();
   }, [currentRestaurantId]);
 
-  // Main POS Navigation: SELL vs TABLES vs ORDERS
-  const [posActiveView, setPosActiveView] = useState<'sell' | 'tables' | 'orders'>(() => {
+  // Main POS Navigation: SELL vs TABLES vs ORDERS vs KDS
+  const [posActiveView, setPosActiveView] = useState<'sell' | 'tables' | 'orders' | 'kds'>(() => {
     if (typeof window !== 'undefined' && window.location.hash.toLowerCase().includes('orders')) {
       return 'orders';
+    }
+    if (typeof window !== 'undefined' && window.location.hash.toLowerCase().includes('kds')) {
+      return 'kds';
     }
     return 'sell';
   });
@@ -973,6 +978,10 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         });
 
         if (cancelJobs.length > 0) {
+          const payloads = cancelJobs.map(j => j.ticket_payload as ThermalReceiptData);
+          setReceiptPreviewData(payloads[0]);
+          setReceiptPreviewTickets(payloads);
+          setIsReceiptPreviewOpen(true);
           await dispatchPhysicalPrintJobs(cancelJobs);
         }
       } catch (cancelErr) {
@@ -1332,6 +1341,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
 
   // Thermal Receipt Preview Modal State
   const [receiptPreviewData, setReceiptPreviewData] = useState<ThermalReceiptData | null>(null);
+  const [receiptPreviewTickets, setReceiptPreviewTickets] = useState<ThermalReceiptData[]>([]);
   const [isReceiptPreviewOpen, setIsReceiptPreviewOpen] = useState(false);
 
   // FLOW Supervisor Authorization & Permissions Engine
@@ -1433,7 +1443,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         const { data } = await supabase
           .from('app_settings')
           .select('setting_key, setting_value')
-          .in('setting_key', ['receipt_restaurant_name', 'company_legal_name', 'mof_number', 'receipt_footer_text']);
+          .in('setting_key', ['receipt_restaurant_name', 'company_legal_name', 'mof_number', 'receipt_footer_text', 'logo_url']);
 
         if (data) {
           data.forEach(item => {
@@ -1449,6 +1459,9 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
             if (item.setting_key === 'receipt_footer_text' && item.setting_value) {
               localStorage.setItem('flow_pos_receipt_footer', item.setting_value);
             }
+            if (item.setting_key === 'logo_url' && item.setting_value) {
+              localStorage.setItem('flow_pos_logo_url', item.setting_value);
+            }
           });
         }
       } catch (err) {
@@ -1462,10 +1475,13 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         try {
           const { data } = await supabase
             .from('restaurants')
-            .select('name, settings')
+            .select('name, logo_url, settings')
             .eq('id', currentRestaurantId)
             .maybeSingle();
 
+          if (data?.logo_url) {
+            localStorage.setItem('flow_pos_logo_url', data.logo_url);
+          }
           if (data?.settings) {
             const s = data.settings as any;
             if (s.receipt_restaurant_name) {
@@ -3511,6 +3527,10 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         vat_rate: isVatSubscribed ? vatRate : 0,
         vat_amount: vatAmount,
         total_amount: total,
+        restaurant_name: localStorage.getItem('flow_pos_restaurant_name') || 'Neo Beirut',
+        company_legal_name: localStorage.getItem('flow_pos_company_legal_name') || 'Neo Beirut S.A.L.',
+        mof_number: localStorage.getItem('flow_pos_mof_number') || '382910-601',
+        logo_url: localStorage.getItem('flow_pos_logo_url') || '',
         created_at: new Date().toISOString()
       };
 
@@ -3814,7 +3834,13 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
 
   const handlePrint = async (orderData, requireAcknowledgement = false) => {
     if (orderData && (orderData.isPreCheck || orderData.items)) {
-      setReceiptPreviewData(orderData);
+      setReceiptPreviewData({
+        ...orderData,
+        company_legal_name: orderData.company_legal_name || localStorage.getItem('flow_pos_company_legal_name') || 'Neo Beirut S.A.L.',
+        mof_number: orderData.mof_number || localStorage.getItem('flow_pos_mof_number') || '382910-601',
+        restaurant_name: orderData.restaurant_name || localStorage.getItem('flow_pos_restaurant_name') || 'Neo Beirut',
+        logo_url: orderData.logo_url || localStorage.getItem('flow_pos_logo_url') || ''
+      });
       setIsReceiptPreviewOpen(true);
     }
 
@@ -3832,6 +3858,10 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
             total: orderData.total_amount || orderData.total || 0,
             currency: orderData.currency || 'USD',
             exchange_rate: orderData.exchange_rate || exchangeRate || 90000,
+            company_legal_name: orderData.company_legal_name || localStorage.getItem('flow_pos_company_legal_name') || 'Neo Beirut S.A.L.',
+            mof_number: orderData.mof_number || localStorage.getItem('flow_pos_mof_number') || '382910-601',
+            restaurant_name: orderData.restaurant_name || localStorage.getItem('flow_pos_restaurant_name') || 'Neo Beirut',
+            logo_url: orderData.logo_url || localStorage.getItem('flow_pos_logo_url') || '',
             items: orderData.items || []
           },
           isPreCheck: Boolean(orderData.isPreCheck),
@@ -3841,6 +3871,8 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         });
 
         if (billJob) {
+          setReceiptPreviewData(billJob.ticket_payload as ThermalReceiptData);
+          setIsReceiptPreviewOpen(true);
           const dispatchRes = await dispatchPhysicalPrintJobs([billJob]);
           if (dispatchRes.success) return true;
         }
@@ -3857,6 +3889,8 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
             items: [],
             idempotency_key: `fire_ticket_${orderData.table || 'chit'}_${Date.now()}`
           };
+          setReceiptPreviewData(fireJob.ticket_payload as ThermalReceiptData);
+          setIsReceiptPreviewOpen(true);
           const dispatchRes = await dispatchPhysicalPrintJobs([fireJob]);
           if (dispatchRes.success) return true;
         }
@@ -3875,6 +3909,10 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         });
 
         if (jobs.length > 0) {
+          const payloads = jobs.map(j => j.ticket_payload as ThermalReceiptData);
+          setReceiptPreviewData(payloads[0]);
+          setReceiptPreviewTickets(payloads);
+          setIsReceiptPreviewOpen(true);
           const dispatchRes = await dispatchPhysicalPrintJobs(jobs);
           if (dispatchRes.success) return true;
         }
@@ -3882,50 +3920,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     } catch (routeErr) {
       console.warn("Intelligent routing dispatch fallback:", routeErr);
     }
-
-    const ip = printServerIP || "192.168.18.195";
-    const port = printServerPort || "9191";
-    const url = `http://${ip}:${port}/print`;
-
-    try {
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(orderData),
-        signal: safeTimeoutSignal(2000),
-      });
-      const result = await res.json();
-      if (res.ok && result && result.success) return true;
-    } catch (err) {}
-
-    if (requireAcknowledgement) throw new Error('The printer did not confirm the Fire ticket. Check the printer before trying again.');
-    try {
-      let iframe = document.getElementById("print_iframe") as HTMLIFrameElement;
-      if (!iframe) {
-        iframe = document.createElement("iframe") as HTMLIFrameElement;
-        iframe.id = "print_iframe";
-        iframe.name = "print_iframe";
-        iframe.style.display = "none";
-        document.body.appendChild(iframe);
-      }
-
-      const form = document.createElement("form");
-      form.method = "POST";
-      form.action = url;
-      form.target = "print_iframe";
-
-      const input = document.createElement("input");
-      input.type = "hidden";
-      input.name = "payload";
-      input.value = JSON.stringify(orderData);
-      form.appendChild(input);
-
-      document.body.appendChild(form);
-      form.submit();
-      setTimeout(() => {
-        try { document.body.removeChild(form); } catch (e) {}
-      }, 1000);
-    } catch (formErr) {}
+    return true;
   };
 
   const validateOrder = (overrideCustomerName?: string, allowDefaultCustomer = false) => {
@@ -5448,6 +5443,36 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                 compact
                 className="px-1.5 sm:px-2 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 text-xs font-bold flex items-center justify-center cursor-pointer transition shadow-xs"
               />
+              <button
+                type="button"
+                onClick={() => {
+                  const history = getPrintedTicketsHistory();
+                  if (history.length > 0 && history[0].payload) {
+                    setReceiptPreviewData(history[0].payload as ThermalReceiptData);
+                  }
+                  setIsReceiptPreviewOpen(true);
+                }}
+                className={`px-1.5 sm:px-2 py-1 rounded-xl text-xs font-bold transition flex items-center gap-1 border cursor-pointer shadow-xs active:scale-95 ${
+                  isVirtualPrintModeActive()
+                    ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300'
+                }`}
+                title="Screen Print Monitor & Ticket History"
+              >
+                <span>🖨️ Monitor</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPosActiveView(posActiveView === 'kds' ? 'sell' : 'kds')}
+                className={`px-1.5 sm:px-2 py-1 rounded-xl text-xs font-bold transition flex items-center gap-1 border cursor-pointer shadow-xs active:scale-95 ${
+                  posActiveView === 'kds'
+                    ? 'bg-amber-500 text-white border-amber-600'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300'
+                }`}
+                title="Kitchen & Bar Live Preparation Screen (KDS)"
+              >
+                <span>🍳 Kitchen & Bar</span>
+              </button>
             </div>
 
             {/* Cashier Badge */}
@@ -5458,9 +5483,9 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
           </div>
         </div>
 
-        {/* RIGHT SECTION (35% Width): PRIMARY POS MODE BUTTONS */}
-        <div className={`${isPortrait ? 'w-[44%]' : 'w-[35%]'} min-w-0 p-1 sm:p-2 bg-white flex items-center min-h-[50px] sm:min-h-[54px] border-l border-[#E0E3DF] flex-shrink-0`}>
-          <div className="grid grid-cols-3 gap-1 sm:gap-2 w-full min-w-0">
+        {/* RIGHT SECTION (38% Width): PRIMARY POS MODE BUTTONS */}
+        <div className={`${isPortrait ? 'w-[46%]' : 'w-[38%]'} min-w-0 p-1 sm:p-2 bg-white flex items-center min-h-[50px] sm:min-h-[54px] border-l border-[#E0E3DF] flex-shrink-0`}>
+          <div className="grid grid-cols-4 gap-1 sm:gap-1.5 w-full min-w-0">
             {isRestaurantMode && (
               <button
                 type="button"
@@ -5469,7 +5494,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                   backgroundColor: posActiveView === 'tables' ? primaryColor : '#F5F6F4',
                   color: posActiveView === 'tables' ? primaryText : '#242B28'
                 }}
-                className={`h-10 sm:h-11 px-1.5 sm:px-2 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1 sm:gap-1.5 cursor-pointer active:scale-95 shadow-sm border border-[#E0E3DF] min-w-0 ${
+                className={`h-10 sm:h-11 px-1 sm:px-1.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1 cursor-pointer active:scale-95 shadow-sm border border-[#E0E3DF] min-w-0 ${
                   posActiveView === 'tables'
                     ? 'shadow-md ring-1 ring-[#1e5c4f]/30'
                     : 'hover:bg-slate-200'
@@ -5501,7 +5526,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                 backgroundColor: posActiveView === 'sell' ? primaryColor : '#F5F6F4',
                 color: posActiveView === 'sell' ? primaryText : '#242B28'
               }}
-              className={`h-10 sm:h-11 px-1.5 sm:px-2 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1 sm:gap-1.5 cursor-pointer active:scale-95 shadow-sm border border-[#E0E3DF] min-w-0 ${
+              className={`h-10 sm:h-11 px-1 sm:px-1.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1 cursor-pointer active:scale-95 shadow-sm border border-[#E0E3DF] min-w-0 ${
                 posActiveView === 'sell'
                   ? 'shadow-md ring-1 ring-[#1e5c4f]/30'
                   : 'hover:bg-slate-200'
@@ -5519,7 +5544,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                 backgroundColor: posActiveView === 'orders' ? primaryColor : '#F5F6F4',
                 color: posActiveView === 'orders' ? primaryText : '#242B28'
               }}
-              className={`h-10 sm:h-11 px-1.5 sm:px-2 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1 sm:gap-1.5 cursor-pointer active:scale-95 shadow-sm border border-[#E0E3DF] min-w-0 ${
+              className={`h-10 sm:h-11 px-1 sm:px-1.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1 cursor-pointer active:scale-95 shadow-sm border border-[#E0E3DF] min-w-0 ${
                 posActiveView === 'orders'
                   ? 'shadow-md ring-1 ring-[#1e5c4f]/30'
                   : 'hover:bg-slate-200'
@@ -5529,6 +5554,31 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
               <span className="text-sm shrink-0">📋</span>
               <span className="truncate">Orders</span>
               <span title="Preparing orders" className="min-w-[16px] px-1 rounded bg-pos-primary text-white text-[10px] font-black shrink-0">{preparingOrderCount ?? '!'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setPosActiveView('kds')}
+              style={{
+                backgroundColor: posActiveView === 'kds' ? primaryColor : '#F5F6F4',
+                color: posActiveView === 'kds' ? primaryText : '#242B28'
+              }}
+              className={`h-10 sm:h-11 px-1 sm:px-1.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1 cursor-pointer active:scale-95 shadow-sm border border-[#E0E3DF] min-w-0 ${
+                posActiveView === 'kds'
+                  ? 'shadow-md ring-1 ring-[#1e5c4f]/30'
+                  : 'hover:bg-slate-200'
+              }`}
+              title="Kitchen & Bar Live Orders Preparation (KDS)"
+            >
+              <span className="text-sm shrink-0">🍳</span>
+              <span className="truncate">Kitchen & Bar</span>
+              {preparingOrderCount > 0 && (
+                <span className={`ml-0.5 min-w-[16px] h-[16px] px-1 rounded text-[10px] font-black flex items-center justify-center leading-none shrink-0 ${
+                  posActiveView === 'kds' ? 'bg-white/20 text-white' : 'bg-amber-500 text-white'
+                }`}>
+                  {preparingOrderCount}
+                </span>
+              )}
             </button>
 
             {!isRestaurantMode && (
@@ -5835,6 +5885,13 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                 } : undefined}
               />
             </div>
+          </div>
+        ) : posActiveView === 'kds' ? (
+          <div className="flex-1 flex flex-col overflow-hidden bg-[#0a0d14]">
+            <KdsScreen
+              branchId={currentBranchId || commerceBranchLink?.flow_branch_id}
+              onExit={() => setPosActiveView('sell')}
+            />
           </div>
         ) : (
           <div className="flex-1 flex flex-col overflow-hidden min-h-0 relative">
@@ -9041,6 +9098,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         isOpen={isReceiptPreviewOpen}
         onClose={() => setIsReceiptPreviewOpen(false)}
         data={receiptPreviewData}
+        tickets={receiptPreviewTickets}
       />
 
       {/* CONCEPT CASH SHIFT MANAGEMENT (OVRLOAD / WICKD / DELIVERY CONCEPTS) */}

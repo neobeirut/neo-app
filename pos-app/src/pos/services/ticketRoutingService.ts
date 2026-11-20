@@ -482,9 +482,18 @@ export async function buildPreparationPrintJobs(params: {
   const meta = params.orderMetadata;
 
   for (const [printerId, group] of itemsByPrinterId.entries()) {
+    const sectionName = group.section || 'Kitchen';
+    const isReprint = Boolean(meta.is_reprint);
+    const stationTitle = isReprint
+      ? `*** REPRINT ${sectionName.toUpperCase()} CHIT ***`
+      : `*** ${sectionName.toUpperCase()} PREPARATION CHIT ***`;
+
     const ticketPayload = {
       isKitchenTicket: true,
-      title: meta.is_reprint ? '*** REPRINT PREPARATION TICKET ***' : '*** PREPARATION TICKET ***',
+      station: sectionName,
+      station_code: sectionName.toUpperCase(),
+      section_key: sectionName,
+      title: stationTitle,
       printer_name: group.printer.name,
       printer_ip: group.printer.ip_address,
       printer_port: group.printer.port,
@@ -495,7 +504,7 @@ export async function buildPreparationPrintJobs(params: {
       service_type: meta.service_type || 'dine_in',
       timestamp: meta.timestamp || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       fire_round: meta.fire_round || 1,
-      is_reprint: Boolean(meta.is_reprint),
+      is_reprint: isReprint,
       // Items grouped with parent bundle headers
       items: group.items.map(it => ({
         name: it.name,
@@ -563,7 +572,7 @@ export async function buildMainBillPrintJob(params: {
 
   const conceptTitle = params.conceptBranding?.conceptName 
     ? `*** ${params.conceptBranding.conceptName.toUpperCase()} ***`
-    : (isPre ? '*** GUEST CHECK / PRE-CHECK ***' : '*** TAX INVOICE / RECEIPT ***');
+    : (isPre ? '*** GUEST CHECK / PRE-CHECK ***' : '*** RECEIPT ***');
 
   const conceptFooter = params.conceptBranding?.customFooter 
     || params.footerText 
@@ -575,6 +584,10 @@ export async function buildMainBillPrintJob(params: {
     title: conceptTitle,
     concept_id: ord.concept_id,
     receipt_prefix: params.conceptBranding?.receiptPrefix,
+    restaurant_name: ord.restaurant_name || (typeof window !== 'undefined' ? localStorage.getItem('flow_pos_restaurant_name') : null) || 'Neo Beirut',
+    company_legal_name: ord.company_legal_name || (typeof window !== 'undefined' ? localStorage.getItem('flow_pos_company_legal_name') : null) || 'Neo Beirut S.A.L.',
+    mof_number: ord.mof_number || (typeof window !== 'undefined' ? localStorage.getItem('flow_pos_mof_number') : null) || '382910-601',
+    logo_url: ord.logo_url || (typeof window !== 'undefined' ? localStorage.getItem('flow_pos_logo_url') : null) || '',
     printer_name: mainPrinter.name,
     printer_ip: mainPrinter.ip_address,
     printer_port: mainPrinter.port,
@@ -740,6 +753,68 @@ export async function buildCancellationPrintJobs(params: {
   return jobs;
 }
 
+export interface PrintedTicketRecord {
+  id: string;
+  timestamp: string;
+  ticket_type: string;
+  title: string;
+  printer_name: string;
+  section_key?: string;
+  table_label?: string;
+  order_id?: string;
+  itemsCount: number;
+  summary: string;
+  payload: any;
+}
+
+const PRINTED_JOURNAL_KEY = 'flow_pos_printed_tickets_log';
+const VIRTUAL_PRINT_KEY = 'flow_pos_virtual_print_mode';
+
+export function isVirtualPrintModeActive(): boolean {
+  if (typeof window === 'undefined') return false;
+  // Default to virtual screen mode if explicitly set, or if user is testing without printer
+  const val = localStorage.getItem(VIRTUAL_PRINT_KEY);
+  if (val === null) {
+    // Default to true for testing on screen without hardware
+    return true;
+  }
+  return val === 'true';
+}
+
+export function setVirtualPrintMode(active: boolean): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(VIRTUAL_PRINT_KEY, active ? 'true' : 'false');
+  window.dispatchEvent(new CustomEvent('flow_pos_virtual_mode_changed', { detail: { active } }));
+}
+
+export function getPrintedTicketsHistory(): PrintedTicketRecord[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(PRINTED_JOURNAL_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function recordPrintedTicket(record: PrintedTicketRecord): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const history = getPrintedTicketsHistory();
+    const updated = [record, ...history.filter(r => r.id !== record.id)].slice(0, 50);
+    localStorage.setItem(PRINTED_JOURNAL_KEY, JSON.stringify(updated));
+    window.dispatchEvent(new CustomEvent('flow_pos_ticket_printed', { detail: record }));
+  } catch (e) {
+    console.warn('Could not record printed ticket in local history:', e);
+  }
+}
+
+export function clearPrintedTicketsHistory(): void {
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem(PRINTED_JOURNAL_KEY);
+  window.dispatchEvent(new CustomEvent('flow_pos_ticket_printed_cleared'));
+}
+
 /**
  * Dispatches physical printer ticket jobs to the local print bridge server
  * and records jobs into the database `pos_print_jobs` table.
@@ -755,6 +830,7 @@ export async function dispatchPhysicalPrintJobs(jobs: PhysicalPrinterTicketJob[]
     return { success: true, dispatchedCount: 0, failedCount: 0, results: [] };
   }
 
+  const isVirtual = isVirtualPrintModeActive();
   const defaultHost = (typeof window !== 'undefined' && window.location.hostname && window.location.hostname !== '192.168.18.195') ? window.location.hostname : '127.0.0.1';
   let storedIp = localStorage.getItem('flow_pos_print_server_ip');
   if (storedIp === '192.168.18.195') storedIp = null;
@@ -770,31 +846,33 @@ export async function dispatchPhysicalPrintJobs(jobs: PhysicalPrinterTicketJob[]
     const printerName = job.printer.name;
     const orderIdNum = /^\d+$/.test(String(job.ticket_payload.order_id)) ? Number(job.ticket_payload.order_id) : null;
 
-    // 1. Record job in database (status: pending)
-    let dbJobId: string | null = null;
-    try {
-      const { data: dbJob } = await supabase
-        .from('pos_print_jobs')
-        .insert({
-          restaurant_id: job.printer.restaurant_id || getGlobalRestaurantId(),
-          branch_id: job.printer.branch_id,
-          order_id: orderIdNum,
-          printer_id: job.printer.id,
-          section_key: job.section_key,
-          job_type: job.ticket_type,
-          status: 'pending',
-          payload: job.ticket_payload,
-          idempotency_key: job.idempotency_key
-        })
-        .select('id')
-        .single();
+    // 1. Always record in on-screen journal so user can inspect on screen
+    const items = job.ticket_payload?.items || [];
+    const itemNames = items.slice(0, 3).map((it: any) => `${it.qty || 1}x ${it.name}`).join(', ');
+    const summaryText = items.length > 3 ? `${itemNames} +${items.length - 3} more` : (itemNames || job.ticket_type);
 
-      if (dbJob) dbJobId = dbJob.id;
-    } catch (dbErr) {
-      console.warn('Could not record pos_print_job in DB (non-fatal):', dbErr);
+    recordPrintedTicket({
+      id: job.idempotency_key,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      ticket_type: job.ticket_type,
+      title: job.ticket_payload?.title || (job.section_key ? `${job.section_key.toUpperCase()} CHIT` : (job.ticket_type === 'receipt' ? 'RECEIPT' : 'CHIT')),
+      printer_name: printerName,
+      section_key: job.section_key,
+      table_label: String(job.ticket_payload.table_label || job.ticket_payload.table_code || 'Direct'),
+      order_id: String(job.ticket_payload.order_id || job.ticket_payload.id || ''),
+      itemsCount: items.length,
+      summary: summaryText,
+      payload: job.ticket_payload
+    });
+
+    // 2. If Virtual / Testing Screen Print Mode is ON, skip physical network/spooler dispatch
+    if (isVirtual) {
+      dispatchedCount++;
+      results.push({ printer: printerName, success: true });
+      continue;
     }
 
-    // 2. Dispatch to local print server bridge
+    // 3. Dispatch to local print server bridge
     const dispatchPayload = {
       destination: job.printer.name,
       printer: {
@@ -817,76 +895,51 @@ export async function dispatchPhysicalPrintJobs(jobs: PhysicalPrinterTicketJob[]
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(dispatchPayload),
-        signal: AbortSignal.timeout(3000)
+        signal: AbortSignal.timeout(2500)
       });
 
       if (res.ok) {
         printSuccess = true;
         dispatchedCount++;
+        // Record as already sent so cloud worker will NOT re-print it!
+        try {
+          await supabase.from('pos_print_jobs').insert({
+            restaurant_id: job.printer.restaurant_id || getGlobalRestaurantId(),
+            branch_id: job.printer.branch_id,
+            order_id: orderIdNum,
+            printer_id: job.printer.id,
+            section_key: job.section_key,
+            job_type: job.ticket_type,
+            status: 'sent',
+            payload: job.ticket_payload,
+            idempotency_key: job.idempotency_key,
+            completed_at: new Date().toISOString()
+          });
+        } catch (dbErr) {}
       } else {
         printError = `Print server status: ${res.status}`;
         failedCount++;
       }
     } catch (fetchErr: any) {
-      // Secondary fallback via hidden iframe form if browser CORS blocks
+      printError = fetchErr.message || 'Bridge unreachable';
+      failedCount++;
+
+      // LAN bridge failed: Queue into Supabase pos_print_jobs with status 'pending' as asynchronous fallback
       try {
-        let iframe = document.getElementById("print_iframe") as HTMLIFrameElement;
-        if (!iframe) {
-          iframe = document.createElement("iframe") as HTMLIFrameElement;
-          iframe.id = "print_iframe";
-          iframe.name = "print_iframe";
-          iframe.style.display = "none";
-          document.body.appendChild(iframe);
-        }
-
-        const form = document.createElement("form");
-        form.method = "POST";
-        form.action = bridgeUrl;
-        form.target = "print_iframe";
-
-        const input = document.createElement("input");
-        input.type = "hidden";
-        input.name = "payload";
-        input.value = JSON.stringify(dispatchPayload);
-        form.appendChild(input);
-
-        document.body.appendChild(form);
-        form.submit();
-        setTimeout(() => {
-          try { document.body.removeChild(form); } catch (e) {}
-        }, 1000);
-
-        printSuccess = true;
-        dispatchedCount++;
-      } catch (fallbackErr: any) {
-        printError = fetchErr.message || fallbackErr.message;
-        failedCount++;
+        await supabase.from('pos_print_jobs').insert({
+          restaurant_id: job.printer.restaurant_id || getGlobalRestaurantId(),
+          branch_id: job.printer.branch_id,
+          order_id: orderIdNum,
+          printer_id: job.printer.id,
+          section_key: job.section_key,
+          job_type: job.ticket_type,
+          status: 'pending',
+          payload: job.ticket_payload,
+          idempotency_key: job.idempotency_key
+        });
+      } catch (qErr) {
+        console.warn('Could not queue fallback print job in DB:', qErr);
       }
-    }
-
-    // 3. Update database job status with capability-based reporting
-    let finalStatus: string = 'sent';
-    if (printSuccess) {
-      if (job.printer.connection_type === 'windows_driver') {
-        finalStatus = 'accepted';
-      } else {
-        finalStatus = 'sent';
-      }
-    } else {
-      finalStatus = 'failed';
-    }
-
-    if (dbJobId) {
-      try {
-        await supabase
-          .from('pos_print_jobs')
-          .update({
-            status: finalStatus,
-            error_message: printError || null,
-            completed_at: printSuccess ? new Date().toISOString() : null
-          })
-          .eq('id', dbJobId);
-      } catch (e) {}
     }
 
     results.push({
