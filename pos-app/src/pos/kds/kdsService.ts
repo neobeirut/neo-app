@@ -595,82 +595,114 @@ export async function fetchKdsFires(
           );
 
           if (isBundle && rawCusts.length > 0) {
-            // Separate top-level choices from modifiers
-            let topChoices = rawCusts.filter((c: any) => !c.parent_option_id);
-            let childMods = rawCusts.filter((c: any) => Boolean(c.parent_option_id));
+            // Split rawCusts into Bar items vs Kitchen items
+            const barChoices: any[] = [];
+            const barModifiers: any[] = [];
+            const kitchenChoicesAndMods: any[] = [];
 
-            // If parent_option_id was not set (e.g. legacy/flat order), classify by modifier vs component
-            if (childMods.length === 0) {
-              const detectedChoices: any[] = [];
-              const detectedMods: any[] = [];
-              for (const c of rawCusts) {
-                const name = String(c.name || c.ingredient || c || '').trim();
-                const m = parseMod(c);
-                if (m.action === 'remove' || /^(add |no |without |-)/i.test(name)) {
-                  detectedMods.push(c);
+            const isBarCust = (c: any) => {
+              const name = String(c.name || c.ingredient || c || '').trim();
+              const group = String(c.option_group_name || '').toLowerCase();
+              return (
+                group.includes('coffee') ||
+                group.includes('drink') ||
+                group.includes('beverage') ||
+                group.includes('juice') ||
+                group.includes('bar') ||
+                /\b(bar|drink|drinks|wine|beer|coffee|espresso|latte|cappuccino|tea|teas|water|soda|pepsi|juice|juices|lemonade|americano|american|regular|decaf|v60|chemex|flat white|cortado|macchiato|matcha|shake|smoothie|hot chocolate|brew|milkshake)\b/i.test(name)
+              );
+            };
+
+            for (const c of rawCusts) {
+              const name = String(c.name || c.ingredient || c || '').trim();
+              if (isBarCust(c)) {
+                // If it's a size/roast modifier (e.g. "Regular", "Decaf", "Oat Milk"), treat as bar modifier
+                const isModifierOnly = Boolean(c.parent_option_id) || /\b(regular|decaf|large|small|oat|almond|skimmed|milk|sugar|syrup|ice|shot)\b/i.test(name);
+                if (isModifierOnly) {
+                  barModifiers.push(c);
                 } else {
-                  detectedChoices.push(c);
+                  barChoices.push(c);
                 }
-              }
-              if (detectedChoices.length > 0) {
-                topChoices = detectedChoices;
-                childMods = detectedMods;
+              } else {
+                kitchenChoicesAndMods.push(c);
               }
             }
 
-            if (topChoices.length > 0) {
-              topChoices.forEach((choice: any, cIdx: number) => {
-                const cName = choice.name || choice.ingredient || 'Item';
-                const cStation = detectItemStation(cName);
-                const choiceId = choice.id || choice.original_id || cIdx;
+            // 1. If there are Kitchen items/choices, add ONE clean bundle item for Kitchen:
+            if (kitchenChoicesAndMods.length > 0) {
+              kdsItems.push({
+                id: item.id,
+                fire_id: order.id,
+                order_item_id: item.id,
+                product_id: item.product_id || prodInfo?.id || null,
+                product_image: pImage,
+                quantity: item.quantity || 1,
+                station_key: 'HOT_KITCHEN',
+                status: itemStatus,
+                product_name_snapshot: pName,
+                modifiers_snapshot: kitchenChoicesAndMods.map(parseMod),
+                notes_snapshot: noteText,
+                refire_reason: itemStatuses[item.id]?.reason || null,
+                created_at: item.created_at || order.created_at
+              });
+            }
 
-                // Find sub-modifiers for this choice
-                let assignedMods = childMods.filter((m: any) =>
+            // 2. If there are Bar items, route them cleanly to BAR station:
+            if (barChoices.length > 0) {
+              barChoices.forEach((choice: any, cIdx: number) => {
+                const cName = choice.name || choice.ingredient || 'Drink';
+                const choiceId = choice.id || choice.original_id || cIdx;
+                // Attach relevant bar modifiers (e.g. "Regular" to "American" or "Espresso")
+                const relatedBarMods = barModifiers.filter((m: any) =>
+                  !m.parent_option_id ||
                   m.parent_option_id === choice.id ||
                   (choice.original_id && m.parent_option_id === choice.original_id) ||
-                  m.parent_option_name === cName
+                  m.parent_option_name === cName ||
+                  barChoices.length === 1
                 );
-
-                // If flat modifiers remain unassigned:
-                // Bar modifiers (like "Regular") attach to Bar drinks (e.g. "American")
-                // Removals and Food add-ons attach to main hot food items
-                if (childMods.length > 0 && assignedMods.length === 0) {
-                  if (cStation === 'BAR') {
-                    assignedMods = childMods.filter((m: any) => {
-                      const mName = String(m.name || m.ingredient || '').toLowerCase();
-                      return /\b(regular|decaf|large|small|oat|almond|milk|sugar|ice|syrup)\b/i.test(mName);
-                    });
-                  } else if (cStation === 'HOT_KITCHEN' || cIdx === 0) {
-                    assignedMods = childMods.filter((m: any) => {
-                      const mName = String(m.name || m.ingredient || '').toLowerCase();
-                      return !/\b(regular|decaf|large|small|oat|almond|milk|sugar|ice|syrup)\b/i.test(mName);
-                    });
-                  }
-                }
-
                 const choiceProd = (choice.original_id ? productMap.byId.get(String(choice.original_id)) : null) ||
                                    productMap.byName.get(cName.trim().toLowerCase());
 
                 kdsItems.push({
-                  id: `${item.id}_${choiceId}`,
+                  id: `${item.id}_bar_${choiceId}`,
                   fire_id: order.id,
                   order_item_id: item.id,
                   product_id: choice.original_id || choice.id || choiceProd?.id || null,
                   product_image: choiceProd?.image_url || null,
                   quantity: (item.quantity || 1) * Number(choice.quantity || 1),
-                  station_key: cStation,
+                  station_key: 'BAR',
                   status: itemStatus,
                   product_name_snapshot: cName,
                   bundle_parent_name: pName,
                   is_bundle_component: true,
-                  modifiers_snapshot: assignedMods.map(parseMod),
+                  modifiers_snapshot: relatedBarMods.map(parseMod),
                   notes_snapshot: noteText,
                   refire_reason: itemStatuses[item.id]?.reason || null,
                   created_at: item.created_at || order.created_at
                 });
               });
-              return; // Bundle successfully expanded into station components
+            } else if (barModifiers.length > 0) {
+              // Standalone bar modifier on bundle without explicit drink choice
+              kdsItems.push({
+                id: `${item.id}_bar`,
+                fire_id: order.id,
+                order_item_id: item.id,
+                product_id: item.product_id || null,
+                product_image: null,
+                quantity: item.quantity || 1,
+                station_key: 'BAR',
+                status: itemStatus,
+                product_name_snapshot: `${pName} (Bar)`,
+                bundle_parent_name: pName,
+                is_bundle_component: true,
+                modifiers_snapshot: barModifiers.map(parseMod),
+                notes_snapshot: noteText,
+                refire_reason: itemStatuses[item.id]?.reason || null,
+                created_at: item.created_at || order.created_at
+              });
             }
+
+            return; // Bundle successfully decomposed into 1 Kitchen item + Bar drinks!
           }
 
           // Non-bundle item or bundle without separate options
