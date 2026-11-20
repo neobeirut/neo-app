@@ -6,6 +6,12 @@
   "engines": {
     "node": "22.x"
   },
+  "postcss": {
+    "plugins": {
+      "tailwindcss": {},
+      "autoprefixer": {}
+    }
+  },
   "scripts": {
     "dev": "vite",
     "build:admin": "vite build",

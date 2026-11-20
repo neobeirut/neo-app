@@ -227,7 +227,7 @@ export default function CompanySettingsScreen({ user, onUpdateUser }: CompanySet
       {/* Top Banner / Breadcrumb */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
         <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-[#1e5c4f] border border-emerald-200 flex items-center justify-center font-bold shadow-xs">
+          <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-[#1e5c4f] border border-emerald-200 flex items-center justify-center font-bold shadow-sm">
             <Building2 size={24} />
           </div>
           <div>
@@ -321,7 +321,7 @@ export default function CompanySettingsScreen({ user, onUpdateUser }: CompanySet
                   value={companyLegalName}
                   onChange={(e) => setCompanyLegalName(e.target.value)}
                   placeholder="e.g. Neo Beirut S.A.L."
-                  className="w-full bg-slate-50 border border-slate-300 focus:border-[#1e5c4f] focus:ring-1 focus:ring-[#1e5c4f] rounded-xl px-3.5 py-2.5 text-slate-900 font-bold text-xs outline-hidden transition"
+                  className="w-full bg-slate-50 border border-slate-300 focus:border-[#1e5c4f] focus:ring-1 focus:ring-[#1e5c4f] rounded-xl px-3.5 py-2.5 text-slate-900 font-bold text-xs outline-none transition"
                 />
                 <span className="text-[11px] text-slate-500 mt-1 block">
                   Official commercial name registered with the government. Printed at bottom of all bills and receipts.
@@ -338,7 +338,7 @@ export default function CompanySettingsScreen({ user, onUpdateUser }: CompanySet
                     value={mofNumber}
                     onChange={(e) => setMofNumber(e.target.value)}
                     placeholder="e.g. 382910-601"
-                    className="w-full bg-slate-50 border border-slate-300 focus:border-[#1e5c4f] focus:ring-1 focus:ring-[#1e5c4f] rounded-xl px-3.5 py-2.5 text-slate-900 font-mono font-bold text-xs outline-hidden transition"
+                    className="w-full bg-slate-50 border border-slate-300 focus:border-[#1e5c4f] focus:ring-1 focus:ring-[#1e5c4f] rounded-xl px-3.5 py-2.5 text-slate-900 font-mono font-bold text-xs outline-none transition"
                   />
                   <span className="text-[11px] text-slate-500 mt-1 block">
                     Tax registration number (M.O.F) printed directly above the exchange rate.
@@ -354,7 +354,7 @@ export default function CompanySettingsScreen({ user, onUpdateUser }: CompanySet
                     value={commercialRegister}
                     onChange={(e) => setCommercialRegister(e.target.value)}
                     placeholder="e.g. 1024567"
-                    className="w-full bg-slate-50 border border-slate-300 focus:border-[#1e5c4f] focus:ring-1 focus:ring-[#1e5c4f] rounded-xl px-3.5 py-2.5 text-slate-900 font-mono text-xs outline-hidden transition"
+                    className="w-full bg-slate-50 border border-slate-300 focus:border-[#1e5c4f] focus:ring-1 focus:ring-[#1e5c4f] rounded-xl px-3.5 py-2.5 text-slate-900 font-mono text-xs outline-none transition"
                   />
                   <span className="text-[11px] text-slate-500 mt-1 block">
                     Register of Commerce reference number (optional).
@@ -388,7 +388,7 @@ export default function CompanySettingsScreen({ user, onUpdateUser }: CompanySet
                   value={receiptRestaurantName}
                   onChange={(e) => setReceiptRestaurantName(e.target.value)}
                   placeholder="e.g. Neo Beirut"
-                  className="w-full bg-slate-50 border border-slate-300 focus:border-[#1e5c4f] focus:ring-1 focus:ring-[#1e5c4f] rounded-xl px-3.5 py-2.5 text-slate-900 font-bold text-xs outline-hidden transition"
+                  className="w-full bg-slate-50 border border-slate-300 focus:border-[#1e5c4f] focus:ring-1 focus:ring-[#1e5c4f] rounded-xl px-3.5 py-2.5 text-slate-900 font-bold text-xs outline-none transition"
                 />
                 <span className="text-[11px] text-slate-500 mt-1 block">
                   Printed in large bold centered characters at the top of guest checks and chits.
@@ -404,7 +404,7 @@ export default function CompanySettingsScreen({ user, onUpdateUser }: CompanySet
                   value={receiptFooterText}
                   onChange={(e) => setReceiptFooterText(e.target.value)}
                   placeholder="e.g. Thank you for dining with us! Come back soon."
-                  className="w-full bg-slate-50 border border-slate-300 focus:border-[#1e5c4f] focus:ring-1 focus:ring-[#1e5c4f] rounded-xl px-3.5 py-2.5 text-slate-900 text-xs outline-hidden transition resize-none"
+                  className="w-full bg-slate-50 border border-slate-300 focus:border-[#1e5c4f] focus:ring-1 focus:ring-[#1e5c4f] rounded-xl px-3.5 py-2.5 text-slate-900 text-xs outline-none transition resize-none"
                 />
                 <span className="text-[11px] text-slate-500 mt-1 block">
                   Closing thank you or promotional note printed at the very end of customer receipts.
@@ -439,7 +439,7 @@ export default function CompanySettingsScreen({ user, onUpdateUser }: CompanySet
                     value={exchangeRate}
                     onChange={(e) => setExchangeRate(Number(e.target.value) || 0)}
                     placeholder="89500"
-                    className="w-full bg-slate-50 border border-slate-300 focus:border-[#1e5c4f] focus:ring-1 focus:ring-[#1e5c4f] rounded-xl px-3.5 py-2.5 text-slate-900 font-mono font-bold text-sm outline-hidden transition"
+                    className="w-full bg-slate-50 border border-slate-300 focus:border-[#1e5c4f] focus:ring-1 focus:ring-[#1e5c4f] rounded-xl px-3.5 py-2.5 text-slate-900 font-mono font-bold text-sm outline-none transition"
                   />
                   <span className="absolute right-3.5 top-2.5 text-xs text-slate-500 font-bold">
                     LBP / $1
@@ -462,7 +462,7 @@ export default function CompanySettingsScreen({ user, onUpdateUser }: CompanySet
                       value={vatRate}
                       onChange={(e) => setVatRate(Number(e.target.value) || 0)}
                       placeholder="11"
-                      className="w-full bg-slate-50 border border-slate-300 focus:border-[#1e5c4f] focus:ring-1 focus:ring-[#1e5c4f] rounded-xl px-3.5 py-2.5 text-slate-900 font-mono font-bold text-sm outline-hidden transition"
+                      className="w-full bg-slate-50 border border-slate-300 focus:border-[#1e5c4f] focus:ring-1 focus:ring-[#1e5c4f] rounded-xl px-3.5 py-2.5 text-slate-900 font-mono font-bold text-sm outline-none transition"
                     />
                     <span className="absolute right-3.5 top-2.5 text-xs text-slate-500 font-bold">
                       %
@@ -483,7 +483,7 @@ export default function CompanySettingsScreen({ user, onUpdateUser }: CompanySet
                         onChange={(e) => setIsVatSubscribed(e.target.checked)}
                         className="sr-only peer"
                       />
-                      <div className="w-9 h-5 bg-slate-300 peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#1e5c4f]"></div>
+                      <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#1e5c4f]"></div>
                     </label>
                     <span className={`text-xs font-bold ${isVatSubscribed ? 'text-[#1e5c4f]' : 'text-slate-400'}`}>YES</span>
                   </div>
@@ -516,7 +516,7 @@ export default function CompanySettingsScreen({ user, onUpdateUser }: CompanySet
                   value={restaurantName}
                   onChange={(e) => setRestaurantName(e.target.value)}
                   placeholder="Neo Beirut"
-                  className="w-full bg-slate-50 border border-slate-300 focus:border-[#1e5c4f] focus:ring-1 focus:ring-[#1e5c4f] rounded-xl px-3.5 py-2.5 text-slate-900 font-bold text-xs outline-hidden transition"
+                  className="w-full bg-slate-50 border border-slate-300 focus:border-[#1e5c4f] focus:ring-1 focus:ring-[#1e5c4f] rounded-xl px-3.5 py-2.5 text-slate-900 font-bold text-xs outline-none transition"
                 />
               </div>
 
@@ -529,7 +529,7 @@ export default function CompanySettingsScreen({ user, onUpdateUser }: CompanySet
                   value={logoUrl}
                   onChange={(e) => setLogoUrl(e.target.value)}
                   placeholder="https://example.com/logo.png"
-                  className="w-full bg-slate-50 border border-slate-300 focus:border-[#1e5c4f] focus:ring-1 focus:ring-[#1e5c4f] rounded-xl px-3.5 py-2.5 text-slate-900 text-xs outline-hidden transition"
+                  className="w-full bg-slate-50 border border-slate-300 focus:border-[#1e5c4f] focus:ring-1 focus:ring-[#1e5c4f] rounded-xl px-3.5 py-2.5 text-slate-900 text-xs outline-none transition"
                 />
               </div>
 
@@ -548,7 +548,7 @@ export default function CompanySettingsScreen({ user, onUpdateUser }: CompanySet
                     type="text"
                     value={primaryColor}
                     onChange={(e) => setPrimaryColor(e.target.value)}
-                    className="flex-1 bg-slate-50 border border-slate-300 focus:border-[#1e5c4f] rounded-xl px-3.5 py-2.5 text-slate-900 font-mono text-xs outline-hidden uppercase"
+                    className="flex-1 bg-slate-50 border border-slate-300 focus:border-[#1e5c4f] rounded-xl px-3.5 py-2.5 text-slate-900 font-mono text-xs outline-none uppercase"
                   />
                 </div>
               </div>

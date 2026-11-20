@@ -343,7 +343,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   // Admin & Role helper
   const currentUserRole = (activeCashier?.role || user?.role || '').toLowerCase();
   const isManager = currentUserRole === 'admin' || currentUserRole === 'manager' || currentUserRole === 'superadmin' || currentUserRole === 'supervisor' || currentUserRole === 'floor_supervisor' || Boolean(user?.is_super_admin) || Boolean(user?.is_manager) || Boolean(activeCashier?.is_manager);
-  const isAdmin = currentUserRole === 'admin' || currentUserRole === 'superadmin' || Boolean(user?.is_super_admin);
+  const isAdmin = currentUserRole === 'admin' || currentUserRole === 'superadmin' || Boolean(user?.is_super_admin) || Boolean((user as any)?.is_admin) || Boolean((activeCashier as any)?.is_admin);
   const isTableAdmin = isAdmin || isManager || Boolean(user?.can_manage_tables);
 
   // Multi-Concept Workspace State (Phase 2)
@@ -8381,21 +8381,6 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         userId={activeCashier?.id || user?.id}
       />
 
-      {/* PHASE 6 SHIFT REPORT MODAL (X Report & Shift Close Report) */}
-      <ShiftReportModal
-        isOpen={isShiftReportModalOpen}
-        onClose={() => {
-          setIsShiftReportModalOpen(false);
-          if (reportModalMode === 'CLOSE' && !isShiftOpen) {
-            setIsOpenShiftModalOpen(true);
-            setHasPromptedShiftClosed(true);
-          }
-        }}
-        shift={reportModalMode === 'X' ? activeShift : (lastClosedShift || activeShift)}
-        reconciliation={shiftReportData}
-        isXReport={reportModalMode === 'X'}
-      />
-
       {/* PHASE 6 DAILY BRANCH STORE CONTROL DASHBOARD */}
       {isDailyControlOpen && (
         <DailyBranchControlScreen
@@ -8427,6 +8412,21 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
           }}
         />
       )}
+
+      {/* PHASE 6 SHIFT REPORT MODAL (X Report & Shift Close Report) */}
+      <ShiftReportModal
+        isOpen={isShiftReportModalOpen}
+        onClose={() => {
+          setIsShiftReportModalOpen(false);
+          if (reportModalMode === 'CLOSE' && !isShiftOpen && !isDailyControlOpen) {
+            setIsOpenShiftModalOpen(true);
+            setHasPromptedShiftClosed(true);
+          }
+        }}
+        shift={reportModalMode === 'X' ? activeShift : (lastClosedShift || activeShift)}
+        reconciliation={shiftReportData}
+        isXReport={reportModalMode === 'X'}
+      />
 
       {/* PHASE 6 PILOT OPERATIONAL INCIDENT LOG */}
       <PilotIncidentLog
@@ -8820,55 +8820,45 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                 <span className="text-[10px] text-slate-500">Payouts & Cash In/Out</span>
               </button>
 
-              {/* Screen Layout Builder */}
-              <button
-                type="button"
-                onClick={() => {
-                  setIsFeaturesModalOpen(false);
-                  window.location.hash = '#/pos-screens';
-                }}
-                className="p-3 rounded-2xl bg-white hover:bg-slate-50 border border-slate-200 flex flex-col items-center justify-center gap-1 text-center transition active:scale-95 group cursor-pointer shadow-xs"
-              >
-                <span className="text-2xl group-hover:scale-110 transition-transform">🎛️</span>
-                <span className="font-extrabold text-xs text-slate-800 group-hover:text-slate-950">Screen Builder</span>
-                <span className="text-[10px] text-slate-500">Configure POS tiles & layout</span>
-              </button>
+              {/* POS System & Receipt Settings (Admin Only) */}
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsFeaturesModalOpen(false);
+                    window.location.hash = '#/pos-settings';
+                  }}
+                  className="p-3 rounded-2xl bg-white hover:bg-slate-50 border border-slate-200 flex flex-col items-center justify-center gap-1 text-center transition active:scale-95 group cursor-pointer shadow-xs"
+                >
+                  <span className="text-2xl group-hover:scale-110 transition-transform">⚙️</span>
+                  <span className="font-extrabold text-xs text-slate-800 group-hover:text-slate-950">POS Settings</span>
+                  <span className="text-[10px] text-slate-500">Receipt MOF, Company & Hardware</span>
+                </button>
+              )}
 
-              {/* POS System & Receipt Settings */}
-              <button
-                type="button"
-                onClick={() => {
-                  setIsFeaturesModalOpen(false);
-                  window.location.hash = '#/pos-settings';
-                }}
-                className="p-3 rounded-2xl bg-white hover:bg-slate-50 border border-slate-200 flex flex-col items-center justify-center gap-1 text-center transition active:scale-95 group cursor-pointer shadow-xs"
-              >
-                <span className="text-2xl group-hover:scale-110 transition-transform">⚙️</span>
-                <span className="font-extrabold text-xs text-slate-800 group-hover:text-slate-950">POS Settings</span>
-                <span className="text-[10px] text-slate-500">Receipt MOF, Company & Hardware</span>
-              </button>
-
-              {/* Auto-Lock Screen after Every Sale */}
-              <button
-                type="button"
-                onClick={toggleAutoLock}
-                className={`p-3 rounded-2xl border flex flex-col items-center justify-center gap-1 text-center transition active:scale-95 group cursor-pointer shadow-xs ${
-                  autoLockOnOrder
-                    ? 'bg-amber-50 hover:bg-amber-100 border-amber-300 text-amber-900'
-                    : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-700'
-                }`}
-                title="Automatically block / lock screen after each completed order"
-              >
-                <span className="text-2xl group-hover:scale-110 transition-transform">
-                  {autoLockOnOrder ? '🔒' : '🔓'}
-                </span>
-                <span className="font-extrabold text-xs">
-                  Auto-Lock: {autoLockOnOrder ? 'ON' : 'OFF'}
-                </span>
-                <span className="text-[10px] text-slate-400">
-                  {autoLockOnOrder ? 'Blocks POS after sale' : 'Tap to block after sale'}
-                </span>
-              </button>
+              {/* Auto-Lock Screen after Every Sale (Admin Only) */}
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={toggleAutoLock}
+                  className={`p-3 rounded-2xl border flex flex-col items-center justify-center gap-1 text-center transition active:scale-95 group cursor-pointer shadow-xs ${
+                    autoLockOnOrder
+                      ? 'bg-amber-50 hover:bg-amber-100 border-amber-300 text-amber-900'
+                      : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-700'
+                  }`}
+                  title="Automatically block / lock screen after each completed order"
+                >
+                  <span className="text-2xl group-hover:scale-110 transition-transform">
+                    {autoLockOnOrder ? '🔒' : '🔓'}
+                  </span>
+                  <span className="font-extrabold text-xs">
+                    Auto-Lock: {autoLockOnOrder ? 'ON' : 'OFF'}
+                  </span>
+                  <span className="text-[10px] text-slate-400">
+                    {autoLockOnOrder ? 'Blocks POS after sale' : 'Tap to block after sale'}
+                  </span>
+                </button>
+              )}
 
               {/* Exit POS under Features */}
               <button

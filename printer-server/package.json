@@ -1,0 +1,19 @@
+{
+  "name": "flow-pos-print-server",
+  "version": "2.2.0",
+  "description": "FLOW POS Standalone Hardware Print Server & Dispatcher for Windows POS",
+  "main": "print-server.js",
+  "scripts": {
+    "start": "node print-server.js",
+    "service:install": "powershell -ExecutionPolicy Bypass -File .\\install-service.ps1",
+    "service:uninstall": "powershell -ExecutionPolicy Bypass -File .\\uninstall-service.ps1"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.105.4"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "author": "FLOW POS Team",
+  "license": "UNLICENSED"
+}

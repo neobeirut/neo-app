@@ -1,0 +1,13 @@
+{
+  "restaurant_id": "79256f11-a9f8-4fec-901d-69baf929762d",
+  "branch_id": "9c214659-9cc7-4f33-b115-cbbb8a823a94",
+  "branch_name": "Badaro",
+  "supabase_url": "https://ilrlychrraagugntqdfr.supabase.co",
+  "supabase_anon_key": "sb_publishable_kOFvZiJuLPN9uliL649IHg_Z-CESFMg",
+  "http_port": 9191,
+  "poll_interval_ms": 3000,
+  "journal_path": "./data/print_jobs_journal.json",
+  "enable_realtime": true,
+  "allow_lan_direct": true,
+  "machine_id": "FLOW-POS-HW-01"
+}

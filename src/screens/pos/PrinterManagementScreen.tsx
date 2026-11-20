@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+﻿import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Printer, Plus, Edit2, Trash2, CheckCircle2, XCircle, AlertTriangle, 
   RefreshCw, Power, Radio, ShieldCheck, ChevronRight, Layers, FileText,
@@ -13,6 +13,7 @@ import {
   type CatalogProductCoverage 
 } from '../../api/printerApi';
 import { supabase } from '../../api/supabase';
+import './PrinterManagementScreen.css';
 
 interface PrinterManagementScreenProps {
   user?: any;
@@ -317,7 +318,7 @@ export default function PrinterManagementScreen({ user, permissions }: PrinterMa
   const fallbackPrepPrinter = printers.find(p => p.is_fallback) || printers.find(p => p.name.toLowerCase().includes('kitchen'));
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 p-6 md:p-8 space-y-6">
+    <div className="pm-container min-h-screen bg-slate-50 text-slate-800 p-6 md:p-8 space-y-6">
       {/* Toast Notification */}
       {toastMessage && (
         <div className={`fixed bottom-6 right-6 z-50 px-4 py-3 rounded-2xl shadow-xl border flex items-center gap-3 transition-all animate-in fade-in slide-in-from-bottom-3 ${
@@ -336,9 +337,9 @@ export default function PrinterManagementScreen({ user, permissions }: PrinterMa
       )}
 
       {/* Header Bar */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 pb-6 bg-white p-6 rounded-3xl shadow-xs">
+      <div className="pm-header-card flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 pb-6 bg-white p-6 rounded-3xl shadow-sm">
         <div className="flex items-center gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-amber-500/10 text-amber-600 border border-amber-500/20 flex items-center justify-center font-black text-2xl shadow-xs">
+          <div className="w-14 h-14 rounded-2xl bg-amber-500/10 text-amber-600 border border-amber-500/20 flex items-center justify-center font-black text-2xl shadow-sm">
             <Printer size={28} />
           </div>
           <div>
@@ -364,7 +365,7 @@ export default function PrinterManagementScreen({ user, permissions }: PrinterMa
             <select
               value={selectedBranchId}
               onChange={(e) => setSelectedBranchId(e.target.value)}
-              className="bg-transparent text-xs font-black text-slate-900 focus:outline-hidden cursor-pointer"
+              className="bg-transparent text-xs font-black text-slate-900 focus:outline-none cursor-pointer"
             >
               {branches.map(b => (
                 <option key={b.id} value={b.id}>{b.name}</option>
@@ -411,7 +412,7 @@ export default function PrinterManagementScreen({ user, permissions }: PrinterMa
       {/* KPI Stat Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Card 1: Active Printers */}
-        <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-xs flex items-center justify-between">
+        <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm flex items-center justify-between">
           <div>
             <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Configured Printers</span>
             <div className="flex items-baseline gap-2 mt-1">
@@ -426,7 +427,7 @@ export default function PrinterManagementScreen({ user, permissions }: PrinterMa
         </div>
 
         {/* Card 2: Routed Preparation Sections */}
-        <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-xs flex items-center justify-between">
+        <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm flex items-center justify-between">
           <div>
             <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Preparation Routes</span>
             <div className="flex items-baseline gap-2 mt-1">
@@ -441,7 +442,7 @@ export default function PrinterManagementScreen({ user, permissions }: PrinterMa
         </div>
 
         {/* Card 3: Intentional No-Print (Store / Retail) */}
-        <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-xs flex items-center justify-between">
+        <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm flex items-center justify-between">
           <div>
             <span className="text-xs font-bold uppercase tracking-wider text-slate-400">No-Prep (Store / Retail)</span>
             <div className="flex items-baseline gap-2 mt-1">
@@ -456,7 +457,7 @@ export default function PrinterManagementScreen({ user, permissions }: PrinterMa
         </div>
 
         {/* Card 4: Catalog Coverage / Unassigned */}
-        <div className={`border rounded-3xl p-5 shadow-xs flex items-center justify-between ${
+        <div className={`border rounded-3xl p-5 shadow-sm flex items-center justify-between ${
           coverageData.unassignedCount > 0 ? 'bg-amber-50/80 border-amber-300' : 'bg-white border-slate-200'
         }`}>
           <div>
@@ -494,7 +495,7 @@ export default function PrinterManagementScreen({ user, permissions }: PrinterMa
           onClick={() => setActiveTab('printers')}
           className={`px-5 py-2.5 rounded-2xl font-black text-xs transition cursor-pointer flex items-center gap-2 ${
             activeTab === 'printers'
-              ? 'bg-slate-900 text-white shadow-xs'
+              ? 'bg-slate-900 text-white shadow-sm'
               : 'text-slate-600 hover:bg-slate-100'
           }`}
         >
@@ -510,7 +511,7 @@ export default function PrinterManagementScreen({ user, permissions }: PrinterMa
           onClick={() => setActiveTab('routes')}
           className={`px-5 py-2.5 rounded-2xl font-black text-xs transition cursor-pointer flex items-center gap-2 ${
             activeTab === 'routes'
-              ? 'bg-slate-900 text-white shadow-xs'
+              ? 'bg-slate-900 text-white shadow-sm'
               : 'text-slate-600 hover:bg-slate-100'
           }`}
         >
@@ -526,7 +527,7 @@ export default function PrinterManagementScreen({ user, permissions }: PrinterMa
           onClick={() => setActiveTab('coverage')}
           className={`px-5 py-2.5 rounded-2xl font-black text-xs transition cursor-pointer flex items-center gap-2 ${
             activeTab === 'coverage'
-              ? 'bg-slate-900 text-white shadow-xs'
+              ? 'bg-slate-900 text-white shadow-sm'
               : 'text-slate-600 hover:bg-slate-100'
           }`}
         >
@@ -544,7 +545,7 @@ export default function PrinterManagementScreen({ user, permissions }: PrinterMa
           onClick={() => setActiveTab('jobs')}
           className={`px-5 py-2.5 rounded-2xl font-black text-xs transition cursor-pointer flex items-center gap-2 ${
             activeTab === 'jobs'
-              ? 'bg-slate-900 text-white shadow-xs'
+              ? 'bg-slate-900 text-white shadow-sm'
               : 'text-slate-600 hover:bg-slate-100'
           }`}
         >
@@ -567,7 +568,7 @@ export default function PrinterManagementScreen({ user, permissions }: PrinterMa
               return (
                 <div 
                   key={p.id} 
-                  className={`bg-white border rounded-3xl p-6 shadow-xs space-y-4 relative transition hover:shadow-md ${
+                  className={`bg-white border rounded-3xl p-6 shadow-sm space-y-4 relative transition hover:shadow-md ${
                     !p.is_active ? 'opacity-60 border-slate-200' : 'border-slate-200'
                   }`}
                 >
@@ -587,7 +588,7 @@ export default function PrinterManagementScreen({ user, permissions }: PrinterMa
                         </h3>
                         <p className="text-[11px] text-slate-400 font-mono">
                           {p.connection_type === 'windows_driver' || p.connection_type === 'usb'
-                            ? `🔌 USB: ${p.windows_printer_name || p.name}`
+                            ? `ðŸ”Œ USB: ${p.windows_printer_name || p.name}`
                             : p.ip_address ? `LAN: ${p.ip_address}:${p.port}` : 'Local Windows Spooler'}
                         </p>
                       </div>
@@ -734,7 +735,7 @@ export default function PrinterManagementScreen({ user, permissions }: PrinterMa
           {/* Top Selectors for Dedicated Roles */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Main Bill Selector */}
-            <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-xs space-y-2">
+            <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-black uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
                   <FileText size={15} className="text-blue-600" />
@@ -754,7 +755,7 @@ export default function PrinterManagementScreen({ user, permissions }: PrinterMa
                   showToast('success', 'Main customer bill printer updated.');
                   await loadData();
                 }}
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-black text-slate-800 focus:outline-hidden"
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-black text-slate-800 focus:outline-none"
               >
                 <option value="">-- Select Main Bill Printer --</option>
                 {printers.map(p => (
@@ -764,7 +765,7 @@ export default function PrinterManagementScreen({ user, permissions }: PrinterMa
             </div>
 
             {/* Fallback Prep Selector */}
-            <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-xs space-y-2">
+            <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-black uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
                   <AlertTriangle size={15} className="text-amber-600" />
@@ -784,7 +785,7 @@ export default function PrinterManagementScreen({ user, permissions }: PrinterMa
                   showToast('success', 'Preparation fallback printer updated.');
                   await loadData();
                 }}
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-black text-slate-800 focus:outline-hidden"
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-black text-slate-800 focus:outline-none"
               >
                 <option value="">-- Select Fallback Printer --</option>
                 {printers.map(p => (
@@ -795,7 +796,7 @@ export default function PrinterManagementScreen({ user, permissions }: PrinterMa
           </div>
 
           {/* Routing Matrix Table */}
-          <div className="bg-white border border-slate-200 rounded-3xl shadow-xs overflow-hidden">
+          <div className="bg-white border border-slate-200 rounded-3xl shadow-sm overflow-hidden">
             <div className="p-5 border-b border-slate-200 flex items-center justify-between">
               <div>
                 <h3 className="text-base font-black text-slate-900">Preparation Section Routing Matrix</h3>
@@ -858,7 +859,7 @@ export default function PrinterManagementScreen({ user, permissions }: PrinterMa
                             <select
                               value={r.printer_id || ''}
                               onChange={(e) => handleUpdateRoute(r.section_key, true, e.target.value || null)}
-                              className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-hidden"
+                              className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none"
                             >
                               <option value="">-- No Printer (Falls back) --</option>
                               {printers.map(p => (
@@ -907,7 +908,7 @@ export default function PrinterManagementScreen({ user, permissions }: PrinterMa
       {activeTab === 'coverage' && (
         <div className="space-y-4">
           {/* Action Bar & Filters */}
-          <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="flex items-center gap-2 flex-wrap">
               <div className="relative">
                 <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -916,7 +917,7 @@ export default function PrinterManagementScreen({ user, permissions }: PrinterMa
                   placeholder="Search catalog products..."
                   value={coverageSearch}
                   onChange={(e) => setCoverageSearch(e.target.value)}
-                  className="bg-slate-50 border border-slate-300 rounded-2xl pl-9 pr-3.5 py-2 text-xs font-bold text-slate-800 placeholder:text-slate-400 focus:outline-hidden"
+                  className="bg-slate-50 border border-slate-300 rounded-2xl pl-9 pr-3.5 py-2 text-xs font-bold text-slate-800 placeholder:text-slate-400 focus:outline-none"
                 />
               </div>
 
@@ -926,7 +927,7 @@ export default function PrinterManagementScreen({ user, permissions }: PrinterMa
                   type="button"
                   onClick={() => setCoverageFilter('all')}
                   className={`px-3 py-1.5 rounded-xl font-bold transition cursor-pointer ${
-                    coverageFilter === 'all' ? 'bg-white shadow-xs text-slate-900' : 'text-slate-600'
+                    coverageFilter === 'all' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-600'
                   }`}
                 >
                   All ({coverageData.products.length})
@@ -935,7 +936,7 @@ export default function PrinterManagementScreen({ user, permissions }: PrinterMa
                   type="button"
                   onClick={() => setCoverageFilter('routed')}
                   className={`px-3 py-1.5 rounded-xl font-bold transition cursor-pointer ${
-                    coverageFilter === 'routed' ? 'bg-white shadow-xs text-emerald-800' : 'text-slate-600'
+                    coverageFilter === 'routed' ? 'bg-white shadow-sm text-emerald-800' : 'text-slate-600'
                   }`}
                 >
                   Prep Routed ({coverageData.routedCount})
@@ -944,7 +945,7 @@ export default function PrinterManagementScreen({ user, permissions }: PrinterMa
                   type="button"
                   onClick={() => setCoverageFilter('no_print')}
                   className={`px-3 py-1.5 rounded-xl font-bold transition cursor-pointer ${
-                    coverageFilter === 'no_print' ? 'bg-white shadow-xs text-slate-800' : 'text-slate-600'
+                    coverageFilter === 'no_print' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-600'
                   }`}
                 >
                   No-Print ({coverageData.noPrintCount})
@@ -953,7 +954,7 @@ export default function PrinterManagementScreen({ user, permissions }: PrinterMa
                   type="button"
                   onClick={() => setCoverageFilter('unassigned')}
                   className={`px-3 py-1.5 rounded-xl font-bold transition cursor-pointer ${
-                    coverageFilter === 'unassigned' ? 'bg-white shadow-xs text-amber-800' : 'text-slate-600'
+                    coverageFilter === 'unassigned' ? 'bg-white shadow-sm text-amber-800' : 'text-slate-600'
                   }`}
                 >
                   Unassigned ({coverageData.unassignedCount})
@@ -970,7 +971,7 @@ export default function PrinterManagementScreen({ user, permissions }: PrinterMa
                 <select
                   value={batchSection}
                   onChange={(e) => setBatchSection(e.target.value)}
-                  className="bg-white border border-amber-300 rounded-xl px-2.5 py-1 text-xs font-bold text-slate-800 focus:outline-hidden"
+                  className="bg-white border border-amber-300 rounded-xl px-2.5 py-1 text-xs font-bold text-slate-800 focus:outline-none"
                 >
                   <option value="Kitchen">Kitchen</option>
                   <option value="Bar">Bar</option>
@@ -982,7 +983,7 @@ export default function PrinterManagementScreen({ user, permissions }: PrinterMa
                 <select
                   value={batchOverride}
                   onChange={(e) => setBatchOverride(e.target.value as any)}
-                  className="bg-white border border-amber-300 rounded-xl px-2.5 py-1 text-xs font-bold text-slate-800 focus:outline-hidden"
+                  className="bg-white border border-amber-300 rounded-xl px-2.5 py-1 text-xs font-bold text-slate-800 focus:outline-none"
                 >
                   <option value="INHERIT">Inherit Section Default</option>
                   <option value="PRINT">Force Print KOT</option>
@@ -993,7 +994,7 @@ export default function PrinterManagementScreen({ user, permissions }: PrinterMa
                   type="button"
                   onClick={handleBatchAssign}
                   disabled={actionLoading}
-                  className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-extrabold text-xs rounded-xl shadow-xs transition cursor-pointer"
+                  className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-extrabold text-xs rounded-xl shadow-sm transition cursor-pointer"
                 >
                   {actionLoading ? 'Assigning...' : 'Apply Section'}
                 </button>
@@ -1002,7 +1003,7 @@ export default function PrinterManagementScreen({ user, permissions }: PrinterMa
           </div>
 
           {/* Products Coverage Table */}
-          <div className="bg-white border border-slate-200 rounded-3xl shadow-xs overflow-hidden">
+          <div className="bg-white border border-slate-200 rounded-3xl shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
@@ -1087,7 +1088,7 @@ export default function PrinterManagementScreen({ user, permissions }: PrinterMa
       {/* ========================================================================= */}
       {activeTab === 'jobs' && (
         <div className="space-y-4">
-          <div className="bg-white border border-slate-200 rounded-3xl shadow-xs overflow-hidden">
+          <div className="bg-white border border-slate-200 rounded-3xl shadow-sm overflow-hidden">
             <div className="p-5 border-b border-slate-200 flex items-center justify-between">
               <div>
                 <h3 className="text-base font-black text-slate-900">Live Print Job Queue & Audit Log</h3>
@@ -1189,7 +1190,7 @@ export default function PrinterManagementScreen({ user, permissions }: PrinterMa
       {/* MODAL: ADD / EDIT PRINTER */}
       {/* ========================================================================= */}
       {isPrinterModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-lg shadow-2xl p-6 space-y-5 animate-in fade-in zoom-in-95">
             <div className="flex items-center justify-between border-b border-slate-200 pb-4">
               <div>
@@ -1218,7 +1219,7 @@ export default function PrinterManagementScreen({ user, permissions }: PrinterMa
                   placeholder="e.g. Kitchen Printer, Bar Printer, Main"
                   value={printerFormData.name || ''}
                   onChange={(e) => setPrinterFormData({ ...printerFormData, name: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 focus:outline-hidden"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 focus:outline-none"
                 />
               </div>
 
@@ -1231,7 +1232,7 @@ export default function PrinterManagementScreen({ user, permissions }: PrinterMa
                   <select
                     value={printerFormData.connection_type || 'network_raw'}
                     onChange={(e) => setPrinterFormData({ ...printerFormData, connection_type: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 focus:outline-hidden"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 focus:outline-none"
                   >
                     <option value="network_raw">Network Raw Socket (LAN 9100)</option>
                     <option value="windows_driver">Direct USB / Windows Driver (winspool.drv)</option>
@@ -1245,7 +1246,7 @@ export default function PrinterManagementScreen({ user, permissions }: PrinterMa
                   <select
                     value={printerFormData.paper_width_mm || 80}
                     onChange={(e) => setPrinterFormData({ ...printerFormData, paper_width_mm: Number(e.target.value) })}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 focus:outline-hidden"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 focus:outline-none"
                   >
                     <option value={80}>80 mm (Standard Restaurant)</option>
                     <option value={58}>58 mm (Compact)</option>
@@ -1265,10 +1266,10 @@ export default function PrinterManagementScreen({ user, permissions }: PrinterMa
                     placeholder="e.g. Generic / Text Only, EPSON TM-T20III, POS-80"
                     value={printerFormData.windows_printer_name || ''}
                     onChange={(e) => setPrinterFormData({ ...printerFormData, windows_printer_name: e.target.value })}
-                    className="w-full bg-white border border-indigo-300 rounded-xl px-3.5 py-2.5 text-xs font-mono font-bold text-slate-900 focus:outline-hidden"
+                    className="w-full bg-white border border-indigo-300 rounded-xl px-3.5 py-2.5 text-xs font-mono font-bold text-slate-900 focus:outline-none"
                   />
                   <p className="text-[11px] text-indigo-700 leading-relaxed">
-                    Connected directly to the Windows server via USB. Must match the exact printer name under Windows Settings → <strong>Printers & scanners</strong>.
+                    Connected directly to the Windows server via USB. Must match the exact printer name under Windows Settings &rarr; <strong>Printers &amp; scanners</strong>.
                   </p>
                 </div>
               ) : (
@@ -1282,7 +1283,7 @@ export default function PrinterManagementScreen({ user, permissions }: PrinterMa
                       placeholder="e.g. 192.168.18.11"
                       value={printerFormData.ip_address || ''}
                       onChange={(e) => setPrinterFormData({ ...printerFormData, ip_address: e.target.value })}
-                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-mono font-bold text-slate-900 focus:outline-hidden"
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-mono font-bold text-slate-900 focus:outline-none"
                     />
                   </div>
                   <div>
@@ -1293,7 +1294,7 @@ export default function PrinterManagementScreen({ user, permissions }: PrinterMa
                       type="number"
                       value={printerFormData.port || 9100}
                       onChange={(e) => setPrinterFormData({ ...printerFormData, port: Number(e.target.value) })}
-                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-mono font-bold text-slate-900 focus:outline-hidden"
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-mono font-bold text-slate-900 focus:outline-none"
                     />
                   </div>
                 </div>
@@ -1374,7 +1375,7 @@ export default function PrinterManagementScreen({ user, permissions }: PrinterMa
                   <button
                     type="submit"
                     disabled={actionLoading}
-                    className="px-5 py-2.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white font-extrabold text-xs rounded-xl shadow-xs transition cursor-pointer"
+                    className="px-5 py-2.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white font-extrabold text-xs rounded-xl shadow-sm transition cursor-pointer"
                   >
                     {actionLoading ? 'Saving...' : editingPrinter ? 'Save Changes' : 'Create Printer'}
                   </button>
@@ -1389,7 +1390,7 @@ export default function PrinterManagementScreen({ user, permissions }: PrinterMa
       {/* MODAL: INSPECT JOB PAYLOAD */}
       {/* ========================================================================= */}
       {inspectedJob && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-xl shadow-2xl p-6 space-y-4">
             <div className="flex items-center justify-between border-b border-slate-200 pb-3">
               <h3 className="text-sm font-black text-slate-900">
