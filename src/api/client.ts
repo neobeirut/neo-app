@@ -458,7 +458,7 @@ export const api = {
 
   getProductsSimpleList: async () => {
     const rid = getRestaurantId();
-    let query = supabase.from('products').select('id, name, inventory_mode, price, inventory_applies, concept_id, preparation_section, status, is_active').order('name');
+    let query = supabase.from('products').select('id, name, category_id, inventory_mode, price, inventory_applies, concept_id, preparation_section, status, is_active').order('name');
     if (rid) query = query.eq('restaurant_id', rid);
     const { data, error } = await query;
     if (error) return { success: false, error: error.message };

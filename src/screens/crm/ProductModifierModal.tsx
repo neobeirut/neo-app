@@ -96,7 +96,11 @@ export default function ProductModifierModal({ product, onClose, onSaved }: Prod
         setLinkedLinks(links);
       }
       setMenuCategories(cats || []);
-      setRawProductsList(allProdsRes?.data || []);
+      let prodsData: any[] = allProdsRes?.data || [];
+      if (!prodsData || prodsData.length === 0) {
+        prodsData = await crmService.getProducts().catch(() => []);
+      }
+      setRawProductsList(prodsData);
       setAllProductLinks(allProdLinks || []);
 
       const countByProd = new Map<number, number>();
@@ -105,7 +109,7 @@ export default function ProductModifierModal({ product, onClose, onSaved }: Prod
           countByProd.set(Number(l.product_id), (countByProd.get(Number(l.product_id)) || 0) + 1);
         }
       });
-      const prodsList = (allProdsRes?.data || [])
+      const prodsList = prodsData
         .filter((p: any) => countByProd.has(Number(p.id)))
         .map((p: any) => ({ id: Number(p.id), name: p.name, count: countByProd.get(Number(p.id)) || 0 }))
         .sort((a: any, b: any) => a.name.localeCompare(b.name));
