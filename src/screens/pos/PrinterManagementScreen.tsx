@@ -80,6 +80,7 @@ export default function PrinterManagementScreen({ user, permissions }: PrinterMa
   const [batchOverride, setBatchOverride] = useState<'INHERIT' | 'PRINT' | 'NO_PRINT'>('INHERIT');
   const [coverageFilter, setCoverageFilter] = useState<'all' | 'routed' | 'no_print' | 'unassigned'>('all');
   const [coverageSearch, setCoverageSearch] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
 
   // Notifications
   const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
@@ -285,9 +286,21 @@ export default function PrinterManagementScreen({ user, permissions }: PrinterMa
     }
   };
 
+  // Unique Categories for Coverage Tab Filter
+  const productCategories = useMemo(() => {
+    const set = new Set<string>();
+    coverageData.products.forEach(p => {
+      if (p.category_name) set.add(p.category_name);
+    });
+    return Array.from(set).sort();
+  }, [coverageData.products]);
+
   // Filtered Products for Coverage Tab
   const filteredProducts = useMemo(() => {
     return coverageData.products.filter(p => {
+      if (selectedCategory !== 'all' && p.category_name !== selectedCategory) {
+        return false;
+      }
       const matchesSearch = !coverageSearch || p.name.toLowerCase().includes(coverageSearch.toLowerCase()) || p.category_name.toLowerCase().includes(coverageSearch.toLowerCase());
       if (!matchesSearch) return false;
 
@@ -296,7 +309,7 @@ export default function PrinterManagementScreen({ user, permissions }: PrinterMa
       if (coverageFilter === 'routed') return !p.is_unassigned && !p.is_no_print;
       return true;
     });
-  }, [coverageData.products, coverageFilter, coverageSearch]);
+  }, [coverageData.products, coverageFilter, coverageSearch, selectedCategory]);
 
   const toggleSelectAllProducts = () => {
     if (selectedProductIds.size === filteredProducts.length) {
@@ -919,6 +932,43 @@ export default function PrinterManagementScreen({ user, permissions }: PrinterMa
                   onChange={(e) => setCoverageSearch(e.target.value)}
                   className="bg-slate-50 border border-slate-300 rounded-2xl pl-9 pr-3.5 py-2 text-xs font-bold text-slate-800 placeholder:text-slate-400 focus:outline-none"
                 />
+              </div>
+
+              {/* Category Filter Dropdown */}
+              <div className="flex items-center bg-slate-50 border border-slate-300 rounded-2xl px-3 py-1.5">
+                <Filter size={14} className="text-slate-400 mr-2 shrink-0" />
+                <span className="text-xs font-bold text-slate-500 mr-1.5 shrink-0">Category:</span>
+                <select
+                  value={selectedCategory}
+                  onChange={(e) => {
+                    setSelectedCategory(e.target.value);
+                    setSelectedProductIds(new Set());
+                  }}
+                  className="bg-transparent text-xs font-bold text-slate-900 focus:outline-none cursor-pointer max-w-[170px] truncate"
+                >
+                  <option value="all">All Categories ({coverageData.products.length})</option>
+                  {productCategories.map(cat => {
+                    const count = coverageData.products.filter(p => p.category_name === cat).length;
+                    return (
+                      <option key={cat} value={cat}>
+                        {cat} ({count})
+                      </option>
+                    );
+                  })}
+                </select>
+                {selectedCategory !== 'all' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedCategory('all');
+                      setSelectedProductIds(new Set());
+                    }}
+                    className="ml-1 text-slate-400 hover:text-slate-600 cursor-pointer"
+                    title="Clear category filter"
+                  >
+                    <X size={12} />
+                  </button>
+                )}
               </div>
 
               {/* Filter pills */}
