@@ -75,7 +75,7 @@ export function detectItemStation(productName: string, categoryName: string = ''
   const p = (productName + ' ' + categoryName).toLowerCase();
 
   // 1. Drinks, beverages, coffee, alcohol -> BAR
-  if (/\b(bar|drink|drinks|wine|beer|beers|cocktail|cocktails|gin|vodka|whisky|whiskey|coffee|espresso|latte|cappuccino|tea|teas|water|soda|pepsi|juice|juices|lemonade|beverage|beverages|americano|mocktail|tonic)\b/i.test(p)) {
+  if (/\b(bar|drink|drinks|wine|beer|beers|cocktail|cocktails|gin|vodka|whisky|whiskey|coffee|espresso|latte|cappuccino|tea|teas|water|soda|pepsi|juice|juices|lemonade|beverage|beverages|americano|mocktail|tonic|american|regular|decaf|v60|chemex|flat white|cortado|macchiato|matcha|shake|smoothie|hot chocolate|brew|milkshake)\b/i.test(p)) {
     return 'BAR';
   }
 
@@ -525,46 +525,22 @@ export async function fetchKdsFires(
 
         const holdIdx = orderItems.findIndex((it: any) => isHoldItem(it));
 
-        const kdsItems: KdsFireItem[] = orderItems.map((item: any, idx: number) => {
-          const pName = item.product_name || 'Item';
-          const detectedStation = detectItemStation(pName);
+        const kdsItems: KdsFireItem[] = [];
 
+        orderItems.forEach((item: any, idx: number) => {
+          const pName = item.product_name || 'Item';
+          const isHold = isHoldItem(item);
           const savedStatus = itemStatuses[item.id]?.status;
           let itemStatus: KdsFireItemStatus = savedStatus || (order.status === 'ready' ? 'ready' : 'queued');
 
-          const isAfterHold = holdIdx !== -1 && idx > holdIdx && !isHoldItem(item);
+          const isAfterHold = holdIdx !== -1 && idx > holdIdx && !isHold;
 
-          // If Course 2 is fired, any item after hold that isn't ready/bumped becomes 'preparing'
           if (isCourseFired && isAfterHold && (!savedStatus || savedStatus === 'queued')) {
             itemStatus = 'preparing';
           }
 
-          // Parse customizations
-          const modifiers: KdsFireItemModifier[] = [];
-          if (Array.isArray(item.customizations_json) && item.customizations_json.length > 0) {
-            for (const c of item.customizations_json) {
-              const name = c.name || c.ingredient || String(c);
-              modifiers.push({
-                id: c.customization_item_id || c.product_customization_id,
-                name,
-                action: (name && name.toLowerCase().startsWith('no ')) ? 'remove' : 'add',
-                price: c.price
-              });
-            }
-          } else if (typeof item.customizations === 'string' && item.customizations.trim()) {
-            const parts = item.customizations.split(/,\s*/);
-            for (const p of parts) {
-              if (p.trim()) {
-                modifiers.push({
-                  name: p.trim(),
-                  action: p.toLowerCase().startsWith('no ') ? 'remove' : 'add'
-                });
-              }
-            }
-          }
-
           let noteText = item.comment || null;
-          if (isHoldItem(item)) {
+          if (isHold) {
             noteText = isCourseFired ? 'COURSE 2 FIRED • PREPARE NOW' : (item.comment || 'Kitchen waits for fire');
           }
 
@@ -572,7 +548,136 @@ export async function fetchKdsFires(
                            productMap.byName.get(pName.trim().toLowerCase());
           const pImage = item.image_url || prodInfo?.image_url || null;
 
-          return {
+          // Parse raw customizations list
+          const rawCusts: any[] = [];
+          if (Array.isArray(item.customizations_json) && item.customizations_json.length > 0) {
+            rawCusts.push(...item.customizations_json);
+          } else if (Array.isArray(item.customizations) && item.customizations.length > 0) {
+            rawCusts.push(...item.customizations);
+          } else if (typeof item.customizations === 'string' && item.customizations.trim()) {
+            item.customizations.split(/,\s*/).forEach((s: string) => {
+              if (s.trim()) rawCusts.push({ name: s.trim() });
+            });
+          }
+
+          const parseMod = (c: any): KdsFireItemModifier => {
+            const name = c.name || c.ingredient || String(c);
+            const groupName = String(c.option_group_name || '').toLowerCase();
+            const cType = String(c.customization_type || c.type || '').toLowerCase();
+            const nLower = String(name).toLowerCase();
+            const isRem = (
+              c.action === 'remove' ||
+              c.action === 'no' ||
+              cType === 'removal' ||
+              cType === 'remove' ||
+              groupName.includes('remove') ||
+              groupName.includes('removal') ||
+              nLower.startsWith('no ') ||
+              nLower.startsWith('without ') ||
+              nLower.startsWith('remove: ') ||
+              nLower.startsWith('- ')
+            );
+            return {
+              id: c.customization_item_id || c.product_customization_id,
+              name,
+              action: isRem ? 'remove' : 'add',
+              price: c.price,
+              customization_type: isRem ? 'removal' : (cType || 'addon')
+            };
+          };
+
+          const isBundle = !isHold && Boolean(
+            item.is_bundle ||
+            item.isBundle ||
+            item.category_id === 30 ||
+            /\b(bundle|combo|parisien|formula|formule)\b/i.test(pName) ||
+            /\b(bundle|combo)\b/i.test(item.category_name || item.category || '')
+          );
+
+          if (isBundle && rawCusts.length > 0) {
+            // Separate top-level choices from modifiers
+            let topChoices = rawCusts.filter((c: any) => !c.parent_option_id);
+            let childMods = rawCusts.filter((c: any) => Boolean(c.parent_option_id));
+
+            // If parent_option_id was not set (e.g. legacy/flat order), classify by modifier vs component
+            if (childMods.length === 0) {
+              const detectedChoices: any[] = [];
+              const detectedMods: any[] = [];
+              for (const c of rawCusts) {
+                const name = String(c.name || c.ingredient || c || '').trim();
+                const m = parseMod(c);
+                if (m.action === 'remove' || /^(add |no |without |-)/i.test(name)) {
+                  detectedMods.push(c);
+                } else {
+                  detectedChoices.push(c);
+                }
+              }
+              if (detectedChoices.length > 0) {
+                topChoices = detectedChoices;
+                childMods = detectedMods;
+              }
+            }
+
+            if (topChoices.length > 0) {
+              topChoices.forEach((choice: any, cIdx: number) => {
+                const cName = choice.name || choice.ingredient || 'Item';
+                const cStation = detectItemStation(cName);
+                const choiceId = choice.id || choice.original_id || cIdx;
+
+                // Find sub-modifiers for this choice
+                let assignedMods = childMods.filter((m: any) =>
+                  m.parent_option_id === choice.id ||
+                  (choice.original_id && m.parent_option_id === choice.original_id) ||
+                  m.parent_option_name === cName
+                );
+
+                // If flat modifiers remain unassigned:
+                // Bar modifiers (like "Regular") attach to Bar drinks (e.g. "American")
+                // Removals and Food add-ons attach to main hot food items
+                if (childMods.length > 0 && assignedMods.length === 0) {
+                  if (cStation === 'BAR') {
+                    assignedMods = childMods.filter((m: any) => {
+                      const mName = String(m.name || m.ingredient || '').toLowerCase();
+                      return /\b(regular|decaf|large|small|oat|almond|milk|sugar|ice|syrup)\b/i.test(mName);
+                    });
+                  } else if (cStation === 'HOT_KITCHEN' || cIdx === 0) {
+                    assignedMods = childMods.filter((m: any) => {
+                      const mName = String(m.name || m.ingredient || '').toLowerCase();
+                      return !/\b(regular|decaf|large|small|oat|almond|milk|sugar|ice|syrup)\b/i.test(mName);
+                    });
+                  }
+                }
+
+                const choiceProd = (choice.original_id ? productMap.byId.get(String(choice.original_id)) : null) ||
+                                   productMap.byName.get(cName.trim().toLowerCase());
+
+                kdsItems.push({
+                  id: `${item.id}_${choiceId}`,
+                  fire_id: order.id,
+                  order_item_id: item.id,
+                  product_id: choice.original_id || choice.id || choiceProd?.id || null,
+                  product_image: choiceProd?.image_url || null,
+                  quantity: (item.quantity || 1) * Number(choice.quantity || 1),
+                  station_key: cStation,
+                  status: itemStatus,
+                  product_name_snapshot: cName,
+                  bundle_parent_name: pName,
+                  is_bundle_component: true,
+                  modifiers_snapshot: assignedMods.map(parseMod),
+                  notes_snapshot: noteText,
+                  refire_reason: itemStatuses[item.id]?.reason || null,
+                  created_at: item.created_at || order.created_at
+                });
+              });
+              return; // Bundle successfully expanded into station components
+            }
+          }
+
+          // Non-bundle item or bundle without separate options
+          const detectedStation = detectItemStation(pName);
+          const modifiers = rawCusts.map(parseMod);
+
+          kdsItems.push({
             id: item.id,
             fire_id: order.id,
             order_item_id: item.id,
@@ -586,7 +691,7 @@ export async function fetchKdsFires(
             notes_snapshot: noteText,
             refire_reason: itemStatuses[item.id]?.reason || null,
             created_at: item.created_at || order.created_at
-          };
+          });
         });
 
         // Determine if ticket has subsequent rounds added after a previous bump

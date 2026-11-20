@@ -26,7 +26,9 @@ export function serializeModifiers(value: any[]): any[] {
       name: option.name || option.ingredient || '', quantity,
       price: Number(option.price ?? 0),
       customization_type: option.customization_type,
-      option_group_name: option.option_group_name
+      option_group_name: option.option_group_name,
+      parent_option_id: option.parent_option_id,
+      parent_option_name: option.parent_option_name
     };
   });
 }

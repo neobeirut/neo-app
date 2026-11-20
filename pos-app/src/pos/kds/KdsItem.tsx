@@ -144,6 +144,11 @@ export const KdsItem: React.FC<KdsItemProps> = ({ item, stationType, density = '
               <span className={`text-slate-900 leading-tight font-black ${isCompact ? 'text-sm' : 'text-base'}`}>
                 {item.product_name_snapshot}
               </span>
+              {item.bundle_parent_name && (
+                <span className="px-1.5 py-0.2 rounded text-[10px] font-black uppercase tracking-wider bg-purple-100 text-purple-900 border border-purple-200 shadow-2xs">
+                  {item.bundle_parent_name}
+                </span>
+              )}
               {/* Product Photo Button */}
               <button
                 type="button"
@@ -160,19 +165,35 @@ export const KdsItem: React.FC<KdsItemProps> = ({ item, stationType, density = '
               <div className="mt-1 flex flex-wrap gap-1">
                 {item.modifiers_snapshot.map((m, idx) => {
                   const mName = String(m?.name || '');
-                  const isRemove = m.action === 'remove' || mName.toLowerCase().startsWith('no ') || mName.toLowerCase().startsWith('without ');
+                  const isRemove = (
+                    m.action === 'remove' ||
+                    m.action === 'no' ||
+                    (m as any).customization_type === 'removal' ||
+                    (m as any).customization_type === 'remove' ||
+                    mName.toLowerCase().startsWith('no ') ||
+                    mName.toLowerCase().startsWith('without ') ||
+                    mName.toLowerCase().startsWith('remove: ') ||
+                    mName.toLowerCase().startsWith('remove ') ||
+                    mName.startsWith('- ')
+                  );
+                  let cleanName = mName.trim()
+                    .replace(/^\[?[-+]\s*\]?\s*/i, '')
+                    .replace(/^(no|without|remove:?)\s+/i, '')
+                    .replace(/\]$/, '')
+                    .trim();
+
                   return (
                     <span
                       key={idx}
-                      className={`rounded font-bold border ${
-                        isCompact ? 'text-[11px] px-1 py-0.25' : 'text-xs px-1.5 py-0.5'
+                      className={`rounded font-black tracking-wide border shadow-2xs ${
+                        isCompact ? 'text-[11px] px-1.5 py-0.25' : 'text-xs px-2 py-0.5'
                       } ${
                         isRemove
-                          ? 'bg-rose-50 text-rose-700 border-rose-200'
+                          ? 'bg-rose-100 text-rose-800 border-rose-300 ring-1 ring-rose-400/30 uppercase'
                           : 'bg-emerald-50 text-emerald-800 border-emerald-200'
                       }`}
                     >
-                      {isRemove ? `[- ${mName}]` : `[+ ${mName}]`}
+                      {isRemove ? `REMOVE: ${cleanName}` : `[+ ${cleanName || mName}]`}
                     </span>
                   );
                 })}

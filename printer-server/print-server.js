@@ -378,8 +378,31 @@ function formatPreparationTicket(json, paperWidth = 80) {
 
     if (Array.isArray(item.modifiers) && item.modifiers.length > 0) {
       for (const mod of item.modifiers) {
-        const modName = typeof mod === 'string' ? mod : (mod.name || mod.ingredient || '');
-        if (modName) out += `       + ${modName}\n`;
+        let modName = '';
+        let isRemoval = false;
+        if (typeof mod === 'string') {
+          modName = mod.trim();
+          isRemoval = modName.toLowerCase().startsWith('no ') || modName.toLowerCase().startsWith('without ') || modName.toLowerCase().startsWith('remove: ') || modName.startsWith('- ');
+        } else if (typeof mod === 'object' && mod !== null) {
+          modName = (mod.name || mod.ingredient || mod.option_name || mod.label || '').trim();
+          isRemoval = (
+            mod.action === 'remove' ||
+            mod.action === 'no' ||
+            (mod.customization_type || '').toLowerCase() === 'removal' ||
+            (mod.customization_type || '').toLowerCase() === 'remove' ||
+            modName.toLowerCase().startsWith('no ') ||
+            modName.toLowerCase().startsWith('without ') ||
+            modName.toLowerCase().startsWith('remove: ') ||
+            modName.startsWith('- ')
+          );
+        }
+        if (!modName) continue;
+        const cleanName = modName.replace(/^\[?[-+]\s*\]?\s*/i, '').replace(/^(no|without|remove:?)\s+/i, '').replace(/\]$/, '').trim();
+        if (isRemoval) {
+          out += BOLD_ON + `       * REMOVE: ${cleanName}\n` + BOLD_OFF;
+        } else {
+          out += `       + ${cleanName || modName}\n`;
+        }
       }
     }
 

@@ -30,10 +30,11 @@ export interface KdsFireItemModifier {
   name: string;
   action?: 'add' | 'remove' | 'no';
   price?: number;
+  customization_type?: string;
 }
 
 export interface KdsFireItem {
-  id: number;
+  id: number | string;
   fire_id: number;
   order_item_id: number | null;
   product_id?: string | number | null;
@@ -51,6 +52,8 @@ export interface KdsFireItem {
   refire_of_fire_item_id?: number | null;
   refire_reason?: string | null;
   refire_requested_by?: string | null;
+  is_bundle_component?: boolean;
+  bundle_parent_name?: string | null;
   created_at: string;
 }
 

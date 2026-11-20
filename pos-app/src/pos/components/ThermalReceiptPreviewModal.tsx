@@ -235,12 +235,24 @@ export function formatEscPosText(data: ThermalReceiptData): string {
         let isRem = false;
         if (typeof c === 'string') {
           name = c.trim();
-          isRem = name.toLowerCase().startsWith('no ') || name.toLowerCase().startsWith('without ') || name.startsWith('- ');
+          isRem = name.toLowerCase().startsWith('no ') || name.toLowerCase().startsWith('without ') || name.toLowerCase().startsWith('remove: ') || name.startsWith('- ');
         } else if (typeof c === 'object' && c !== null) {
           name = (c.name || c.ingredient || c.option_name || c.label || '').trim();
-          isRem = (c.customization_type || '').toLowerCase() === 'removal' || name.toLowerCase().startsWith('no ') || name.toLowerCase().startsWith('without ');
+          isRem = (
+            c.action === 'remove' ||
+            c.action === 'no' ||
+            (c.customization_type || '').toLowerCase() === 'removal' ||
+            (c.customization_type || '').toLowerCase() === 'remove' ||
+            name.toLowerCase().startsWith('no ') ||
+            name.toLowerCase().startsWith('without ') ||
+            name.toLowerCase().startsWith('remove: ') ||
+            name.startsWith('- ')
+          );
         }
-        if (name) lines.push(`       ${isRem ? '- [NO] ' : '+ '}${name}`);
+        if (name) {
+          const cleanName = name.replace(/^\[?[-+]\s*\]?\s*/i, '').replace(/^(no|without|remove:?)\s+/i, '').replace(/\]$/, '').trim();
+          lines.push(`       ${isRem ? `* REMOVE: ${cleanName}` : `+ ${cleanName || name}`}`);
+        }
       }
 
       // Extract item special note
@@ -923,15 +935,25 @@ export const ThermalReceiptPreviewModal: React.FC<Props> = ({ isOpen, onClose, d
                                   let isRemoval = false;
                                   if (typeof mod === 'string') {
                                     modName = mod.trim();
-                                    isRemoval = modName.toLowerCase().startsWith('no ') || modName.toLowerCase().startsWith('without ') || modName.startsWith('- ');
+                                    isRemoval = modName.toLowerCase().startsWith('no ') || modName.toLowerCase().startsWith('without ') || modName.toLowerCase().startsWith('remove: ') || modName.startsWith('- ');
                                   } else if (typeof mod === 'object' && mod !== null) {
                                     modName = (mod.name || mod.ingredient || mod.option_name || mod.label || '').trim();
-                                    isRemoval = (mod.customization_type || '').toLowerCase() === 'removal' || modName.toLowerCase().startsWith('no ') || modName.toLowerCase().startsWith('without ');
+                                    isRemoval = (
+                                      mod.action === 'remove' ||
+                                      mod.action === 'no' ||
+                                      (mod.customization_type || '').toLowerCase() === 'removal' ||
+                                      (mod.customization_type || '').toLowerCase() === 'remove' ||
+                                      modName.toLowerCase().startsWith('no ') ||
+                                      modName.toLowerCase().startsWith('without ') ||
+                                      modName.toLowerCase().startsWith('remove: ') ||
+                                      modName.startsWith('- ')
+                                    );
                                   }
                                   if (!modName) return null;
+                                  const cleanModName = modName.replace(/^\[?[-+]\s*\]?\s*/i, '').replace(/^(no|without|remove:?)\s+/i, '').replace(/\]$/, '').trim();
                                   return (
-                                    <div key={mIdx} className={isRemoval ? 'text-rose-700 font-semibold italic' : 'text-slate-800 font-semibold'}>
-                                      {isRemoval ? `- [NO] ${modName}` : `+ ${modName}`}
+                                    <div key={mIdx} className={isRemoval ? 'text-rose-700 font-bold tracking-wide' : 'text-slate-800 font-semibold'}>
+                                      {isRemoval ? `* REMOVE: ${cleanModName}` : `+ ${cleanModName || modName}`}
                                     </div>
                                   );
                                 })}

@@ -2990,7 +2990,8 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       currentProduct.category_id === 30 ||
       (currentProduct.category_name && currentProduct.category_name.toLowerCase().includes('bundle')) ||
       (currentProduct.category && currentProduct.category.toLowerCase().includes('bundle')) ||
-      (currentProduct.name && currentProduct.name.toLowerCase().includes('bundle'))
+      (currentProduct.name && currentProduct.name.toLowerCase().includes('bundle')) ||
+      (currentProduct.name && /parisien|formula|formule/i.test(currentProduct.name))
     );
 
     let extraCost = 0;
@@ -3017,6 +3018,10 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       qty: customizationQty,
       selectedCustomizations,
       note: itemNote.trim(),
+      is_bundle: isBundle,
+      isBundle: isBundle,
+      category_id: currentProduct.category_id,
+      category_name: currentProduct.category_name || currentProduct.category || '',
       isOrdered: existing ? Boolean(existing.isOrdered) : false,
       item_added_by: existing?.item_added_by || activeCashier?.name || user?.name || "Cashier",
       item_added_by_id: existing?.item_added_by_id || activeCashier?.id || user?.id || null

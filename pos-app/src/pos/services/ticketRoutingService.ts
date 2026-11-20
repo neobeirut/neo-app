@@ -212,7 +212,7 @@ export function resolveItemPreparationSection(
     const combined = (pName + ' ' + cName).toLowerCase();
     if (cName.toLowerCase() === 'store' || cName.toLowerCase() === 'retail' || /\b(store|retail|merch|packaged|grocery)\b/i.test(combined)) {
       section = 'Store';
-    } else if (/\b(coffee|espresso|latte|cappuccino|tea|teas|juice|juices|drinks|beverage|cocktail|beer|wine|vodka|gin|whisky|mocktail|tonic|water|soda|lemonade)\b/i.test(combined)) {
+    } else if (/\b(coffee|espresso|latte|cappuccino|tea|teas|juice|juices|drinks|beverage|cocktail|beer|wine|vodka|gin|whisky|mocktail|tonic|water|soda|lemonade|american|americano|regular|decaf|v60|chemex|flat white|cortado|macchiato|matcha|shake|smoothie|hot chocolate|brew|milkshake)\b/i.test(combined)) {
       section = 'Bar';
     } else if (/\b(cake|cakes|pastry|croissant|croissants|cookie|cookies|brownie|eclair|tart|tarte|dessert|bakery)\b/i.test(combined)) {
       section = 'Pastry';
@@ -275,13 +275,24 @@ export function isBundleProduct(item: any, productsCatalog?: any[]): boolean {
   if (item.is_bundle === true || item.isBundle === true) return true;
   const cName = String(item.category_name || item.category || '').toLowerCase();
   const pName = String(item.product_name || item.name || '').toLowerCase();
-  if (cName.includes('bundle') || cName.includes('combo') || pName.includes('bundle') || pName.includes('combo')) {
+  if (
+    cName.includes('bundle') || cName.includes('combo') ||
+    pName.includes('bundle') || pName.includes('combo') ||
+    pName.includes('parisien') || pName.includes('formula') || pName.includes('formule')
+  ) {
     return true;
   }
   // Check if matched catalog item has bundle properties or category_id 30
   if (productsCatalog && item.product_id) {
     const matched = productsCatalog.find(p => String(p.id) === String(item.product_id));
-    if (matched && (matched.category_id === 30 || String(matched.name).toLowerCase().includes('bundle'))) {
+    if (matched && (
+      matched.category_id === 30 ||
+      String(matched.category_name || '').toLowerCase().includes('bundle') ||
+      String(matched.name).toLowerCase().includes('bundle') ||
+      String(matched.name).toLowerCase().includes('parisien') ||
+      String(matched.name).toLowerCase().includes('formula') ||
+      String(matched.name).toLowerCase().includes('formule')
+    )) {
       return true;
     }
   }
@@ -513,7 +524,25 @@ export async function buildPreparationPrintJobs(params: {
         is_bundle_component: it.is_bundle_component,
         bundle_parent_name: it.bundle_parent_name || null,
         note: it.note || it.notes || '',
-        modifiers: (it.modifiers || []).map((m: any) => typeof m === 'string' ? m : (m.name || m.ingredient || ''))
+        modifiers: (it.modifiers || []).map((m: any) => {
+          if (typeof m === 'string') return m;
+          const mName = m.name || m.ingredient || '';
+          const isRem = (
+            m.action === 'remove' ||
+            m.action === 'no' ||
+            (m.customization_type || '').toLowerCase() === 'removal' ||
+            (m.customization_type || '').toLowerCase() === 'remove' ||
+            mName.toLowerCase().startsWith('no ') ||
+            mName.toLowerCase().startsWith('without ') ||
+            mName.toLowerCase().startsWith('remove: ') ||
+            mName.startsWith('- ')
+          );
+          return {
+            name: mName,
+            action: isRem ? 'remove' : 'add',
+            customization_type: isRem ? 'removal' : 'addon'
+          };
+        })
       }))
     };
 
@@ -733,7 +762,25 @@ export async function buildCancellationPrintJobs(params: {
         is_bundle_component: it.is_bundle_component,
         bundle_parent_name: it.bundle_parent_name || null,
         note: `VOID: ${params.reason || 'Item cancelled'}`,
-        modifiers: (it.modifiers || []).map((m: any) => typeof m === 'string' ? m : (m.name || m.ingredient || ''))
+        modifiers: (it.modifiers || []).map((m: any) => {
+          if (typeof m === 'string') return m;
+          const mName = m.name || m.ingredient || '';
+          const isRem = (
+            m.action === 'remove' ||
+            m.action === 'no' ||
+            (m.customization_type || '').toLowerCase() === 'removal' ||
+            (m.customization_type || '').toLowerCase() === 'remove' ||
+            mName.toLowerCase().startsWith('no ') ||
+            mName.toLowerCase().startsWith('without ') ||
+            mName.toLowerCase().startsWith('remove: ') ||
+            mName.startsWith('- ')
+          );
+          return {
+            name: mName,
+            action: isRem ? 'remove' : 'add',
+            customization_type: isRem ? 'removal' : 'addon'
+          };
+        })
       }))
     };
 
