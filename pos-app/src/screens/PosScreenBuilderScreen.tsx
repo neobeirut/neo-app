@@ -429,7 +429,7 @@ export default function PosScreenBuilderScreen({ user }: { user?: any }) {
                 }}
                 className={`px-3 py-1.5 rounded-lg text-xs font-black transition flex items-center gap-1.5 cursor-pointer ${
                   isSelected
-                    ? 'text-white shadow-xs'
+                    ? 'text-white shadow-sm'
                     : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
                 }`}
                 style={isSelected ? { backgroundColor: c.primary_color } : {}}
@@ -512,7 +512,7 @@ export default function PosScreenBuilderScreen({ user }: { user?: any }) {
                   onClick={() => setActiveScreenId(screen.id)}
                   className={`p-3 rounded-xl transition flex items-center justify-between gap-2 cursor-pointer border ${
                     isActive
-                      ? 'bg-emerald-50 border-[#1e5c4f] text-[#1e5c4f] shadow-xs ring-2 ring-emerald-500/20'
+                      ? 'bg-emerald-50 border-[#1e5c4f] text-[#1e5c4f] shadow-sm ring-2 ring-emerald-500/20'
                       : 'bg-slate-50/80 hover:bg-slate-100 border-slate-200 text-slate-800'
                   }`}
                 >
@@ -624,7 +624,7 @@ export default function PosScreenBuilderScreen({ user }: { user?: any }) {
                     <select
                       value={activeScreen.gridCols || ''}
                       onChange={(e) => handleUpdateGridDimensions(e.target.value ? Number(e.target.value) : undefined, activeScreen.gridRows)}
-                      className="bg-white border border-slate-300 text-slate-900 rounded-lg px-2 py-1 text-xs focus:outline-hidden focus:border-[#1e5c4f]"
+                      className="bg-white border border-slate-300 text-slate-900 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-[#1e5c4f]"
                     >
                       <option value="">Auto ({computedGrid.cols})</option>
                       <option value="4">4 Cols (Min)</option>
@@ -640,7 +640,7 @@ export default function PosScreenBuilderScreen({ user }: { user?: any }) {
                     <select
                       value={activeScreen.gridRows || ''}
                       onChange={(e) => handleUpdateGridDimensions(activeScreen.gridCols, e.target.value ? Number(e.target.value) : undefined)}
-                      className="bg-white border border-slate-300 text-slate-900 rounded-lg px-2 py-1 text-xs focus:outline-hidden focus:border-[#1e5c4f]"
+                      className="bg-white border border-slate-300 text-slate-900 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-[#1e5c4f]"
                     >
                       <option value="">Auto ({computedGrid.rows})</option>
                       <option value="5">5 Rows (Min)</option>
@@ -752,7 +752,7 @@ export default function PosScreenBuilderScreen({ user }: { user?: any }) {
                           }}
                           onClick={() => handleOpenAddButtonModal(idx)}
                           title={isUnavailable ? `⚠️ "${btn.label}" is unavailable` : "Click to edit, or drag to reorder"}
-                          className={`relative group rounded-xl border overflow-hidden ${gridDensity.minHeight} ${gridDensity.padding} flex flex-col justify-between transition-all shadow-xs cursor-pointer select-none ${
+                          className={`relative group rounded-xl border overflow-hidden ${gridDensity.minHeight} ${gridDensity.padding} flex flex-col justify-between transition-all shadow-sm cursor-pointer select-none ${
                             isUnavailable ? 'bg-slate-100 border-dashed border-rose-300 opacity-60' : `${colorTheme.bg} ${colorTheme.border}`
                           } ${
                             isDragging ? 'opacity-40 scale-95' : ''
@@ -764,7 +764,7 @@ export default function PosScreenBuilderScreen({ user }: { user?: any }) {
                               {btn.type === 'screen' ? '📁 Sub' : '🍽️ Dish'}
                             </span>
                             {isUnavailable && (
-                              <span className="text-[9px] uppercase font-black tracking-wider px-1.5 py-0.5 rounded bg-rose-600 text-white shadow-xs">
+                              <span className="text-[9px] uppercase font-black tracking-wider px-1.5 py-0.5 rounded bg-rose-600 text-white shadow-sm">
                                 Unavailable
                               </span>
                             )}
@@ -843,7 +843,7 @@ export default function PosScreenBuilderScreen({ user }: { user?: any }) {
                   value={newScreenName}
                   onChange={(e) => setNewScreenName(e.target.value)}
                   placeholder="e.g. Desserts, Bar & Cocktails"
-                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-sm text-slate-900 font-medium focus:outline-hidden focus:border-[#1e5c4f] focus:ring-1 focus:ring-[#1e5c4f]"
+                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-sm text-slate-900 font-medium focus:outline-none focus:border-[#1e5c4f] focus:ring-1 focus:ring-[#1e5c4f]"
                   autoFocus
                 />
               </div>
@@ -871,7 +871,7 @@ export default function PosScreenBuilderScreen({ user }: { user?: any }) {
                 type="button"
                 onClick={handleCreateScreen}
                 disabled={!newScreenName.trim()}
-                className="flex-1 py-2 rounded-xl bg-[#1e5c4f] hover:bg-[#16473D] text-white text-xs font-black disabled:opacity-50 transition shadow-xs"
+                className="flex-1 py-2 rounded-xl bg-[#1e5c4f] hover:bg-[#16473D] text-white text-xs font-black disabled:opacity-50 transition shadow-sm"
               >
                 Create Screen
               </button>
@@ -939,7 +939,7 @@ export default function PosScreenBuilderScreen({ user }: { user?: any }) {
                         }
                       }
                     }}
-                    className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-sm text-slate-900 focus:outline-hidden focus:border-[#1e5c4f]"
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-sm text-slate-900 focus:outline-none focus:border-[#1e5c4f]"
                   >
                     <option value="all">All Categories ({sortedAllProducts.length})</option>
                     {sortedCategories.map((cat) => (
@@ -963,7 +963,7 @@ export default function PosScreenBuilderScreen({ user }: { user?: any }) {
                         setBtnLabel(prod.name);
                       }
                     }}
-                    className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-sm text-slate-900 focus:outline-hidden focus:border-[#1e5c4f]"
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-sm text-slate-900 focus:outline-none focus:border-[#1e5c4f]"
                   >
                     {filteredAddBtnProducts.map((p) => (
                       <option key={p.id} value={p.id}>
@@ -985,7 +985,7 @@ export default function PosScreenBuilderScreen({ user }: { user?: any }) {
                       setBtnLabel(scr.name);
                     }
                   }}
-                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-sm text-slate-900 focus:outline-hidden focus:border-[#1e5c4f]"
+                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-sm text-slate-900 focus:outline-none focus:border-[#1e5c4f]"
                 >
                   {[...screens]
                     .filter((s) => s.id !== activeScreen.id)
@@ -1008,7 +1008,7 @@ export default function PosScreenBuilderScreen({ user }: { user?: any }) {
                 value={btnLabel}
                 onChange={(e) => setBtnLabel(e.target.value)}
                 placeholder="Leave blank to use default name"
-                className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-sm text-slate-900 focus:outline-hidden focus:border-[#1e5c4f]"
+                className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-sm text-slate-900 focus:outline-none focus:border-[#1e5c4f]"
               />
             </div>
 
@@ -1020,7 +1020,7 @@ export default function PosScreenBuilderScreen({ user }: { user?: any }) {
                     key={c.id}
                     type="button"
                     onClick={() => setBtnColor(c.id)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-black border transition shadow-xs ${c.bg} ${c.border} ${c.text || 'text-white'} ${
+                    className={`px-3 py-1.5 rounded-lg text-xs font-black border transition shadow-sm ${c.bg} ${c.border} ${c.text || 'text-white'} ${
                       btnColor === c.id ? 'ring-2 ring-[#1e5c4f] scale-105' : 'opacity-85 hover:opacity-100'
                     }`}
                   >
@@ -1035,7 +1035,7 @@ export default function PosScreenBuilderScreen({ user }: { user?: any }) {
                 <button
                   type="button"
                   onClick={() => void handleDeleteButton(editingButtonIndex)}
-                  className="py-2.5 px-3.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 text-xs font-black transition flex items-center justify-center gap-1.5 cursor-pointer shrink-0 shadow-xs"
+                  className="py-2.5 px-3.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 text-xs font-black transition flex items-center justify-center gap-1.5 cursor-pointer shrink-0 shadow-sm"
                   title="Delete this button from screen"
                 >
                   <Trash2 size={14} />
@@ -1052,7 +1052,7 @@ export default function PosScreenBuilderScreen({ user }: { user?: any }) {
               <button
                 type="button"
                 onClick={handleSaveButton}
-                className="flex-1 py-2.5 rounded-xl bg-[#1e5c4f] hover:bg-[#16473D] text-white text-xs font-black shadow-xs transition cursor-pointer"
+                className="flex-1 py-2.5 rounded-xl bg-[#1e5c4f] hover:bg-[#16473D] text-white text-xs font-black shadow-sm transition cursor-pointer"
               >
                 {editingButtonIndex !== null ? 'Update Button' : 'Add Button'}
               </button>
@@ -1089,14 +1089,14 @@ export default function PosScreenBuilderScreen({ user }: { user?: any }) {
                   value={bulkSearchQuery}
                   onChange={(e) => setBulkSearchQuery(e.target.value)}
                   placeholder="Search dishes by name..."
-                  className="w-full pl-9 pr-3 py-1.5 rounded-xl bg-white border border-slate-300 text-xs text-slate-900 focus:outline-hidden focus:border-[#1e5c4f]"
+                  className="w-full pl-9 pr-3 py-1.5 rounded-xl bg-white border border-slate-300 text-xs text-slate-900 focus:outline-none focus:border-[#1e5c4f]"
                 />
               </div>
 
               <select
                 value={bulkCategoryFilter}
                 onChange={(e) => setBulkCategoryFilter(e.target.value)}
-                className="bg-white border border-slate-300 text-xs text-slate-900 rounded-xl px-3 py-1.5 focus:outline-hidden focus:border-[#1e5c4f]"
+                className="bg-white border border-slate-300 text-xs text-slate-900 rounded-xl px-3 py-1.5 focus:outline-none focus:border-[#1e5c4f]"
               >
                 <option value="all">All Categories</option>
                 {sortedCategories.map((cat) => (
@@ -1173,7 +1173,7 @@ export default function PosScreenBuilderScreen({ user }: { user?: any }) {
                   type="button"
                   disabled={bulkSelectedProductIds.size === 0}
                   onClick={handleConfirmBulkAdd}
-                  className="px-4 py-2 rounded-xl bg-[#1e5c4f] hover:bg-[#16473D] disabled:opacity-40 disabled:hover:bg-[#1e5c4f] text-white text-xs font-black transition shadow-xs"
+                  className="px-4 py-2 rounded-xl bg-[#1e5c4f] hover:bg-[#16473D] disabled:opacity-40 disabled:hover:bg-[#1e5c4f] text-white text-xs font-black transition shadow-sm"
                 >
                   Add {bulkSelectedProductIds.size} Button{bulkSelectedProductIds.size === 1 ? '' : 's'}
                 </button>
