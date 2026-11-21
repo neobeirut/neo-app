@@ -300,9 +300,12 @@ async function fetchCatalogFromSupabase(
 
         if (activeConfig) {
           // If explicitly configured for this concept
-          if (activeConfig.is_active === false || activeConfig.is_available === false) {
+          if (activeConfig.is_active === false) {
             // Disabled in this concept
             return;
+          }
+          if (activeConfig.is_available === false) {
+            status = 'Unavailable Today';
           }
 
           // Build channel overrides map
@@ -325,7 +328,7 @@ async function fetchCatalogFromSupabase(
           }
 
           const conceptPrice = Number(activeConfig.selling_price);
-          const effectivePrice = !isNaN(conceptPrice) && conceptPrice >= 0 ? conceptPrice : Number(p.price || 5.0);
+          const effectivePrice = !isNaN(conceptPrice) && conceptPrice > 0 ? conceptPrice : Number(p.price || 5.0);
 
           const resolvedCategoryId = activeConfig.menu_category_id || p.category_id;
           const resolvedCategoryName =
