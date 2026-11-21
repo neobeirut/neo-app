@@ -616,8 +616,15 @@ export default function ProductModifierModal({ product, onClose, onSaved }: Prod
       })
     );
 
-    await api.saveProductModifierScreenOrder(product.id, newOrder);
-    onSaved();
+    try {
+      const res = await api.saveProductModifierScreenOrder(product.id, newOrder);
+      if (res && res.error) {
+        console.error('Failed to save POS screen order:', res.error);
+      }
+      onSaved();
+    } catch (err: any) {
+      console.error('Failed to save POS screen order:', err);
+    }
   };
 
   const totalLinked = linkedLinks.length;

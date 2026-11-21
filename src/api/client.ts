@@ -808,6 +808,55 @@ export const api = {
     return { success: true };
   },
 
+  saveProductModifierScreenOrder: async (productId: number, screenOrder: string[]): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const rid = getRestaurantId();
+      let query = supabase
+        .from('product_customizations')
+        .select('id, option_group_name, customization_type')
+        .eq('product_id', productId);
+      if (rid) query = query.eq('restaurant_id', rid);
+
+      const { data: rows, error: fetchErr } = await query;
+      if (fetchErr) return { success: false, error: fetchErr.message };
+      if (!rows || rows.length === 0) return { success: true };
+
+      const normalizeG = (raw: string, type: string) => {
+        const g = (raw || '').trim();
+        const lower = g.toLowerCase();
+        const tLower = (type || '').toLowerCase();
+        if (lower === 'remove' || lower === 'removal' || lower === 'removals' || lower.startsWith('remove ingredient') || tLower === 'remove' || tLower === 'removal') {
+          return 'Remove';
+        }
+        if (!g || lower === 'general' || lower === 'add on' || lower === 'add-on' || lower === 'addon' || lower === 'add-ons' || lower === 'addons' || lower === 'add ons' || lower === 'add_on' || lower === 'add_ons') {
+          return 'Add On';
+        }
+        return g;
+      };
+
+      for (let idx = 0; idx < screenOrder.length; idx++) {
+        const targetGroup = screenOrder[idx];
+        const marker = new Date(Date.UTC(2020, 0, 1, 0, idx + 1, 0)).toISOString();
+
+        const matchingIds = rows
+          .filter(r => normalizeG(r.option_group_name, r.customization_type).toLowerCase() === targetGroup.toLowerCase())
+          .map(r => r.id);
+
+        if (matchingIds.length > 0) {
+          const { error: upErr } = await supabase
+            .from('product_customizations')
+            .update({ created_at: marker })
+            .in('id', matchingIds);
+          if (upErr) console.warn('Failed to update screen order for group', targetGroup, upErr);
+        }
+      }
+
+      return { success: true };
+    } catch (e: any) {
+      return { success: false, error: e.message };
+    }
+  },
+
   // Branches, Departments and Users for Access Control Dropdowns
   getBranchesList: async (includeInactive = false) => {
     const rid = getRestaurantId();
