@@ -824,14 +824,14 @@ export const TableKeypadPanel: React.FC<TableKeypadPanelProps> = ({
 
             {/* 3x4 SEATS TOUCH KEYBOARD — same logic as table keypad */}
             <div className="flex justify-center">
-            <div className="grid grid-cols-3 gap-1.5">
+            <div className="grid grid-cols-3 gap-2">
               {['1','2','3','4','5','6','7','8','9'].map(d => (
                 <button
                   key={d}
                   type="button"
                   disabled={!isShiftOpen}
                   onClick={() => handleSeatDigit(d)}
-                  className={`w-[68px] h-[52px] rounded-xl font-black text-base border border-[#E0E3DF] transition-all flex items-center justify-center shadow-sm select-none ${
+                  className={`w-[102px] h-[56px] rounded-xl font-black text-xl border border-[#E0E3DF] transition-all flex items-center justify-center shadow-sm select-none ${
                     !isShiftOpen
                       ? "bg-[#F5F6F4] text-slate-400 opacity-40 cursor-not-allowed"
                       : "bg-[#F5F6F4] hover:bg-slate-200 text-[#242B28] cursor-pointer active:scale-95"
@@ -844,7 +844,7 @@ export const TableKeypadPanel: React.FC<TableKeypadPanelProps> = ({
                 type="button"
                 disabled={!isShiftOpen}
                 onClick={handleSeatClear}
-                className={`w-[68px] h-[52px] rounded-xl font-black text-xs border border-rose-200 transition-all flex items-center justify-center shadow-sm select-none uppercase ${
+                className={`w-[102px] h-[56px] rounded-xl font-black text-sm border border-rose-200 transition-all flex items-center justify-center shadow-sm select-none uppercase ${
                   !isShiftOpen
                     ? "bg-rose-50 text-slate-400 opacity-40 cursor-not-allowed"
                     : "bg-rose-50 hover:bg-rose-100 active:bg-rose-600 active:text-white text-rose-600 cursor-pointer active:scale-95"
@@ -856,7 +856,7 @@ export const TableKeypadPanel: React.FC<TableKeypadPanelProps> = ({
                 type="button"
                 disabled={!isShiftOpen}
                 onClick={() => handleSeatDigit('0')}
-                className={`w-[68px] h-[52px] rounded-xl font-black text-base border border-[#E0E3DF] transition-all flex items-center justify-center shadow-sm select-none ${
+                className={`w-[102px] h-[56px] rounded-xl font-black text-xl border border-[#E0E3DF] transition-all flex items-center justify-center shadow-sm select-none ${
                   !isShiftOpen
                     ? "bg-[#F5F6F4] text-slate-400 opacity-40 cursor-not-allowed"
                     : "bg-[#F5F6F4] hover:bg-slate-200 text-[#242B28] cursor-pointer active:scale-95"
@@ -870,7 +870,7 @@ export const TableKeypadPanel: React.FC<TableKeypadPanelProps> = ({
                   disabled={!isShiftOpen}
                   onClick={handleSeatConfirm}
                   style={isShiftOpen ? { backgroundColor: primaryColor, color: primaryText } : undefined}
-                  className={`w-[68px] h-[52px] rounded-xl font-black text-sm border border-transparent transition-all flex items-center justify-center shadow-sm select-none ${
+                  className={`w-[102px] h-[56px] rounded-xl font-black text-base border border-transparent transition-all flex items-center justify-center shadow-sm select-none ${
                     !isShiftOpen
                       ? "bg-slate-200 text-slate-400 opacity-40 cursor-not-allowed"
                       : "cursor-pointer active:scale-95 hover:opacity-90"
@@ -883,7 +883,7 @@ export const TableKeypadPanel: React.FC<TableKeypadPanelProps> = ({
                   type="button"
                   disabled={!isShiftOpen}
                   onClick={handleSeatBackspace}
-                  className={`w-[68px] h-[52px] rounded-xl font-black text-base border border-[#E0E3DF] transition-all flex items-center justify-center shadow-sm select-none ${
+                  className={`w-[102px] h-[56px] rounded-xl font-black text-xl border border-[#E0E3DF] transition-all flex items-center justify-center shadow-sm select-none ${
                     !isShiftOpen
                       ? "bg-[#F5F6F4] text-slate-400 opacity-40 cursor-not-allowed"
                       : "bg-[#F5F6F4] hover:bg-slate-200 text-[#242B28] cursor-pointer active:scale-95"
@@ -966,7 +966,7 @@ export const TableKeypadPanel: React.FC<TableKeypadPanelProps> = ({
                     type="button"
                     disabled={!isShiftOpen}
                     onClick={handleBackspace}
-                    className={`w-10 h-9 rounded-xl font-bold text-sm transition shadow-sm border border-[#E0E3DF] flex items-center justify-center ${
+                    className={`w-12 h-10 rounded-xl font-bold text-base transition shadow-sm border border-[#E0E3DF] flex items-center justify-center ${
                       !isShiftOpen
                         ? "bg-[#F5F6F4] text-slate-400 opacity-40 cursor-not-allowed"
                         : "bg-[#F5F6F4] hover:bg-slate-200 text-[#242B28] cursor-pointer active:scale-95"
@@ -979,7 +979,7 @@ export const TableKeypadPanel: React.FC<TableKeypadPanelProps> = ({
                     type="button"
                     disabled={!isShiftOpen}
                     onClick={handleClear}
-                    className={`w-10 h-9 rounded-xl font-bold text-xs transition shadow-sm border border-[#E0E3DF] flex items-center justify-center ${
+                    className={`w-12 h-10 rounded-xl font-bold text-xs transition shadow-sm border border-[#E0E3DF] flex items-center justify-center ${
                       !isShiftOpen
                         ? "bg-[#F5F6F4] text-slate-400 opacity-40 cursor-not-allowed"
                         : "bg-[#F5F6F4] hover:bg-slate-200 text-[#242B28] cursor-pointer active:scale-95"
@@ -996,14 +996,14 @@ export const TableKeypadPanel: React.FC<TableKeypadPanelProps> = ({
 
             {/* TOUCH NUMERIC KEYPAD */}
             <div className="flex justify-center">
-            <div className="grid grid-cols-3 gap-1.5">
+            <div className="grid grid-cols-3 gap-2">
               {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map(digit => (
                 <button
                   key={digit}
                   type="button"
                   disabled={!isShiftOpen}
                   onClick={() => handleDigit(digit)}
-                  className={`w-[68px] h-[52px] rounded-xl font-black text-base border border-[#E0E3DF] transition-all flex items-center justify-center shadow-sm select-none ${
+                  className={`w-[102px] h-[56px] rounded-xl font-black text-xl border border-[#E0E3DF] transition-all flex items-center justify-center shadow-sm select-none ${
                     !isShiftOpen
                       ? "bg-[#F5F6F4] text-slate-400 opacity-40 cursor-not-allowed"
                       : "bg-[#F5F6F4] hover:bg-slate-200 text-[#242B28] cursor-pointer active:scale-95"
@@ -1016,7 +1016,7 @@ export const TableKeypadPanel: React.FC<TableKeypadPanelProps> = ({
                 type="button"
                 disabled={!isShiftOpen}
                 onClick={handleClear}
-                className={`w-[68px] h-[52px] rounded-xl font-black text-xs border border-rose-200 transition-all flex items-center justify-center shadow-sm select-none uppercase ${
+                className={`w-[102px] h-[56px] rounded-xl font-black text-sm border border-rose-200 transition-all flex items-center justify-center shadow-sm select-none uppercase ${
                   !isShiftOpen
                     ? "bg-rose-50 text-slate-400 opacity-40 cursor-not-allowed"
                     : "bg-rose-50 hover:bg-rose-100 active:bg-rose-600 active:text-white text-rose-600 cursor-pointer active:scale-95"
@@ -1028,7 +1028,7 @@ export const TableKeypadPanel: React.FC<TableKeypadPanelProps> = ({
                 type="button"
                 disabled={!isShiftOpen}
                 onClick={() => handleDigit('0')}
-                className={`w-[68px] h-[52px] rounded-xl font-black text-base border border-[#E0E3DF] transition-all flex items-center justify-center shadow-sm select-none ${
+                className={`w-[102px] h-[56px] rounded-xl font-black text-xl border border-[#E0E3DF] transition-all flex items-center justify-center shadow-sm select-none ${
                   !isShiftOpen
                     ? "bg-[#F5F6F4] text-slate-400 opacity-40 cursor-not-allowed"
                     : "bg-[#F5F6F4] hover:bg-slate-200 text-[#242B28] cursor-pointer active:scale-95"
@@ -1042,7 +1042,7 @@ export const TableKeypadPanel: React.FC<TableKeypadPanelProps> = ({
                   disabled={!isShiftOpen}
                   onClick={() => setIsTableConfirmed(true)}
                   style={isShiftOpen ? { backgroundColor: primaryColor, color: primaryText } : undefined}
-                  className={`w-[68px] h-[52px] rounded-xl font-black text-sm border border-transparent transition-all flex flex-col items-center justify-center shadow-sm select-none ${
+                  className={`w-[102px] h-[56px] rounded-xl font-black text-base border border-transparent transition-all flex flex-col items-center justify-center shadow-sm select-none ${
                     !isShiftOpen
                       ? "bg-slate-200 text-slate-400 opacity-40 cursor-not-allowed"
                       : "cursor-pointer active:scale-95 hover:opacity-90"
@@ -1056,7 +1056,7 @@ export const TableKeypadPanel: React.FC<TableKeypadPanelProps> = ({
                   type="button"
                   disabled={!isShiftOpen}
                   onClick={handleBackspace}
-                  className={`w-[68px] h-[52px] rounded-xl font-black text-base border border-[#E0E3DF] transition-all flex items-center justify-center shadow-sm select-none ${
+                  className={`w-[102px] h-[56px] rounded-xl font-black text-xl border border-[#E0E3DF] transition-all flex items-center justify-center shadow-sm select-none ${
                     !isShiftOpen
                       ? "bg-[#F5F6F4] text-slate-400 opacity-40 cursor-not-allowed"
                       : "bg-[#F5F6F4] hover:bg-slate-200 text-[#242B28] cursor-pointer active:scale-95"

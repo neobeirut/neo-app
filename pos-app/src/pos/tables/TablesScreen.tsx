@@ -837,8 +837,8 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
           )}
         </div>
 
-        {/* RIGHT COLUMN: KEYPAD TO OPEN A TABLE */}
-        <div className="w-[264px] flex flex-col h-full overflow-hidden bg-white border-l border-slate-200 flex-shrink-0">
+        {/* RIGHT COLUMN: KEYPAD TO OPEN A TABLE (Enlarged 1.5x in width from 264px to 396px) */}
+        <div className="w-[396px] flex flex-col h-full overflow-hidden bg-white border-l border-slate-200 flex-shrink-0">
           <TableKeypadPanel
             canOpenNewTables={canOpenNewTables && shiftOpen}
             isShiftOpen={shiftOpen}
