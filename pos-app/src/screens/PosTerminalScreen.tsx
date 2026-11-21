@@ -5002,18 +5002,6 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
               >
                 <span>🖨️ Monitor</span>
               </button>
-              <button
-                type="button"
-                onClick={() => setPosActiveView(posActiveView === 'kds' ? 'sell' : 'kds')}
-                className={`px-1.5 sm:px-2 py-1 rounded-xl text-xs font-bold transition flex items-center gap-1 border cursor-pointer shadow-xs active:scale-95 ${
-                  posActiveView === 'kds'
-                    ? 'bg-amber-500 text-white border-amber-600'
-                    : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300'
-                }`}
-                title="Kitchen & Bar Live Preparation Screen (KDS)"
-              >
-                <span>🍳 Kitchen & Bar</span>
-              </button>
             </div>
 
             {/* Cashier Badge */}
@@ -5103,31 +5091,6 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
               <span className="text-sm shrink-0">📋</span>
               <span className="truncate">Orders</span>
               <span title="Preparing orders" className="min-w-[16px] px-1 rounded bg-pos-primary text-white text-[10px] font-black shrink-0">{preparingOrderCount ?? '!'}</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setPosActiveView('kds')}
-              style={{
-                backgroundColor: posActiveView === 'kds' ? primaryColor : '#F5F6F4',
-                color: posActiveView === 'kds' ? primaryText : '#242B28'
-              }}
-              className={`h-10 sm:h-11 px-1 sm:px-1.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1 cursor-pointer active:scale-95 shadow-sm border border-[#E0E3DF] min-w-0 ${
-                posActiveView === 'kds'
-                  ? 'shadow-md ring-1 ring-[#1e5c4f]/30'
-                  : 'hover:bg-slate-200'
-              }`}
-              title="Kitchen & Bar Live Orders Preparation (KDS)"
-            >
-              <span className="text-sm shrink-0">🍳</span>
-              <span className="truncate">Kitchen & Bar</span>
-              {preparingOrderCount > 0 && (
-                <span className={`ml-0.5 min-w-[16px] h-[16px] px-1 rounded text-[10px] font-black flex items-center justify-center leading-none shrink-0 ${
-                  posActiveView === 'kds' ? 'bg-white/20 text-white' : 'bg-amber-500 text-white'
-                }`}>
-                  {preparingOrderCount}
-                </span>
-              )}
             </button>
 
             {!isRestaurantMode && (
