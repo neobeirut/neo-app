@@ -890,6 +890,27 @@ export const crmService = {
     if (error) throw error;
   },
 
+  async updateProductCustomizationPrices(productId: number, price: number, groupName?: string): Promise<void> {
+    const restaurantId = getActiveRestaurantId();
+    let query = supabase
+      .from('product_customizations')
+      .update({ price })
+      .eq('restaurant_id', restaurantId)
+      .eq('product_id', productId);
+
+    if (groupName) {
+      const gLower = groupName.toLowerCase().trim();
+      if (gLower === 'remove' || gLower === 'removal') {
+        query = query.or('option_group_name.ilike.remove,option_group_name.ilike.removal,customization_type.ilike.remove,customization_type.ilike.removal');
+      } else {
+        query = query.ilike('option_group_name', groupName);
+      }
+    }
+
+    const { error } = await query;
+    if (error) throw error;
+  },
+
   /** Update is_required and/or is_multi_select for ALL items in a modifier group for a product */
   async updateProductModifierGroupSettings(
     productId: number,

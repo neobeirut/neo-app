@@ -17,10 +17,17 @@ interface GroupSettings {
 
 export default function ProductModifierModal({ product, onClose, onSaved }: ProductModifierModalProps) {
   const isBundleProduct = Boolean(
+    (product as any).is_bundle ||
     (product as any).category_id === 30 ||
     ((product as any).category_name && (product as any).category_name.toLowerCase().includes('bundle')) ||
     ((product as any).category && String((product as any).category).toLowerCase().includes('bundle')) ||
-    (product.name && product.name.toLowerCase().includes('bundle'))
+    (product.name && (
+      product.name.toLowerCase().includes('bundle') ||
+      product.name.toLowerCase().includes('combo') ||
+      product.name.toLowerCase().includes('formula') ||
+      product.name.toLowerCase().includes('formule') ||
+      product.name.toLowerCase().includes('parisien')
+    ))
   );
 
   const [allModifiers, setAllModifiers] = useState<CustomizationItem[]>([]);
@@ -34,6 +41,9 @@ export default function ProductModifierModal({ product, onClose, onSaved }: Prod
   const [menuCategories, setMenuCategories] = useState<Array<{ id: number; name: string }>>([]);
   const [rawProductsList, setRawProductsList] = useState<Array<any>>([]);
   const [zeroingPrices, setZeroingPrices] = useState(false);
+  const [bulkPriceValue, setBulkPriceValue] = useState<string>('');
+  const [settingBulkPrice, setSettingBulkPrice] = useState(false);
+  const [editingPrices, setEditingPrices] = useState<Record<number, string>>({});
 
   // Add Products Drawer/Modal state
   const [showAddProductsPanel, setShowAddProductsPanel] = useState(false);
@@ -145,6 +155,63 @@ export default function ProductModifierModal({ product, onClose, onSaved }: Prod
       alert('Failed to zero out prices: ' + err.message);
     } finally {
       setZeroingPrices(false);
+    }
+  };
+
+  const handleApplyBulkPriceToAll = async () => {
+    const p = parseFloat(bulkPriceValue);
+    if (isNaN(p) || p < 0) {
+      alert('Please enter a valid price (e.g. 0 for free, or 5 for $5.00).');
+      return;
+    }
+    setSettingBulkPrice(true);
+    try {
+      await crmService.updateProductCustomizationPrices(product.id, p);
+      setLinkedLinks(prev => prev.map(l => ({ ...l, price: p })));
+      onSaved();
+      alert(`All modifier choices for this bundle are now set to $${p.toFixed(2)}!`);
+    } catch (err: any) {
+      alert('Failed to update prices: ' + err.message);
+    } finally {
+      setSettingBulkPrice(false);
+    }
+  };
+
+  const handleSetGroupPrice = async (groupName: string, items: CustomizationItem[]) => {
+    const currentPriceStr = prompt(`Enter price for all linked options in "${groupName}" ($0 for free):`, '0');
+    if (currentPriceStr === null) return;
+    const p = parseFloat(currentPriceStr);
+    if (isNaN(p) || p < 0) {
+      alert('Please enter a valid price number.');
+      return;
+    }
+    setSavingGroupSetting(`${groupName}:price`);
+    try {
+      await crmService.updateProductCustomizationPrices(product.id, p, groupName);
+      setLinkedLinks(prev => prev.map(l => {
+        const itemGroup = normalizeGroupName(l.option_group_name || '', l.customization_type || '');
+        return itemGroup === groupName ? { ...l, price: p } : l;
+      }));
+      onSaved();
+    } catch (err: any) {
+      alert('Failed to set group price: ' + err.message);
+    } finally {
+      setSavingGroupSetting(null);
+    }
+  };
+
+  const handleUpdateItemPrice = async (linkId: number, newPrice: number) => {
+    try {
+      await crmService.updateProductCustomization(linkId, { price: newPrice });
+      setLinkedLinks(prev => prev.map(l => l.id === linkId ? { ...l, price: newPrice } : l));
+      setEditingPrices(prev => {
+        const next = { ...prev };
+        delete next[linkId];
+        return next;
+      });
+      onSaved();
+    } catch (err: any) {
+      alert('Failed to update price: ' + err.message);
     }
   };
 
@@ -584,7 +651,28 @@ export default function ProductModifierModal({ product, onClose, onSaved }: Prod
               </div>
             )}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {hasAnyLinked && (
+              <button
+                type="button"
+                disabled={Boolean(savingGroupSetting) || Boolean(savingItemId)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleSetGroupPrice(groupName, items);
+                }}
+                style={{
+                  fontSize: '11px', fontWeight: 700,
+                  padding: '2px 8px', borderRadius: '6px',
+                  border: '1px solid #cbd5e1',
+                  backgroundColor: '#ffffff',
+                  color: '#0f766e',
+                  cursor: 'pointer'
+                }}
+                title={`Set custom price for all choices in "${groupName}" ($0 for free)`}
+              >
+                Set Price ($)
+              </button>
+            )}
             <button
               type="button"
               disabled={Boolean(savingGroupSetting) || Boolean(savingItemId)}
@@ -622,6 +710,15 @@ export default function ProductModifierModal({ product, onClose, onSaved }: Prod
           {items.map(item => {
             const isLinked = linkedItemIds.has(item.id);
             const isSaving = savingItemId === item.id;
+            const link = linkedLinks.find(l =>
+              (l.customization_item_id && l.customization_item_id === item.id) ||
+              l.ingredient.toLowerCase() === item.name.toLowerCase()
+            );
+            const currentItemPrice = link ? (link.price ?? 0) : (item.default_price ?? 0);
+            const displayPriceVal = link && editingPrices[link.id] !== undefined
+              ? editingPrices[link.id]
+              : currentItemPrice;
+
             return (
               <div
                 key={item.id}
@@ -656,12 +753,76 @@ export default function ProductModifierModal({ product, onClose, onSaved }: Prod
                   }}>
                     {item.name}
                   </div>
-                  {item.default_price > 0 && (
+                  {!isLinked && item.default_price > 0 && (
                     <div style={{ fontSize: '10px', color: '#64748b' }}>
-                      +${item.default_price.toFixed(2)}
+                      Menu: +${item.default_price.toFixed(2)}
                     </div>
                   )}
                 </div>
+
+                {/* Price editor when linked to this product */}
+                {isLinked && link && (
+                  <div
+                    onClick={(e) => e.stopPropagation()}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '2px',
+                      backgroundColor: currentItemPrice > 0 ? '#eff6ff' : '#f0fdf4',
+                      border: `1px solid ${currentItemPrice > 0 ? '#93c5fd' : '#86efac'}`,
+                      borderRadius: '6px',
+                      padding: '2px 5px',
+                      flexShrink: 0,
+                    }}
+                    title="Price for this product ($0 = free in bundle, or enter custom price like $5.00)"
+                  >
+                    <span style={{
+                      fontSize: '10px',
+                      fontWeight: 800,
+                      color: currentItemPrice > 0 ? '#1d4ed8' : '#15803d'
+                    }}>
+                      $
+                    </span>
+                    <input
+                      type="number"
+                      step="0.5"
+                      min="0"
+                      value={displayPriceVal}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setEditingPrices(prev => ({ ...prev, [link.id]: val }));
+                      }}
+                      onBlur={async () => {
+                        const rawVal = editingPrices[link.id];
+                        if (rawVal !== undefined) {
+                          const num = Math.max(0, parseFloat(rawVal) || 0);
+                          await handleUpdateItemPrice(link.id, num);
+                        }
+                      }}
+                      onKeyDown={async (e) => {
+                        if (e.key === 'Enter') {
+                          (e.target as HTMLInputElement).blur();
+                        }
+                      }}
+                      style={{
+                        width: '42px',
+                        border: 'none',
+                        background: 'transparent',
+                        fontSize: '11px',
+                        fontWeight: 800,
+                        color: currentItemPrice > 0 ? '#1d4ed8' : '#15803d',
+                        textAlign: 'right',
+                        outline: 'none',
+                        padding: 0
+                      }}
+                    />
+                    {currentItemPrice === 0 && (
+                      <span style={{ fontSize: '9px', fontWeight: 800, color: '#16a34a', marginLeft: '1px' }}>
+                        Free
+                      </span>
+                    )}
+                  </div>
+                )}
 
                 {isLinked && (
                   <button
@@ -831,30 +992,68 @@ export default function ProductModifierModal({ product, onClose, onSaved }: Prod
                       <div style={{ fontSize: '13px', fontWeight: 800, color: '#065f46', display: 'flex', alignItems: 'center', gap: '6px' }}>
                         Bundle / Combo Product
                         <span style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '4px', backgroundColor: '#10b981', color: '#fff', fontWeight: 700 }}>
-                          Included Free
+                          Pricing Options
                         </span>
                       </div>
                       <div style={{ fontSize: '11px', color: '#047857', marginTop: '2px' }}>
-                        When ordered in POS, selected items (coffee, croissant, eggs, bread basket, etc.) are free — they will not add extra cost to the total.
+                        Make all choices free ($0.00), set a price for all, or customize individual item prices below (e.g. $5 for red wine or salad).
                       </div>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    disabled={zeroingPrices}
-                    onClick={handleZeroOutPrices}
-                    style={{
-                      padding: '6px 14px', borderRadius: '7px',
-                      backgroundColor: '#059669', color: '#ffffff',
-                      border: 'none', fontSize: '11px', fontWeight: 700,
-                      cursor: zeroingPrices ? 'default' : 'pointer',
-                      display: 'flex', alignItems: 'center', gap: '6px'
-                    }}
-                    title="Ensure all linked choices for this bundle have price $0.00"
-                  >
-                    <Sparkles size={13} />
-                    {zeroingPrices ? 'Resetting…' : 'Make All Choices Free ($0.00)'}
-                  </button>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      disabled={zeroingPrices || settingBulkPrice}
+                      onClick={handleZeroOutPrices}
+                      style={{
+                        padding: '6px 14px', borderRadius: '7px',
+                        backgroundColor: '#059669', color: '#ffffff',
+                        border: 'none', fontSize: '11px', fontWeight: 700,
+                        cursor: (zeroingPrices || settingBulkPrice) ? 'default' : 'pointer',
+                        display: 'flex', alignItems: 'center', gap: '6px'
+                      }}
+                      title="Set all linked modifier choices for this bundle to $0.00 (free)"
+                    >
+                      <Sparkles size={13} />
+                      {zeroingPrices ? 'Resetting…' : 'Make All Choices Free ($0.00)'}
+                    </button>
+
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: '5px',
+                      backgroundColor: '#ffffff', padding: '3px 8px', borderRadius: '7px',
+                      border: '1px solid #6ee7b7'
+                    }}>
+                      <span style={{ fontSize: '11px', fontWeight: 700, color: '#065f46' }}>or set price: $</span>
+                      <input
+                        type="number"
+                        step="0.5"
+                        min="0"
+                        placeholder="5.00"
+                        value={bulkPriceValue}
+                        onChange={e => setBulkPriceValue(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') handleApplyBulkPriceToAll(); }}
+                        style={{
+                          width: '52px', padding: '2px 4px', border: '1px solid #cbd5e1', borderRadius: '4px',
+                          fontSize: '11px', fontWeight: 700, textAlign: 'right', outline: 'none', color: '#065f46'
+                        }}
+                      />
+                      <button
+                        type="button"
+                        disabled={zeroingPrices || settingBulkPrice || !bulkPriceValue}
+                        onClick={handleApplyBulkPriceToAll}
+                        style={{
+                          padding: '4px 10px', borderRadius: '5px',
+                          backgroundColor: '#047857', color: '#ffffff',
+                          border: 'none', fontSize: '11px', fontWeight: 700,
+                          cursor: (zeroingPrices || settingBulkPrice || !bulkPriceValue) ? 'default' : 'pointer'
+                        }}
+                        title="Set all linked modifier choices to this price"
+                      >
+                        {settingBulkPrice ? 'Applying…' : 'Set Price'}
+                      </button>
+                    </div>
+                  </div>
                 </div>
               )}
 
