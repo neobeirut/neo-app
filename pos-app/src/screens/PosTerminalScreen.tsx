@@ -5696,13 +5696,13 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
             {/* TICKET ACTIONS & STATUS HEADER BAR */}
             <div className="flex flex-wrap items-center justify-between gap-1 min-w-0">
               <div className="flex items-center gap-1.5 shrink-0">
-                <span className="text-xs font-black uppercase text-[#242B28] tracking-wider">
+                <span className="text-sm font-black uppercase text-[#242B28] tracking-wider">
                   Current Order
                 </span>
                 {ticketItems.filter(i => !i.isHoldSeparator && i.name !== 'HOLD').length > 0 && (
                   <span
                     style={{ backgroundColor: '#E9F4ED', color: primaryColor, borderColor: `${primaryColor}40` }}
-                    className="px-2 py-0.5 text-[10px] font-black rounded-full border"
+                    className="px-2 py-0.5 text-xs font-black rounded-full border"
                   >
                     {ticketItems.filter(i => !i.isHoldSeparator && i.name !== 'HOLD').reduce((sum, item) => sum + (Number(item.qty) || 1), 0)} items
                   </span>
@@ -5713,7 +5713,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                 {/* Table # and Seats info — shown when a table context is active */}
                 {activeTableContext && (
                   <div className="flex flex-wrap items-center gap-1 min-w-0">
-                    <span style={{ color: primaryColor }} className="font-black text-xs flex items-center gap-1">
+                    <span style={{ color: primaryColor }} className="font-black text-sm flex items-center gap-1">
                       🪑 <span>{activeTableContext.tableCode ? (
                         activeTableContext.tableCode.toLowerCase().startsWith('table')
                           ? activeTableContext.tableCode
@@ -5721,19 +5721,19 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                       ) : 'Table'}</span>
                     </span>
                     {activeTableContext.guestCount ? (
-                      <span className="px-1.5 py-0.5 rounded bg-[#F5F6F4] text-[#242B28] text-[10px] font-bold border border-[#E0E3DF]">
+                      <span className="px-1.5 py-0.5 rounded bg-[#F5F6F4] text-[#242B28] text-xs font-bold border border-[#E0E3DF]">
                         {activeTableContext.guestCount} {activeTableContext.guestCount === 1 ? 'Seat' : 'Seats'}
                       </span>
                     ) : null}
                     {isCurrentTableBillRequested && (
-                      <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 text-[10px] font-black border border-amber-300 animate-pulse">
+                      <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 text-xs font-black border border-amber-300 animate-pulse">
                         🧾 Bill
                       </span>
                     )}
                     <button
                       type="button"
                       onClick={() => setIsTransferModalOpen(true)}
-                      className="px-1.5 py-0.5 rounded-lg bg-sky-50 hover:bg-sky-100 text-sky-900 text-[10px] font-bold border border-sky-300 flex items-center gap-0.5 transition active:scale-95 cursor-pointer shrink-0"
+                      className="px-1.5 py-0.5 rounded-lg bg-sky-50 hover:bg-sky-100 text-sky-900 text-xs font-bold border border-sky-300 flex items-center gap-0.5 transition active:scale-95 cursor-pointer shrink-0"
                       title="Transfer Table or Move Selected Items"
                     >
                       <span>🔄</span>
@@ -5752,7 +5752,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                             }));
                           setTicketItems(reverted);
                         }}
-                        className="px-1.5 py-0.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 text-[10px] font-black border border-rose-300 flex items-center gap-0.5 transition active:scale-95 cursor-pointer shrink-0"
+                        className="px-1.5 py-0.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-black border border-rose-300 flex items-center gap-0.5 transition active:scale-95 cursor-pointer shrink-0"
                         title="Discard unplaced draft quantity changes and new items"
                       >
                         <span>✕</span>
@@ -5768,7 +5768,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                         setPosActiveView('tables');
                         refreshFloorTables().catch(() => {});
                       }}
-                      className="px-1.5 py-0.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold border border-slate-300 flex items-center gap-0.5 transition active:scale-95 cursor-pointer shrink-0"
+                      className="px-1.5 py-0.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold border border-slate-300 flex items-center gap-0.5 transition active:scale-95 cursor-pointer shrink-0"
                       title="Close table editor and view Floor Plan"
                     >
                       <span>Exit</span>
@@ -5780,7 +5780,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                     type="button"
                     onClick={handleResetCart}
                     disabled={isSubmitting || !isShiftOpen}
-                    className={`px-2.5 py-1 rounded-lg text-[10px] font-extrabold transition-all active:scale-95 flex items-center gap-1 shadow-sm ${
+                    className={`px-2.5 py-1 rounded-lg text-xs font-extrabold transition-all active:scale-95 flex items-center gap-1 shadow-sm ${
                       isSubmitting || !isShiftOpen
                         ? 'bg-slate-100 text-slate-400 border border-slate-200 opacity-50 cursor-not-allowed'
                         : 'bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 cursor-pointer'
@@ -5800,10 +5800,10 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                   <button type="button" onClick={() => setIsOrderSetupOpen(true)}
                     className="w-full min-h-[56px] px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-left flex items-center justify-between gap-3 shadow-xs transition cursor-pointer">
                     <span className="min-w-0">
-                      <span className="block text-sm font-black text-slate-900">{!selectedChannel || ['POS', 'Pick-up', 'Phone', 'Delivery'].includes(selectedChannel) ? 'Store' : selectedChannel} · {orderType === 'delivery' ? 'Delivery' : 'Pickup'}</span>
-                      <span className="block text-xs text-slate-500 font-medium truncate">{customerName || customerPhone || (orderType === 'delivery' ? 'Add customer & delivery address' : 'Customer optional')}{customerName && customerPhone ? ' • ' + customerPhone : ''}</span>
+                      <span className="block text-base font-black text-slate-900">{!selectedChannel || ['POS', 'Pick-up', 'Phone', 'Delivery'].includes(selectedChannel) ? 'Store' : selectedChannel} · {orderType === 'delivery' ? 'Delivery' : 'Pickup'}</span>
+                      <span className="block text-sm text-slate-500 font-medium truncate">{customerName || customerPhone || (orderType === 'delivery' ? 'Add customer & delivery address' : 'Customer optional')}{customerName && customerPhone ? ' • ' + customerPhone : ''}</span>
                     </span>
-                    <span className="text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-lg shrink-0">Change ›</span>
+                    <span className="text-sm font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-lg shrink-0">Change ›</span>
                   </button>
                   {/* ACTIVE SCHEDULED ORDER BADGE */}
                   {scheduledOrderTime && (
@@ -5811,14 +5811,14 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                       <div className="flex items-center gap-2 min-w-0">
                         <span className="text-base">⏳</span>
                         <div className="min-w-0">
-                          <div className="font-black text-purple-200 text-[11px] flex items-center gap-1.5">
+                          <div className="font-black text-purple-200 text-xs flex items-center gap-1.5">
                             <span>SCHEDULED ORDER</span>
-                            <span className="text-[10px] bg-purple-800 text-purple-100 px-1.5 py-0.5 rounded font-bold">
+                            <span className="text-[11px] bg-purple-800 text-purple-100 px-1.5 py-0.5 rounded font-bold">
                               {formatScheduledTimeDisplay(scheduledOrderDate, scheduledOrderTime)}
                             </span>
                           </div>
                           {scheduledOrderNote && (
-                            <div className="text-[10px] text-purple-300 font-medium truncate mt-0.5">
+                            <div className="text-[11px] text-purple-300 font-medium truncate mt-0.5">
                               Note: {scheduledOrderNote}
                             </div>
                           )}
@@ -5864,7 +5864,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                           key={ch.id}
                           type="button"
                           onClick={() => handleSelectChannelSource(ch.id)}
-                          className={`py-1.5 px-0.5 rounded-lg text-[11px] font-black transition cursor-pointer text-center truncate ${
+                          className={`py-1.5 px-0.5 rounded-lg text-xs font-black transition cursor-pointer text-center truncate ${
                             isSelected ? `${ch.activeBg} shadow-sm ring-1 ring-white/20` : 'text-slate-300 hover:text-white hover:bg-slate-800'
                           }`}
                         >
@@ -5889,7 +5889,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                           validationError && (!customerName || !customerName.trim() || customerName === 'Pickup Customer')
                             ? "border-rose-500 ring-2 ring-rose-500/50 bg-rose-950/20"
                             : "border-slate-700"
-                        } rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-gray-400 font-medium focus:outline-none focus:border-amber-500`}
+                        } rounded-lg px-2.5 py-1.5 text-sm text-white placeholder-gray-400 font-medium focus:outline-none focus:border-amber-500`}
                       />
                       <div className="relative">
                         <input
@@ -5904,7 +5904,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                               checkWhatsAppLocation(val);
                             }
                           }}
-                          className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-gray-400 font-medium focus:outline-none focus:border-amber-500"
+                          className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-sm text-white placeholder-gray-400 font-medium focus:outline-none focus:border-amber-500"
                         />
                         {showCustomerDropdown && customerSearchResults.length > 0 && (
                           <div className="absolute z-30 left-0 right-0 top-full mt-1 bg-slate-800 border border-slate-700 rounded-xl shadow-xl max-h-40 overflow-y-auto">
@@ -5996,8 +5996,8 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
             {ticketItems.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center p-6 text-center text-gray-400 border-2 border-dashed border-slate-200 rounded-2xl my-2">
                 <span className="text-3xl mb-2 opacity-50">🛒</span>
-                <h4 className="font-extrabold text-sm text-gray-300">Ticket is empty</h4>
-                <p className="text-xs text-gray-500 mt-1 max-w-[200px]">Tap a product from the catalog to start an order.</p>
+                <h4 className="font-extrabold text-base text-gray-300">Ticket is empty</h4>
+                <p className="text-sm text-gray-500 mt-1 max-w-[220px]">Tap a product from the catalog to start an order.</p>
               </div>
             ) : (
               ticketItems.map((item, index) => {
@@ -6007,10 +6007,10 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                       key={index}
                       className="my-2 py-2 px-3 rounded-xl bg-purple-50 border border-dashed border-purple-300 flex items-center justify-between text-purple-900 shadow-sm"
                     >
-                      <div className="flex items-center gap-2 text-xs font-black tracking-widest uppercase">
-                        <span className="text-sm">⏸️</span>
+                      <div className="flex items-center gap-2 text-sm font-black tracking-widest uppercase">
+                        <span className="text-base">⏸️</span>
                         <span className="text-purple-900">HOLD</span>
-                        <span className="text-[10px] text-purple-700 font-medium normal-case tracking-normal">
+                        <span className="text-xs text-purple-700 font-medium normal-case tracking-normal">
                           (kitchen waits for fire)
                         </span>
                       </div>
@@ -6047,21 +6047,21 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                       title="Tap to edit options"
                     >
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <h5 className="font-extrabold text-xs text-[#242B28] leading-tight hover:opacity-80 transition-colors">{item.name}</h5>
+                        <h5 className="font-extrabold text-sm text-[#242B28] leading-tight hover:opacity-80 transition-colors">{item.name}</h5>
                         {Boolean(item.isOrdered && (editingOrderId || activeTableContext?.orderId)) && (
-                          <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-300">
+                          <span className="text-[10px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-300">
                             {Number(item.originalQty || 0) > 0 && item.qty > Number(item.originalQty)
                               ? `Ordered: ${item.originalQty} (+${item.qty - Number(item.originalQty)} new)`
                               : 'Ordered'}
                           </span>
                         )}
                         {!item.isOrdered && Boolean(editingOrderId || activeTableContext?.orderId) && !item.isHoldSeparator && (
-                          <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-300">
+                          <span className="text-[10px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-300">
                             +Draft
                           </span>
                         )}
                       </div>
-                      <div className="text-xs font-black mt-0.5" style={{ color: primaryColor }}>
+                      <div className="text-sm font-black mt-0.5" style={{ color: primaryColor }}>
                         ${(item.unit_price * item.qty).toFixed(2)}
                       </div>
                     </button>
@@ -6072,16 +6072,16 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                         type="button"
                         onClick={() => handleUpdateQty(index, -1)}
                         disabled={!isShiftOpen}
-                        className="w-6 h-6 rounded-sm bg-[#F5F6F4] hover:bg-slate-200 font-extrabold text-[#242B28] text-xs flex items-center justify-center transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+                        className="w-6 h-6 rounded-sm bg-[#F5F6F4] hover:bg-slate-200 font-extrabold text-[#242B28] text-sm flex items-center justify-center transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                         -
                       </button>
-                      <span className="w-6 text-center font-extrabold text-xs text-[#242B28]">{item.qty}</span>
+                      <span className="w-6 text-center font-extrabold text-sm text-[#242B28]">{item.qty}</span>
                       <button
                         type="button"
                         onClick={() => handleUpdateQty(index, 1)}
                         disabled={!isShiftOpen}
-                        className="w-6 h-6 rounded-sm bg-[#F5F6F4] hover:bg-slate-200 font-extrabold text-[#242B28] text-xs flex items-center justify-center transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+                        className="w-6 h-6 rounded-sm bg-[#F5F6F4] hover:bg-slate-200 font-extrabold text-[#242B28] text-sm flex items-center justify-center transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                         +
                       </button>
@@ -6092,7 +6092,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                       type="button"
                       onClick={() => handlePromptVoid(index)}
                       disabled={!isShiftOpen}
-                      className="text-rose-500 hover:text-rose-700 hover:bg-rose-50 p-1.5 rounded text-sm transition-all active:scale-90 flex items-center justify-center cursor-pointer flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+                      className="text-rose-500 hover:text-rose-700 hover:bg-rose-50 p-1.5 rounded text-base transition-all active:scale-90 flex items-center justify-center cursor-pointer flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
                       title={!isShiftOpen ? "Shift is closed" : Boolean(item.isOrdered && (editingOrderId || activeTableContext?.orderId) && item.qty <= Number(item.originalQty || 0)) ? "Authorize Item Void (Requires Manager PIN)" : "Remove / Discard Draft Quantity"}
                     >
                       🗑️
@@ -6105,12 +6105,12 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                     return (
                       <div className="flex flex-wrap gap-1 pt-0.5">
                         {addons.map((a, i) => (
-                          <span key={`a-${i}`} className="text-[10px] bg-white text-[#242B28] px-2 py-0.5 rounded border border-[#E0E3DF] font-medium">
+                          <span key={`a-${i}`} className="text-xs bg-white text-[#242B28] px-2 py-0.5 rounded border border-[#E0E3DF] font-medium">
                             + {a}
                           </span>
                         ))}
                         {removals.map((r, i) => (
-                          <span key={`r-${i}`} className="text-[10px] bg-rose-50 text-rose-700 px-2 py-0.5 rounded border border-rose-200 font-extrabold">
+                          <span key={`r-${i}`} className="text-xs bg-rose-50 text-rose-700 px-2 py-0.5 rounded border border-rose-200 font-extrabold">
                             - {r}
                           </span>
                         ))}
@@ -6118,7 +6118,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                     );
                   })()}
 
-                  {item.note && <p className="text-[10px] text-amber-700 italic">Note: {item.note}</p>}
+                  {item.note && <p className="text-xs text-amber-700 italic">Note: {item.note}</p>}
                 </div>
               );
             })
@@ -6129,7 +6129,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
           <div className="p-2.5 sm:p-3 border-t border-[#E0E3DF] bg-white text-[#242B28] space-y-2 flex-shrink-0">
             {/* Validation Alert */}
             {validationError && (
-              <div className="bg-red-50 border border-red-200 text-red-700 text-xs px-3 py-1.5 rounded-lg flex items-center justify-between">
+              <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-1.5 rounded-lg flex items-center justify-between">
                 <span>{validationError}</span>
                 <button onClick={() => setValidationError("")} className="font-bold px-1">✕</button>
               </div>
@@ -6144,15 +6144,15 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                 {/* Discount Control (Matching OVRLOAD Reference POS) */}
                 <div className="space-y-1">
                   <div className="flex items-center justify-between">
-                    <span className="font-bold text-[#5E6964] text-[11px] block">Discount:</span>
+                    <span className="font-bold text-[#5E6964] text-xs block">Discount:</span>
                     {discountAmount > 0 && (
-                      <span className="text-[11px] font-extrabold text-amber-600">
+                      <span className="text-xs font-extrabold text-amber-600">
                         -${discountAmount.toFixed(2)}
                       </span>
                     )}
                   </div>
                   {discountAmount > 0 ? (
-                    <div className="flex items-center justify-between gap-1 bg-amber-50 border border-amber-300 px-2 py-1 rounded-lg text-amber-900 text-xs font-black shadow-xs">
+                    <div className="flex items-center justify-between gap-1 bg-amber-50 border border-amber-300 px-2 py-1 rounded-lg text-amber-900 text-sm font-black shadow-xs">
                       <span
                         className="truncate cursor-pointer hover:underline"
                         onClick={() => setIsDiscountPresetsModalOpen(true)}
@@ -6199,8 +6199,8 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                   return (
                     <div className="space-y-1 pt-1 border-t border-[#E0E3DF]">
                       <div className="flex items-center justify-between">
-                        <span className="font-bold text-[#5E6964] text-[11px] block">Delivery Fee:</span>
-                        <span className="text-[11px] font-extrabold text-blue-600">
+                        <span className="font-bold text-[#5E6964] text-xs block">Delivery Fee:</span>
+                        <span className="text-xs font-extrabold text-blue-600">
                           ${currentFeeNum.toFixed(2)}
                         </span>
                       </div>
@@ -6208,7 +6208,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                         <select
                           value={selectValue}
                           onChange={(e) => setDeliveryFee(parseFloat(e.target.value) || 0)}
-                          className="bg-[#F5F6F4] border border-[#E0E3DF] text-[#242B28] text-[10px] sm:text-[11px] font-extrabold rounded-lg px-1.5 sm:px-2 py-1 outline-none flex-1 min-w-0 truncate"
+                          className="bg-[#F5F6F4] border border-[#E0E3DF] text-[#242B28] text-xs sm:text-sm font-extrabold rounded-lg px-1.5 sm:px-2 py-1 outline-none flex-1 min-w-0 truncate"
                         >
                           <option value={0}>$0.00 (Free Delivery)</option>
                           {deliveryPricingRules.map((r: any) => {
@@ -6234,7 +6234,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                             }
                           }}
                           style={isCustomFee ? { backgroundColor: primaryColor, color: primaryText } : undefined}
-                          className={`px-2.5 py-1 rounded-lg text-[11px] font-black transition-all shrink-0 ${
+                          className={`px-2.5 py-1 rounded-lg text-xs font-black transition-all shrink-0 ${
                             isCustomFee
                               ? "shadow"
                               : "bg-[#F5F6F4] border border-[#E0E3DF] text-[#242B28] hover:bg-slate-200"
@@ -6249,7 +6249,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
               </div>
 
               {/* RIGHT SIDE: Subtotal, Discount, Delivery Fee, TOTAL */}
-              <div className="space-y-1 text-xs font-semibold text-[#5E6964] flex flex-col justify-between min-w-0 overflow-hidden">
+              <div className="space-y-1 text-sm font-semibold text-[#5E6964] flex flex-col justify-between min-w-0 overflow-hidden">
                 <div className="space-y-1">
                   <div className="flex justify-between">
                     <span className="text-[#5E6964]">Subtotal</span>
@@ -6278,12 +6278,12 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                 </div>
 
                 <div className="flex items-center justify-between pt-1 border-t border-[#E0E3DF]">
-                  <span className="font-extrabold text-xs uppercase text-[#242B28] tracking-wider">TOTAL</span>
+                  <span className="font-extrabold text-sm uppercase text-[#242B28] tracking-wider">TOTAL</span>
                   <div className="text-right min-w-0">
-                    <span className="font-black text-lg sm:text-xl truncate block" style={{ color: primaryColor }}>
+                    <span className="font-black text-xl sm:text-2xl truncate block" style={{ color: primaryColor }}>
                       ${total.toFixed(2)}
                     </span>
-                    <span className="text-[10px] sm:text-[11px] font-bold text-[#5E6964] block -mt-0.5 truncate">
+                    <span className="text-xs sm:text-sm font-bold text-[#5E6964] block -mt-0.5 truncate">
                       ≈ {Math.round(total * (exchangeRate || 90000)).toLocaleString()} LBP
                     </span>
                   </div>

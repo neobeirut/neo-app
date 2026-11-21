@@ -1947,7 +1947,7 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
                             type="button"
                             onClick={() => handleSetQtyDirect(idx)}
                             style={{ color: primaryColor }}
-                            className="w-6 sm:w-7 text-center font-black text-xs select-none hover:underline cursor-pointer"
+                            className="w-6 sm:w-7 text-center font-black text-sm select-none hover:underline cursor-pointer"
                             title="Click to type quantity directly"
                           >
                             {item.qty}
@@ -1984,7 +1984,7 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
                           title="Click to customize modifiers & notes"
                         >
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="font-bold text-xs text-[#242B28] truncate leading-snug">{item.name}</span>
+                            <span className="font-bold text-sm text-[#242B28] truncate leading-snug">{item.name}</span>
                             {Boolean(item.isOrdered && activeTableContext?.orderId) && (
                               <span className="text-[9px] font-black uppercase tracking-wider px-1 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-300">
                                 {Number(item.originalQty || 0) > 0 && item.qty > Number(item.originalQty)
@@ -2005,12 +2005,12 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
                             return (
                               <div className="flex flex-wrap gap-1 mt-1">
                                 {addons.map((a, i) => (
-                                  <span key={`a-${i}`} className="text-[10px] bg-white text-[#242B28] px-1.5 py-0.5 rounded border border-[#E0E3DF] font-medium">
+                                  <span key={`a-${i}`} className="text-xs bg-white text-[#242B28] px-1.5 py-0.5 rounded border border-[#E0E3DF] font-medium">
                                     + {a}
                                   </span>
                                 ))}
                                 {removals.map((r, i) => (
-                                  <span key={`r-${i}`} className="text-[10px] bg-rose-50 text-rose-800 px-1.5 py-0.5 rounded border border-rose-200 font-bold">
+                                  <span key={`r-${i}`} className="text-xs bg-rose-50 text-rose-800 px-1.5 py-0.5 rounded border border-rose-200 font-bold">
                                     - {r}
                                   </span>
                                 ))}
@@ -2019,7 +2019,7 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
                           })()}
 
                           {item.note && (
-                            <div className="text-[10px] text-amber-800 italic truncate leading-tight mt-0.5 font-medium">
+                            <div className="text-xs text-amber-800 italic truncate leading-tight mt-0.5 font-medium">
                               Note: {item.note}
                             </div>
                           )}
