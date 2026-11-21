@@ -5,6 +5,7 @@ export type StatusGroup =
   | 'READY'
   | 'COMPLETED'
   | 'HELD'
+  | 'PREORDERED'
   | 'CANCELLED';
 
 export type ChannelType = 'POS' | 'Tables' | 'WhatsApp' | 'App' | 'Toters' | 'NokNok' | 'Other';
@@ -75,6 +76,11 @@ export interface FlowPosOrder {
   clientOrderToken: string | null;
   orderSource?: string;
   isMigration?: boolean;
+  isScheduled?: boolean;
+  scheduledFor?: string | null;
+  scheduledTimeDisplay?: string | null;
+  scheduledNotes?: string | null;
+  isFutureScheduled?: boolean;
   conceptCode?: 'NEO' | 'OVRLOAD' | 'WICKD' | string;
   conceptName?: string;
   conceptColor?: string;
@@ -135,8 +141,31 @@ export function computeSlaStatus(
 export function adaptOvrloadOrder(raw: any, slaConfig: SlaConfig = DEFAULT_SLA_CONFIG): FlowPosOrder {
   const createdDate = raw.created_at ? new Date(raw.created_at) : new Date();
   const elapsed = calculateElapsedMinutes(createdDate);
-  const statusGroup = normalizeStatus(raw.status);
+  const baseStatusGroup = normalizeStatus(raw.status);
   const channel = normalizeChannel(raw.order_source);
+
+  const isScheduled = Boolean(
+    raw.is_scheduled ||
+    raw.scheduled_for ||
+    (raw.special_instructions && String(raw.special_instructions).includes('SCHEDULED'))
+  );
+  const scheduledFor = raw.scheduled_for || null;
+  const scheduledTimeDisplay = raw.scheduled_time_display || null;
+  const scheduledNotes = raw.scheduled_notes || raw.scheduled_note || null;
+
+  let isFutureSched = false;
+  if (isScheduled && scheduledFor) {
+    const sDate = new Date(String(scheduledFor).replace(' ', 'T'));
+    if (!isNaN(sDate.getTime())) {
+      const now = new Date();
+      const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+      isFutureSched = sDate.getTime() > endOfToday.getTime();
+    }
+  }
+
+  const statusGroup: StatusGroup = (isScheduled && baseStatusGroup !== 'COMPLETED' && baseStatusGroup !== 'CANCELLED')
+    ? 'PREORDERED'
+    : baseStatusGroup;
 
   const rawItems = raw.items || raw.pos_order_items || [];
   const items: FlowPosOrderItem[] = rawItems.map((i: any, idx: number) => {
@@ -312,6 +341,11 @@ export function adaptOvrloadOrder(raw: any, slaConfig: SlaConfig = DEFAULT_SLA_C
     clientOrderToken: raw.client_order_token || null,
     orderSource: raw.order_source || null,
     isMigration: raw.order_source === 'SYNTHETIC_MIGRATION' || (raw.special_instructions && raw.special_instructions.includes('GENERATED_MIGRATION')),
+    isScheduled,
+    scheduledFor,
+    scheduledTimeDisplay,
+    scheduledNotes,
+    isFutureScheduled: isFutureSched,
     conceptCode,
     conceptName,
     conceptColor,

@@ -56,6 +56,10 @@ export interface OrderPrintMetadata {
   fire_round?: number;
   total_holds?: number;
   is_reprint?: boolean;
+  is_scheduled?: boolean;
+  scheduled_for?: string;
+  scheduled_time_display?: string;
+  scheduled_notes?: string;
 }
 
 export interface PhysicalPrinterTicketJob {
@@ -495,8 +499,12 @@ export async function buildPreparationPrintJobs(params: {
   for (const [printerId, group] of itemsByPrinterId.entries()) {
     const sectionName = group.section || 'Kitchen';
     const isReprint = Boolean(meta.is_reprint);
+    const isSched = Boolean(meta.is_scheduled || meta.scheduled_for);
+    const dueTime = meta.scheduled_time_display || meta.scheduled_for || '';
     const stationTitle = isReprint
       ? `*** REPRINT ${sectionName.toUpperCase()} CHIT ***`
+      : isSched
+      ? `*** PRE-ORDER (DUE: ${dueTime}) ***`
       : `*** ${sectionName.toUpperCase()} PREPARATION CHIT ***`;
 
     const ticketPayload = {
@@ -516,6 +524,10 @@ export async function buildPreparationPrintJobs(params: {
       timestamp: meta.timestamp || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       fire_round: meta.fire_round || 1,
       is_reprint: isReprint,
+      is_scheduled: isSched,
+      scheduled_for: meta.scheduled_for || null,
+      scheduled_time_display: meta.scheduled_time_display || null,
+      scheduled_notes: meta.scheduled_notes || null,
       // Items grouped with parent bundle headers
       items: group.items.map(it => ({
         name: it.name,

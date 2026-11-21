@@ -175,6 +175,13 @@ export function formatEscPosText(data: ThermalReceiptData): string {
     if (data.station) {
       lines.push(center(`STATION: ${data.station.toUpperCase()}`));
     }
+    if (data.is_scheduled || data.scheduled_for || data.isScheduledOrder) {
+      const dueStr = data.scheduled_time_display || data.scheduled_for || 'SCHEDULED';
+      lines.push(center('*** PRE-ORDER / SCHEDULED ***'));
+      lines.push(center(`DUE TIME: ${dueStr.toUpperCase()}`));
+      const sNote = data.scheduled_notes || data.scheduled_note;
+      if (sNote) lines.push(center(`NOTE: ${sNote.toUpperCase()}`));
+    }
     lines.push(divider('='));
 
     const idStr = data.id || data.orderId ? `Order #${data.id || data.orderId}` : '';
@@ -301,6 +308,14 @@ export function formatEscPosText(data: ThermalReceiptData): string {
   const server = data.served_by || data.waiter_name || data.server_name || data.cashier_name || 'Staff';
   lines.push(`Served by: ${server}`);
   lines.push(cols(`Channel : ${data.order_source || 'POS'}`, `Type: ${data.order_type || 'DINE-IN'}`));
+  if (data.is_scheduled || data.scheduled_for || data.isScheduledOrder) {
+    const dueStr = data.scheduled_time_display || data.scheduled_for || 'SCHEDULED';
+    lines.push(divider('-'));
+    lines.push(center('*** PRE-ORDER / SCHEDULED ***'));
+    lines.push(center(`DUE FOR: ${dueStr}`));
+    const sNote = data.scheduled_notes || data.scheduled_note;
+    if (sNote) lines.push(center(`NOTE: ${sNote}`));
+  }
   lines.push(divider('-'));
 
   lines.push(cols(' QTY  ITEM', 'PRICE (USD)'));

@@ -4019,7 +4019,9 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       total,
       is_scheduled: Boolean(effScheduledTime),
       scheduled_for: effScheduledTime ? `${effScheduledDate} ${effScheduledTime}` : undefined,
+      scheduled_time_display: effScheduledTime ? formatScheduledTimeDisplay(effScheduledDate, effScheduledTime) : undefined,
       scheduled_note: effScheduledNote || undefined,
+      scheduled_notes: effScheduledNote || undefined,
       items: ticketItems.map((item) => ({
         line_item_id: item.line_item_id,
         product_id: item.product_id,
@@ -4122,30 +4124,43 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     refreshFloorTables().catch(() => {});
 
     // 2. DISPATCH PRINTER JOBS IN BACKGROUND (Non-blocking)
-    if (scheduledKitchenPayload) {
-      handlePrint(scheduledKitchenPayload).catch(pe => console.warn("Kitchen print for scheduled order error:", pe));
-    } else if (unprintedItems.length > 0) {
-      const effBranchId = currentBranchId || commerceBranchLink?.flow_branch_id;
-      buildPreparationPrintJobs({
-        orderMetadata: {
-          order_id: heldOrderId || 'Chit',
-          table_label: capturedContext ? capturedContext.tableCode : resolvedCustomerName,
-          table_code: capturedContext?.tableCode,
-          guest_count: capturedContext?.guestCount || 1,
-          waiter_name: capturedContext?.waiterName || activeCashier?.name || user?.name || 'Staff',
-          cashier_name: activeCashier?.name || user?.name || 'Cashier',
-          service_type: isDineIn ? 'dine_in' : (orderType || 'takeout'),
-          fire_round: 1
-        },
-        items: unprintedItems,
-        branchId: effBranchId || undefined,
-        restaurantId: currentRestaurantId,
-        productsCatalog: products
-      }).then(({ jobs }) => {
-        if (jobs.length > 0) {
-          dispatchPhysicalPrintJobs(jobs).catch(pe => console.warn("Intelligent ticket routing error on order placement:", pe));
-        }
-      }).catch(pe => console.warn("Build preparation print jobs error:", pe));
+    // If the order is scheduled for a future calendar day, do NOT fire tickets to the kitchen today!
+    const isScheduledForFuture = Boolean(
+      effScheduledTime &&
+      effScheduledDate &&
+      effScheduledDate > new Date().toISOString().split('T')[0]
+    );
+
+    if (!isScheduledForFuture) {
+      if (scheduledKitchenPayload) {
+        handlePrint(scheduledKitchenPayload).catch(pe => console.warn("Kitchen print for scheduled order error:", pe));
+      } else if (unprintedItems.length > 0) {
+        const effBranchId = currentBranchId || commerceBranchLink?.flow_branch_id;
+        buildPreparationPrintJobs({
+          orderMetadata: {
+            order_id: heldOrderId || 'Chit',
+            table_label: capturedContext ? capturedContext.tableCode : resolvedCustomerName,
+            table_code: capturedContext?.tableCode,
+            guest_count: capturedContext?.guestCount || 1,
+            waiter_name: capturedContext?.waiterName || activeCashier?.name || user?.name || 'Staff',
+            cashier_name: activeCashier?.name || user?.name || 'Cashier',
+            service_type: isDineIn ? 'dine_in' : (orderType || 'takeout'),
+            fire_round: 1,
+            is_scheduled: Boolean(effScheduledTime),
+            scheduled_for: effScheduledTime ? `${effScheduledDate} ${effScheduledTime}` : undefined,
+            scheduled_time_display: effScheduledTime ? formatScheduledTimeDisplay(effScheduledDate, effScheduledTime) : undefined,
+            scheduled_notes: effScheduledNote || undefined
+          },
+          items: unprintedItems,
+          branchId: effBranchId || undefined,
+          restaurantId: currentRestaurantId,
+          productsCatalog: products
+        }).then(({ jobs }) => {
+          if (jobs.length > 0) {
+            dispatchPhysicalPrintJobs(jobs).catch(pe => console.warn("Intelligent ticket routing error on order placement:", pe));
+          }
+        }).catch(pe => console.warn("Build preparation print jobs error:", pe));
+      }
     }
 
     // 3. BACKGROUND SERVER SYNC VIA PERSISTENT QUEUE

@@ -45,6 +45,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({
       case 'READY': return 'bg-emerald-100 text-emerald-900 border-emerald-300 font-black';
       case 'COMPLETED': return 'bg-slate-100 text-slate-700 border-slate-300';
       case 'HELD': return 'bg-purple-100 text-purple-900 border-purple-300';
+      case 'PREORDERED': return 'bg-amber-100 text-amber-900 border-amber-300 font-black';
       case 'CANCELLED': return 'bg-rose-100 text-rose-800 border-rose-300';
       default: return 'bg-slate-100 text-slate-700 border-slate-300';
     }
@@ -144,6 +145,11 @@ export const OrderCard: React.FC<OrderCardProps> = ({
                 <span className={'px-2 py-0.5 rounded-md border text-[10px] font-extrabold flex items-center gap-1 ' + getChannelBadge(order.channel)}>
                   {order.isTableOrder && <span>🪑</span>}
                   <span>{order.isTableOrder ? 'Tables' : order.channel}</span>
+                </span>
+              )}
+              {order.isScheduled && (
+                <span className="px-2 py-0.5 rounded-md border text-[10px] font-black bg-amber-100 text-amber-900 border-amber-300 flex items-center gap-1">
+                  <span>📅</span> DUE: {order.scheduledTimeDisplay || order.scheduledFor || 'Scheduled'}
                 </span>
               )}
               {order.isPaidInAdvance && (

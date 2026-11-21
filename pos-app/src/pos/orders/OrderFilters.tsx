@@ -44,6 +44,7 @@ export const OrderFilters: React.FC<OrderFiltersProps> = ({
   ];
 
   const secondaryTabs: { id: StatusGroup | 'ALL'; label: string; icon: string }[] = [
+    { id: 'PREORDERED', label: 'Pre-ordered', icon: '📅' },
     { id: 'HELD', label: 'Held', icon: '⏸️' },
     { id: 'ALL', label: 'All Orders', icon: '📋' }
   ];
@@ -102,6 +103,7 @@ export const OrderFilters: React.FC<OrderFiltersProps> = ({
           {secondaryTabs.map(tab => {
             const isActive = activeStatusTab === tab.id;
             const count = counts[tab.id] || 0;
+            const isPreorder = tab.id === 'PREORDERED';
             return (
               <button
                 key={tab.id}
@@ -109,13 +111,15 @@ export const OrderFilters: React.FC<OrderFiltersProps> = ({
                 onClick={() => onStatusTabChange(tab.id)}
                 className={'px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ' + (
                   isActive
-                    ? 'bg-gray-700 text-white border border-gray-500'
+                    ? (isPreorder ? 'bg-amber-600 text-white border border-amber-500 shadow-sm' : 'bg-gray-700 text-white border border-gray-500')
                     : 'text-slate-600 hover:text-slate-900 hover:bg-white'
                 )}
               >
                 <span>{tab.icon}</span>
                 <span>{tab.label}</span>
-                <span className="text-[10px] text-slate-500">({count})</span>
+                <span className={`text-[10px] font-bold ${isActive ? 'text-white/80' : isPreorder && count > 0 ? 'text-amber-700 font-black' : 'text-slate-500'}`}>
+                  ({count})
+                </span>
               </button>
             );
           })}

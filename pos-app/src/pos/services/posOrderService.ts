@@ -570,7 +570,7 @@ export async function fetchDirectOrders(
     }
     if (shiftCutoffTime) {
       query = query.or(
-        `created_at.gte.${shiftCutoffTime},status.in.(held,preparing,new,confirmed,ready,open,occupied,bill_requested),order_source.eq.SYNTHETIC_MIGRATION`
+        `created_at.gte.${shiftCutoffTime},status.in.(held,preparing,new,confirmed,ready,open,occupied,bill_requested),is_scheduled.eq.true,order_source.eq.SYNTHETIC_MIGRATION`
       );
     }
 

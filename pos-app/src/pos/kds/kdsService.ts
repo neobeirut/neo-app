@@ -508,7 +508,24 @@ export async function fetchKdsFires(
       JSON.parse(localStorage.getItem('flow_kds_bumped_tickets') || '{}');
     let hasBumpUpdates = false;
 
+    const isFutureScheduledOrder = (order: any): boolean => {
+      const isSched = Boolean(
+        order.is_scheduled ||
+        order.scheduled_for ||
+        (order.special_instructions && String(order.special_instructions).includes('SCHEDULED'))
+      );
+      if (!isSched) return false;
+      const schedTimeStr = order.scheduled_for || '';
+      if (!schedTimeStr) return false;
+      const schedDate = new Date(schedTimeStr.replace(' ', 'T'));
+      if (isNaN(schedDate.getTime())) return false;
+      const now = new Date();
+      const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+      return schedDate.getTime() > endOfToday.getTime();
+    };
+
     const fires: KdsFire[] = (orders || [])
+      .filter((order: any) => !isFutureScheduledOrder(order))
       .map((order: any) => {
         const orderItems = order.items || [];
 
@@ -751,6 +768,10 @@ export async function fetchKdsFires(
           status: 'active' as const,
           fired_at: order.created_at,
           created_at: order.created_at,
+          is_scheduled: Boolean(order.is_scheduled || order.scheduled_for),
+          scheduled_for: order.scheduled_for || null,
+          scheduled_time_display: order.scheduled_time_display || null,
+          scheduled_notes: order.scheduled_notes || order.scheduled_note || null,
           items: kdsItems
         };
       })

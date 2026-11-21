@@ -38,6 +38,9 @@ export function filterOrders(
       if (filters.activeStatusTab === 'TABLES') {
         // Tables tab should only display open tables (the active ones)
         if (!isTableOrderOpen(order)) return false;
+      } else if (filters.activeStatusTab === 'PREORDERED') {
+        if (order.statusGroup !== 'PREORDERED' && !order.isScheduled) return false;
+        if (order.statusGroup === 'CANCELLED') return false;
       } else {
         if (order.statusGroup !== filters.activeStatusTab) return false;
       }
@@ -72,6 +75,7 @@ export function countOrdersByStatus(orders: FlowPosOrder[]): Record<StatusGroup 
     READY: 0,
     COMPLETED: 0,
     HELD: 0,
+    PREORDERED: 0,
     CANCELLED: 0,
     TABLES: 0,
     ALL: orders.length

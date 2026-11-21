@@ -4,6 +4,21 @@ import { KdsItem } from './KdsItem';
 import { updateFireItemStatus, retryPrintChit, bumpKdsFire, isHoldItem } from './kdsService';
 import { kdsAudio } from './kdsAudio';
 
+function formatScheduledDue(schedStr?: string | null): string {
+  if (!schedStr) return '';
+  if (schedStr.includes('Today') || schedStr.includes('Tomorrow') || schedStr.includes('at')) {
+    return schedStr;
+  }
+  const d = new Date(schedStr.replace(' ', 'T'));
+  if (isNaN(d.getTime())) return schedStr;
+  const now = new Date();
+  const isToday = d.toDateString() === now.toDateString();
+  const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  if (isToday) return `Today, ${timeStr}`;
+  const dateStr = d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  return `${dateStr}, ${timeStr}`;
+}
+
 interface KdsTicketProps {
   fire: KdsFire;
   currentStation?: KdsStation | null;
@@ -255,6 +270,23 @@ export const KdsTicket: React.FC<KdsTicketProps> = ({
           )}
         </div>
       </div>
+
+      {/* Prominent Scheduled Due Time Banner */}
+      {(fire.is_scheduled || fire.scheduled_for) && (
+        <div className="bg-amber-500 text-slate-950 px-3 py-1.5 border-b border-amber-600 font-black text-xs flex items-center justify-between gap-2 shadow-inner">
+          <div className="flex items-center gap-1.5">
+            <span className="text-sm">⏰</span>
+            <span className="uppercase tracking-wider">
+              PRE-ORDER • DUE FOR: {formatScheduledDue(fire.scheduled_time_display || fire.scheduled_for)}
+            </span>
+          </div>
+          {fire.scheduled_notes && (
+            <span className="text-[11px] font-bold opacity-90 truncate max-w-[200px]" title={fire.scheduled_notes}>
+              Note: {fire.scheduled_notes}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Items list - dynamic natural height, no fixed height or internal scrollbar */}
       <div className={`p-3 flex-1 bg-white ${

@@ -72,6 +72,10 @@ export interface KdsFire {
   status: KdsFireStatus;
   fired_at: string;
   created_at: string;
+  is_scheduled?: boolean;
+  scheduled_for?: string | null;
+  scheduled_time_display?: string | null;
+  scheduled_notes?: string | null;
   items: KdsFireItem[];
 }
 
