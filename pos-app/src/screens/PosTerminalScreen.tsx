@@ -2789,7 +2789,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
               parent_option_id: selOpt.id,
               parent_option_name: optName,
               option_group_name: dynamicGroupName,
-              price: isBundle ? 0 : (subO.price || 0),
+              price: subO.price || 0,
             }));
 
             result.push([dynamicGroupName, mappedSubOpts]);
@@ -2859,7 +2859,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                 parent_option_id: bOpt.id,
                 parent_option_name: optName,
                 option_group_name: dynamicGroupName,
-                price: isBundle ? 0 : (subO.price || 0),
+                price: subO.price || 0,
                 quantity: 1,
               });
             });
@@ -2925,7 +2925,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                 parent_option_id: custOption.id,
                 parent_option_name: optName,
                 option_group_name: dynamicGroupName,
-                price: isBundle ? 0 : (subO.price || 0),
+                price: subO.price || 0,
                 quantity: 1,
               });
             });
@@ -2995,12 +2995,10 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     );
 
     let extraCost = 0;
-    if (!isBundle) {
-      selectedCustomizations.forEach((c) => {
-        const q = Number(c.quantity || 1);
-        if (c.price) extraCost += c.price * q;
-      });
-    }
+    selectedCustomizations.forEach((c) => {
+      const q = Number(c.quantity || 1);
+      if (c.price) extraCost += c.price * q;
+    });
 
     const unitPrice = (currentProduct.unit_price_usd || 0) + extraCost;
 
@@ -6977,12 +6975,10 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         });
 
         let extraCost = 0;
-        if (!isBundle) {
-          selectedCustomizations.forEach((c: any) => {
-            const q = Number(c.quantity || 1);
-            if (c.price) extraCost += c.price * q;
-          });
-        }
+        selectedCustomizations.forEach((c: any) => {
+          const q = Number(c.quantity || 1);
+          if (c.price) extraCost += c.price * q;
+        });
         const finalUnitPrice = (currentProduct.unit_price_usd || 0) + extraCost;
 
         const handleNextStep = () => {
@@ -7154,7 +7150,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
 
                             const rawOptName = opt.name || opt.ingredient || '';
                             const displayName = rawOptName.replace(/\s*\(\s*included\s*\)/gi, '').trim();
-                            const hasExtraPrice = !isBundle && opt.price > 0;
+                            const hasExtraPrice = opt.price > 0;
                             const isOptUnavailable = isCustomization86d(opt);
 
                             return (

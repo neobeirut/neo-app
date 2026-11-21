@@ -73,7 +73,7 @@ export function buildDynamicModifierGroups(
             parent_option_id: selOpt.id,
             parent_option_name: optName,
             option_group_name: dynamicGroupName,
-            price: isBundle ? 0 : (subO.price || 0),
+            price: subO.price || 0,
           }));
 
           result.push([dynamicGroupName, mappedSubOpts]);
@@ -282,7 +282,7 @@ export function PosModifierModal({
             parent_option_id: opt.id,
             parent_option_name: optName,
             option_group_name: dynamicGroupName,
-            price: isBundle ? 0 : (subO.price || 0),
+            price: subO.price || 0,
             quantity: 1,
           });
         });
@@ -357,12 +357,10 @@ export function PosModifierModal({
   });
 
   let extraCost = 0;
-  if (!isBundle) {
-    selectedCustomizations.forEach((c: any) => {
-      const q = Number(c.quantity || 1);
-      if (c.price) extraCost += c.price * q;
-    });
-  }
+  selectedCustomizations.forEach((c: any) => {
+    const q = Number(c.quantity || 1);
+    if (c.price) extraCost += c.price * q;
+  });
   const basePrice = product.unit_price_usd !== undefined ? product.unit_price_usd : (product.price || 0);
   const finalUnitPrice = basePrice + extraCost;
 
@@ -635,7 +633,7 @@ export function PosModifierModal({
                       );
                       const rawOptName = opt.name || opt.ingredient || '';
                       const displayName = rawOptName.replace(/\s*\(\s*included\s*\)/gi, '').trim();
-                      const hasExtraPrice = !isBundle && opt.price > 0;
+                      const hasExtraPrice = opt.price > 0;
                       const isOptUnavailable = Boolean(isCustomization86d && isCustomization86d(opt));
 
                       return (

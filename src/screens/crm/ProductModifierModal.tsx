@@ -50,6 +50,7 @@ export default function ProductModifierModal({ product, onClose, onSaved }: Prod
   const [addProductsCategory, setAddProductsCategory] = useState<number | ''>('');
   const [addProductsGroupName, setAddProductsGroupName] = useState('');
   const [addProductsPrice, setAddProductsPrice] = useState<number>(0);
+  const [addProductsUseOriginalPrice, setAddProductsUseOriginalPrice] = useState(false);
   const [addProductsRequired, setAddProductsRequired] = useState(true);
   const [addProductsMultiSelect, setAddProductsMultiSelect] = useState(false);
   const [addProductsIsDefault, setAddProductsIsDefault] = useState(false);
@@ -215,6 +216,32 @@ export default function ProductModifierModal({ product, onClose, onSaved }: Prod
     }
   };
 
+  const handleSyncMenuPricesForGroup = async (groupName: string, items: CustomizationItem[]) => {
+    setSavingGroupSetting(`${groupName}:sync`);
+    try {
+      const groupLinks = linkedLinks.filter(l => {
+        const itemGroup = normalizeGroupName(l.option_group_name || '', l.customization_type || '');
+        return itemGroup === groupName;
+      });
+
+      for (const link of groupLinks) {
+        const matchedProd = rawProductsList.find(p => p.name.toLowerCase() === link.ingredient.toLowerCase());
+        if (matchedProd) {
+          const menuPrice = Number(matchedProd.price ?? matchedProd.unit_price_usd ?? 0);
+          await crmService.updateProductCustomization(link.id, { price: menuPrice });
+          link.price = menuPrice;
+        }
+      }
+      setLinkedLinks([...linkedLinks]);
+      onSaved();
+      alert(`Synchronized prices from menu for "${groupName}"!`);
+    } catch (err: any) {
+      alert('Failed to sync menu prices: ' + err.message);
+    } finally {
+      setSavingGroupSetting(null);
+    }
+  };
+
   const handleAddProductsToGroup = async () => {
     if (!addProductsGroupName.trim()) {
       alert('Please enter or select a group name (e.g. Your Eggs, Your Coffee, Your Croissant, Included Items).');
@@ -231,6 +258,10 @@ export default function ProductModifierModal({ product, onClose, onSaved }: Prod
       const gName = addProductsGroupName.trim();
 
       for (const prodItem of prodsToAdd) {
+        const itemEffectivePrice = addProductsUseOriginalPrice
+          ? Number(prodItem.price ?? prodItem.unit_price_usd ?? 0)
+          : addProductsPrice;
+
         // 1. Check if customization_item exists by name or create one
         let cItem = allModifiers.find(m => m.name.toLowerCase() === prodItem.name.toLowerCase());
         if (!cItem) {
@@ -238,7 +269,7 @@ export default function ProductModifierModal({ product, onClose, onSaved }: Prod
             name: prodItem.name,
             option_group_name: gName,
             customization_type: 'option',
-            default_price: addProductsPrice,
+            default_price: itemEffectivePrice,
             is_active: true,
             is_default: addProductsIsDefault,
             is_required: addProductsRequired,
@@ -249,7 +280,7 @@ export default function ProductModifierModal({ product, onClose, onSaved }: Prod
           if (gName && (!cItem.option_group_name || normalizeGroupName(cItem.option_group_name, cItem.customization_type) === 'Add On')) {
             await crmService.updateCustomizationItem(cItem.id, {
               option_group_name: gName,
-              default_price: addProductsPrice !== 0 ? addProductsPrice : cItem.default_price,
+              default_price: itemEffectivePrice !== 0 ? itemEffectivePrice : cItem.default_price,
             });
             cItem = { ...cItem, option_group_name: gName };
           }
@@ -259,7 +290,7 @@ export default function ProductModifierModal({ product, onClose, onSaved }: Prod
         await crmService.linkModifierToProduct(
           product.id,
           cItem,
-          addProductsPrice,
+          itemEffectivePrice,
           gName,
           {
             is_required: addProductsRequired,
@@ -671,6 +702,27 @@ export default function ProductModifierModal({ product, onClose, onSaved }: Prod
                 title={`Set custom price for all choices in "${groupName}" ($0 for free)`}
               >
                 Set Price ($)
+              </button>
+            )}
+            {hasAnyLinked && (
+              <button
+                type="button"
+                disabled={Boolean(savingGroupSetting) || Boolean(savingItemId)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleSyncMenuPricesForGroup(groupName, items);
+                }}
+                style={{
+                  fontSize: '11px', fontWeight: 700,
+                  padding: '2px 8px', borderRadius: '6px',
+                  border: '1px solid #cbd5e1',
+                  backgroundColor: '#ffffff',
+                  color: '#2563eb',
+                  cursor: 'pointer'
+                }}
+                title={`Sync prices from menu products for all items in "${groupName}"`}
+              >
+                Use Menu Prices
               </button>
             )}
             <button
@@ -1220,20 +1272,31 @@ export default function ProductModifierModal({ product, onClose, onSaved }: Prod
                       ⚙️ Also import modifier options of these products (Milk, Bread, Cooking, etc.)
                     </label>
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: 'auto' }}>
-                      <span style={{ fontSize: '11px', fontWeight: 700, color: '#334155' }}>Price:</span>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', fontWeight: 700, color: '#047857', cursor: 'pointer' }}>
                       <input
-                        type="number"
-                        step="0.5"
-                        value={addProductsPrice}
-                        onChange={e => setAddProductsPrice(parseFloat(e.target.value) || 0)}
-                        style={{
-                          width: '65px', padding: '4px 6px', borderRadius: '6px',
-                          border: '1px solid #cbd5e1', fontSize: '11px', fontWeight: 700, textAlign: 'right'
-                        }}
+                        type="checkbox"
+                        checked={addProductsUseOriginalPrice}
+                        onChange={e => setAddProductsUseOriginalPrice(e.target.checked)}
                       />
-                      <span style={{ fontSize: '10px', color: '#64748b' }}>($0 for free bundle items)</span>
-                    </div>
+                      💰 Use original product price (e.g. $25 for Bœuf Bourguignon)
+                    </label>
+
+                    {!addProductsUseOriginalPrice && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: 'auto' }}>
+                        <span style={{ fontSize: '11px', fontWeight: 700, color: '#334155' }}>Price:</span>
+                        <input
+                          type="number"
+                          step="0.5"
+                          value={addProductsPrice}
+                          onChange={e => setAddProductsPrice(parseFloat(e.target.value) || 0)}
+                          style={{
+                            width: '65px', padding: '4px 6px', borderRadius: '6px',
+                            border: '1px solid #cbd5e1', fontSize: '11px', fontWeight: 700, textAlign: 'right'
+                          }}
+                        />
+                        <span style={{ fontSize: '10px', color: '#64748b' }}>($0 for free bundle items)</span>
+                      </div>
+                    )}
                   </div>
 
                   {/* 3. Product Checklist */}
