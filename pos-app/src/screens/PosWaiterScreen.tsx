@@ -16,6 +16,7 @@ import {
   getGridButtonDensity
 } from '../pos/services/posScreenService';
 import type { PosScreen, PosScreenButton } from '../pos/types/posScreen';
+import { enqueueSyncTask } from '../pos/services/posBackgroundSyncService';
 import {
   createDirectOrder,
   updateDirectOrderStatus,
@@ -1204,7 +1205,6 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
       return;
     }
 
-    setIsSubmitting(true);
     try {
       const calculatedSubtotal = ticketItems.reduce((acc, item) => {
         const itemTotal = (Number(item.unit_price) || 0) * (Number(item.qty) || 1);
@@ -1245,45 +1245,8 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
         }))
       };
 
-      let targetOrderId = activeTableContext?.orderId;
-      if (targetOrderId) {
-        if (COMMERCE_API_BASE && /^\d+$/.test(String(targetOrderId))) {
-          try {
-            await fetch(`${COMMERCE_API_BASE}/api/pos/orders/${targetOrderId}/status`, {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                status: 'held',
-                items: orderPayload.items
-              })
-            });
-          } catch (e) {
-            console.warn('Commerce API status update warning from waiter screen:', e);
-          }
-        }
-        await updateDirectOrderStatus(targetOrderId, {
-          items: orderPayload.items
-        });
-      } else {
-        const createRes = await createDirectOrder(orderPayload);
-        if (!createRes.success) {
-          throw new Error(createRes.error || 'Failed to create dine-in table order');
-        }
-        targetOrderId = createRes.order?.id || createRes.orderId;
-      }
-
-      // Link table session
-      if (activeTableContext?.sessionId && targetOrderId) {
-        await supabase
-          .from('pos_table_sessions')
-          .update({
-            commerce_order_id: targetOrderId,
-            status: 'occupied',
-            sync_status: 'synced',
-            last_sync_error: null
-          })
-          .eq('id', activeTableContext.sessionId);
-      }
+      const targetOrderId = activeTableContext?.orderId;
+      const capturedContext = activeTableContext;
 
       // Send Chits to Preparation Printers: Intelligent multi-printer routing & bundle expansion
       const unprintedItems: any[] = [];
@@ -1299,41 +1262,43 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
           });
         }
       }
-      if (unprintedItems.length > 0) {
-        try {
-          const { jobs, unroutedCount, excludedNoPrintCount } = await buildPreparationPrintJobs({
-            orderMetadata: {
-              order_id: targetOrderId || `Table-${activeTableContext?.tableCode}`,
-              table_label: activeTableContext?.tableCode,
-              table_code: activeTableContext?.tableCode,
-              guest_count: activeTableContext?.guestCount || 1,
-              waiter_name: currentUser?.name || 'Waiter',
-              service_type: 'dine_in'
-            },
-            items: unprintedItems,
-            branchId: branchId || undefined,
-            restaurantId: restaurantId || undefined,
-            productsCatalog: products
-          });
 
-          if (jobs.length > 0) {
-            const dispatchRes = await dispatchPhysicalPrintJobs(jobs);
-            if (!dispatchRes.success) {
-              console.warn('Some preparation printer jobs failed:', dispatchRes.results);
-            }
-          }
-        } catch (e) {
-          console.warn('Preparation printer ticket dispatch error:', e);
-        }
-      }
-
-      setTicketItems(prev => prev.map(it => ({ ...it, isOrdered: true, originalQty: it.qty })));
-      showNotification(`📤 Order sent to kitchen for Table ${activeTableContext?.tableCode}!`, 'success');
-
-      // Return immediately to table selection page
+      // 1. Instant optimistic feedback & immediate navigation (0ms)
+      showNotification(`📤 Order sent to kitchen for Table ${capturedContext?.tableCode}!`, 'success');
       setView('floor');
       setActiveTableContext(null);
       setTicketItems([]);
+      setIsSubmitting(false);
+
+      // 2. Dispatch printer tickets in background
+      if (unprintedItems.length > 0) {
+        buildPreparationPrintJobs({
+          orderMetadata: {
+            order_id: targetOrderId || `Table-${capturedContext?.tableCode}`,
+            table_label: capturedContext?.tableCode,
+            table_code: capturedContext?.tableCode,
+            guest_count: capturedContext?.guestCount || 1,
+            waiter_name: currentUser?.name || 'Waiter',
+            service_type: 'dine_in'
+          },
+          items: unprintedItems,
+          branchId: branchId || undefined,
+          restaurantId: restaurantId || undefined,
+          productsCatalog: products
+        }).then(({ jobs }) => {
+          if (jobs.length > 0) {
+            dispatchPhysicalPrintJobs(jobs).catch(pe => console.warn('Some preparation printer jobs failed:', pe));
+          }
+        }).catch(e => console.warn('Preparation printer ticket dispatch error:', e));
+      }
+
+      // 3. Queue background sync to server
+      enqueueSyncTask('hold', {
+        heldOrderId: targetOrderId,
+        orderPayload,
+        activeTableContext: capturedContext,
+        isDineIn: true
+      });
     } catch (err: any) {
       console.error('Failed to send order to kitchen:', err);
       showNotification(err?.message || 'Error sending order to kitchen.', 'error');

@@ -99,6 +99,7 @@ import {
   reversePosOrderInventory,
   resolveCanonicalSalesChannel
 } from "../pos/services/posOrderService";
+import { enqueueSyncTask } from "../pos/services/posBackgroundSyncService";
 
 
 const FAVORITE_PRODUCT_NAMES = [
@@ -1322,6 +1323,21 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [validationError, setValidationError] = useState("");
   const [dispatchStatusMsg, setDispatchStatusMsg] = useState("");
+
+  // Background Sync state for zero-latency optimistic transactions
+  const [backgroundSyncCount, setBackgroundSyncCount] = useState<number>(0);
+  const [isBackgroundSyncing, setIsBackgroundSyncing] = useState<boolean>(false);
+
+  useEffect(() => {
+    const handleSyncStatus = (e: any) => {
+      if (e.detail) {
+        setBackgroundSyncCount(e.detail.pendingCount || 0);
+        setIsBackgroundSyncing(Boolean(e.detail.isSyncing));
+      }
+    };
+    window.addEventListener('flow:background_sync_status', handleSyncStatus);
+    return () => window.removeEventListener('flow:background_sync_status', handleSyncStatus);
+  }, []);
 
   // POS Screen Matrix & Horizontal Touch Bar States
   const [posScreens, setPosScreens] = useState<PosScreen[]>([]);
@@ -3965,316 +3981,181 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     const effScheduledDate = scheduleOverrides?.scheduledDate !== undefined ? scheduleOverrides.scheduledDate : scheduledOrderDate;
     const effScheduledNote = scheduleOverrides?.scheduledNote !== undefined ? scheduleOverrides.scheduledNote : scheduledOrderNote;
 
-    setIsSubmitting(true);
-    try {
-      const isDineIn = Boolean(activeTableContext);
-      const isPickup = orderType === "pickup" || (selectedChannel || "").toLowerCase().includes("pick");
-      const defaultCustomer = isDineIn
-        ? `Table ${activeTableContext?.tableCode}`
-        : isPickup
-        ? "Pickup Customer"
-        : "Direct Order";
-      const resolvedCustomerName = customerName.trim() || defaultCustomer;
+    const isDineIn = Boolean(activeTableContext);
+    const isPickup = orderType === "pickup" || (selectedChannel || "").toLowerCase().includes("pick");
+    const defaultCustomer = isDineIn
+      ? `Table ${activeTableContext?.tableCode}`
+      : isPickup
+      ? "Pickup Customer"
+      : "Direct Order";
+    const resolvedCustomerName = customerName.trim() || defaultCustomer;
+    const heldOrderId = activeTableContext?.orderId || editingOrderId;
+    const capturedContext = activeTableContext;
 
-      let heldOrderId = activeTableContext?.orderId || editingOrderId;
-      if (!heldOrderId && activeTableContext?.tableCode) {
-        try {
-          const { data: activeForTable } = await supabase
-            .from('pos_orders')
-            .select('id')
-            .in('table_label', [activeTableContext.tableCode, `T${activeTableContext.tableCode.replace(/^T/i, '')}`, `Table ${activeTableContext.tableCode}`])
-            .in('status', ['held', 'preparing', 'new', 'confirmed', 'ready', 'open', 'occupied', 'bill_requested'])
-            .order('id', { ascending: false })
-            .limit(1);
-          if (activeForTable && activeForTable.length > 0) {
-            heldOrderId = activeForTable[0].id;
-            setActiveTableContext(prev => prev ? { ...prev, orderId: heldOrderId } : null);
-            setEditingOrderId(heldOrderId);
-          }
-        } catch (e) {
-          console.warn('Could not check existing table order on send to kitchen:', e);
-        }
-      }
-      const orderPayload = {
-        branch_id: COMMERCE_API_BASE ? commerceBranchLink?.external_branch_id : (currentBranchId || commerceBranchLink?.flow_branch_id),
-        restaurant_id: currentRestaurantId,
-        concept_id: workspaceState.activeConcept.id,
-        client_order_token: clientOrderToken,
-        orderType: isDineIn ? "dine_in" : (orderType || "takeout"),
-        service_type: isDineIn ? "dine_in" : undefined,
-        table_label: activeTableContext ? activeTableContext.tableCode : undefined,
-        guest_count: activeTableContext ? (activeTableContext.guestCount || 1) : undefined,
-        waiter_reference: activeTableContext ? (activeTableContext.waiterName || user?.name) : (activeCashier?.name || user?.name),
-        cashierName: activeCashier?.name || user?.name || "Cashier",
-        orderSource: selectedChannel || "POS",
-        paymentMethod: selectedPaymentMethod || "Cash USD",
-        payment_status: "pending",
-        customerName: resolvedCustomerName,
-        customerPhone,
-        deliveryAddress,
-        status: isDineIn ? "held" : "preparing",
-        subtotal,
-        deliveryFee: (!isDineIn && orderType === "delivery") ? (Number(deliveryFee) || 0) : 0,
-        discountAmount,
-        is_vat_subscribed: isVatSubscribed,
-        vat_rate: isVatSubscribed ? vatRate : 0,
-        vat_amount: vatAmount,
-        total,
-        is_scheduled: Boolean(effScheduledTime),
-        scheduled_for: effScheduledTime ? `${effScheduledDate} ${effScheduledTime}` : undefined,
-        scheduled_note: effScheduledNote || undefined,
-        items: ticketItems.map((item) => ({
-          line_item_id: item.line_item_id,
-          product_id: item.product_id,
-          name: item.name,
-          quantity: item.qty,
-          qty: item.qty,
-          unit_price: item.unit_price,
-          unit_price_usd: item.unit_price,
-          price: item.unit_price,
-          total_price: Number(item.unit_price || 0) * Number(item.qty || 1),
-          customizations: item.selectedCustomizations || [],
-          comment: item.note,
-          item_added_by: item.item_added_by || activeCashier?.name || user?.name || "Cashier",
-          item_added_by_id: item.item_added_by_id || activeCashier?.id || user?.id || null
-        }))
-      };
+    const orderPayload = {
+      branch_id: COMMERCE_API_BASE ? commerceBranchLink?.external_branch_id : (currentBranchId || commerceBranchLink?.flow_branch_id),
+      restaurant_id: currentRestaurantId,
+      concept_id: workspaceState.activeConcept.id,
+      client_order_token: clientOrderToken,
+      orderType: isDineIn ? "dine_in" : (orderType || "takeout"),
+      service_type: isDineIn ? "dine_in" : undefined,
+      table_label: activeTableContext ? activeTableContext.tableCode : undefined,
+      guest_count: activeTableContext ? (activeTableContext.guestCount || 1) : undefined,
+      waiter_reference: activeTableContext ? (activeTableContext.waiterName || user?.name) : (activeCashier?.name || user?.name),
+      cashierName: activeCashier?.name || user?.name || "Cashier",
+      orderSource: selectedChannel || "POS",
+      paymentMethod: selectedPaymentMethod || "Cash USD",
+      payment_status: "pending",
+      customerName: resolvedCustomerName,
+      customerPhone,
+      deliveryAddress,
+      status: isDineIn ? "held" : "preparing",
+      subtotal,
+      deliveryFee: (!isDineIn && orderType === "delivery") ? (Number(deliveryFee) || 0) : 0,
+      discountAmount,
+      is_vat_subscribed: isVatSubscribed,
+      vat_rate: isVatSubscribed ? vatRate : 0,
+      vat_amount: vatAmount,
+      total,
+      is_scheduled: Boolean(effScheduledTime),
+      scheduled_for: effScheduledTime ? `${effScheduledDate} ${effScheduledTime}` : undefined,
+      scheduled_note: effScheduledNote || undefined,
+      items: ticketItems.map((item) => ({
+        line_item_id: item.line_item_id,
+        product_id: item.product_id,
+        name: item.name,
+        quantity: item.qty,
+        qty: item.qty,
+        unit_price: item.unit_price,
+        unit_price_usd: item.unit_price,
+        price: item.unit_price,
+        total_price: Number(item.unit_price || 0) * Number(item.qty || 1),
+        customizations: item.selectedCustomizations || [],
+        comment: item.note,
+        item_added_by: item.item_added_by || activeCashier?.name || user?.name || "Cashier",
+        item_added_by_id: item.item_added_by_id || activeCashier?.id || user?.id || null
+      }))
+    };
 
-      let data: any = null;
-
-      // 1. Authoritative DB action in Supabase pos_orders (the source of truth for FLOW POS table sessions & floor plan)
-      if (heldOrderId) {
-        data = await updateDirectOrderStatus(heldOrderId, {
-          subtotal,
-          total,
-          items: orderPayload.items,
-          ...(!isDineIn ? {
-            is_scheduled: Boolean(effScheduledTime),
-            scheduled_for: effScheduledTime ? `${effScheduledDate} ${effScheduledTime}` : null,
-            scheduled_notes: effScheduledNote || null
-          } : {})
+    // Extract unprinted items for intelligent section printers
+    const unprintedItems: any[] = [];
+    for (const it of ticketItems) {
+      if (isCourseHoldItem(it)) continue;
+      const orig = Number(it.originalQty || 0);
+      if (!it.isOrdered || orig === 0) {
+        unprintedItems.push(it);
+      } else if (it.qty > orig) {
+        unprintedItems.push({
+          ...it,
+          qty: it.qty - orig
         });
-      } else {
-        data = await createDirectOrder(orderPayload);
-        if (data && data.success) {
-          heldOrderId = data.order?.id || data.orderId;
-        }
       }
-
-      if (!data?.success) {
-        if (data?.orderId) setEditingOrderId(data.orderId);
-        const errMsg = data?.error || 'Order save failed.';
-        setValidationError(errMsg);
-        alert('⚠️ ' + errMsg);
-        return;
-      }
-
-      // 2. Dual-write to Commerce API mirror (for external reports/analytics) - strictly for non-dine-in, non-blocking
-      if (HAS_COMMERCE_API && heldOrderId && !isDineIn) {
-        try {
-          const extBranch = commerceBranchLink?.external_branch_id || currentBranchId || commerceBranchLink?.flow_branch_id;
-          fetch(`${COMMERCE_API_BASE}/api/pos/orders`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              branch_id: extBranch,
-              restaurant_id: currentRestaurantId,
-              concept_id: workspaceState.activeConcept?.id,
-              client_order_token: clientOrderToken,
-              orderType: orderType || "takeout",
-              customerName: resolvedCustomerName,
-              customerPhone,
-              deliveryAddress,
-              status: "preparing",
-              subtotal,
-              total,
-              items: orderPayload.items
-            })
-          }).catch(apiErr => console.warn("Commerce API mirror notice:", apiErr));
-        } catch (apiErr: any) {
-          console.warn("Commerce API mirror notice:", apiErr);
-        }
-      }
-
-      // 3. Ensure Table Session is linked and occupied
-      if (isDineIn && heldOrderId) {
-        if (activeTableContext?.sessionId) {
-          try {
-            await supabase
-              .from('pos_table_sessions')
-              .update({
-                commerce_order_id: heldOrderId,
-                status: 'occupied',
-                sync_status: 'synced',
-                last_sync_error: null
-              })
-              .eq('id', activeTableContext.sessionId);
-          } catch (e) {
-            console.warn("Could not update pos_table_sessions with held order ID:", e);
-          }
-        } else if (activeTableContext?.tableCode) {
-          try {
-            const effBranch = currentBranchId || commerceBranchLink?.flow_branch_id || '';
-            const targetTable = await resolveOrCreatePosTable(effBranch, activeTableContext.tableCode);
-            const { data: newSession } = await supabase
-              .from('pos_table_sessions')
-              .insert([{
-                branch_id: effBranch,
-                restaurant_id: currentRestaurantId,
-                table_id: targetTable.id,
-                table_code: targetTable.table_code,
-                commerce_order_id: heldOrderId,
-                status: 'occupied',
-                guest_count: activeTableContext.guestCount || 2,
-                assigned_waiter_name_snapshot: activeTableContext.waiterName || user?.name || "Staff",
-                opened_by_user_id: user?.id || null,
-                opened_by_name_snapshot: user?.name || "Staff",
-                version: 1
-              }])
-              .select('id')
-              .single();
-
-            if (newSession?.id) {
-              await supabase
-                .from('pos_table_session_tables')
-                .insert([{
-                  session_id: newSession.id,
-                  table_id: targetTable.id,
-                  is_primary: true
-                }]);
-              setActiveTableContext(prev => prev ? { ...prev, sessionId: newSession.id, tableId: targetTable.id } : null);
-            }
-          } catch (createSessErr) {
-            console.warn("Could not create pos_table_sessions for table order:", createSessErr);
-          }
-        }
-      }
-
-      if (heldOrderId) {
-
-        // If this was a scheduled order, print the kitchen ticket chit
-        if (effScheduledTime) {
-          const formattedSchedule = formatScheduledTimeDisplay(effScheduledDate, effScheduledTime);
-          const scheduledKitchenPayload = {
-            id: heldOrderId,
-            isKitchenTicket: true,
-            isScheduledOrder: true,
-            title: "*** SCHEDULED ORDER ***",
-            scheduled_for: `${effScheduledDate} ${effScheduledTime}`,
-            scheduled_time_display: formattedSchedule,
-            scheduled_note: effScheduledNote,
-            order_source: selectedChannel || "POS",
-            order_type: orderType,
-            customer_name: resolvedCustomerName,
-            customer_phone: customerPhone,
-            items: [
-              {
-                name: "*** SCHEDULED ORDER ***",
-                qty: 1,
-                customizations_print_text: [
-                  `READY AT: ${formattedSchedule}`,
-                  ...(effScheduledNote ? [`NOTE: ${effScheduledNote}`] : [])
-                ],
-                note: `READY AT: ${formattedSchedule}${effScheduledNote ? ` | ${effScheduledNote}` : ''}`
-              },
-              ...ticketItems.map((it: any) => ({
-                name: it.name,
-                qty: it.qty,
-                note: it.note,
-                modifiers: it.selectedCustomizations || [],
-                customizations_print_text: (it.selectedCustomizations || []).map((c: any) => typeof c === 'string' ? c : c.name || c.ingredient)
-              }))
-            ]
-          };
-          try {
-            await handlePrint(scheduledKitchenPayload);
-          } catch (pe) {
-            console.warn("Kitchen print for scheduled order error:", pe);
-          }
-        } else {
-          // Multi-Printer Preparation Routing Engine: Dispatch new and incremental items to section printers
-          const unprintedItems: any[] = [];
-          for (const it of ticketItems) {
-            if (isCourseHoldItem(it)) continue;
-            const orig = Number(it.originalQty || 0);
-            if (!it.isOrdered || orig === 0) {
-              unprintedItems.push(it);
-            } else if (it.qty > orig) {
-              unprintedItems.push({
-                ...it,
-                qty: it.qty - orig
-              });
-            }
-          }
-          if (unprintedItems.length > 0) {
-            try {
-              const effBranchId = currentBranchId || commerceBranchLink?.flow_branch_id;
-              const { jobs } = await buildPreparationPrintJobs({
-                orderMetadata: {
-                  order_id: heldOrderId,
-                  table_label: activeTableContext ? activeTableContext.tableCode : resolvedCustomerName,
-                  table_code: activeTableContext?.tableCode,
-                  guest_count: activeTableContext?.guestCount || 1,
-                  waiter_name: activeTableContext?.waiterName || activeCashier?.name || user?.name || 'Staff',
-                  cashier_name: activeCashier?.name || user?.name || 'Cashier',
-                  service_type: isDineIn ? 'dine_in' : (orderType || 'takeout'),
-                  fire_round: 1
-                },
-                items: unprintedItems,
-                branchId: effBranchId || undefined,
-                restaurantId: currentRestaurantId,
-                productsCatalog: products
-              });
-
-              if (jobs.length > 0) {
-                // Background dispatch without blocking UI
-                dispatchPhysicalPrintJobs(jobs).catch(pe => {
-                  console.warn("Intelligent ticket routing error on order placement:", pe);
-                });
-              }
-            } catch (pe) {
-              console.warn("Intelligent ticket routing error on order placement:", pe);
-            }
-          }
-        }
-
-        resetClientOrderToken();
-
-        setActiveTableContext(null);
-        setTicketItems([]);
-        setCustomerName("");
-        setCustomerPhone("");
-        setDeliveryAddress("");
-        setSelectedChannel(null);
-        setMarketplaceOrderRef("");
-        setEditingOrderId(null);
-        setEditingOrderVersion(null);
-        setDiscountType("none");
-        setDiscountValInput(10);
-        setDiscountIsPercent(true);
-        setDeliveryFee(0);
-        setOrderType("pickup");
-        setScheduledOrderTime("");
-        setScheduledOrderNote("");
-        handleResetToMainMenu();
-        fetchOrdersQueue();
-        try {
-          window.dispatchEvent(new CustomEvent('flow:order_created', { detail: { orderId: heldOrderId } }));
-        } catch (e) {}
-        refreshFloorTables().catch(() => {});
-      } else {
-        const errMsg = data?.error || "Failed to place order";
-        setValidationError(errMsg);
-        alert('⚠️ ' + errMsg);
-      }
-    } catch (err: any) {
-      console.error("Error holding order:", err);
-      const errMsg = err?.message || 'Error occurred while placing order.';
-      setValidationError(errMsg);
-      alert('⚠️ ' + errMsg);
-    } finally {
-      setIsSubmitting(false);
     }
+
+    const scheduledKitchenPayload = effScheduledTime ? {
+      id: heldOrderId || 'SCHEDULED',
+      isKitchenTicket: true,
+      isScheduledOrder: true,
+      title: "*** SCHEDULED ORDER ***",
+      scheduled_for: `${effScheduledDate} ${effScheduledTime}`,
+      scheduled_time_display: formatScheduledTimeDisplay(effScheduledDate, effScheduledTime),
+      scheduled_note: effScheduledNote,
+      order_source: selectedChannel || "POS",
+      order_type: orderType,
+      customer_name: resolvedCustomerName,
+      customer_phone: customerPhone,
+      items: [
+        {
+          name: "*** SCHEDULED ORDER ***",
+          qty: 1,
+          customizations_print_text: [
+            `READY AT: ${formatScheduledTimeDisplay(effScheduledDate, effScheduledTime)}`,
+            ...(effScheduledNote ? [`NOTE: ${effScheduledNote}`] : [])
+          ],
+          note: `READY AT: ${formatScheduledTimeDisplay(effScheduledDate, effScheduledTime)}${effScheduledNote ? ` | ${effScheduledNote}` : ''}`
+        },
+        ...ticketItems.map((it: any) => ({
+          name: it.name,
+          qty: it.qty,
+          note: it.note,
+          modifiers: it.selectedCustomizations || [],
+          customizations_print_text: (it.selectedCustomizations || []).map((c: any) => typeof c === 'string' ? c : c.name || c.ingredient)
+        }))
+      ]
+    } : null;
+
+    // 1. OPTIMISTIC INSTANT UI CLEARANCE AND NAVIGATION (0ms)
+    if (isDineIn) {
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent('flow:table_occupied', {
+          detail: {
+            tableCode: capturedContext?.tableCode,
+            sessionId: capturedContext?.sessionId,
+            orderId: heldOrderId || ('TMP-' + Date.now())
+          }
+        }));
+      }
+      setPosActiveView('tables');
+    } else {
+      setPosActiveView('sell');
+    }
+
+    resetClientOrderToken();
+    setActiveTableContext(null);
+    setTicketItems([]);
+    setCustomerName("");
+    setCustomerPhone("");
+    setDeliveryAddress("");
+    setSelectedChannel(null);
+    setMarketplaceOrderRef("");
+    setEditingOrderId(null);
+    setEditingOrderVersion(null);
+    setDiscountType("none");
+    setDiscountValInput(10);
+    setDiscountIsPercent(true);
+    setDeliveryFee(0);
+    setOrderType("pickup");
+    setScheduledOrderTime("");
+    setScheduledOrderNote("");
+    handleResetToMainMenu();
+    setIsSubmitting(false);
+    refreshFloorTables().catch(() => {});
+
+    // 2. DISPATCH PRINTER JOBS IN BACKGROUND (Non-blocking)
+    if (scheduledKitchenPayload) {
+      handlePrint(scheduledKitchenPayload).catch(pe => console.warn("Kitchen print for scheduled order error:", pe));
+    } else if (unprintedItems.length > 0) {
+      const effBranchId = currentBranchId || commerceBranchLink?.flow_branch_id;
+      buildPreparationPrintJobs({
+        orderMetadata: {
+          order_id: heldOrderId || 'Chit',
+          table_label: capturedContext ? capturedContext.tableCode : resolvedCustomerName,
+          table_code: capturedContext?.tableCode,
+          guest_count: capturedContext?.guestCount || 1,
+          waiter_name: capturedContext?.waiterName || activeCashier?.name || user?.name || 'Staff',
+          cashier_name: activeCashier?.name || user?.name || 'Cashier',
+          service_type: isDineIn ? 'dine_in' : (orderType || 'takeout'),
+          fire_round: 1
+        },
+        items: unprintedItems,
+        branchId: effBranchId || undefined,
+        restaurantId: currentRestaurantId,
+        productsCatalog: products
+      }).then(({ jobs }) => {
+        if (jobs.length > 0) {
+          dispatchPhysicalPrintJobs(jobs).catch(pe => console.warn("Intelligent ticket routing error on order placement:", pe));
+        }
+      }).catch(pe => console.warn("Build preparation print jobs error:", pe));
+    }
+
+    // 3. BACKGROUND SERVER SYNC VIA PERSISTENT QUEUE
+    enqueueSyncTask('hold', {
+      heldOrderId,
+      orderPayload,
+      activeTableContext: capturedContext,
+      isDineIn
+    });
+    fetchOrdersQueue();
   };
 
   const handleFireToKitchen = async () => {
@@ -4282,172 +4163,55 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       alert("No items in cart to fire.");
       return;
     }
-    let targetOrderId = activeTableContext?.orderId || editingOrderId;
-    if (!targetOrderId && activeTableContext?.tableCode) {
-      try {
-        const { data: activeForTable } = await supabase
-          .from('pos_orders')
-          .select('id')
-          .in('table_label', [activeTableContext.tableCode, `T${activeTableContext.tableCode.replace(/^T/i, '')}`, `Table ${activeTableContext.tableCode}`])
-          .in('status', ['held', 'preparing', 'new', 'confirmed', 'ready', 'open', 'occupied', 'bill_requested'])
-          .order('id', { ascending: false })
-          .limit(1);
-        if (activeForTable && activeForTable.length > 0) {
-          targetOrderId = activeForTable[0].id;
-          setActiveTableContext(prev => prev ? { ...prev, orderId: targetOrderId } : null);
-          setEditingOrderId(targetOrderId);
-        }
-      } catch (e) {
-        console.warn('Could not check existing table order on fire round:', e);
-      }
+    const targetOrderId = activeTableContext?.orderId || editingOrderId;
+    const tableLabel = activeTableContext?.tableCode || customerName || 'Dine-In';
+    const guestCount = activeTableContext?.guestCount || 1;
+    const waiterReference = activeTableContext?.waiterName || user?.name || 'Cashier';
+    const locKey = commerceBranchLink?.location_key || 'badaro';
+
+    const fireItems = ticketItems.map((item) => {
+      const pName = item.name || item.product_name || "Item";
+      const stationKey = (pName.toLowerCase().includes('drink') || pName.toLowerCase().includes('pepsi') || pName.toLowerCase().includes('coffee') || pName.toLowerCase().includes('water'))
+        ? 'BAR'
+        : 'HOT_KITCHEN';
+
+      return {
+        order_item_id: item.product_id,
+        product_name: pName,
+        quantity: item.qty || 1,
+        station_key: stationKey,
+        modifiers: (item.selectedCustomizations || []).map((c: any) => ({
+          name: typeof c === 'string' ? c : (c.ingredient || c.name || '')
+        })),
+        notes: item.note || null
+      };
+    });
+
+    // 1. Instant optimistic UI feedback
+    setTicketItems([]);
+    setIsSubmitting(false);
+    if (activeTableContext) {
+      setPosActiveView('tables');
     }
-    setIsSubmitting(true);
-    try {
-      if (!targetOrderId) {
-        if (!activeTableContext) {
-          alert("Please hold or open an order before firing a round to the kitchen.");
-          setIsSubmitting(false);
-          return;
-        }
 
-        // Create the dine-in order in OVRLOAD commerce first!
-        const orderPayload = {
-          branch_id: COMMERCE_API_BASE ? commerceBranchLink?.external_branch_id : (currentBranchId || commerceBranchLink?.flow_branch_id),
-          restaurant_id: currentRestaurantId,
-          concept_id: workspaceState.activeConcept.id,
-          client_order_token: clientOrderToken,
-          orderType: 'dine_in',
-          service_type: 'dine_in',
-          table_label: activeTableContext.tableCode,
-          guest_count: activeTableContext.guestCount || 1,
-          waiter_reference: activeTableContext.waiterName || user?.name || 'Cashier',
-          customerName: `Table ${activeTableContext.tableCode}`,
-          customerPhone: '',
-          orderSource: 'POS',
-          paymentMethod: 'Cash',
-          status: 'held',
-          subtotal,
-          deliveryFee: 0,
-          discountAmount,
-          total,
-          items: ticketItems.map((item) => ({
-            line_item_id: item.line_item_id,
-            product_id: item.product_id,
-            name: item.name,
-            quantity: item.qty,
-            unit_price: item.unit_price,
-            customizations: item.selectedCustomizations || [],
-            comment: item.note || ""
-          }))
-        };
-
-        let targetOrderIdValue: any;
-        const directRes = await createDirectOrder(orderPayload);
-        if (!directRes.success) {
-          throw new Error(directRes.error || `Failed to create dine-in order for Table ${activeTableContext.tableCode}`);
-        }
-        targetOrderIdValue = directRes.order?.id || directRes.orderId;
-
-        targetOrderId = targetOrderIdValue;
-
-        // Link this order to the FLOW table session
-        if (activeTableContext.sessionId) {
-          try {
-            await supabase
-              .from('pos_table_sessions')
-              .update({
-                commerce_order_id: targetOrderId,
-                status: 'occupied',
-                sync_status: 'synced',
-                last_sync_error: null
-              })
-              .eq('id', activeTableContext.sessionId);
-          } catch (e) {
-            console.warn("Could not link commerce_order_id to table session:", e);
-          }
-        }
-
-        setActiveTableContext(prev => prev ? { ...prev, orderId: targetOrderId } : null);
-        resetClientOrderToken();
-      } else {
-        // Update existing order with latest items in cart
-        if (!HAS_COMMERCE_API) {
-          const saveResult = await updateDirectOrderStatus(targetOrderId, {
-            subtotal,
-            total,
-            items: ticketItems.map((item) => ({
-              line_item_id: item.line_item_id,
-              product_id: item.product_id,
-              quantity: item.qty,
-              unit_price: item.unit_price,
-              customizations: item.selectedCustomizations || [],
-              comment: item.note || ""
-            }))
-          });
-          if (!saveResult.success) throw new Error(saveResult.error);
-        } else {
-          await fetch(`${COMMERCE_API_BASE}/api/pos/orders/${targetOrderId}/status`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              subtotal,
-              total,
-              items: ticketItems.map((item) => ({
-                line_item_id: item.line_item_id,
-                product_id: item.product_id,
-                quantity: item.qty,
-                unit_price: item.unit_price,
-                customizations: item.selectedCustomizations || [],
-                comment: item.note || ""
-              }))
-            })
-          });
-        }
-      }
-
-      // Now fire the round to KDS!
-      const locKey = commerceBranchLink?.location_key || 'badaro';
-      const fireItems = ticketItems.map((item) => {
-        const pName = item.name || item.product_name || "Item";
-        const stationKey = (pName.toLowerCase().includes('drink') || pName.toLowerCase().includes('pepsi') || pName.toLowerCase().includes('coffee') || pName.toLowerCase().includes('water'))
-          ? 'BAR'
-          : 'HOT_KITCHEN';
-
-        return {
-          order_item_id: item.product_id,
-          product_name: pName,
-          quantity: item.qty || 1,
-          station_key: stationKey,
-          modifiers: (item.selectedCustomizations || []).map((c: any) => ({
-            name: typeof c === 'string' ? c : (c.ingredient || c.name || '')
-          })),
-          notes: item.note || null
-        };
-      });
-
-      const fireRes = await fireOrderRound({
-        orderId: targetOrderId!,
-        locationKey: locKey,
-        items: fireItems,
-        serviceType: 'dine_in',
-        tableLabel: activeTableContext?.tableCode || customerName || 'Dine-In',
-        guestCount: activeTableContext?.guestCount || 1,
-        waiterReference: activeTableContext?.waiterName || user?.name || 'Cashier',
-        firedBy: user?.name || 'POS Staff'
-      });
-
-      if (!fireRes.success) {
-        throw new Error(fireRes.error || "Failed to fire kitchen round");
-      }
-
-      alert(`🔥 Sent Round #${fireRes.fireNumber || 1} to Kitchen successfully!`);
-      setTicketItems([]);
-      fetchOrdersQueue();
-    } catch (err: any) {
-      alert("Error firing round to kitchen: " + err.message);
-    } finally {
-      setIsSubmitting(false);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent('flow:order_fired', {
+        detail: { orderId: targetOrderId, tableCode: tableLabel }
+      }));
     }
+
+    // 2. Background queue execution
+    enqueueSyncTask('fire', {
+      orderId: targetOrderId,
+      locationKey: locKey,
+      items: fireItems,
+      serviceType: 'dine_in',
+      tableLabel,
+      guestCount,
+      waiterReference,
+      firedBy: user?.name || 'POS Staff'
+    });
+    fetchOrdersQueue();
   };
 
   const handleFinalizePayment = async (paymentDetails?: {
@@ -4492,567 +4256,302 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       ? paymentDetails.customerName.trim()
       : ((customerName && customerName.trim() && customerName.trim() !== ".") ? customerName.trim() : fallbackCustomer);
     const isAdvance = Boolean(paymentDetails?.isAdvancePayment);
-    // Final settlement closes every sale; advance payment leaves fulfillment open.
-    const isCompletedStatus = !isAdvance;
     const targetOrderId = editingOrderId || activeTableContext?.orderId;
     const finalOrderStatus = isAdvance ? "paid" : "completed";
     const advanceInstructions = isAdvance ? "[PAID_IN_ADVANCE]" : undefined;
 
-    setIsSubmitting(true);
-    try {
-      let data: any;
-      if (!HAS_COMMERCE_API) {
-        if (targetOrderId) {
-          data = await updateDirectOrderStatus(targetOrderId, {
-            status: finalOrderStatus,
-            payment_status: 'paid',
-            terminalId: persistentTerminalId,
-            is_inventory_commit: true,
-            tendered_amount: paymentDetails?.tenderedAmount ?? total,
-            tendered_currency: paymentDetails?.tenderedCurrency || 'USD',
-            change_amount: paymentDetails?.changeAmount || 0,
-            change_currency: paymentDetails?.changeCurrency || 'USD',
-            special_instructions: advanceInstructions,
-            payment_method: actualPaymentMethod,
-            customer_name: finalCustomerName,
-            subtotal,
-            total,
-            items: ticketItems.map((item) => ({
-              line_item_id: item.line_item_id,
-              product_id: item.product_id,
-              name: item.name,
-              quantity: item.qty,
-              unit_price: item.unit_price,
-              customizations: item.selectedCustomizations || [],
-              comment: item.note || "",
-              item_added_by: item.item_added_by || activeCashier?.name || user?.name || "Cashier",
-              item_added_by_id: item.item_added_by_id || activeCashier?.id || user?.id || null
-            }))
-          });
-          if (data && data.success) data.orderId = targetOrderId;
-        } else {
-          const effectiveBranchId = currentBranchId || commerceBranchLink?.flow_branch_id;
-          if (!effectiveBranchId) {
-            alert("No active branch resolved for this session. Cannot place order.");
-            setIsSubmitting(false);
-            return;
-          }
-          const isTotersOrder = effectiveChannel === 'Toters';
-          const isNoknokOrder = effectiveChannel === 'NokNok';
-          const commissionPct = isTotersOrder ? activeAgreement.totersCommissionPct : isNoknokOrder ? activeAgreement.noknokCommissionPct : 0;
-          const commissionUsd = (subtotal * (commissionPct / 100));
-          const netReceivableUsd = ['Toters', 'NokNok'].includes(effectiveChannel) ? (total - commissionUsd) : total;
+    const effectiveBranchId = currentBranchId || commerceBranchLink?.flow_branch_id;
+    if (!effectiveBranchId && !targetOrderId) {
+      alert("No active branch resolved for this session. Cannot place order.");
+      return;
+    }
 
-          data = await createDirectOrder({
-            branch_id: effectiveBranchId,
-            restaurant_id: currentRestaurantId,
-            concept_id: workspaceState.activeConcept.id,
-            client_order_token: clientOrderToken,
-            orderType: isDineIn ? "dine_in" : orderType,
-            service_type: isDineIn ? "dine_in" : undefined,
-            channel: resolveCanonicalSalesChannel(isDineIn ? "dine_in" : orderType, effectiveChannel),
-            table_label: activeTableContext ? activeTableContext.tableCode : undefined,
-            guest_count: activeTableContext ? (activeTableContext.guestCount || 1) : undefined,
-            waiter_reference: activeTableContext ? (activeTableContext.waiterName || user?.name) : undefined,
-            cashierName: activeCashier?.name || user?.name || "Cashier",
-            orderSource: effectiveChannel,
-            paymentMethod: actualPaymentMethod,
-            status: finalOrderStatus,
-            customerName: finalCustomerName,
-            customerPhone,
-            deliveryAddress,
-            scheduled_note: advanceInstructions,
-            marketplace_order_ref: ['Toters', 'NokNok'].includes(effectiveChannel) ? marketplaceOrderRef.trim() : undefined,
-            marketplace_commission_pct: commissionPct,
-            marketplace_commission_usd: commissionUsd,
-            net_receivable_usd: netReceivableUsd,
-            invoice_series: workspaceState.activeConcept.receipt_prefix || 'MAIN',
-            tendered_amount: paymentDetails?.tenderedAmount !== undefined 
-              ? paymentDetails.tenderedAmount 
-              : ((finalOrderStatus === 'completed' || finalOrderStatus === 'paid') ? total : 0),
-            payment_status: 'paid',
-            is_inventory_commit: true,
-            tendered_currency: paymentDetails?.tenderedCurrency || "USD",
-            change_amount: paymentDetails?.changeAmount || 0,
-            change_currency: paymentDetails?.changeCurrency || "USD",
-            subtotal,
-            deliveryFee: (!isDineIn && orderType === "delivery") ? (Number(deliveryFee) || 0) : 0,
-            discountAmount,
-            is_vat_subscribed: isVatSubscribed,
-            vat_rate: isVatSubscribed ? vatRate : 0,
-            vat_amount: vatAmount,
-            total,
-            items: ticketItems.map((item) => ({
-              line_item_id: item.line_item_id,
-              product_id: item.product_id,
-              name: item.name,
-              quantity: item.qty,
-              unit_price: item.unit_price,
-              customizations: item.selectedCustomizations || [],
-              comment: item.note || "",
-              item_added_by: item.item_added_by || activeCashier?.name || user?.name || "Cashier",
-              item_added_by_id: item.item_added_by_id || activeCashier?.id || user?.id || null
-            }))
-          });
-        }
-      } else if (targetOrderId) {
-        let updateSucceeded = false;
-        try {
-          const updateRes = await fetch(`${COMMERCE_API_BASE}/api/pos/orders/${targetOrderId}/status`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              status: finalOrderStatus,
-              payment_status: "paid",
-              expected_version: editingOrderVersion,
-              payment_operation_id: paymentOperationId,
-              subtotal,
-              subtotal_amount: subtotal,
-              deliveryFee: (!isDineIn && orderType === "delivery") ? (Number(deliveryFee) || 0) : 0,
-              delivery_fee: (!isDineIn && orderType === "delivery") ? (Number(deliveryFee) || 0) : 0,
-              discountAmount,
-              discount_amount: discountAmount,
-              total,
-              total_amount: total,
-              customerName: customerName.trim() || (activeTableContext ? `Table ${activeTableContext.tableCode}` : ""),
-              customerPhone,
-              deliveryAddress,
-              orderType: isDineIn ? "dine_in" : orderType,
-              orderSource: effectiveChannel,
-              paymentMethod: actualPaymentMethod,
-              items: ticketItems.map((item) => ({
-                line_item_id: item.line_item_id,
-                product_id: item.product_id,
-                quantity: item.qty,
-                qty: item.qty,
-                unit_price: item.unit_price,
-                unit_price_usd: item.unit_price,
-                price: item.unit_price,
-                total_price: Number(item.unit_price || 0) * Number(item.qty || 1),
-                customizations: item.selectedCustomizations || [],
-                comment: item.note
-              }))
-            })
-          });
-          if (updateRes.ok) {
-            data = await updateRes.json();
-            if (updateRes.status === 409 || data.conflict) {
-              alert(data.error || "This order was updated on another terminal. The latest version has been loaded.");
-              if (data.currentOrder) {
-                loadOrderToTicket(data.currentOrder);
-              }
-              setIsSubmitting(false);
-              return;
-            }
-            if (data.success) {
-              data.orderId = targetOrderId;
-              updateSucceeded = true;
-            }
-          }
-        } catch (commUpdateErr) {
-          console.warn('[handleCheckoutSubmit] Commerce API update status failed:', commUpdateErr);
-        }
+    const isTotersOrder = effectiveChannel === 'Toters';
+    const isNoknokOrder = effectiveChannel === 'NokNok';
+    const commissionPct = isTotersOrder ? activeAgreement.totersCommissionPct : isNoknokOrder ? activeAgreement.noknokCommissionPct : 0;
+    const commissionUsd = (subtotal * (commissionPct / 100));
+    const netReceivableUsd = ['Toters', 'NokNok'].includes(effectiveChannel) ? (total - commissionUsd) : total;
 
-        if (!updateSucceeded) {
-          // Fallback to updating direct order in Supabase pos_orders
-          data = await updateDirectOrderStatus(targetOrderId, {
-            status: finalOrderStatus,
-            payment_status: 'paid',
-            terminalId: persistentTerminalId,
-            is_inventory_commit: true,
-            tendered_amount: paymentDetails?.tenderedAmount ?? total,
-            tendered_currency: paymentDetails?.tenderedCurrency || 'USD',
-            change_amount: paymentDetails?.changeAmount || 0,
-            change_currency: paymentDetails?.changeCurrency || 'USD',
-            special_instructions: advanceInstructions,
-            payment_method: actualPaymentMethod,
-            customer_name: finalCustomerName,
-            subtotal,
-            total,
-            items: ticketItems.map((item) => ({
-              line_item_id: item.line_item_id,
-              product_id: item.product_id,
-              name: item.name,
-              quantity: item.qty,
-              unit_price: item.unit_price,
-              customizations: item.selectedCustomizations || [],
-              comment: item.note || "",
-              item_added_by: item.item_added_by || activeCashier?.name || user?.name || "Cashier",
-              item_added_by_id: item.item_added_by_id || activeCashier?.id || user?.id || null
-            }))
-          });
-          if (data && data.success) data.orderId = targetOrderId;
-        }
-      } else {
-        const createRes = await fetch(`${COMMERCE_API_BASE}/api/pos/orders`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            branch_id: COMMERCE_API_BASE ? commerceBranchLink?.external_branch_id : (currentBranchId || commerceBranchLink?.flow_branch_id),
-            restaurant_id: currentRestaurantId,
-            client_order_token: clientOrderToken,
-            payment_operation_id: paymentOperationId,
-            orderType: isDineIn ? "dine_in" : orderType,
-            service_type: isDineIn ? "dine_in" : undefined,
-            table_label: activeTableContext ? activeTableContext.tableCode : undefined,
-            guest_count: activeTableContext ? (activeTableContext.guestCount || 1) : undefined,
-            waiter_reference: activeTableContext ? (activeTableContext.waiterName || user?.name) : undefined,
-            orderSource: effectiveChannel,
-            paymentMethod: actualPaymentMethod,
-            customerName: finalCustomerName,
-            customerPhone,
-            deliveryAddress,
-            status: finalOrderStatus,
-            payment_status: "paid",
-            subtotal,
-            subtotal_amount: subtotal,
-            deliveryFee: (!isDineIn && orderType === "delivery") ? (Number(deliveryFee) || 0) : 0,
-            delivery_fee: (!isDineIn && orderType === "delivery") ? (Number(deliveryFee) || 0) : 0,
-            discountAmount,
-            discount_amount: discountAmount,
-            total,
-            total_amount: total,
-            items: ticketItems.map((item) => ({
-              line_item_id: item.line_item_id,
-              product_id: item.product_id,
-              name: item.name,
-              quantity: item.qty,
-              qty: item.qty,
-              unit_price: item.unit_price,
-              unit_price_usd: item.unit_price,
-              price: item.unit_price,
-              total_price: Number(item.unit_price || 0) * Number(item.qty || 1),
-              customizations: item.selectedCustomizations || [],
-              comment: item.note || "",
-              item_added_by: item.item_added_by || activeCashier?.name || user?.name || "Cashier",
-              item_added_by_id: item.item_added_by_id || activeCashier?.id || user?.id || null
-            }))
-          })
-        });
-        data = await createRes.json();
+    const directPayload: any = {
+      branch_id: effectiveBranchId,
+      restaurant_id: currentRestaurantId,
+      concept_id: workspaceState.activeConcept.id,
+      client_order_token: clientOrderToken,
+      orderType: isDineIn ? "dine_in" : orderType,
+      service_type: isDineIn ? "dine_in" : undefined,
+      channel: resolveCanonicalSalesChannel(isDineIn ? "dine_in" : orderType, effectiveChannel),
+      table_label: activeTableContext ? activeTableContext.tableCode : undefined,
+      guest_count: activeTableContext ? (activeTableContext.guestCount || 1) : undefined,
+      waiter_reference: activeTableContext ? (activeTableContext.waiterName || user?.name) : undefined,
+      cashierName: activeCashier?.name || user?.name || "Cashier",
+      orderSource: effectiveChannel,
+      paymentMethod: actualPaymentMethod,
+      status: finalOrderStatus,
+      customerName: finalCustomerName,
+      customerPhone,
+      deliveryAddress,
+      scheduled_note: advanceInstructions,
+      marketplace_order_ref: ['Toters', 'NokNok'].includes(effectiveChannel) ? marketplaceOrderRef.trim() : undefined,
+      marketplace_commission_pct: commissionPct,
+      marketplace_commission_usd: commissionUsd,
+      net_receivable_usd: netReceivableUsd,
+      invoice_series: workspaceState.activeConcept.receipt_prefix || 'MAIN',
+      tendered_amount: paymentDetails?.tenderedAmount !== undefined 
+        ? paymentDetails.tenderedAmount 
+        : ((finalOrderStatus === 'completed' || finalOrderStatus === 'paid') ? total : 0),
+      payment_status: 'paid',
+      is_inventory_commit: true,
+      tendered_currency: paymentDetails?.tenderedCurrency || "USD",
+      change_amount: paymentDetails?.changeAmount || 0,
+      change_currency: paymentDetails?.changeCurrency || "USD",
+      subtotal,
+      deliveryFee: (!isDineIn && orderType === "delivery") ? (Number(deliveryFee) || 0) : 0,
+      discountAmount,
+      is_vat_subscribed: isVatSubscribed,
+      vat_rate: isVatSubscribed ? vatRate : 0,
+      vat_amount: vatAmount,
+      total,
+      items: ticketItems.map((item) => ({
+        line_item_id: item.line_item_id,
+        product_id: item.product_id,
+        name: item.name,
+        quantity: item.qty,
+        unit_price: item.unit_price,
+        customizations: item.selectedCustomizations || [],
+        comment: item.note || "",
+        item_added_by: item.item_added_by || activeCashier?.name || user?.name || "Cashier",
+        item_added_by_id: item.item_added_by_id || activeCashier?.id || user?.id || null
+      }))
+    };
+
+    const completedOrderId = targetOrderId || ('TMP-' + Date.now());
+    const settledTableCode = activeTableContext?.tableCode || (orderType === 'dine_in' ? customerName.replace(/^Table\s*/i, '') : undefined);
+    const settledTableId = activeTableContext?.tableId;
+    const settledSessionId = activeTableContext?.sessionId;
+    const wasTable = Boolean(activeTableContext) || isDineIn;
+
+    const normalizedItems = ticketItems.map((item) => {
+      if (item.isHoldSeparator || item.name === 'HOLD') {
+        return {
+          qty: 1,
+          name: "HOLD",
+          unit_price: 0,
+          selectedCustomizations: [],
+          addons: [],
+          removals: [],
+          customizations_print_text: [],
+          note: "Kitchen pauses — fire to resume",
+          isHoldSeparator: true
+        };
       }
 
-      if (data?.orderId && !data.success) setEditingOrderId(data.orderId);
-      if (data?.inventory?.success === false) alert('Order saved. Stock needs attention: ' + data.inventory.error + '\nDo not charge the customer again. Use Retry stock update.');
-      setInventoryRevision(n => n + 1);
-      if (data && data.success) {
-        const completedOrderId = data.orderId || data.order?.id || targetOrderId;
-        const settledTableCode = activeTableContext?.tableCode || (orderType === 'dine_in' ? customerName.replace(/^Table\s*/i, '') : undefined);
-        const settledTableId = activeTableContext?.tableId;
-        const settledSessionId = activeTableContext?.sessionId;
-        const wasTable = Boolean(activeTableContext) || isDineIn;
+      const rawCusts = item.selectedCustomizations || [];
+      const paidAddons = (Array.isArray(rawCusts) ? rawCusts : []).filter((c: any) =>
+        typeof c === 'object' && c !== null && Number(c.price || c.unit_price || 0) > 0
+      );
 
-        if (isDineIn) {
-          try {
-            if (paymentDetails?.isAdvancePayment) {
-              if (settledSessionId) {
-                await supabase
-                  .from('pos_table_sessions')
-                  .update({
-                    ...(completedOrderId ? { commerce_order_id: completedOrderId } : {}),
-                    sync_status: 'synced'
-                  })
-                  .eq('id', settledSessionId);
-              }
-            } else {
-              // 1. Direct session ID
-              if (settledSessionId) {
-                await closeTableSession(settledSessionId, completedOrderId ? Number(completedOrderId) : undefined).catch(() => {});
-              }
-              // 2. Also close any session associated with this completed order ID
-              if (completedOrderId) {
-                await supabase
-                  .from('pos_table_sessions')
-                  .update({
-                    status: 'closed',
-                    closed_at: new Date().toISOString()
-                  })
-                  .eq('commerce_order_id', completedOrderId)
-                  .in('status', ['opening', 'occupied', 'bill_requested', 'closing']);
-              }
-              // 3. Close by tableId or tableCode
-              if (settledTableId) {
-                const { data: sessionLinks } = await supabase
-                  .from('pos_table_session_tables')
-                  .select('session_id')
-                  .eq('table_id', settledTableId);
-                if (sessionLinks && sessionLinks.length > 0) {
-                  const sIds = sessionLinks.map((s: any) => s.session_id);
-                  await supabase
-                    .from('pos_table_sessions')
-                    .update({
-                      status: 'closed',
-                      closed_at: new Date().toISOString()
-                    })
-                    .in('id', sIds)
-                    .in('status', ['opening', 'occupied', 'bill_requested', 'closing']);
-                }
-              } else if (settledTableCode) {
-                const { data: tbl } = await supabase
-                  .from('pos_tables')
-                  .select('id')
-                  .eq('table_code', settledTableCode)
-                  .maybeSingle();
-                if (tbl?.id) {
-                  const { data: sessionLinks } = await supabase
-                    .from('pos_table_session_tables')
-                    .select('session_id')
-                    .eq('table_id', tbl.id);
-                  if (sessionLinks && sessionLinks.length > 0) {
-                    const sIds = sessionLinks.map((s: any) => s.session_id);
-                    await supabase
-                      .from('pos_table_sessions')
-                      .update({
-                        status: 'closed',
-                        closed_at: new Date().toISOString()
-                      })
-                      .in('id', sIds)
-                      .in('status', ['opening', 'occupied', 'bill_requested', 'closing']);
-                  }
-                }
-              }
-            }
-          } catch (e) {
-            console.warn("Error closing table session on payment:", e);
-          }
-        }
+      const printCustomizationLines = paidAddons.map((a: any) => {
+        const aName = a.name || a.ingredient || 'Add-on';
+        const aPrice = Number(a.price || a.unit_price || 0);
+        return `+ ${aName} (+$${aPrice.toFixed(2)})`;
+      });
 
-        resetClientOrderToken();
-        const normalizedItems = ticketItems.map((item) => {
-          if (item.isHoldSeparator || item.name === 'HOLD') {
-            return {
-              qty: 1,
-              name: "HOLD",
-              unit_price: 0,
-              selectedCustomizations: [],
-              addons: [],
-              removals: [],
-              customizations_print_text: [],
-              note: "Kitchen pauses — fire to resume",
-              isHoldSeparator: true
-            };
-          }
+      return {
+        qty: item.qty || item.quantity || 1,
+        name: item.name || item.product_name || "Item",
+        unit_price: item.unit_price || 0,
+        selectedCustomizations: paidAddons,
+        customizations: paidAddons,
+        addons: paidAddons.map((a: any) => a.name || a.ingredient || ''),
+        removals: [],
+        customizations_print_text: printCustomizationLines,
+        note: item.note || ""
+      };
+    });
 
-          const rawCusts = item.selectedCustomizations || [];
-          // On customer guest bill / receipt: omit 0-value modifiers (choices, removals, free add-ons)
-          const paidAddons = (Array.isArray(rawCusts) ? rawCusts : []).filter((c: any) =>
-            typeof c === 'object' && c !== null && Number(c.price || c.unit_price || 0) > 0
-          );
+    if (scheduledOrderTime) {
+      const formattedSchedule = formatScheduledTimeDisplay(scheduledOrderDate, scheduledOrderTime);
+      normalizedItems.unshift({
+        qty: 1,
+        name: "*** SCHEDULED ORDER ***",
+        unit_price: 0,
+        selectedCustomizations: [],
+        addons: [],
+        removals: [],
+        customizations_print_text: [
+          `READY AT: ${formattedSchedule}`,
+          ...(scheduledOrderNote ? [`NOTE: ${scheduledOrderNote}`] : [])
+        ],
+        note: `READY AT: ${formattedSchedule}${scheduledOrderNote ? ` | ${scheduledOrderNote}` : ''}`,
+        isHoldSeparator: false
+      });
+    }
 
-          const printCustomizationLines = paidAddons.map((a: any) => {
-            const aName = a.name || a.ingredient || 'Add-on';
-            const aPrice = Number(a.price || a.unit_price || 0);
-            return `+ ${aName} (+$${aPrice.toFixed(2)})`;
-          });
+    const defaultCustomer = isDineIn
+      ? `Table ${activeTableContext?.tableCode}`
+      : isPickupOrder
+      ? "Pickup Customer"
+      : "Direct Order";
 
-          return {
-            qty: item.qty || item.quantity || 1,
-            name: item.name || item.product_name || "Item",
-            unit_price: item.unit_price || 0,
-            selectedCustomizations: paidAddons,
-            customizations: paidAddons,
-            addons: paidAddons.map((a: any) => a.name || a.ingredient || ''),
-            removals: [],
-            customizations_print_text: printCustomizationLines,
-            note: item.note || ""
-          };
-        });
+    const completedOrderData = {
+      id: completedOrderId,
+      order_source: effectiveChannel,
+      order_type: isDineIn ? "dine_in" : orderType,
+      payment_method: actualPaymentMethod,
+      tendered_amount: paymentDetails?.tenderedAmount,
+      tendered_currency: paymentDetails?.tenderedCurrency || "USD",
+      change_amount: paymentDetails?.changeAmount,
+      change_currency: paymentDetails?.changeCurrency || "USD",
+      exchange_rate: exchangeRate || 89500,
+      customer_name: finalCustomerName || defaultCustomer,
+      table_label: activeTableContext?.tableCode,
+      table_code: activeTableContext?.tableCode,
+      guest_count: activeTableContext?.guestCount,
+      waiter_name: activeTableContext?.waiterName || activeCashier?.name || user?.name || "Staff",
+      served_by: activeTableContext?.waiterName || activeCashier?.name || user?.name || "Staff",
+      server_name: activeTableContext?.waiterName || activeCashier?.name || user?.name || "Staff",
+      restaurant_name: localStorage.getItem('flow_pos_restaurant_name') || "Neo Beirut",
+      company_legal_name: localStorage.getItem('flow_pos_company_legal_name') || "Neo Beirut S.A.L.",
+      mof_number: localStorage.getItem('flow_pos_mof_number') || "382910-601",
+      footer_message: localStorage.getItem('flow_pos_receipt_footer') || "Thank you for dining with us! Come back soon.",
+      customer_phone: customerPhone,
+      delivery_address: deliveryAddress,
+      is_scheduled: Boolean(scheduledOrderTime),
+      scheduled_for: scheduledOrderTime ? `${scheduledOrderDate} ${scheduledOrderTime}` : null,
+      scheduled_time_display: scheduledOrderTime ? formatScheduledTimeDisplay(scheduledOrderDate, scheduledOrderTime) : null,
+      scheduled_notes: scheduledOrderNote || null,
+      subtotal_amount: subtotal,
+      delivery_fee: (!isDineIn && orderType === "delivery") ? (Number(deliveryFee) || 0) : 0,
+      discount_amount: discountAmount,
+      discount_label: discountAmount > 0 ? discountLabel : null,
+      is_vat_subscribed: isVatSubscribed,
+      vat_rate: isVatSubscribed ? vatRate : 0,
+      vat_amount: isVatSubscribed ? vatAmount : 0,
+      total_amount: total,
+      items: normalizedItems,
+      created_at: new Date().toISOString()
+    };
 
-        // If scheduled order in Sell mode, print prominent scheduled chit header
-        if (scheduledOrderTime) {
-          const formattedSchedule = formatScheduledTimeDisplay(scheduledOrderDate, scheduledOrderTime);
-          normalizedItems.unshift({
-            qty: 1,
-            name: "*** SCHEDULED ORDER ***",
-            unit_price: 0,
-            selectedCustomizations: [],
-            addons: [],
-            removals: [],
-            customizations_print_text: [
-              `READY AT: ${formattedSchedule}`,
-              ...(scheduledOrderNote ? [`NOTE: ${scheduledOrderNote}`] : [])
-            ],
-            note: `READY AT: ${formattedSchedule}${scheduledOrderNote ? ` | ${scheduledOrderNote}` : ''}`,
-            isHoldSeparator: false
-          });
-        }
+    // Print receipt asynchronously without blocking
+    handlePrint(completedOrderData).catch(pErr => console.warn("Receipt print warning:", pErr));
+    setLastCompletedOrder(completedOrderData);
+    updateTableFireCount(currentTableKey, 0);
 
-        const isPickup = orderType === "pickup" || (effectiveChannel || "").toLowerCase().includes("pick");
-        const defaultCustomer = isDineIn
-          ? `Table ${activeTableContext?.tableCode}`
-          : isPickup
-          ? "Pickup Customer"
-          : "Direct Order";
+    // Physical cash collection recorded into active register drawer
+    const isCashMethod = !actualPaymentMethod ||
+      actualPaymentMethod.toLowerCase().includes('cash') ||
+      (paymentDetails?.paymentMethod && paymentDetails.paymentMethod.toLowerCase().includes('cash'));
 
-        const completedOrderData = {
-          id: completedOrderId,
-          order_source: effectiveChannel,
-          order_type: isDineIn ? "dine_in" : orderType,
-          payment_method: actualPaymentMethod,
-          tendered_amount: paymentDetails?.tenderedAmount,
-          tendered_currency: paymentDetails?.tenderedCurrency || "USD",
-          change_amount: paymentDetails?.changeAmount,
-          change_currency: paymentDetails?.changeCurrency || "USD",
-          exchange_rate: exchangeRate || 89500,
-          customer_name: finalCustomerName || defaultCustomer,
-          table_label: activeTableContext?.tableCode,
-          table_code: activeTableContext?.tableCode,
-          guest_count: activeTableContext?.guestCount,
-          waiter_name: activeTableContext?.waiterName || activeCashier?.name || user?.name || "Staff",
-          served_by: activeTableContext?.waiterName || activeCashier?.name || user?.name || "Staff",
-          server_name: activeTableContext?.waiterName || activeCashier?.name || user?.name || "Staff",
-          restaurant_name: localStorage.getItem('flow_pos_restaurant_name') || "Neo Beirut",
-          company_legal_name: localStorage.getItem('flow_pos_company_legal_name') || "Neo Beirut S.A.L.",
-          mof_number: localStorage.getItem('flow_pos_mof_number') || "382910-601",
-          footer_message: localStorage.getItem('flow_pos_receipt_footer') || "Thank you for dining with us! Come back soon.",
-          customer_phone: customerPhone,
-          delivery_address: deliveryAddress,
-          is_scheduled: Boolean(scheduledOrderTime),
-          scheduled_for: scheduledOrderTime ? `${scheduledOrderDate} ${scheduledOrderTime}` : null,
-          scheduled_time_display: scheduledOrderTime ? formatScheduledTimeDisplay(scheduledOrderDate, scheduledOrderTime) : null,
-          scheduled_notes: scheduledOrderNote || null,
-          subtotal_amount: subtotal,
-          delivery_fee: (!isDineIn && orderType === "delivery") ? (Number(deliveryFee) || 0) : 0,
-          discount_amount: discountAmount,
-          discount_label: discountAmount > 0 ? discountLabel : null,
-          is_vat_subscribed: isVatSubscribed,
-          vat_rate: isVatSubscribed ? vatRate : 0,
-          vat_amount: isVatSubscribed ? vatAmount : 0,
-          total_amount: total,
-          items: normalizedItems,
+    const chLower = (effectiveChannel || '').toLowerCase();
+    const isAggregator = chLower.includes('toter') || chLower.includes('nok') ||
+      actualPaymentMethod.toLowerCase().includes('toter') || actualPaymentMethod.toLowerCase().includes('nok');
+
+    let shiftCashMovement: any = null;
+    if (isCashMethod && !isAggregator) {
+      const shiftTargetId = activeShift?.id || 'active-shift';
+      const movementOpId = `pos-cash-${completedOrderId}-${Date.now()}`;
+      const isLbp = paymentDetails?.tenderedCurrency === 'LBP' || actualPaymentMethod.toLowerCase().includes('lbp');
+      const finalCashAmt = Number(total || subtotal || 0);
+
+      if (finalCashAmt > 0) {
+        const movementLabel = chLower.includes('app')
+          ? `App Cash Order #${completedOrderId} (${finalCustomerName || 'Customer'})`
+          : `${effectiveChannel || 'POS'} Cash Sale #${completedOrderId} (${finalCustomerName || 'Walk-in'})`;
+
+        shiftCashMovement = {
+          id: movementOpId,
+          shift_id: shiftTargetId,
+          operation_id: movementOpId,
+          movement_type: 'cash_in',
+          amount: finalCashAmt,
+          currency: isLbp ? 'LBP' : 'USD',
+          reason: movementLabel,
+          created_by: activeCashier?.name || user?.name || "Cashier",
           created_at: new Date().toISOString()
         };
 
-        handlePrint(completedOrderData);
-        setLastCompletedOrder(completedOrderData);
-        setIsTerminalPaymentModalOpen(false);
-        updateTableFireCount(currentTableKey, 0);
+        try {
+          const cacheKey = `flow_shift_movements_${shiftTargetId}`;
+          const existingStr = window.localStorage.getItem(cacheKey);
+          const existingList = existingStr ? JSON.parse(existingStr) : [];
+          existingList.unshift(shiftCashMovement);
+          window.localStorage.setItem(cacheKey, JSON.stringify(existingList));
+        } catch (cErr) {}
 
-        // Physical cash collection into active register drawer
-        const isCashMethod = !actualPaymentMethod ||
-          actualPaymentMethod.toLowerCase().includes('cash') ||
-          (paymentDetails?.paymentMethod && paymentDetails.paymentMethod.toLowerCase().includes('cash'));
-
-        const chLower = (effectiveChannel || '').toLowerCase();
-        const isAggregator = chLower.includes('toter') || chLower.includes('nok') ||
-          actualPaymentMethod.toLowerCase().includes('toter') || actualPaymentMethod.toLowerCase().includes('nok');
-
-        if (isCashMethod && !isAggregator) {
-          const shiftTargetId = activeShift?.id || 'active-shift';
-          const movementOpId = `pos-cash-${completedOrderId}-${Date.now()}`;
-          const isLbp = paymentDetails?.tenderedCurrency === 'LBP' || actualPaymentMethod.toLowerCase().includes('lbp');
-          const finalCashAmt = Number(total || subtotal || 0);
-
-          if (finalCashAmt > 0) {
-            const movementLabel = chLower.includes('app')
-              ? `App Cash Order #${completedOrderId} (${finalCustomerName || 'Customer'})`
-              : `${effectiveChannel || 'POS'} Cash Sale #${completedOrderId} (${finalCustomerName || 'Walk-in'})`;
-
-            const localMovement = {
-              id: movementOpId,
-              shift_id: shiftTargetId,
-              operation_id: movementOpId,
-              movement_type: 'cash_in',
-              amount: finalCashAmt,
-              currency: isLbp ? 'LBP' : 'USD',
-              reason: movementLabel,
-              created_by: activeCashier?.name || user?.name || "Cashier",
-              created_at: new Date().toISOString()
-            };
-
-            try {
-              const cacheKey = `flow_shift_movements_${shiftTargetId}`;
-              const existingStr = window.localStorage.getItem(cacheKey);
-              const existingList = existingStr ? JSON.parse(existingStr) : [];
-              existingList.unshift(localMovement);
-              window.localStorage.setItem(cacheKey, JSON.stringify(existingList));
-            } catch (cErr) {}
-
-            if (activeShift?.id) {
-              try {
-                supabase.from('shift_cash_movements').insert([{
-                  shift_id: activeShift.id,
-                  operation_id: movementOpId,
-                  movement_type: 'cash_in',
-                  amount: finalCashAmt,
-                  currency: isLbp ? 'LBP' : 'USD',
-                  reason: movementLabel,
-                  created_by: activeCashier?.name || user?.name || "Cashier"
-                }]).then(({ error: mErr }) => {
-                  if (mErr) console.warn('Non-fatal shift movement insert error:', mErr);
-                });
-              } catch (insErr) {
-                console.warn('Non-fatal shift movement insert error:', insErr);
-              }
-            }
-
-            if (typeof window !== "undefined") {
-              window.dispatchEvent(new CustomEvent('flow:cash_movement_recorded', { detail: localMovement }));
-            }
-          }
-        }
-
-        // Instant event dispatch for 0ms clearance across TablesScreen, FloorPlan, and OrdersHub
         if (typeof window !== "undefined") {
-          if (wasTable && !paymentDetails?.isAdvancePayment) {
-            window.dispatchEvent(new CustomEvent('flow:table_settled', {
-              detail: {
-                tableCode: settledTableCode,
-                tableId: settledTableId,
-                sessionId: settledSessionId,
-                orderId: completedOrderId
-              }
-            }));
-          }
-          window.dispatchEvent(new CustomEvent('flow:order_settled', {
-            detail: {
-              orderId: completedOrderId,
-              tableCode: settledTableCode,
-              tableId: settledTableId
-            }
-          }));
+          window.dispatchEvent(new CustomEvent('flow:cash_movement_recorded', { detail: shiftCashMovement }));
         }
-        if (wasTable) {
-          refreshFloorTables().catch(() => {});
-        }
-
-        setActiveTableContext(null);
-        setTicketItems([]);
-        setCustomerName("");
-        setCustomerPhone("");
-        setDeliveryAddress("");
-        setSelectedChannel(null);
-        setMarketplaceOrderRef("");
-        setEditingOrderId(null);
-        setEditingOrderVersion(null);
-        setDiscountType("none");
-        setDiscountValInput(10);
-        setDiscountIsPercent(true);
-        setDeliveryFee(0);
-        setOrderType("pickup");
-        setScheduledOrderTime("");
-        setScheduledOrderNote("");
-        setActiveTabModal(["Toters", "NokNok"].includes(effectiveChannel) ? null : "receipt");
-        handleResetToMainMenu();
-        if (wasTable) {
-          setPosActiveView('tables');
-        } else {
-          setPosActiveView('sell');
-        }
-        fetchOrdersQueue();
-        if (autoLockOnOrder) {
-          handleQuickLock();
-        }
-      } else if (data && data.error) {
-        setValidationError(`⚠️ ${data.error}`);
-        if (isTerminalPaymentModalOpen) alert(`⚠️ ${data.error}`);
       }
-    } catch (err: any) {
-      console.error("Error completing payment:", err);
-      setValidationError(`⚠️ Error completing payment: ${err.message}`);
-      if (isTerminalPaymentModalOpen) alert(`⚠️ Error completing payment: ${err.message}`);
-    } finally {
-      setIsSubmitting(false);
+    }
+
+    // Instant event dispatch for 0ms clearance across TablesScreen, FloorPlan, and OrdersHub
+    if (typeof window !== "undefined") {
+      if (wasTable && !paymentDetails?.isAdvancePayment) {
+        window.dispatchEvent(new CustomEvent('flow:table_settled', {
+          detail: {
+            tableCode: settledTableCode,
+            tableId: settledTableId,
+            sessionId: settledSessionId,
+            orderId: completedOrderId
+          }
+        }));
+      }
+      window.dispatchEvent(new CustomEvent('flow:order_settled', {
+        detail: {
+          orderId: completedOrderId,
+          tableCode: settledTableCode,
+          tableId: settledTableId
+        }
+      }));
+    }
+    if (wasTable) {
+      refreshFloorTables().catch(() => {});
+    }
+
+    // 1. OPTIMISTIC 0MS MODAL CLOSE AND STATE RESET
+    setIsTerminalPaymentModalOpen(false);
+    setActiveTableContext(null);
+    setTicketItems([]);
+    setCustomerName("");
+    setCustomerPhone("");
+    setDeliveryAddress("");
+    setSelectedChannel(null);
+    setMarketplaceOrderRef("");
+    setEditingOrderId(null);
+    setEditingOrderVersion(null);
+    setDiscountType("none");
+    setDiscountValInput(10);
+    setDiscountIsPercent(true);
+    setDeliveryFee(0);
+    setOrderType("pickup");
+    setScheduledOrderTime("");
+    setScheduledOrderNote("");
+    setActiveTabModal(["Toters", "NokNok"].includes(effectiveChannel) ? null : "receipt");
+    handleResetToMainMenu();
+    resetClientOrderToken();
+    setIsSubmitting(false);
+
+    // 2. INSTANT NAVIGATION (0ms)
+    if (wasTable) {
+      setPosActiveView('tables');
+    } else {
+      setPosActiveView('sell');
+    }
+
+    // 3. BACKGROUND PERSISTENT QUEUE EXECUTION
+    enqueueSyncTask('payment', {
+      targetOrderId,
+      directPayload,
+      isDineIn,
+      settledSessionId,
+      settledTableId,
+      settledTableCode,
+      isAdvancePayment: paymentDetails?.isAdvancePayment,
+      shiftCashMovement
+    });
+    fetchOrdersQueue();
+    if (autoLockOnOrder) {
+      handleQuickLock();
     }
   };
 
@@ -5483,6 +4982,14 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
               <span className="text-amber-500 text-sm">👤</span>
               <span className="text-slate-900 font-black max-w-[65px] sm:max-w-[85px] lg:max-w-[110px] truncate">{activeCashier?.name || user?.name || "Cashier"}</span>
             </div>
+
+            {/* Background Sync Pill */}
+            {backgroundSyncCount > 0 && (
+              <div className="flex items-center gap-1 px-2 py-1 rounded-xl bg-amber-50 border border-amber-300 text-xs font-black text-amber-800 shadow-xs shrink-0 animate-pulse" title="Background transactions syncing to server">
+                <span>☁️</span>
+                <span>Syncing ({backgroundSyncCount})</span>
+              </div>
+            )}
           </div>
         </div>
 
