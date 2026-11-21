@@ -177,18 +177,34 @@ export default function ProductModifierModal({ product, onClose, onSaved }: Prod
             is_required: addProductsRequired,
             is_multi_select: addProductsMultiSelect,
           });
+        } else {
+          // If item already exists and user specified a target group name, update customization_item if it had generic Add On / blank group
+          if (gName && (!cItem.option_group_name || normalizeGroupName(cItem.option_group_name, cItem.customization_type) === 'Add On')) {
+            await crmService.updateCustomizationItem(cItem.id, {
+              option_group_name: gName,
+              default_price: addProductsPrice !== 0 ? addProductsPrice : cItem.default_price,
+            });
+            cItem = { ...cItem, option_group_name: gName };
+          }
         }
 
-        // 2. Link to product_customizations if not already linked
-        const alreadyLinked = linkedLinks.some(l => l.ingredient.toLowerCase() === prodItem.name.toLowerCase());
-        if (!alreadyLinked) {
-          await crmService.linkModifierToProduct(product.id, cItem, addProductsPrice);
-          if (addProductsRequired || addProductsMultiSelect) {
-            await crmService.updateProductModifierGroupSettings(product.id, gName, {
-              is_required: addProductsRequired,
-              is_multi_select: addProductsMultiSelect,
-            });
+        // 2. Link to product_customizations with explicit target group name and settings (or update existing link)
+        await crmService.linkModifierToProduct(
+          product.id,
+          cItem,
+          addProductsPrice,
+          gName,
+          {
+            is_required: addProductsRequired,
+            is_multi_select: addProductsMultiSelect,
+            is_default: addProductsIsDefault,
           }
+        );
+        if (gName) {
+          await crmService.updateProductModifierGroupSettings(product.id, gName, {
+            is_required: addProductsRequired,
+            is_multi_select: addProductsMultiSelect,
+          });
         }
 
         // 3. If requested, also import modifier groups of this product (e.g. Milk, Cooking, Bread)
@@ -196,31 +212,34 @@ export default function ProductModifierModal({ product, onClose, onSaved }: Prod
           const childCustomizations = allProductLinks.filter(l => Number(l.product_id) === Number(prodItem.id));
           for (const childC of childCustomizations) {
             const childGroupName = normalizeGroupName(childC.option_group_name || '', childC.customization_type || '');
-            const alreadyLinkedChild = linkedLinks.some(l =>
-              l.ingredient.toLowerCase() === childC.ingredient.toLowerCase() &&
-              normalizeGroupName(l.option_group_name || '', l.customization_type || '') === childGroupName
+            let childItem = allModifiers.find(m => m.name.toLowerCase() === childC.ingredient.toLowerCase());
+            if (!childItem) {
+              childItem = await crmService.createCustomizationItem({
+                name: childC.ingredient,
+                option_group_name: childGroupName,
+                customization_type: childC.customization_type || 'option',
+                default_price: isBundleProduct ? 0 : (childC.price || 0),
+                is_active: true,
+                is_required: Boolean(childC.is_required),
+                is_multi_select: Boolean(childC.is_multi_select),
+              });
+            }
+            await crmService.linkModifierToProduct(
+              product.id,
+              childItem,
+              isBundleProduct ? 0 : childC.price,
+              childGroupName,
+              {
+                is_required: Boolean(childC.is_required),
+                is_multi_select: Boolean(childC.is_multi_select),
+                is_default: Boolean(childC.is_default),
+              }
             );
-
-            if (!alreadyLinkedChild) {
-              let childItem = allModifiers.find(m => m.name.toLowerCase() === childC.ingredient.toLowerCase());
-              if (!childItem) {
-                childItem = await crmService.createCustomizationItem({
-                  name: childC.ingredient,
-                  option_group_name: childGroupName,
-                  customization_type: childC.customization_type || 'option',
-                  default_price: isBundleProduct ? 0 : (childC.price || 0),
-                  is_active: true,
-                  is_required: Boolean(childC.is_required),
-                  is_multi_select: Boolean(childC.is_multi_select),
-                });
-              }
-              await crmService.linkModifierToProduct(product.id, childItem, isBundleProduct ? 0 : childC.price);
-              if (childC.is_required || childC.is_multi_select) {
-                await crmService.updateProductModifierGroupSettings(product.id, childGroupName, {
-                  is_required: Boolean(childC.is_required),
-                  is_multi_select: Boolean(childC.is_multi_select),
-                });
-              }
+            if (childGroupName) {
+              await crmService.updateProductModifierGroupSettings(product.id, childGroupName, {
+                is_required: Boolean(childC.is_required),
+                is_multi_select: Boolean(childC.is_multi_select),
+              });
             }
           }
         }
@@ -254,6 +273,15 @@ export default function ProductModifierModal({ product, onClose, onSaved }: Prod
     return g;
   };
 
+  const getItemGroupName = (item: CustomizationItem) => {
+    const link = linkedLinks.find(l =>
+      (l.customization_item_id && l.customization_item_id === item.id) ||
+      l.ingredient.toLowerCase() === item.name.toLowerCase()
+    );
+    const rawG = link?.option_group_name || item.option_group_name || '';
+    return normalizeGroupName(rawG, link?.customization_type || item.customization_type);
+  };
+
   const linkedItemIds = new Set(
     linkedLinks.map(l => l.customization_item_id).filter(Boolean) as number[]
   );
@@ -268,13 +296,22 @@ export default function ProductModifierModal({ product, onClose, onSaved }: Prod
           setLinkedLinks(prev => prev.filter(l => l.id !== linkRow.id));
         }
       } else {
-        const groupName = normalizeGroupName(item.option_group_name || '', item.customization_type);
+        const groupName = getItemGroupName(item);
         const currentGs = groupSettings[groupName] || { is_required: false, is_multi_select: false };
-        const newLink = await crmService.linkModifierToProduct(product.id, item, isBundleProduct ? 0 : undefined);
+        const newLink = await crmService.linkModifierToProduct(
+          product.id,
+          item,
+          isBundleProduct ? 0 : undefined,
+          groupName,
+          {
+            is_required: currentGs.is_required,
+            is_multi_select: currentGs.is_multi_select,
+          }
+        );
         if (currentGs.is_required || currentGs.is_multi_select) {
           await crmService.updateProductModifierGroupSettings(product.id, groupName, currentGs);
         }
-        setLinkedLinks(prev => [...prev, { ...newLink, is_required: currentGs.is_required, is_multi_select: currentGs.is_multi_select }]);
+        setLinkedLinks(prev => [...prev.filter(l => l.id !== newLink.id), { ...newLink, is_required: currentGs.is_required, is_multi_select: currentGs.is_multi_select }]);
       }
       onSaved();
     } catch (err: any) {
@@ -319,13 +356,22 @@ export default function ProductModifierModal({ product, onClose, onSaved }: Prod
         const currentGs = groupSettings[groupName] || { is_required: false, is_multi_select: false };
         const newLinks: ProductCustomization[] = [];
         for (const item of unlinked) {
-          const created = await crmService.linkModifierToProduct(product.id, item);
+          const created = await crmService.linkModifierToProduct(
+            product.id,
+            item,
+            isBundleProduct ? 0 : undefined,
+            groupName,
+            {
+              is_required: currentGs.is_required,
+              is_multi_select: currentGs.is_multi_select,
+            }
+          );
           newLinks.push({ ...created, is_required: currentGs.is_required, is_multi_select: currentGs.is_multi_select });
         }
         if (currentGs.is_required || currentGs.is_multi_select) {
           await crmService.updateProductModifierGroupSettings(product.id, groupName, currentGs);
         }
-        setLinkedLinks(prev => [...prev, ...newLinks]);
+        setLinkedLinks(prev => [...prev.filter(l => !newLinks.some(n => n.id === l.id)), ...newLinks]);
       } else {
         const itemIds = new Set(items.map(i => i.id));
         const toRemove = linkedLinks.filter(l => l.customization_item_id && itemIds.has(l.customization_item_id));
@@ -386,17 +432,17 @@ export default function ProductModifierModal({ product, onClose, onSaved }: Prod
   const regularModifiers = allModifiers.filter(i => !isRemoval(i.customization_type));
   const removalModifiers = allModifiers.filter(i => isRemoval(i.customization_type));
 
-  // Group regular modifiers by normalized name
+  // Group regular modifiers by effective group name
   const groupedRegular = regularModifiers.reduce((acc, item) => {
-    const g = normalizeGroupName(item.option_group_name || '', item.customization_type);
+    const g = getItemGroupName(item);
     if (!acc[g]) acc[g] = [];
     acc[g].push(item);
     return acc;
   }, {} as Record<string, CustomizationItem[]>);
 
-  // Group removal modifiers by normalized name
+  // Group removal modifiers by effective group name
   const groupedRemoval = removalModifiers.reduce((acc, item) => {
-    const g = normalizeGroupName(item.option_group_name || '', item.customization_type);
+    const g = getItemGroupName(item);
     if (!acc[g]) acc[g] = [];
     acc[g].push(item);
     return acc;

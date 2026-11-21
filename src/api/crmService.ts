@@ -712,19 +712,25 @@ export const crmService = {
     return (data || []) as ProductCustomization[];
   },
 
-  async linkModifierToProduct(productId: number, item: CustomizationItem, overridePrice?: number): Promise<ProductCustomization> {
+  async linkModifierToProduct(
+    productId: number,
+    item: CustomizationItem,
+    overridePrice?: number,
+    overrideGroupName?: string,
+    overrideSettings?: { is_required?: boolean; is_multi_select?: boolean; is_default?: boolean }
+  ): Promise<ProductCustomization> {
     const restaurantId = getActiveRestaurantId();
     // Normalize group name: blank/General/Add-ons → "Add On", Remove variations → "Remove"
-    const rawGroup = (item.option_group_name || '').trim();
-    const lower = rawGroup.toLowerCase();
+    const explicitGroup = (overrideGroupName !== undefined ? overrideGroupName : (item.option_group_name || '')).trim();
+    const lower = explicitGroup.toLowerCase();
     const tLower = (item.customization_type || '').toLowerCase();
-    let normalizedGroup = rawGroup;
+    let normalizedGroup = explicitGroup;
     if (lower === 'remove' || lower === 'removal' || lower === 'removals' || lower.startsWith('remove ingredient') || tLower === 'remove' || tLower === 'removal') {
       normalizedGroup = 'Remove';
-    } else if (!rawGroup || lower === 'general' || lower === 'add on' || lower === 'add-on' || lower === 'addon' || lower === 'add-ons' || lower === 'addons' || lower === 'add ons' || lower === 'add_on' || lower === 'add_ons' || tLower === 'addon') {
-      if (!rawGroup || lower === 'general' || lower === 'add on' || lower === 'add-on' || lower === 'addon' || lower === 'add-ons' || lower === 'addons' || lower === 'add ons' || lower === 'add_on' || lower === 'add_ons') {
-        normalizedGroup = 'Add On';
-      }
+    } else if (!explicitGroup || lower === 'general' || lower === 'add on' || lower === 'add-on' || lower === 'addon' || lower === 'add-ons' || lower === 'addons' || lower === 'add ons' || lower === 'add_on' || lower === 'add_ons' || (!overrideGroupName && tLower === 'addon')) {
+      normalizedGroup = 'Add On';
+    } else {
+      normalizedGroup = explicitGroup;
     }
 
     // Check if this group already has an explicit screen order marker on this product
@@ -746,19 +752,56 @@ export const crmService = {
 
     const finalPrice = overridePrice !== undefined ? overridePrice : (item.default_price || 0);
 
+    // Check if this item is already linked to this product — if so, update its group and settings instead of duplicating
+    let existingQuery = supabase
+      .from('product_customizations')
+      .select('*')
+      .eq('restaurant_id', restaurantId)
+      .eq('product_id', productId);
+
+    if (item.id) {
+      existingQuery = existingQuery.or(`customization_item_id.eq.${item.id},ingredient.ilike.${item.name}`);
+    } else {
+      existingQuery = existingQuery.ilike('ingredient', item.name);
+    }
+
+    const { data: existingLink } = await existingQuery.maybeSingle();
+
+    if (existingLink) {
+      const updatePayload: any = {
+        option_group_name: normalizedGroup,
+        price: finalPrice,
+        is_active: true,
+      };
+      if (overrideSettings?.is_required !== undefined) {
+        updatePayload.is_required = overrideSettings.is_required;
+      }
+      if (overrideSettings?.is_multi_select !== undefined) {
+        updatePayload.is_multi_select = overrideSettings.is_multi_select;
+      }
+      const { data: updatedLink, error: updateErr } = await supabase
+        .from('product_customizations')
+        .update(updatePayload)
+        .eq('id', existingLink.id)
+        .select()
+        .single();
+      if (updateErr) throw updateErr;
+      return updatedLink as ProductCustomization;
+    }
+
     const { data, error } = await supabase
       .from('product_customizations')
       .insert({
         product_id: productId,
         ingredient: item.name,
-        customization_type: item.customization_type,
+        customization_type: item.customization_type || 'option',
         price: finalPrice,
         is_active: true,
         customization_item_id: item.id,
         restaurant_id: restaurantId,
         option_group_name: normalizedGroup,
-        is_required: false,    // always defaults to false — user sets per product
-        is_multi_select: false, // always defaults to false — user sets per product
+        is_required: overrideSettings?.is_required ?? false,
+        is_multi_select: overrideSettings?.is_multi_select ?? false,
         created_at: groupCreatedAt,
       })
       .select()
@@ -807,6 +850,19 @@ export const crmService = {
       console.warn('Could not auto-copy modifier inventory effects:', e);
     }
 
+    return data as ProductCustomization;
+  },
+
+  async updateProductCustomization(id: number, updates: Partial<ProductCustomization>): Promise<ProductCustomization> {
+    const restaurantId = getActiveRestaurantId();
+    const { data, error } = await supabase
+      .from('product_customizations')
+      .update(updates)
+      .eq('id', id)
+      .eq('restaurant_id', restaurantId)
+      .select()
+      .single();
+    if (error) throw error;
     return data as ProductCustomization;
   },
 
