@@ -1306,6 +1306,26 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   const [customizationQty, setCustomizationQty] = useState(1);
   const [customizationError, setCustomizationError] = useState("");
   const [customizationStep, setCustomizationStep] = useState(0);
+  const modifierTabsContainerRef = useRef<HTMLDivElement | null>(null);
+
+  // Auto-scroll stepper tabs container so the active tab is always in view and centered
+  useEffect(() => {
+    if (activeTabModal === "customization" && modifierTabsContainerRef.current) {
+      const container = modifierTabsContainerRef.current;
+      const timer = setTimeout(() => {
+        if (!container) return;
+        const activeTab = container.querySelector<HTMLElement>('[data-active-modifier-tab="true"]');
+        if (activeTab) {
+          const targetLeft = activeTab.offsetLeft - (container.clientWidth / 2) + (activeTab.clientWidth / 2);
+          container.scrollTo({
+            left: Math.max(0, targetLeft),
+            behavior: "smooth"
+          });
+        }
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [customizationStep, activeTabModal]);
   const [inventoryRevision, setInventoryRevision] = useState(0);
 
   // Void Reason State
@@ -6529,7 +6549,10 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
 
               {/* DYNAMIC MODIFIER SCREENS STEPPER BAR */}
               {orderedGroups.length > 1 && (
-                <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 flex-shrink-0">
+                <div
+                  ref={modifierTabsContainerRef}
+                  className="flex items-center gap-1.5 overflow-x-auto pb-1.5 flex-shrink-0 scroll-smooth no-scrollbar"
+                >
                   {orderedGroups.map(([gName, gOpts], idx) => {
                     const isCurrent = idx === safeStep;
                     const hasSel = selectedCustomizations.some((c: any) =>
@@ -6540,6 +6563,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                       <React.Fragment key={gName}>
                         <button
                           type="button"
+                          data-active-modifier-tab={isCurrent ? "true" : undefined}
                           onClick={() => {
                             setCustomizationError("");
                             setCustomizationStep(idx);

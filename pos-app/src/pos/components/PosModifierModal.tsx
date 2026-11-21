@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { X, Check, ArrowRight, ArrowLeft } from 'lucide-react';
 
 export interface PosModifierModalProps {
@@ -310,6 +310,24 @@ export function PosModifierModal({
   const [itemNote, setItemNote] = useState<string>(initialNote || '');
   const [customizationQty, setCustomizationQty] = useState<number>(initialQty || 1);
   const [customizationStep, setCustomizationStep] = useState<number>(0);
+  const tabsContainerRef = useRef<HTMLDivElement | null>(null);
+
+  // Auto-scroll stepper tabs container so the active tab is always in view and centered
+  useEffect(() => {
+    const container = tabsContainerRef.current;
+    if (!container) return;
+    const timer = setTimeout(() => {
+      const activeTab = container.querySelector<HTMLElement>('[data-active-modifier-tab="true"]');
+      if (activeTab) {
+        const targetLeft = activeTab.offsetLeft - (container.clientWidth / 2) + (activeTab.clientWidth / 2);
+        container.scrollTo({
+          left: Math.max(0, targetLeft),
+          behavior: 'smooth'
+        });
+      }
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [customizationStep]);
   const [customizationError, setCustomizationError] = useState<string>('');
 
   // Re-sync if product or initial state changes
@@ -500,7 +518,10 @@ export function PosModifierModal({
 
         {/* DYNAMIC MODIFIER SCREENS STEPPER BAR */}
         {orderedGroups.length > 1 && (
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 flex-shrink-0">
+          <div
+            ref={tabsContainerRef}
+            className="flex items-center gap-1.5 overflow-x-auto pb-1 flex-shrink-0 scroll-smooth no-scrollbar"
+          >
             {orderedGroups.map(([gName, gOpts], idx) => {
               const isCurrent = idx === safeStep;
               const hasSel = selectedCustomizations.some((c: any) =>
@@ -511,6 +532,7 @@ export function PosModifierModal({
                 <React.Fragment key={gName}>
                   <button
                     type="button"
+                    data-active-modifier-tab={isCurrent ? "true" : undefined}
                     onClick={() => {
                       setCustomizationError('');
                       setCustomizationStep(idx);
