@@ -8,11 +8,21 @@ export function OrderDetails({ order }) {
           <p className="font-medium capitalize">{order.order_type}</p>
         </div>
         <div>
-          <p className="text-sm text-gray-600">Scheduled</p>
-          <p className="font-medium">
-            {new Date(order.scheduled_date).toLocaleDateString()} at{" "}
-            {order.scheduled_time}
+          <p className="text-sm text-gray-600 font-semibold">Scheduled / Ready Time</p>
+          <p className="font-bold text-amber-900">
+            {order.scheduled_time_display ||
+              order.scheduled_for ||
+              (order.scheduled_date
+                ? `${new Date(order.scheduled_date).toLocaleDateString()} at ${order.scheduled_time || ''}`
+                : order.is_scheduled
+                ? 'Scheduled'
+                : 'Immediate / ASAP')}
           </p>
+          {(order.scheduled_notes || order.scheduled_note) && (
+            <p className="text-xs text-amber-800 italic mt-0.5">
+              Note: {order.scheduled_notes || order.scheduled_note}
+            </p>
+          )}
         </div>
         {order.delivery_address && (
           <div className="col-span-2">

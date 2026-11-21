@@ -35,6 +35,7 @@ export const OrderFilters: React.FC<OrderFiltersProps> = ({
 
   const primaryTabs: { id: StatusGroup | 'TABLES'; label: string; icon: string }[] = [
     ...(isTableServiceEnabled ? [{ id: 'TABLES' as const, label: 'Tables', icon: '🪑' }] : []),
+    { id: 'PREORDERED' as const, label: 'Pre-ordered', icon: '📅' },
     { id: 'NEW' as const, label: 'New', icon: '⚡' },
     { id: 'CONFIRMED' as const, label: 'Confirmed', icon: '👍' },
     { id: 'PREPARING' as const, label: 'Preparing', icon: '🍳' },
@@ -44,7 +45,6 @@ export const OrderFilters: React.FC<OrderFiltersProps> = ({
   ];
 
   const secondaryTabs: { id: StatusGroup | 'ALL'; label: string; icon: string }[] = [
-    { id: 'PREORDERED', label: 'Pre-ordered', icon: '📅' },
     { id: 'HELD', label: 'Held', icon: '⏸️' },
     { id: 'ALL', label: 'All Orders', icon: '📋' }
   ];
@@ -68,6 +68,7 @@ export const OrderFilters: React.FC<OrderFiltersProps> = ({
             const count = counts[tab.id] || 0;
             const isTable = tab.id === 'TABLES';
             const isCanceled = tab.id === 'CANCELLED';
+            const isPreorder = tab.id === 'PREORDERED';
             return (
               <button
                 key={tab.id}
@@ -79,9 +80,13 @@ export const OrderFilters: React.FC<OrderFiltersProps> = ({
                         ? 'bg-amber-500 text-slate-950 shadow-lg shadow-amber-500/25 border border-amber-400'
                         : isCanceled
                         ? 'bg-rose-600 text-white shadow-lg shadow-rose-600/25 border border-rose-500'
+                        : isPreorder
+                        ? 'bg-amber-600 text-white shadow-lg shadow-amber-600/25 border border-amber-500'
                         : 'bg-[#1e5c4f] text-white shadow-xs border border-[#1e5c4f]')
                     : (isCanceled && count > 0
                         ? 'text-rose-400/90 hover:text-rose-300 hover:bg-rose-950/30'
+                        : isPreorder && count > 0
+                        ? 'text-amber-800 bg-amber-50/80 hover:bg-amber-100 border border-amber-200'
                         : 'text-slate-600 hover:text-slate-900 hover:bg-white')
                 )}
               >
@@ -90,7 +95,11 @@ export const OrderFilters: React.FC<OrderFiltersProps> = ({
                 <span className={'px-1.5 py-0.5 rounded-md text-[11px] font-black ' + (
                   isActive
                     ? (isTable ? 'bg-black/20 text-slate-950' : 'bg-black/30 text-white')
-                    : (isCanceled && count > 0 ? 'bg-rose-950/80 text-rose-300 border border-rose-500/40' : 'bg-white text-slate-700 border border-slate-200')
+                    : (isCanceled && count > 0
+                        ? 'bg-rose-950/80 text-rose-300 border border-rose-500/40'
+                        : isPreorder && count > 0
+                        ? 'bg-amber-200 text-amber-950 border border-amber-300'
+                        : 'bg-white text-slate-700 border border-slate-200')
                 )}>
                   {count}
                 </span>

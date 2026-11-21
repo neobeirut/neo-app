@@ -2339,6 +2339,30 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       checkWhatsAppLocation(o.customer_phone);
     }
 
+    // 7. Load scheduled order date, time, and notes
+    const isSched = Boolean(
+      o.is_scheduled ||
+      o.scheduled_for ||
+      o.scheduled_date ||
+      (o.special_instructions && String(o.special_instructions).includes('SCHEDULED'))
+    );
+
+    if (isSched) {
+      const schedStr = o.scheduled_for || o.scheduled_date || "";
+      if (schedStr) {
+        const parts = String(schedStr).split(/[\sT]+/);
+        if (parts[0]) setScheduledOrderDate(parts[0]);
+        if (parts[1]) setScheduledOrderTime(parts[1].slice(0, 5));
+      }
+      if (o.scheduled_time) {
+        setScheduledOrderTime(String(o.scheduled_time).slice(0, 5));
+      }
+      setScheduledOrderNote(o.scheduled_notes || o.scheduled_note || "");
+    } else {
+      setScheduledOrderTime("");
+      setScheduledOrderNote("");
+    }
+
     setActiveTabModal(null);
   };
 

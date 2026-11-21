@@ -329,6 +329,41 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
 
         {/* Body Content (Scrollable) */}
         <div className="flex-1 overflow-y-auto p-5 space-y-5">
+          {/* Prominent Scheduled Pre-Order Banner */}
+          {(order.isScheduled || order.scheduledFor || order.rawOrder?.is_scheduled || order.rawOrder?.scheduled_for || order.rawOrder?.scheduled_date) && (
+            <div className="bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-400 rounded-2xl p-4 flex items-center justify-between shadow-sm">
+              <div className="flex items-center gap-3.5">
+                <div className="w-12 h-12 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center text-2xl font-black shadow-xs shrink-0">
+                  ⏰
+                </div>
+                <div>
+                  <div className="text-base font-black text-amber-950 flex items-center gap-2">
+                    <span>SCHEDULED PRE-ORDER</span>
+                    <span className="text-xs px-2 py-0.5 rounded-md bg-amber-200 border border-amber-400 text-amber-900 font-extrabold uppercase">
+                      {order.isFutureScheduled ? 'Future Date' : 'Ready Today'}
+                    </span>
+                  </div>
+                  <div className="text-sm text-amber-950 font-black mt-0.5">
+                    Target Ready Time:{' '}
+                    <span className="underline decoration-amber-500 decoration-2">
+                      {order.scheduledTimeDisplay ||
+                        order.scheduledFor ||
+                        (order.rawOrder?.scheduled_date ? `${order.rawOrder.scheduled_date} ${order.rawOrder.scheduled_time || ''}` : null) ||
+                        order.rawOrder?.scheduled_time_display ||
+                        order.rawOrder?.scheduled_for ||
+                        'Scheduled'}
+                    </span>
+                  </div>
+                  {(order.scheduledNotes || order.rawOrder?.scheduled_notes || order.rawOrder?.scheduled_note) && (
+                    <div className="text-xs text-amber-900 font-bold mt-1 bg-amber-100/80 px-2 py-1 rounded border border-amber-300 inline-block">
+                      📝 Note: {order.scheduledNotes || order.rawOrder?.scheduled_notes || order.rawOrder?.scheduled_note}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Table Context Banner */}
           {order.isTableOrder && (
             <div className="bg-amber-50/90 border border-amber-200 rounded-xl p-4 flex items-center justify-between shadow-xs">

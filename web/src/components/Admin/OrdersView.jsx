@@ -153,7 +153,14 @@ export default function OrdersView({
   };
 
   const filteredOrders = orders.filter((order) => {
-    if (filterStatus && order.status !== filterStatus) return false;
+    if (filterStatus) {
+      if (filterStatus === "scheduled") {
+        const isSched = Boolean(order.is_scheduled || order.scheduled_for || order.scheduled_date);
+        if (!isSched) return false;
+      } else if (order.status !== filterStatus) {
+        return false;
+      }
+    }
     
     if (filterOrigin) {
       const raw = String(order.order_source || order.origin || order.channel || order.source || order.order_type || "").toLowerCase();
@@ -168,7 +175,9 @@ export default function OrdersView({
     if (range !== "all") {
       const orderDateStr = getBeirutDateStr(order.created_at || order.scheduled_date);
       if (orderDateStr) {
-        if (range === "today" && orderDateStr !== todayStr) return false;
+        if (filterStatus === "scheduled") {
+          // Keep scheduled orders visible across range
+        } else if (range === "today" && orderDateStr !== todayStr) return false;
         if (range === "yesterday" && orderDateStr !== getYesterdayStr()) return false;
         if (range === "7days" && orderDateStr < getNDaysAgoStr(7)) return false;
         if (range === "thismonth" && orderDateStr < getFirstOfMonthStr()) return false;
@@ -313,6 +322,7 @@ export default function OrdersView({
             className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white shadow-sm"
           >
             <option value="">All Statuses</option>
+            <option value="scheduled">📅 Pre-ordered / Scheduled</option>
             <option value="pending">Pending</option>
             <option value="accepted">Accepted</option>
             <option value="preparing">Preparing</option>
