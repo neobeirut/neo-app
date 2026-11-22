@@ -20,6 +20,7 @@ import {
   Trash2
 } from 'lucide-react';
 import { api } from '../api/client';
+import { supabase } from '../api/supabase';
 import { 
   calculateMixedCount, 
   conversionFactor, 
@@ -34,7 +35,7 @@ interface InventoryScreenProps {
 }
 
 export default function InventoryScreen({ user }: InventoryScreenProps) {
-  const [activeTab, setActiveTab] = useState<'balances' | 'stocktake' | 'adjustments' | 'transfers'>('balances');
+  const [activeTab, setActiveTab] = useState<'balances' | 'stocktake' | 'adjustments' | 'transfers' | 'sync_errors'>('balances');
   
   // Data States
   const [branches, setBranches] = useState<any[]>([]);
@@ -47,6 +48,22 @@ export default function InventoryScreen({ user }: InventoryScreenProps) {
   const [stockAdjustments, setStockAdjustments] = useState<any[]>([]);
   const [stockTransfers, setStockTransfers] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+
+  // Stock Sync Errors State
+  const [stockSyncErrors, setStockSyncErrors] = useState<any[]>([]);
+  const [syncErrorsCount, setSyncErrorsCount] = useState<number>(0);
+  const [loadingSyncErrors, setLoadingSyncErrors] = useState<boolean>(false);
+  const [retryingOrderId, setRetryingOrderId] = useState<string | null>(null);
+  const [resolvingOrderId, setResolvingOrderId] = useState<string | null>(null);
+  const [quickConversionModal, setQuickConversionModal] = useState<{
+    orderId: string;
+    itemId: string;
+    itemName: string;
+    fromUnit: string;
+    toUnit: string;
+    factor: number;
+  } | null>(null);
+  const [quickFactor, setQuickFactor] = useState<string>('750');
 
   // Filters
   const [selectedBranch, setSelectedBranch] = useState<string>('All');
@@ -190,6 +207,8 @@ export default function InventoryScreen({ user }: InventoryScreenProps) {
         to_branch: defaultBranch,
         to_location: mergedLocations[1]?.name || defaultLoc
       }));
+
+      await loadStockSyncErrors(itemsRes.data || []);
     } catch (err) {
       console.error("Failed loading initial metadata", err);
     } finally {
@@ -251,11 +270,166 @@ export default function InventoryScreen({ user }: InventoryScreenProps) {
       } else if (activeTab === 'transfers') {
         const res = await api.getStockTransfers(selectedBranch);
         if (res.data) setStockTransfers(res.data);
+      } else if (activeTab === 'sync_errors') {
+        await loadStockSyncErrors();
       }
     } catch (err) {
       console.error("Failed fetching inventory stock data", err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadStockSyncErrors = async (currentItems?: any[]) => {
+    setLoadingSyncErrors(true);
+    try {
+      const itemsList = currentItems && currentItems.length > 0 ? currentItems : catalogItems;
+      const { data, error } = await supabase
+        .from('pos_orders')
+        .select('id, created_at, branch_id, cashier_name, total_amount, inventory_status, inventory_error, pos_order_items(*)')
+        .eq('inventory_status', 'FAILED')
+        .order('id', { ascending: false });
+
+      if (!error && data) {
+        setSyncErrorsCount(data.length);
+        const formatted = data.map((order: any) => {
+          let cleanError = order.inventory_error || 'Stock deduction failed.';
+          const uuidMatches = cleanError.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi) || [];
+          let matchedItem: any = null;
+
+          for (const uuid of uuidMatches) {
+            const found = itemsList.find((it: any) => it.id === uuid);
+            if (found) {
+              matchedItem = found;
+              const itemName = found.name || found.item_name || 'Item';
+              cleanError = cleanError.replaceAll(uuid, `"${itemName}"`);
+            }
+          }
+
+          let conversionUnits: { from: string; to: string } | null = null;
+          const convMatch = cleanError.match(/Cannot convert from (\w+) to (\w+)/i);
+          if (convMatch) {
+            conversionUnits = { from: convMatch[1], to: convMatch[2] };
+          }
+
+          return {
+            ...order,
+            cleanError,
+            matchedItem,
+            conversionUnits
+          };
+        });
+        setStockSyncErrors(formatted);
+      }
+    } catch (err) {
+      console.error('Failed to load stock sync errors:', err);
+    } finally {
+      setLoadingSyncErrors(false);
+    }
+  };
+
+  const handleRetryOrderStock = async (orderId: number | string) => {
+    setRetryingOrderId(String(orderId));
+    try {
+      const { data: ord } = await supabase
+        .from('pos_orders')
+        .select('*, pos_order_items(*)')
+        .eq('id', orderId)
+        .single();
+
+      if (!ord) throw new Error('Order not found');
+
+      const items = (ord.pos_order_items || []).map((it: any) => ({
+        source_line_id: it.line_item_id || String(it.id),
+        product_id: Number(it.product_id),
+        quantity: Number(it.quantity || 1),
+        name: it.product_name || 'Item',
+        unit_price: Number(it.unit_price || 0),
+        channel: 'DINE_IN',
+        customizations: []
+      }));
+
+      const { data: rpcRes, error: rpcErr } = await supabase.rpc('process_sale_inventory_deduction', {
+        p_order_id: String(orderId),
+        p_source_type: 'POS_ORDER',
+        p_raw_branch_id: String(ord.branch_id),
+        p_items: items,
+        p_restaurant_id: ord.restaurant_id || api.getRestaurantId(),
+        p_created_by: user?.name || 'Admin'
+      });
+
+      if (rpcErr || !rpcRes?.success) {
+        alert('Retry failed: ' + (rpcErr?.message || rpcRes?.error || rpcRes?.message || 'Inventory deduction rejected.'));
+      } else {
+        await supabase
+          .from('pos_orders')
+          .update({
+            inventory_status: 'COMPLETED',
+            inventory_error: null,
+            inventory_resolved_at: new Date().toISOString()
+          })
+          .eq('id', orderId);
+
+        alert(`Order #${orderId} stock deduction completed successfully!`);
+        await loadStockSyncErrors();
+      }
+    } catch (e: any) {
+      alert('Error retrying stock: ' + e.message);
+    } finally {
+      setRetryingOrderId(null);
+    }
+  };
+
+  const handleDismissOrderStock = async (orderId: number | string) => {
+    if (!window.confirm(`Dismiss stock deduction error for Order #${orderId}? Inventory will NOT be deducted for this order.`)) return;
+    setResolvingOrderId(String(orderId));
+    try {
+      await supabase
+        .from('pos_orders')
+        .update({
+          inventory_status: 'SKIPPED',
+          inventory_error: 'Skipped by manager in Admin',
+          inventory_resolved_at: new Date().toISOString()
+        })
+        .eq('id', orderId);
+
+      await loadStockSyncErrors();
+    } catch (e: any) {
+      alert('Error: ' + e.message);
+    } finally {
+      setResolvingOrderId(null);
+    }
+  };
+
+  const handleSaveQuickConversion = async () => {
+    if (!quickConversionModal) return;
+    const factorNum = Number(quickFactor);
+    if (!factorNum || factorNum <= 0) {
+      alert('Please enter a valid positive conversion factor (e.g. 750 for 1 bottle = 750 ml).');
+      return;
+    }
+
+    try {
+      const res = await api.saveItemUnitConversion({
+        item_id: quickConversionModal.itemId,
+        from_unit: quickConversionModal.fromUnit,
+        to_unit: quickConversionModal.toUnit,
+        conversion_factor: factorNum,
+        conversion_type: 'item_specific'
+      });
+
+      if (res.success) {
+        const orderIdToRetry = quickConversionModal.orderId;
+        setQuickConversionModal(null);
+        alert(`Conversion added: 1 ${quickConversionModal.fromUnit} = ${factorNum} ${quickConversionModal.toUnit} for ${quickConversionModal.itemName}. Retrying order stock deduction...`);
+        if (orderIdToRetry) {
+          await handleRetryOrderStock(orderIdToRetry);
+        }
+      } else {
+        alert('Failed to save conversion: ' + res.error);
+      }
+    } catch (e: any) {
+      alert('Error saving conversion: ' + e.message);
     }
   };
 
@@ -763,6 +937,18 @@ export default function InventoryScreen({ user }: InventoryScreenProps) {
           onClick={() => setActiveTab('transfers')}
         >
           <ArrowLeftRight size={18} /> Stock Transfers
+        </button>
+        <button 
+          className={`inventory-tab-btn ${activeTab === 'sync_errors' ? 'active' : ''}`}
+          onClick={() => setActiveTab('sync_errors')}
+          style={syncErrorsCount > 0 ? { borderColor: '#f43f5e', color: activeTab === 'sync_errors' ? undefined : '#e11d48' } : {}}
+        >
+          <AlertTriangle size={18} color={syncErrorsCount > 0 ? '#f43f5e' : undefined} /> Stock Sync Logs & Errors
+          {syncErrorsCount > 0 && (
+            <span style={{ marginLeft: '8px', padding: '2px 8px', borderRadius: '12px', background: '#f43f5e', color: '#fff', fontSize: '11px', fontWeight: 800 }}>
+              {syncErrorsCount}
+            </span>
+          )}
         </button>
       </div>
 
@@ -1337,6 +1523,201 @@ export default function InventoryScreen({ user }: InventoryScreenProps) {
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 5: Stock Sync Logs & Errors */}
+      {activeTab === 'sync_errors' && (
+        <div className="inventory-table-container" style={{ marginTop: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid #e2e8f0', background: '#fff', borderRadius: '12px 12px 0 0' }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <AlertTriangle size={20} color="#f43f5e" />
+                POS Order Stock Sync Errors & Missing Conversions
+              </h3>
+              <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#64748b' }}>
+                Customer orders are safely paid and recorded. When a recipe ingredient cannot be deducted (e.g. missing unit conversion), it logs here with the identified item name so managers can resolve it.
+              </p>
+            </div>
+            <button
+              onClick={() => loadStockSyncErrors()}
+              disabled={loadingSyncErrors}
+              className="btn-secondary"
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', fontSize: '13px', fontWeight: 700 }}
+            >
+              <RefreshCw size={14} className={loadingSyncErrors ? 'animate-spin' : ''} />
+              {loadingSyncErrors ? 'Refreshing...' : 'Refresh'}
+            </button>
+          </div>
+
+          <div style={{ overflowX: 'auto' }}>
+            <table className="inventory-table" style={{ width: '100%' }}>
+              <thead>
+                <tr>
+                  <th style={{ width: '100px' }}>Order #</th>
+                  <th style={{ width: '150px' }}>Date & Time</th>
+                  <th style={{ width: '120px' }}>Cashier</th>
+                  <th style={{ width: '160px' }}>Identified Item</th>
+                  <th>Sync Error & Diagnosis</th>
+                  <th style={{ width: '100px', textAlign: 'right' }}>Total</th>
+                  <th style={{ width: '220px', textAlign: 'center' }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loadingSyncErrors ? (
+                  <tr>
+                    <td colSpan={7} style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}>
+                      <RefreshCw size={24} className="animate-spin" style={{ margin: '0 auto 8px auto', display: 'block' }} />
+                      Loading stock sync errors...
+                    </td>
+                  </tr>
+                ) : stockSyncErrors.length > 0 ? (
+                  stockSyncErrors.map((err) => (
+                    <tr key={err.id}>
+                      <td style={{ fontWeight: 800, color: '#0f172a' }}>#{err.id}</td>
+                      <td style={{ fontSize: '12px', color: '#64748b' }}>
+                        {err.created_at ? new Date(err.created_at).toLocaleString() : 'N/A'}
+                      </td>
+                      <td style={{ fontSize: '13px', fontWeight: 600 }}>{err.cashier_name || 'POS Cashier'}</td>
+                      <td>
+                        {err.matchedItem ? (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 8px', borderRadius: '8px', background: '#eff6ff', color: '#1d4ed8', fontWeight: 700, fontSize: '12px' }}>
+                            <Package size={13} />
+                            {err.matchedItem.name || err.matchedItem.item_name}
+                          </span>
+                        ) : (
+                          <span style={{ color: '#94a3b8', fontSize: '12px', fontStyle: 'italic' }}>Recipe Ingredient</span>
+                        )}
+                      </td>
+                      <td>
+                        <div style={{ color: '#be123c', fontWeight: 600, fontSize: '13px' }}>
+                          {err.cleanError}
+                        </div>
+                        {err.conversionUnits && (
+                          <div style={{ marginTop: '4px', fontSize: '12px', color: '#b45309', fontWeight: 700 }}>
+                            💡 Needs conversion: <strong>{err.conversionUnits.to} &harr; {err.conversionUnits.from}</strong>
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ textAlign: 'right', fontWeight: 800, color: '#0f172a' }}>
+                        ${Number(err.total_amount || 0).toFixed(2)}
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                          {err.conversionUnits && err.matchedItem && (
+                            <button
+                              onClick={() => {
+                                setQuickConversionModal({
+                                  orderId: String(err.id),
+                                  itemId: err.matchedItem.id,
+                                  itemName: err.matchedItem.name || err.matchedItem.item_name,
+                                  fromUnit: err.conversionUnits?.to || 'bottle',
+                                  toUnit: err.conversionUnits?.from || 'ml',
+                                  factor: 750
+                                });
+                                setQuickFactor('750');
+                              }}
+                              className="btn-secondary"
+                              style={{ padding: '4px 10px', fontSize: '11px', fontWeight: 800, background: '#fef3c7', color: '#92400e', borderColor: '#fde68a' }}
+                              title="Add missing unit conversion"
+                            >
+                              + Conversion
+                            </button>
+                          )}
+                          <button
+                            onClick={() => handleRetryOrderStock(err.id)}
+                            disabled={retryingOrderId === String(err.id)}
+                            className="btn-primary"
+                            style={{ padding: '4px 10px', fontSize: '11px', fontWeight: 800 }}
+                          >
+                            {retryingOrderId === String(err.id) ? 'Retrying...' : 'Retry'}
+                          </button>
+                          <button
+                            onClick={() => handleDismissOrderStock(err.id)}
+                            disabled={resolvingOrderId === String(err.id)}
+                            className="btn-secondary"
+                            style={{ padding: '4px 8px', fontSize: '11px', color: '#64748b' }}
+                            title="Dismiss / Skip this stock error"
+                          >
+                            Dismiss
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={7} style={{ textAlign: 'center', padding: '48px', color: '#059669' }}>
+                      <CheckCircle2 size={36} color="#10b981" style={{ margin: '0 auto 10px auto', display: 'block' }} />
+                      <div style={{ fontWeight: 800, fontSize: '16px', color: '#065f46' }}>All Clear! No Stock Sync Errors</div>
+                      <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#047857' }}>
+                        All order sale lines and recipe ingredients have been deducted smoothly.
+                      </p>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* QUICK UNIT CONVERSION MODAL */}
+      {quickConversionModal && (
+        <div className="inv-modal-overlay">
+          <div className="inv-modal-content" style={{ maxWidth: '480px' }}>
+            <div className="inv-modal-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <PlusCircle color="#0284c7" size={22} />
+                <div>
+                  <h3 style={{ margin: 0 }}>Add Missing Unit Conversion</h3>
+                  <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: '#64748b' }}>
+                    Item: <strong>{quickConversionModal.itemName}</strong>
+                  </p>
+                </div>
+              </div>
+              <X size={20} style={{ cursor: 'pointer' }} onClick={() => setQuickConversionModal(null)} />
+            </div>
+            <div className="inv-modal-body" style={{ padding: '20px' }}>
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ fontSize: '13px', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '6px' }}>
+                  1 {quickConversionModal.fromUnit} equals how many {quickConversionModal.toUnit}?
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '14px', fontWeight: 800, color: '#0f172a' }}>1 {quickConversionModal.fromUnit} =</span>
+                  <input
+                    type="number"
+                    step="any"
+                    value={quickFactor}
+                    onChange={(e) => setQuickFactor(e.target.value)}
+                    className="inventory-filter-select"
+                    style={{ flex: 1, padding: '8px 12px', fontSize: '14px', fontWeight: 800 }}
+                    placeholder="e.g. 750"
+                  />
+                  <span style={{ fontSize: '14px', fontWeight: 800, color: '#0f172a' }}>{quickConversionModal.toUnit}</span>
+                </div>
+                <p style={{ fontSize: '12px', color: '#64748b', marginTop: '6px' }}>
+                  Example: 1 bottle of Prosecco = 750 ml
+                </p>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => setQuickConversionModal(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={handleSaveQuickConversion}
+                >
+                  Save & Retry Order #{quickConversionModal.orderId}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

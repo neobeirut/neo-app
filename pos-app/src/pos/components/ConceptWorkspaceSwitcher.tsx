@@ -33,15 +33,12 @@ export const ConceptWorkspaceSwitcher: React.FC<ConceptWorkspaceSwitcherProps> =
   if (!isMultiConceptEnabled) {
     return (
       <div
-        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-black text-white shadow-md border border-white/20 select-none"
+        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-black text-white shadow-sm border border-white/20 select-none"
         style={{ backgroundColor: active.primary_color }}
         title={`Dedicated ${active.name} POS Workspace`}
       >
-        <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
-        <span className="tracking-wide uppercase">{active.name}</span>
-        <span className="text-[10px] bg-black/30 px-1.5 py-0.5 rounded font-mono">
-          {active.receipt_prefix}
-        </span>
+        <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+        <span className="tracking-wide uppercase text-xs">{active.name}</span>
       </div>
     );
   }
@@ -73,16 +70,13 @@ export const ConceptWorkspaceSwitcher: React.FC<ConceptWorkspaceSwitcherProps> =
         <button
           type="button"
           onClick={() => setIsOpen(!isOpen)}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-black text-white shadow-md transition-all active:scale-95 border border-white/20 hover:brightness-110 cursor-pointer"
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-black text-white shadow-sm transition-all active:scale-95 border border-white/20 hover:brightness-110 cursor-pointer"
           style={{ backgroundColor: active.primary_color }}
-          title={`Active Workspace: ${active.name} (${active.receipt_prefix}) — Click to switch`}
+          title={`Active Workspace: ${active.name} — Click to switch`}
         >
-          <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
-          <span className="tracking-wide uppercase">{active.name}</span>
-          <span className="text-[10px] bg-black/30 px-1.5 py-0.5 rounded font-mono">
-            {active.receipt_prefix}
-          </span>
-          <svg className="w-3.5 h-3.5 opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+          <span className="tracking-wide uppercase text-xs">{active.name}</span>
+          <svg className="w-3 h-3 opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
           </svg>
         </button>

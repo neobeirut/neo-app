@@ -4925,7 +4925,6 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       style={autoFitContainerStyle}
       className="flex flex-col bg-[#F5F6F4] text-[#242B28] font-sans overflow-hidden select-none w-full"
     >
-      <InventorySyncNotice restaurantId={currentRestaurantId} branchId={currentBranchId || commerceBranchLink?.flow_branch_id} legacyBranchId={commerceBranchLink?.external_branch_id} revision={inventoryRevision} />
       {!isShiftOpen && (
         <div className="bg-rose-950 border-b border-rose-500/50 px-4 py-2 flex items-center justify-between z-30 flex-shrink-0 animate-pulse text-white">
           <div className="flex items-center gap-2">
@@ -5101,24 +5100,6 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                 compact
                 className="px-1.5 sm:px-2 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 text-xs font-bold flex items-center justify-center cursor-pointer transition shadow-xs"
               />
-              <button
-                type="button"
-                onClick={() => {
-                  const history = getPrintedTicketsHistory();
-                  if (history.length > 0 && history[0].payload) {
-                    setReceiptPreviewData(history[0].payload as ThermalReceiptData);
-                  }
-                  setIsReceiptPreviewOpen(true);
-                }}
-                className={`px-1.5 sm:px-2 py-1 rounded-xl text-xs font-bold transition flex items-center gap-1 border cursor-pointer shadow-xs active:scale-95 ${
-                  isVirtualPrintModeActive()
-                    ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300'
-                    : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300'
-                }`}
-                title="Screen Print Monitor & Ticket History"
-              >
-                <span>🖨️ Monitor</span>
-              </button>
             </div>
 
             {/* Cashier Badge */}
@@ -5137,9 +5118,9 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
           </div>
         </div>
 
-        {/* RIGHT SECTION (38% Width): PRIMARY POS MODE BUTTONS */}
-        <div className={`${isPortrait ? 'w-[46%]' : 'w-[38%]'} min-w-0 p-1 sm:p-2 bg-white flex items-center min-h-[50px] sm:min-h-[54px] border-l border-[#E0E3DF] flex-shrink-0`}>
-          <div className="grid grid-cols-4 gap-1 sm:gap-1.5 w-full min-w-0">
+        {/* RIGHT SECTION: PRIMARY POS MODE BUTTONS (Aligned exactly with Cart Column 35% / 44%) */}
+        <div className={`${isPortrait ? 'w-[44%]' : 'w-[35%]'} min-w-0 p-2 bg-white flex items-center min-h-[50px] sm:min-h-[54px] border-l border-[#E0E3DF] flex-shrink-0`}>
+          <div className={`grid ${isRestaurantMode ? 'grid-cols-3' : 'grid-cols-4'} gap-1.5 w-full min-w-0`}>
             {isRestaurantMode && (
               <button
                 type="button"
