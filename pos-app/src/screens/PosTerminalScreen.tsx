@@ -1308,24 +1308,30 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   const [customizationStep, setCustomizationStep] = useState(0);
   const modifierTabsContainerRef = useRef<HTMLDivElement | null>(null);
 
-  // Auto-scroll stepper tabs container so the active tab is always in view and centered
+  // Auto-scroll stepper tabs container so the active tab is always centered and in view
   useEffect(() => {
-    if (activeTabModal === "customization" && modifierTabsContainerRef.current) {
+    if (activeTabModal !== "customization") return;
+    const timer = setTimeout(() => {
       const container = modifierTabsContainerRef.current;
-      const timer = setTimeout(() => {
-        if (!container) return;
-        const activeTab = container.querySelector<HTMLElement>('[data-active-modifier-tab="true"]');
-        if (activeTab) {
-          const targetLeft = activeTab.offsetLeft - (container.clientWidth / 2) + (activeTab.clientWidth / 2);
-          container.scrollTo({
-            left: Math.max(0, targetLeft),
-            behavior: "smooth"
-          });
-        }
-      }, 50);
-      return () => clearTimeout(timer);
-    }
-  }, [customizationStep, activeTabModal]);
+      if (!container) return;
+      if (customizationStep === 0) {
+        container.scrollTo({ left: 0, behavior: "smooth" });
+        return;
+      }
+      const activeTab = container.querySelector<HTMLElement>('[data-active-modifier-tab="true"]');
+      if (activeTab) {
+        const cRect = container.getBoundingClientRect();
+        const tRect = activeTab.getBoundingClientRect();
+        // Calculate offset needed to place the active tab in the horizontal center of the container
+        const delta = (tRect.left + tRect.width / 2) - (cRect.left + cRect.width / 2);
+        container.scrollTo({
+          left: Math.max(0, container.scrollLeft + delta),
+          behavior: "smooth"
+        });
+      }
+    }, 60);
+    return () => clearTimeout(timer);
+  }, [customizationStep, activeTabModal, selectedCustomizations]);
   const [inventoryRevision, setInventoryRevision] = useState(0);
 
   // Void Reason State
@@ -6551,7 +6557,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
               {orderedGroups.length > 1 && (
                 <div
                   ref={modifierTabsContainerRef}
-                  className="flex items-center gap-1.5 overflow-x-auto pb-1.5 flex-shrink-0 scroll-smooth no-scrollbar"
+                  className="flex items-center gap-1.5 overflow-x-auto pb-1.5 flex-shrink-0 no-scrollbar"
                 >
                   {orderedGroups.map(([gName, gOpts], idx) => {
                     const isCurrent = idx === safeStep;

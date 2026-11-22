@@ -312,22 +312,29 @@ export function PosModifierModal({
   const [customizationStep, setCustomizationStep] = useState<number>(0);
   const tabsContainerRef = useRef<HTMLDivElement | null>(null);
 
-  // Auto-scroll stepper tabs container so the active tab is always in view and centered
+  // Auto-scroll stepper tabs container so the active tab is always centered and in view
   useEffect(() => {
-    const container = tabsContainerRef.current;
-    if (!container) return;
+    if (!isOpen) return;
     const timer = setTimeout(() => {
+      const container = tabsContainerRef.current;
+      if (!container) return;
+      if (customizationStep === 0) {
+        container.scrollTo({ left: 0, behavior: 'smooth' });
+        return;
+      }
       const activeTab = container.querySelector<HTMLElement>('[data-active-modifier-tab="true"]');
       if (activeTab) {
-        const targetLeft = activeTab.offsetLeft - (container.clientWidth / 2) + (activeTab.clientWidth / 2);
+        const cRect = container.getBoundingClientRect();
+        const tRect = activeTab.getBoundingClientRect();
+        const delta = (tRect.left + tRect.width / 2) - (cRect.left + cRect.width / 2);
         container.scrollTo({
-          left: Math.max(0, targetLeft),
+          left: Math.max(0, container.scrollLeft + delta),
           behavior: 'smooth'
         });
       }
-    }, 50);
+    }, 60);
     return () => clearTimeout(timer);
-  }, [customizationStep]);
+  }, [customizationStep, isOpen, selectedCustomizations]);
   const [customizationError, setCustomizationError] = useState<string>('');
 
   // Re-sync if product or initial state changes
@@ -520,7 +527,7 @@ export function PosModifierModal({
         {orderedGroups.length > 1 && (
           <div
             ref={tabsContainerRef}
-            className="flex items-center gap-1.5 overflow-x-auto pb-1 flex-shrink-0 scroll-smooth no-scrollbar"
+            className="flex items-center gap-1.5 overflow-x-auto pb-1 flex-shrink-0 no-scrollbar"
           >
             {orderedGroups.map(([gName, gOpts], idx) => {
               const isCurrent = idx === safeStep;
