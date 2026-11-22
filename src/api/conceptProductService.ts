@@ -84,7 +84,7 @@ export function resolveEffectiveSellingPrice(
   if (channel && config.channel_overrides && config.channel_overrides[channel]) {
     const override = config.channel_overrides[channel];
     if (override.is_available === false) return null;
-    if (override.selling_price !== undefined && override.selling_price !== null && override.selling_price > 0) {
+    if (override.selling_price !== undefined && override.selling_price !== null && !isNaN(Number(override.selling_price))) {
       return Number(override.selling_price);
     }
   }

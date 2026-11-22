@@ -74,13 +74,15 @@ export function resolveEffectivePosPrice(product: PosProduct, channel?: string |
 
     if (matchKey) {
       const override = product.channel_overrides[matchKey];
-      if (override.selling_price !== undefined && override.selling_price !== null && Number(override.selling_price) > 0) {
+      if (override.selling_price !== undefined && override.selling_price !== null && !isNaN(Number(override.selling_price))) {
         return Number(override.selling_price);
       }
     }
   }
 
-  return Number(product.unit_price_usd || 0);
+  return product.unit_price_usd !== undefined && product.unit_price_usd !== null && !isNaN(Number(product.unit_price_usd))
+    ? Number(product.unit_price_usd)
+    : 0;
 }
 
 /**
@@ -327,8 +329,17 @@ async function fetchCatalogFromSupabase(
             });
           }
 
-          const conceptPrice = Number(activeConfig.selling_price);
-          const effectivePrice = !isNaN(conceptPrice) && conceptPrice > 0 ? conceptPrice : Number(p.price || 5.0);
+          const conceptPrice = activeConfig.selling_price !== undefined && activeConfig.selling_price !== null && !isNaN(Number(activeConfig.selling_price))
+            ? Number(activeConfig.selling_price)
+            : NaN;
+
+          const masterPrice = p.unit_price_usd !== undefined && p.unit_price_usd !== null && !isNaN(Number(p.unit_price_usd))
+            ? Number(p.unit_price_usd)
+            : (p.price !== undefined && p.price !== null && !isNaN(Number(p.price))
+              ? Number(p.price)
+              : 0);
+
+          const effectivePrice = !isNaN(conceptPrice) ? conceptPrice : masterPrice;
 
           const resolvedCategoryId = activeConfig.menu_category_id || p.category_id;
           const resolvedCategoryName =
@@ -373,20 +384,16 @@ async function fetchCatalogFromSupabase(
         if (matchesTarget) {
           const numPrice = p.price !== null && p.price !== undefined ? parseFloat(String(p.price)) : NaN;
           const numUnit = p.unit_price_usd !== null && p.unit_price_usd !== undefined ? parseFloat(String(p.unit_price_usd)) : NaN;
-          const price = (!isNaN(numPrice) && numPrice > 0)
-            ? numPrice
-            : (!isNaN(numUnit) && numUnit > 0)
-              ? numUnit
-              : (!isNaN(numPrice))
-                ? numPrice
-                : (!isNaN(numUnit) ? numUnit : 5.0);
+          const price = !isNaN(numUnit)
+            ? numUnit
+            : (!isNaN(numPrice) ? numPrice : 0);
 
           resolvedProducts.push({
             id: p.id,
             master_product_id: p.id,
             name: p.name || 'Unnamed Dish',
             description: p.description || '',
-            unit_price_usd: isNaN(price) ? 5.0 : price,
+            unit_price_usd: isNaN(price) ? 0 : price,
             image_url: p.image_url || '',
             master_image_url: p.image_url || '',
             category_id: p.category_id,
