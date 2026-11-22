@@ -1358,3 +1358,47 @@ export async function getOrCreateTableAndSession(params: {
   }
 }
 
+/**
+ * Force-cancels an open table order and releases the table session.
+ */
+export async function cancelTableOrder(
+  orderId?: number | string | null,
+  sessionId?: string | null,
+  reason: string = 'Cancelled by staff'
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const numId = Number(orderId);
+    if (!isNaN(numId) && numId > 0) {
+      await supabase
+        .from('pos_orders')
+        .update({
+          status: 'cancelled',
+          is_canceled: true,
+          canceled_at: new Date().toISOString(),
+          cancellation_reason: reason
+        })
+        .eq('id', numId);
+    }
+
+    if (sessionId) {
+      await supabase
+        .from('pos_table_sessions')
+        .update({
+          status: 'closed',
+          closed_at: new Date().toISOString()
+        })
+        .eq('id', sessionId);
+    }
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('flow:table_settled'));
+    }
+
+    return { success: true };
+  } catch (err: any) {
+    console.error('Error cancelling table order:', err);
+    return { success: false, error: err.message || 'Failed to cancel table order' };
+  }
+}
+
+

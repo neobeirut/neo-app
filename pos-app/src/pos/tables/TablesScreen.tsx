@@ -9,6 +9,7 @@ import {
   changeGuestCount, 
   requestBill, 
   closeTableSession, 
+  cancelTableOrder,
   loadPendingTableSyncs, 
   retrySessionSync, 
   getOrCreateTableAndSession, 
@@ -431,6 +432,28 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
     }
   };
 
+  const handleCancelTableOrder = async (order: FlowPosOrder) => {
+    const tableCode = order.tableLabel || (order.customerName ? order.customerName.replace(/^Table\s*/i, '') : '1');
+    if (!window.confirm(`Are you sure you want to cancel the order on Table ${tableCode} and release this table?`)) {
+      return;
+    }
+    const orderIdNum = Number(order.id);
+    const sessionId = order.rawOrder?.session_id;
+
+    try {
+      const res = await cancelTableOrder(orderIdNum, sessionId, `Cancelled by cashier (${cashierName})`);
+      if (!res.success) {
+        throw new Error(res.error || 'Failed to cancel table order');
+      }
+      const upper = tableCode.toUpperCase();
+      setSettledKeys(prev => new Set([...prev, upper, `order-${order.id}`]));
+      refreshOrders();
+      fetchState();
+    } catch (err: any) {
+      alert(`Could not cancel table order: ${err?.message || 'Unknown error'}`);
+    }
+  };
+
   // Modals (Split & Payment)
   const [tableForSplit, setTableForSplit] = useState<PosTable | null>(null);
   const [activePaymentOrder, setActivePaymentOrder] = useState<any | null>(null);
@@ -782,8 +805,8 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
                             </button>
                           </div>
                         )}
-                        {/* Action Buttons Toolbar on Card: Print Bill & (Optional) Settle */}
-                        <div className={`p-2 bg-slate-50 border-t border-slate-200 grid ${onSettleTable ? 'grid-cols-2' : 'grid-cols-1'} gap-2`}>
+                        {/* Action Buttons Toolbar on Card: Print Bill, Settle & Cancel */}
+                        <div className={`p-2 bg-slate-50 border-t border-slate-200 grid ${onSettleTable ? 'grid-cols-3' : 'grid-cols-2'} gap-1.5`}>
                           <button
                             type="button"
                             disabled={!shiftOpen}
@@ -827,6 +850,28 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
                               <span className="truncate">Settle</span>
                             </button>
                           )}
+
+                          <button
+                            type="button"
+                            disabled={!shiftOpen}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (!shiftOpen) {
+                                onOpenShift?.();
+                                return;
+                              }
+                              handleCancelTableOrder(order);
+                            }}
+                            className={`py-2 rounded-xl font-black text-xs sm:text-sm flex items-center justify-center gap-1 transition active:scale-95 ${
+                              !shiftOpen
+                                ? "bg-slate-100 text-slate-400 border border-slate-200 opacity-40 cursor-not-allowed"
+                                : "bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 cursor-pointer shadow-xs"
+                            }`}
+                            title="Cancel order and release this table"
+                          >
+                            <span>✕</span>
+                            <span className="truncate">Cancel</span>
+                          </button>
                         </div>
                       </div>
                     );
