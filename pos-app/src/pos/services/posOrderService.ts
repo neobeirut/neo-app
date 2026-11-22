@@ -631,7 +631,28 @@ export async function deductPosOrderInventory(
     const branchIdStr = String(branchId);
 
     const deductionItems = inventoryLines(lineItems || [], channel || 'DINE_IN');
-    if (!deductionItems.length) throw new Error('This order has no saved sale lines to process.');
+    if (!deductionItems.length) {
+      // Check if order has non-hold lines (e.g. custom or "+ Divers" open items)
+      const hasActualLines = (lineItems || []).some(
+        line => !line.isHoldSeparator && !String(line.product_id).startsWith('hold_')
+      );
+
+      if (hasActualLines) {
+        // Order only contains custom items or "+ Divers" which do not require inventory recipe deduction.
+        await supabase
+          .from('pos_orders')
+          .update({
+            inventory_status: 'COMPLETED',
+            inventory_error: null,
+            inventory_resolved_at: new Date().toISOString()
+          })
+          .eq('id', orderId);
+
+        return { success: true, message: 'No inventory deduction required for custom/Divers items.' };
+      }
+
+      throw new Error('This order has no saved sale lines to process.');
+    }
 
     const { data: invRes, error: invErr } = await supabase.rpc('process_sale_inventory_deduction', {
       p_order_id: String(orderId),
