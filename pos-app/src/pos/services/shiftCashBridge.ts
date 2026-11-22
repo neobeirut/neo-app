@@ -1201,6 +1201,24 @@ export async function addDailyPayment(payment: {
  */
 export async function deleteDailyPayment(id: string) {
   try {
+    const { data: payment } = await supabase
+      .from('daily_payments')
+      .select('id, shift_id, date, branch')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (payment?.shift_id) {
+      const { data: shift } = await supabase
+        .from('shift_cash')
+        .select('status')
+        .eq('id', payment.shift_id)
+        .maybeSingle();
+
+      if (shift && shift.status === 'closed') {
+        return { success: false, error: 'Shift is closed. Payments from a closed shift cannot be deleted.' };
+      }
+    }
+
     const { error } = await supabase
       .from('daily_payments')
       .delete()

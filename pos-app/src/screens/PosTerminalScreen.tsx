@@ -8104,6 +8104,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         activeShiftId={activeShift?.id}
         systemExchangeRate={exchangeRate}
         restaurantId={currentRestaurantId}
+        isShiftOpen={isShiftOpen}
       />
 
       {/* SUPPLIER INVOICES MODAL (Stage E: AI Scan, Product Match, Posting & Receiving) */}

@@ -40,6 +40,7 @@ interface DailyPaymentsModalProps {
   branchId?: string;
   restaurantId?: string;
   systemExchangeRate?: number;
+  isShiftOpen?: boolean;
 }
 
 export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
@@ -52,8 +53,10 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
   activeShiftId,
   branchId,
   restaurantId,
-  systemExchangeRate
+  systemExchangeRate,
+  isShiftOpen
 }) => {
+  const isShiftActive = typeof isShiftOpen === 'boolean' ? isShiftOpen : Boolean(activeShiftId);
   // Navigation: Cash In, Cash Out, and 4 core modules
   const [activeTab, setActiveTab] = useState<'cashin' | 'cashout' | 'invoice' | 'payment' | 'direct' | 'expense'>('cashin');
   const [isFullInvoicesModalOpen, setIsFullInvoicesModalOpen] = useState(false);
@@ -1104,6 +1107,10 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
   };
 
   const handleDeleteHistoricalDailyPayment = async (id: string) => {
+    if (!isShiftActive) {
+      alert('⚠️ Cannot delete record: Shift is closed. Historical payments from a closed shift are locked and cannot be deleted.');
+      return;
+    }
     if (!window.confirm('Delete this cash record?')) return;
     try {
       const res = await deleteDailyPayment(id);
@@ -1456,14 +1463,23 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
                     )}
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteHistoricalDailyPayment(p.id)}
-                    className="text-slate-400 hover:text-rose-600 transition cursor-pointer p-1"
-                    title="Delete record"
-                  >
-                    <Trash2 size={14} />
-                  </button>
+                  {isShiftActive ? (
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteHistoricalDailyPayment(p.id)}
+                      className="text-slate-400 hover:text-rose-600 transition cursor-pointer p-1"
+                      title="Delete record"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  ) : (
+                    <span
+                      className="text-slate-300 p-1 cursor-not-allowed inline-flex items-center"
+                      title="Shift is closed — payment records cannot be deleted"
+                    >
+                      <Lock size={13} />
+                    </span>
+                  )}
                 </div>
               </div>
             );
