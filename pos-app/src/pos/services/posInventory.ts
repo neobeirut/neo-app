@@ -57,7 +57,13 @@ export function modifierText(options: any[]): string {
 }
 
 export function inventoryLines(lines: any[], channel: string): any[] {
-  return lines.filter(line => !line.isHoldSeparator && !String(line.product_id).startsWith('hold_')).map(line => {
+  return lines.filter(line => 
+    !line.isHoldSeparator && 
+    !String(line.product_id).startsWith('hold_') &&
+    !line.is_custom_item &&
+    !String(line.product_id).startsWith('custom_') &&
+    !String(line.name || line.product_name || '').trim().toUpperCase().startsWith('DIVERS')
+  ).map(line => {
     const id = line.line_item_id || line.source_line_id || String(line.id || '');
     const productId = Number(line.product_id);
     const quantity = Number(line.quantity ?? line.qty ?? 1);

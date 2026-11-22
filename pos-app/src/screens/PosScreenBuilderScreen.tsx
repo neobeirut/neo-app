@@ -55,7 +55,7 @@ export default function PosScreenBuilderScreen({ user }: { user?: any }) {
 
   const [isAddButtonModalOpen, setIsAddButtonModalOpen] = useState(false);
   const [editingButtonIndex, setEditingButtonIndex] = useState<number | null>(null);
-  const [btnType, setBtnType] = useState<'screen' | 'product'>('product');
+  const [btnType, setBtnType] = useState<'screen' | 'product' | 'open_item'>('product');
   const [btnLabel, setBtnLabel] = useState('');
   const [btnTargetScreenId, setBtnTargetScreenId] = useState('');
   const [btnProductId, setBtnProductId] = useState<string | number>('');
@@ -213,9 +213,11 @@ export default function PosScreenBuilderScreen({ user }: { user?: any }) {
       if (btnType === 'product') {
         const prod = products.find((p) => String(p.id) === String(btnProductId));
         labelToUse = prod?.name || 'Dish';
-      } else {
+      } else if (btnType === 'screen') {
         const scr = screens.find((s) => s.id === btnTargetScreenId);
         labelToUse = scr?.name || 'Subscreen';
+      } else {
+        labelToUse = 'Divers';
       }
     }
 
@@ -889,7 +891,7 @@ export default function PosScreenBuilderScreen({ user }: { user?: any }) {
 
             <div>
               <label className="text-xs font-bold text-slate-600 block mb-1.5">Button Function</label>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-1.5">
                 <button
                   type="button"
                   onClick={() => setBtnType('product')}
@@ -899,7 +901,7 @@ export default function PosScreenBuilderScreen({ user }: { user?: any }) {
                       : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
                   }`}
                 >
-                  🍽️ Product Button
+                  🍽️ Product
                 </button>
                 <button
                   type="button"
@@ -910,12 +912,36 @@ export default function PosScreenBuilderScreen({ user }: { user?: any }) {
                       : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
                   }`}
                 >
-                  📁 Subscreen Link
+                  📁 Subscreen
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBtnType('open_item');
+                    if (!btnLabel) setBtnLabel('Divers');
+                  }}
+                  className={`py-2 rounded-xl text-xs font-black border transition ${
+                    btnType === 'open_item'
+                      ? 'bg-emerald-50 text-[#1e5c4f] border-[#1e5c4f] ring-2 ring-emerald-500/20'
+                      : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                  }`}
+                >
+                  ✨ Divers / Open
                 </button>
               </div>
             </div>
 
-            {btnType === 'product' ? (
+            {btnType === 'open_item' ? (
+              <div className="p-3 bg-emerald-50/60 border border-emerald-200 rounded-xl space-y-1">
+                <div className="text-xs font-extrabold text-emerald-900 flex items-center gap-1.5">
+                  <span>✨</span>
+                  <span>Open Item / Divers Button</span>
+                </div>
+                <p className="text-[11px] text-emerald-800 leading-relaxed font-medium">
+                  When pressed in the POS terminal, this button opens the keypad to enter a custom price, quantity, or weight on the fly (e.g. 0.3$ x 100g).
+                </p>
+              </div>
+            ) : btnType === 'product' ? (
               <div className="space-y-3">
                 <div>
                   <label className="text-xs font-bold text-slate-600 block mb-1">Filter by Category</label>

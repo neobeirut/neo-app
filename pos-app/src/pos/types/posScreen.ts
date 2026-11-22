@@ -1,7 +1,7 @@
 export interface PosScreenButton {
   id: string;
   label: string;
-  type: 'screen' | 'product';
+  type: 'screen' | 'product' | 'open_item';
   targetScreenId?: string;
   productId?: string | number;
   color?: string;

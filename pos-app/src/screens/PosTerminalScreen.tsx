@@ -50,6 +50,7 @@ import { OrdersHubScreen } from "../pos/orders/OrdersHubScreen";
 import { PaymentModal, RefundModal } from "../pos/payments";
 import { TerminalPaymentModal } from "../pos/components/TerminalPaymentModal";
 import { ThermalReceiptPreviewModal, type ThermalReceiptData } from "../pos/components/ThermalReceiptPreviewModal";
+import { OpenItemModal, type OpenItemData } from "../pos/components/OpenItemModal";
 import { useRestaurantTheme } from "../pos/theme/useRestaurantTheme";
 import {
   buildPreparationPrintJobs,
@@ -806,7 +807,8 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
             const currentItem = ticketItems[targetItemIndex];
             const toRemove = qtyToVoid || currentItem.qty || 1;
             const effectiveBranchId = currentBranchId || commerceBranchLink?.flow_branch_id;
-            if (effectiveBranchId && currentItem.product_id) {
+            const isCustom = Boolean(currentItem.is_custom_item || String(currentItem.product_id).startsWith('custom_') || String(currentItem.name || '').toUpperCase().startsWith('DIVERS'));
+            if (effectiveBranchId && currentItem.product_id && !isCustom) {
               const stockReversal = await reversePosOrderInventory(
                 orderId,
                 effectiveBranchId,
@@ -891,7 +893,8 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
           if (effectiveBranchId) {
             for (let i = 0; i < ticketItems.length; i++) {
               const it = ticketItems[i];
-              if (it && it.product_id) {
+              const isCustom = Boolean(it?.is_custom_item || String(it?.product_id).startsWith('custom_') || String(it?.name || '').toUpperCase().startsWith('DIVERS'));
+              if (it && it.product_id && !isCustom) {
                 const stockReversal = await reversePosOrderInventory(
                   orderId,
                   effectiveBranchId,
@@ -1297,6 +1300,10 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   const knownOrderIdsRef = useRef(null);
   const isFirstPollRef = useRef(true);
   const isPollingRef = useRef(false);
+
+  // Open Item (Divers) Modal State
+  const [isOpenItemModalOpen, setIsOpenItemModalOpen] = useState(false);
+  const [openItemInitialData, setOpenItemInitialData] = useState<OpenItemData | null>(null);
 
   // Customization Modal State
   const [currentProduct, setCurrentProduct] = useState(null);
@@ -2581,9 +2588,89 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     }
   };
 
+  const handleOpenOpenItemModal = (itemToEdit?: any, index?: number) => {
+    if (!isShiftOpen) {
+      setIsOpenShiftModalOpen(true);
+      return;
+    }
+    if (isOverdueShift) {
+      setIsOverdueModalOpen(true);
+      return;
+    }
+    if (itemToEdit && index !== undefined && index !== null) {
+      setOpenItemInitialData({
+        name: itemToEdit.name || 'Divers',
+        unitPrice: Number(itemToEdit.unit_price || itemToEdit.base_price || 0),
+        qty: Number(itemToEdit.qty || 1),
+        unit: itemToEdit.unit_of_measure || '',
+        note: itemToEdit.note || '',
+        editingIndex: index
+      });
+    } else {
+      setOpenItemInitialData(null);
+    }
+    setIsOpenItemModalOpen(true);
+  };
+
+  const handleSaveOpenItem = (data: OpenItemData) => {
+    const newLineId = (typeof crypto !== 'undefined' && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : 'line-' + Date.now() + '-' + Math.random().toString(36).substring(2, 8);
+
+    const displayName = data.name.trim() || 'Divers';
+    const unitStr = data.unit ? `${data.qty}${data.unit}` : '';
+    const rateStr = data.unit ? `@ $${data.unitPrice.toFixed(2)}/${data.unit}` : '';
+    const formattedNote = [
+      unitStr && rateStr ? `${unitStr} ${rateStr}` : '',
+      data.note || ''
+    ].filter(Boolean).join(' | ');
+
+    if (data.editingIndex !== null && data.editingIndex !== undefined && ticketItems[data.editingIndex]) {
+      const updated = [...ticketItems];
+      const existing = updated[data.editingIndex];
+      updated[data.editingIndex] = {
+        ...existing,
+        name: displayName,
+        base_price: data.unitPrice,
+        unit_price: data.unitPrice,
+        qty: data.qty,
+        unit_of_measure: data.unit || '',
+        note: formattedNote,
+        selectedCustomizations: data.unit ? [{ name: `${unitStr} ${rateStr}`, price: 0 }] : [],
+        is_custom_item: true
+      };
+      setTicketItems(updated);
+    } else {
+      setTicketItems(prev => [
+        ...prev,
+        {
+          line_item_id: newLineId,
+          product_id: 'custom_divers_' + Date.now(),
+          name: displayName,
+          base_price: data.unitPrice,
+          unit_price: data.unitPrice,
+          qty: data.qty,
+          unit_of_measure: data.unit || '',
+          note: formattedNote,
+          selectedCustomizations: data.unit ? [{ name: `${unitStr} ${rateStr}`, price: 0 }] : [],
+          is_custom_item: true,
+          isOrdered: false,
+          item_added_by: activeCashier?.name || user?.name || "Cashier",
+          item_added_by_id: activeCashier?.id || user?.id || null
+        }
+      ]);
+    }
+  };
+
   const handleTouchButtonPress = (btn: PosScreenButton) => {
     if (btn.type === 'screen') {
       handleNavigateToSubscreen(btn.targetScreenId);
+    } else if (
+      (btn as any).type === 'open_item' ||
+      (btn.label || '').trim().toLowerCase() === 'divers' ||
+      (btn.label || '').trim().toLowerCase().startsWith('divers')
+    ) {
+      handleOpenOpenItemModal();
     } else {
       if (!isShiftOpen) {
         setIsOpenShiftModalOpen(true);
@@ -3780,7 +3867,9 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         quantity: item.qty,
         unit_price: item.unit_price,
         customizations: item.selectedCustomizations || [],
-        comment: item.note
+        comment: item.note,
+        is_custom_item: Boolean(item.is_custom_item || String(item.product_id).startsWith('custom_') || String(item.name || '').toUpperCase().startsWith('DIVERS')),
+        is_custom_item: Boolean(item.is_custom_item || String(item.product_id).startsWith('custom_') || String(item.name || '').toUpperCase().startsWith('DIVERS'))
       }))
     };
 
@@ -4084,6 +4173,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         total_price: Number(item.unit_price || 0) * Number(item.qty || 1),
         customizations: item.selectedCustomizations || [],
         comment: item.note,
+        is_custom_item: Boolean(item.is_custom_item || String(item.product_id).startsWith('custom_') || String(item.name || '').toUpperCase().startsWith('DIVERS')),
         item_added_by: item.item_added_by || activeCashier?.name || user?.name || "Cashier",
         item_added_by_id: item.item_added_by_id || activeCashier?.id || user?.id || null
       }))
@@ -4384,6 +4474,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         unit_price: item.unit_price,
         customizations: item.selectedCustomizations || [],
         comment: item.note || "",
+        is_custom_item: Boolean(item.is_custom_item || String(item.product_id).startsWith('custom_') || String(item.name || '').toUpperCase().startsWith('DIVERS')),
         item_added_by: item.item_added_by || activeCashier?.name || user?.name || "Cashier",
         item_added_by_id: item.item_added_by_id || activeCashier?.id || user?.id || null
       }))
@@ -4429,7 +4520,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         customizations: paidAddons,
         addons: paidAddons.map((a: any) => a.name || a.ingredient || ''),
         removals: [],
-        customizations_print_text: printCustomizationLines,
+        customizations_print_text: printCustomizationLines.length > 0 ? printCustomizationLines : (item.note ? [item.note] : []),
         note: item.note || ""
       };
     });
@@ -4769,7 +4860,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
           customizations: paidAddons,
           addons: paidAddons.map((a: any) => a.name || a.ingredient || ''),
           removals: [],
-          customizations_print_text: printCustomizationLines,
+          customizations_print_text: printCustomizationLines.length > 0 ? printCustomizationLines : (item.note ? [item.note] : []),
           note: i.comment || ""
         };
       }),
@@ -5564,6 +5655,22 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                     </button>
                   )}
 
+                  {/* 1.5 - Divers / Open Item Button */}
+                  <button
+                    type="button"
+                    onClick={() => handleOpenOpenItemModal()}
+                    disabled={!isShiftOpen}
+                    className={`h-full px-2 sm:px-3 rounded-xl font-black text-xs sm:text-sm tracking-wider flex items-center justify-center gap-1 sm:gap-1.5 border shadow-sm transition shrink-0 cursor-pointer ${
+                      !isShiftOpen
+                        ? 'bg-[#F5F6F4] text-slate-400 border-[#E0E3DF] opacity-40 cursor-not-allowed'
+                        : 'bg-emerald-50 hover:bg-emerald-100 active:scale-95 text-emerald-900 border-emerald-300'
+                    }`}
+                    title="Add item without catalog price (Divers / Custom Amount & Qty)"
+                  >
+                    <span className="text-sm sm:text-base shrink-0">✨</span>
+                    <span className="truncate">+ Divers</span>
+                  </button>
+
                   {/* 2 - Hold (Deactivated in Sell screen; use Settle & Close to hold/schedule) */}
                   <button
                     type="button"
@@ -5733,6 +5840,16 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                     {ticketItems.filter(i => !i.isHoldSeparator && i.name !== 'HOLD').reduce((sum, item) => sum + (Number(item.qty) || 1), 0)} items
                   </span>
                 )}
+                <button
+                  type="button"
+                  onClick={() => handleOpenOpenItemModal()}
+                  disabled={!isShiftOpen}
+                  className="px-2 py-0.5 rounded-lg text-xs font-black bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 transition-all active:scale-95 flex items-center gap-1 shadow-2xs cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ml-1"
+                  title="Add item without catalog price (Divers / Custom Amount & Qty)"
+                >
+                  <span>✨</span>
+                  <span>+ Divers</span>
+                </button>
               </div>
 
               <div className="flex flex-wrap items-center gap-1 min-w-0">
@@ -6065,15 +6182,31 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                 >
                   {/* ROW 1: name + price on same line, qty controls, trash */}
                   <div className="flex items-center justify-between gap-1">
-                    {/* Name (clickable to edit options) */}
+                    {/* Name (clickable to edit options or open item) */}
                     <button
                       type="button"
-                      onClick={() => handleOpenCustomization(products.find((p) => p.id === item.product_id) || { id: item.product_id, name: item.name, unit_price_usd: item.base_price }, index)}
-                      className="flex-1 min-w-0 text-left"
-                      title="Tap to edit options"
+                      onClick={() => {
+                        const isOpenItem = Boolean(
+                          item.is_custom_item ||
+                          String(item.product_id).startsWith('custom_') ||
+                          String(item.name || '').trim().toUpperCase().startsWith('DIVERS')
+                        );
+                        if (isOpenItem) {
+                          handleOpenOpenItemModal(item, index);
+                        } else {
+                          handleOpenCustomization(products.find((p) => p.id === item.product_id) || { id: item.product_id, name: item.name, unit_price_usd: item.base_price }, index);
+                        }
+                      }}
+                      className="flex-1 min-w-0 text-left cursor-pointer"
+                      title={Boolean(item.is_custom_item || String(item.product_id).startsWith('custom_')) ? "Tap to edit Divers amount/qty" : "Tap to edit options"}
                     >
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <h5 className="font-extrabold text-sm text-[#242B28] leading-tight hover:opacity-80 transition-colors">{item.name}</h5>
+                        <h5 className="font-extrabold text-sm text-[#242B28] leading-tight hover:opacity-80 transition-colors">
+                          {Boolean(item.is_custom_item || String(item.product_id).startsWith('custom_')) && (
+                            <span className="text-emerald-600 mr-1 text-xs">✨</span>
+                          )}
+                          {item.name}
+                        </h5>
                         {Boolean(item.isOrdered && (editingOrderId || activeTableContext?.orderId)) && (
                           <span className="text-[10px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-300">
                             {Number(item.originalQty || 0) > 0 && item.qty > Number(item.originalQty)
@@ -6087,8 +6220,15 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                           </span>
                         )}
                       </div>
-                      <div className="text-sm font-black mt-0.5" style={{ color: primaryColor }}>
-                        ${(item.unit_price * item.qty).toFixed(2)}
+                      <div className="flex items-baseline gap-2 mt-0.5 flex-wrap">
+                        <span className="text-sm font-black" style={{ color: primaryColor }}>
+                          ${(item.unit_price * item.qty).toFixed(2)}
+                        </span>
+                        {item.qty !== 1 && (
+                          <span className="text-xs text-slate-500 font-semibold">
+                            (${Number(item.unit_price).toFixed(2)} × {item.qty}{item.unit_of_measure || ''})
+                          </span>
+                        )}
                       </div>
                     </button>
 
@@ -8693,6 +8833,18 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         conceptName={workspaceState.activeConcept?.name || 'NÉO'}
         branchName={currentBranchName}
         onRefresh={refetch86}
+      />
+
+      {/* OPEN ITEM / DIVERS MODAL */}
+      <OpenItemModal
+        isOpen={isOpenItemModalOpen}
+        onClose={() => {
+          setIsOpenItemModalOpen(false);
+          setOpenItemInitialData(null);
+        }}
+        onConfirm={handleSaveOpenItem}
+        initialData={openItemInitialData}
+        primaryColor={primaryColor}
       />
     </div>
   );
