@@ -1,5 +1,5 @@
-// FLOW POS Service Worker v4.0.0
-const CACHE_NAME = 'flow-pos-v4';
+// FLOW POS Service Worker v5.0.0
+const CACHE_NAME = 'flow-pos-v5';
 const CORE_ASSETS = [
   '/',
   '/index.html',

@@ -91,6 +91,7 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
   // Today's Invoices in Daily Payments
   const [todaysInvoices, setTodaysInvoices] = useState<any[]>([]);
   const [loadingInvoices, setLoadingInvoices] = useState<boolean>(false);
+  const [deletingInvoiceId, setDeletingInvoiceId] = useState<string | null>(null);
   const [expandedInvoiceId, setExpandedInvoiceId] = useState<string | null>(null);
   const [invoiceSubView, setInvoiceSubView] = useState<'form' | 'todays_list'>('form');
 
@@ -234,6 +235,38 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
       console.error('Failed to load today invoices:', err);
     } finally {
       setLoadingInvoices(false);
+    }
+  };
+
+  const handleDeleteInvoice = async (inv: any) => {
+    if (!isShiftActive) {
+      alert('Action blocked: Invoices cannot be deleted after the shift has been closed. Invoices are official and locked once the shift is closed.');
+      return;
+    }
+
+    const confirmMsg = `Delete supplier invoice #${inv.invoice_number || inv.id}?\n\n` +
+      `Amount: ${inv.currency === 'USD' ? `$${Number(inv.total_amount || 0).toFixed(2)}` : `${Math.round(Number(inv.total_amount || 0)).toLocaleString()} L.L.`}\n` +
+      `• Cash drawer outflow will be restored.\n` +
+      `• Stock receipts will be rolled back.\n\n` +
+      `Are you sure you want to delete this invoice?`;
+
+    if (!window.confirm(confirmMsg)) return;
+
+    setDeletingInvoiceId(inv.id);
+    try {
+      const res: any = await api.deleteSupplierInvoice(inv.id, cashierName || 'Cashier');
+      if (res && res.success) {
+        setTodaysInvoices((prev: any[]) => prev.filter((item: any) => item.id !== inv.id));
+        await loadTodaysInvoices();
+        await loadExpensesList();
+      } else {
+        alert('Failed to delete invoice: ' + (res?.error || res?.message || 'Unknown error'));
+      }
+    } catch (err: any) {
+      console.error('Error deleting supplier invoice:', err);
+      alert('Error deleting invoice: ' + (err.message || 'Network error'));
+    } finally {
+      setDeletingInvoiceId(null);
     }
   };
 
@@ -1318,19 +1351,46 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
                       <span>{isExpanded ? 'Hide Items' : `View ${inv.items?.length || 0} Items`}</span>
                     </button>
 
-                    {!isPaid && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setActiveTab('payment');
-                          if (inv.supplier_id) handleSupplierChangeForPayment(inv.supplier_id);
-                        }}
-                        className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
-                      >
-                        <CreditCard size={13} />
-                        <span>Settle / Pay Now</span>
-                      </button>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {!isPaid && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveTab('payment');
+                            if (inv.supplier_id) handleSupplierChangeForPayment(inv.supplier_id);
+                          }}
+                          className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                        >
+                          <CreditCard size={13} />
+                          <span>Settle / Pay Now</span>
+                        </button>
+                      )}
+
+                      {isShiftActive ? (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteInvoice(inv)}
+                          disabled={deletingInvoiceId === inv.id}
+                          className="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                          title="Delete invoice (Allowed while shift is open)"
+                        >
+                          {deletingInvoiceId === inv.id ? (
+                            <RefreshCw size={13} className="animate-spin text-rose-600" />
+                          ) : (
+                            <Trash2 size={13} className="text-rose-600" />
+                          )}
+                          <span>Delete</span>
+                        </button>
+                      ) : (
+                        <div 
+                          className="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-400 border border-slate-200 text-xs font-semibold flex items-center gap-1.5 cursor-not-allowed"
+                          title="Shift is closed. Invoices are official and locked."
+                        >
+                          <Lock size={13} />
+                          <span>Locked</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   {/* EXPANDABLE ITEMS TABLE */}

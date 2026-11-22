@@ -8532,6 +8532,17 @@ export const api = {
     return { success: true, data };
   },
 
+  deleteSupplierInvoice: async (invoiceId: string, deletedBy?: string) => {
+    const rid = getRestaurantId();
+    const { data, error } = await supabase.rpc('delete_pos_supplier_invoice', {
+      p_invoice_id: invoiceId,
+      p_restaurant_id: rid,
+      p_deleted_by: deletedBy || 'Admin'
+    });
+    if (error) return { success: false, error: error.message };
+    return data || { success: true };
+  },
+
   postSupplierInvoice: async (payload: any) => {
     const rid = payload.restaurant_id || getRestaurantId();
     const { data, error } = await supabase.rpc('post_pos_supplier_invoice', {
