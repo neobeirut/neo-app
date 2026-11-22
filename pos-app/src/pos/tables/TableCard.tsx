@@ -44,18 +44,18 @@ export const TableCard: React.FC<TableCardProps> = ({ table, isSelected = false,
       {/* Top Header: Code & Capacity */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5">
-          <span className="text-base font-black text-[#242B28] tracking-wider">
+          <span className="text-lg sm:text-xl font-black text-[#242B28] tracking-wider">
             {table.table_code}
           </span>
           {table.merged_table_codes && table.merged_table_codes.length > 0 && (
-            <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300">
+            <span className="text-xs font-black px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300">
               +{table.merged_table_codes.join(', ')}
             </span>
           )}
         </div>
 
-        <div className="flex items-center gap-1 text-[11px] text-[#5E6964] font-semibold">
-          <Users className="w-3.5 h-3.5" />
+        <div className="flex items-center gap-1 text-xs text-[#5E6964] font-bold">
+          <Users className="w-4 h-4" />
           <span>{(isOccupied || isOpenNoProduct) && table.guest_count ? table.guest_count : table.capacity}</span>
         </div>
       </div>
@@ -64,33 +64,33 @@ export const TableCard: React.FC<TableCardProps> = ({ table, isSelected = false,
       <div className="my-auto py-1">
         {isOpenNoProduct ? (
           <div className="text-center">
-            <span className="text-xs font-black text-sky-700 uppercase tracking-wider block">
+            <span className="text-sm font-black text-sky-700 uppercase tracking-wider block">
               Open
             </span>
-            <span className="text-[10px] font-bold text-[#5E6964]">
+            <span className="text-xs font-bold text-[#5E6964]">
               No Products
             </span>
-            <span className="text-[9px] text-sky-600 block mt-0.5 font-medium">
+            <span className="text-[11px] text-sky-600 block mt-0.5 font-semibold">
               Tap to Add Order
             </span>
           </div>
         ) : isAvailable ? (
           <div className="text-center">
-            <span className="text-xs font-bold text-emerald-700 uppercase tracking-wider block">
+            <span className="text-sm font-bold text-emerald-700 uppercase tracking-wider block">
               Available
             </span>
-            <span className="text-[10px] text-[#5E6964]">Tap to Open</span>
+            <span className="text-xs text-[#5E6964] font-semibold">Tap to Open</span>
           </div>
         ) : (
           <div className="space-y-1 text-center">
-            <span className="text-xs font-black uppercase tracking-wider block text-amber-800">
+            <span className="text-sm sm:text-base font-black uppercase tracking-wider block text-amber-800">
               OPEN
             </span>
-            <div className="text-[10px] text-[#5E6964] font-medium truncate max-w-full">
+            <div className="text-xs text-[#5E6964] font-bold truncate max-w-full">
               {table.assigned_waiter || 'Staff'}
             </div>
             {table.kitchen_readiness && (
-              <div className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-300 inline-block mt-0.5">
+              <div className="text-[11px] font-black uppercase px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-300 inline-block mt-0.5">
                 🍳 {table.kitchen_readiness}
               </div>
             )}
@@ -99,28 +99,28 @@ export const TableCard: React.FC<TableCardProps> = ({ table, isSelected = false,
       </div>
 
       {/* Bottom: Timer or Status indicator */}
-      <div className="flex items-center justify-between text-[10px] pt-1 border-t border-[#E0E3DF]">
+      <div className="flex items-center justify-between text-xs pt-1.5 border-t border-[#E0E3DF]">
         {isOpenNoProduct ? (
           <>
-            <span className="text-[#5E6964] flex items-center gap-1 truncate max-w-[60%]">
-              <Clock className="w-3 h-3 text-sky-600 flex-shrink-0" />
+            <span className="text-[#5E6964] flex items-center gap-1 truncate max-w-[60%] font-semibold">
+              <Clock className="w-3.5 h-3.5 text-sky-600 flex-shrink-0" />
               <span>{formatElapsedDuration(table.elapsed_minutes)}</span>
             </span>
 
-            <span className="font-extrabold uppercase px-1.5 py-0.5 rounded text-[9px] bg-sky-50 text-sky-700 border border-sky-200">
+            <span className="font-black uppercase px-2 py-0.5 rounded text-[10px] bg-sky-50 text-sky-700 border border-sky-200">
               OPEN
             </span>
           </>
         ) : isAvailable ? (
-          <span className="text-[#5E6964] font-medium">Seats {table.capacity}</span>
+          <span className="text-[#5E6964] font-semibold text-xs">Seats {table.capacity}</span>
         ) : (
           <>
-            <span className="text-[#5E6964] flex items-center gap-1">
-              <Clock className="w-3 h-3 text-[#5E6964]" />
+            <span className="text-[#5E6964] flex items-center gap-1 font-semibold">
+              <Clock className="w-3.5 h-3.5 text-[#5E6964]" />
               <span>{formatElapsedDuration(table.elapsed_minutes)}</span>
             </span>
 
-            <span className={`font-extrabold uppercase px-1.5 py-0.5 rounded text-[9px] ${
+            <span className={`font-black uppercase px-2 py-0.5 rounded text-[10px] ${
               isBillRequested
                 ? 'bg-amber-500 text-slate-950 font-black animate-bounce'
                 : 'bg-rose-50 text-rose-700 border border-rose-200'

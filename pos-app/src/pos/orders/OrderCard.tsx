@@ -53,25 +53,26 @@ export const OrderCard: React.FC<OrderCardProps> = ({
 
   const getSlaBadge = () => {
     const elapsedFormatted = formatElapsedHoursMinutes(order.elapsedMinutes);
+    const badgeTextSize = isTableVariant ? 'text-xs' : 'text-[10px]';
     if (order.statusGroup === 'COMPLETED' || order.statusGroup === 'CANCELLED') {
-      return <span className="text-slate-500 text-[11px] font-semibold shrink-0">{elapsedFormatted}</span>;
+      return <span className={`text-slate-500 ${isTableVariant ? 'text-xs' : 'text-[11px]'} font-semibold shrink-0`}>{elapsedFormatted}</span>;
     }
     if (order.slaStatus === 'critical') {
       return (
-        <span className="px-1.5 py-0.5 rounded-md bg-rose-100 text-rose-900 border border-rose-300 text-[10px] font-black animate-pulse flex items-center gap-1 shrink-0 whitespace-nowrap">
+        <span className={`px-2 py-0.5 rounded-md bg-rose-100 text-rose-900 border border-rose-300 ${badgeTextSize} font-black animate-pulse flex items-center gap-1 shrink-0 whitespace-nowrap`}>
           <span>⚠️</span> {elapsedFormatted}
         </span>
       );
     }
     if (order.slaStatus === 'warning') {
       return (
-        <span className="px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-extrabold flex items-center gap-1 shrink-0 whitespace-nowrap">
+        <span className={`px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 ${badgeTextSize} font-extrabold flex items-center gap-1 shrink-0 whitespace-nowrap`}>
           <span>⏱️</span> {elapsedFormatted}
         </span>
       );
     }
     return (
-      <span className="px-1.5 py-0.5 rounded-md bg-emerald-100 text-emerald-900 border border-emerald-300 text-[10px] font-bold flex items-center gap-1 shrink-0 whitespace-nowrap">
+      <span className={`px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-900 border border-emerald-300 ${badgeTextSize} font-bold flex items-center gap-1 shrink-0 whitespace-nowrap`}>
         <span>⏱️</span> {elapsedFormatted}
       </span>
     );
@@ -95,13 +96,13 @@ export const OrderCard: React.FC<OrderCardProps> = ({
     >
       <div>
         {isTableVariant ? (
-          <div className="flex items-center justify-between gap-1 mb-1.5 flex-wrap">
-            <div className="flex items-center gap-1.5 shrink-0">
-              <span className="text-base font-black text-slate-900 tracking-tight shrink-0 whitespace-nowrap">
+          <div className="flex items-center justify-between gap-1 mb-2 flex-wrap">
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight shrink-0 whitespace-nowrap">
                 {tableDisplayName}
               </span>
               {order.conceptCode && order.conceptCode !== 'NEO' && (
-                <span className={`px-1.5 py-0.5 rounded text-[9px] font-black border flex items-center gap-0.5 ${
+                <span className={`px-2 py-0.5 rounded text-[11px] font-black border flex items-center gap-0.5 ${
                   order.conceptCode === 'OVRLOAD'
                     ? 'bg-rose-100 text-rose-900 border-rose-300'
                     : 'bg-purple-100 text-purple-900 border-purple-300'
@@ -111,7 +112,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({
                 </span>
               )}
               {order.isBillRequested && (
-                <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-amber-100 text-amber-900 border border-amber-300 animate-pulse shrink-0 whitespace-nowrap">
+                <span className="px-2 py-0.5 rounded text-[11px] font-black bg-amber-100 text-amber-900 border border-amber-300 animate-pulse shrink-0 whitespace-nowrap">
                   🧾 Bill
                 </span>
               )}
@@ -184,13 +185,24 @@ export const OrderCard: React.FC<OrderCardProps> = ({
         <div className="flex items-center justify-between text-xs mb-1">
           <div className="font-bold text-slate-800 min-w-0 flex-1">
             {isTableVariant ? (
-              <div className="flex items-center justify-between text-xs text-slate-600 font-medium">
-                <div className="flex items-center gap-1.5">
-                  {order.guestCount ? <span className="text-slate-500">👥{order.guestCount}</span> : null}
+              <div className="flex items-center justify-between text-sm text-slate-700 font-bold mt-1">
+                <div className="flex items-center gap-2">
+                  {order.guestCount ? (
+                    <span className="text-slate-600 bg-slate-100 px-2 py-0.5 rounded text-xs font-black">
+                      👥 {order.guestCount}
+                    </span>
+                  ) : null}
                   {order.waiterName && (
-                    <span className="text-amber-800 truncate font-semibold">{order.waiterName.split(' ')[0]}</span>
+                    <span className="text-amber-900 truncate font-black text-xs sm:text-sm">
+                      {order.waiterName.split(' ')[0]}
+                    </span>
                   )}
                 </div>
+                {order.items?.length > 0 && (
+                  <span className="text-xs font-bold text-slate-400">
+                    {order.items.length} item{order.items.length !== 1 ? 's' : ''}
+                  </span>
+                )}
               </div>
             ) : (
               <>
@@ -245,7 +257,18 @@ export const OrderCard: React.FC<OrderCardProps> = ({
         )}
       </div>
 
-      {!isTableVariant && (
+      {isTableVariant ? (
+        <div className="pt-2 mt-2 border-t border-slate-100 flex items-center justify-between">
+          <span className="text-base sm:text-lg font-black text-slate-900">
+            {'$' + order.totalAmount.toFixed(2)}
+          </span>
+          {order.isBillRequested && (
+            <span className="text-xs font-black uppercase px-2 py-0.5 rounded bg-sky-100 text-sky-800 border border-sky-300">
+              Bill Sent
+            </span>
+          )}
+        </div>
+      ) : (
       <div className="pt-2 border-t border-slate-200 flex items-center justify-between">
         <div>
           <span className="text-xs font-black text-slate-900">

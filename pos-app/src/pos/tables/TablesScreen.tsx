@@ -726,7 +726,7 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
                   </p>
                 </div>
               ) : (
-                <div className="grid gap-2.5" style={{gridTemplateColumns:'repeat(auto-fill,minmax(175px,1fr))'}}>
+                <div className="grid gap-3" style={{gridTemplateColumns:'repeat(auto-fill,minmax(195px,1fr))'}}>
                   {displayOpenTables.map(order => {
                     const tableCode = order.tableLabel || (order.customerName ? order.customerName.replace(/^Table\s*/i, '') : '1');
                     const matched = tables.find(t => t.table_code === tableCode || t.commerce_order_id === Number(order.id));
@@ -744,7 +744,7 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
                       >
                         {/* Order Card matching Orders page */}
                         <div
-                          className="p-2 flex-1 cursor-pointer"
+                          className="p-2.5 flex-1 cursor-pointer"
                           onClick={() => {
                             if (matched) setSelectedTableId(matched.id);
                             if (!shiftOpen) {
@@ -762,8 +762,8 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
                         </div>
 
                         {fire && fire.holds > 0 && fire.fired < fire.holds && (
-                          <div className="px-2 py-1.5 flex items-center justify-between gap-2 border-t border-slate-200 bg-slate-50">
-                            <span className="text-xs text-slate-600 font-medium" role="status">
+                          <div className="px-2.5 py-1.5 flex items-center justify-between gap-2 border-t border-slate-200 bg-slate-50">
+                            <span className="text-xs text-slate-700 font-bold" role="status">
                               {fire.holds - fire.fired} course{fire.holds - fire.fired !== 1 ? 's' : ''} held
                             </span>
                             <button
@@ -783,7 +783,7 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
                           </div>
                         )}
                         {/* Action Buttons Toolbar on Card: Print Bill & (Optional) Settle */}
-                        <div className={`p-1.5 bg-slate-50 border-t border-slate-200 grid ${onSettleTable ? 'grid-cols-2' : 'grid-cols-1'} gap-1.5`}>
+                        <div className={`p-2 bg-slate-50 border-t border-slate-200 grid ${onSettleTable ? 'grid-cols-2' : 'grid-cols-1'} gap-2`}>
                           <button
                             type="button"
                             disabled={!shiftOpen}
@@ -794,7 +794,7 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
                               }
                               handlePrintBillForOrder(order);
                             }}
-                            className={`py-1 rounded-lg font-black text-[10px] flex items-center justify-center gap-0.5 transition active:scale-95 ${
+                            className={`py-2 rounded-xl font-black text-xs sm:text-sm flex items-center justify-center gap-1.5 transition active:scale-95 ${
                               !shiftOpen
                                 ? "bg-slate-100 text-slate-400 border border-slate-200 opacity-40 cursor-not-allowed"
                                 : "bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200 cursor-pointer shadow-xs"
@@ -816,7 +816,7 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
                                 }
                                 handleSettleOrder(order);
                               }}
-                              className={`py-1 rounded-lg font-black text-[10px] flex items-center justify-center gap-0.5 transition active:scale-95 ${
+                              className={`py-2 rounded-xl font-black text-xs sm:text-sm flex items-center justify-center gap-1.5 transition active:scale-95 ${
                                 !shiftOpen
                                   ? "bg-slate-100 text-slate-400 border border-slate-200 opacity-40 cursor-not-allowed"
                                   : "bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 cursor-pointer shadow-xs"
