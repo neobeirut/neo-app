@@ -831,11 +831,9 @@ const VIRTUAL_PRINT_KEY = 'flow_pos_virtual_print_mode';
 
 export function isVirtualPrintModeActive(): boolean {
   if (typeof window === 'undefined') return false;
-  // Default to virtual screen mode if explicitly set, or if user is testing without printer
   const val = localStorage.getItem(VIRTUAL_PRINT_KEY);
   if (val === null) {
-    // Default to true for testing on screen without hardware
-    return true;
+    return false;
   }
   return val === 'true';
 }

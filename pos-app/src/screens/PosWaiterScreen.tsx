@@ -713,11 +713,12 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
       setTicketItems(updated);
     } else {
       const newLineId = 'line-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7);
+      const finalPrice = typeof product.unit_price_usd === 'number' && !isNaN(product.unit_price_usd) ? product.unit_price_usd : 0;
       const newItem: TicketItem = {
         line_item_id: newLineId,
         product_id: product.id,
         name: product.name,
-        unit_price: product.unit_price_usd || 0,
+        unit_price: finalPrice,
         qty: 1,
         selectedCustomizations: [],
         note: '',
@@ -1010,7 +1011,6 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
       };
 
       setReceiptPreviewData(billPayload as ThermalReceiptData);
-      setIsReceiptPreviewOpen(true);
 
       // Multi-Printer Architecture: Dispatch exclusively to designated Main Bill Printer
       try {
@@ -1148,7 +1148,6 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
       };
 
       setReceiptPreviewData(billPayload as ThermalReceiptData);
-      setIsReceiptPreviewOpen(true);
 
       // Multi-Printer Architecture: Dispatch exclusively to designated Main Bill Printer
       try {

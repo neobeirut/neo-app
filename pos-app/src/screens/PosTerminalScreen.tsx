@@ -985,7 +985,6 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
           const payloads = cancelJobs.map(j => j.ticket_payload as ThermalReceiptData);
           setReceiptPreviewData(payloads[0]);
           setReceiptPreviewTickets(payloads);
-          setIsReceiptPreviewOpen(true);
           await dispatchPhysicalPrintJobs(cancelJobs);
         }
       } catch (cancelErr) {
@@ -1789,7 +1788,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         const prod = products.find((p: any) => String(p.id) === String(item.product_id));
         if (!prod) return item;
         const newEffectivePrice = resolveEffectivePosPrice(prod, channel);
-        if (newEffectivePrice > 0 && Math.abs(newEffectivePrice - Number(item.unit_price)) > 0.001) {
+        if (typeof newEffectivePrice === 'number' && !isNaN(newEffectivePrice) && Math.abs(newEffectivePrice - Number(item.unit_price)) > 0.001) {
           changedCount++;
           return {
             ...item,
@@ -2528,14 +2527,17 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         : 'line-' + Date.now() + '-' + Math.random().toString(36).substring(2, 8);
 
       const effectivePrice = resolveEffectivePosPrice(product, selectedChannel);
+      const finalPrice = typeof effectivePrice === 'number' && !isNaN(effectivePrice)
+        ? effectivePrice
+        : (typeof product.unit_price_usd === 'number' && !isNaN(product.unit_price_usd) ? product.unit_price_usd : 0);
       setTicketItems([
         ...ticketItems,
         {
           line_item_id: newLineId,
           product_id: product.id,
           name: product.name,
-          base_price: effectivePrice || product.unit_price_usd || 0,
-          unit_price: effectivePrice || product.unit_price_usd || 0,
+          base_price: finalPrice,
+          unit_price: finalPrice,
           qty: 1,
           selectedCustomizations: [],
           note: "",
@@ -3999,7 +4001,6 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         restaurant_name: orderData.restaurant_name || localStorage.getItem('flow_pos_restaurant_name') || 'Neo Beirut',
         logo_url: orderData.logo_url || localStorage.getItem('flow_pos_logo_url') || ''
       });
-      setIsReceiptPreviewOpen(true);
     }
 
     try {
@@ -4030,7 +4031,6 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
 
         if (billJob) {
           setReceiptPreviewData(billJob.ticket_payload as ThermalReceiptData);
-          setIsReceiptPreviewOpen(true);
           const dispatchRes = await dispatchPhysicalPrintJobs([billJob]);
           if (dispatchRes.success) return true;
         }
@@ -4048,7 +4048,6 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
             idempotency_key: `fire_ticket_${orderData.table || 'chit'}_${Date.now()}`
           };
           setReceiptPreviewData(fireJob.ticket_payload as ThermalReceiptData);
-          setIsReceiptPreviewOpen(true);
           const dispatchRes = await dispatchPhysicalPrintJobs([fireJob]);
           if (dispatchRes.success) return true;
         }
@@ -4070,7 +4069,6 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
           const payloads = jobs.map(j => j.ticket_payload as ThermalReceiptData);
           setReceiptPreviewData(payloads[0]);
           setReceiptPreviewTickets(payloads);
-          setIsReceiptPreviewOpen(true);
           const dispatchRes = await dispatchPhysicalPrintJobs(jobs);
           if (dispatchRes.success) return true;
         }
@@ -4682,7 +4680,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     setOrderType("pickup");
     setScheduledOrderTime("");
     setScheduledOrderNote("");
-    setActiveTabModal(["Toters", "NokNok"].includes(effectiveChannel) ? null : "receipt");
+    setActiveTabModal(null);
     handleResetToMainMenu();
     resetClientOrderToken();
     setIsSubmitting(false);
@@ -5068,21 +5066,8 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
               </button>
             )}
 
-            {/* Quick Delivery POS Navigation Shortcuts (WhatsApp Queue, Held Orders) */}
+            {/* Quick Delivery POS Navigation Shortcuts (Held Orders) */}
             <div className="flex items-center gap-1 shrink-0">
-              <button
-                type="button"
-                onClick={() => setActiveTabModal("incoming")}
-                className="px-1.5 sm:px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold transition flex items-center gap-1 border border-slate-300 cursor-pointer shadow-xs active:scale-95"
-                title="Incoming WhatsApp Orders Queue"
-              >
-                <span>📱 WA</span>
-                {pendingOrders.length > 0 && (
-                  <span className="px-1.5 py-0.2 rounded-full bg-[#eb660c] text-white text-[10px] font-black animate-pulse">
-                    {pendingOrders.length}
-                  </span>
-                )}
-              </button>
               <button
                 type="button"
                 onClick={() => setActiveTabModal("held")}
@@ -7634,83 +7619,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         </div>
       )}
 
-      {/* RECEIPT CONFIRMATION & DRIVER DISPATCH MODAL */}
-      {activeTabModal === "receipt" && lastCompletedOrder && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:hidden">
-          <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-md p-6 space-y-4 text-slate-900 shadow-2xl text-center">
-            <div className="w-12 h-12 rounded-full bg-emerald-100 border border-emerald-300 text-emerald-800 text-2xl flex items-center justify-center mx-auto font-black shadow-xs">
-              ✓
-            </div>
-            <div>
-              <h3 className="font-black text-lg text-slate-900">Order #{lastCompletedOrder.id} Approved & Saved!</h3>
-              <p className="text-xs text-slate-500 mt-1">Sent to thermal printer & recorded in database.</p>
-            </div>
 
-            <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs space-y-1 text-left">
-              <div className="flex justify-between font-bold text-slate-900">
-                <span>Total Amount:</span>
-                <span className="text-pos-primary font-black">${parseFloat(lastCompletedOrder.total_amount || 0).toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-slate-500">
-                <span>Payment Method:</span>
-                <span className="text-slate-800 font-bold">{lastCompletedOrder.payment_method || "Cash"}</span>
-              </div>
-              <div className="flex justify-between text-slate-500">
-                <span>Order Type / Channel:</span>
-                <span className="text-slate-800 font-bold">{lastCompletedOrder.order_type || "delivery"} • {lastCompletedOrder.order_source || "POS"}</span>
-              </div>
-            </div>
-
-            {/* DRIVER DISPATCH SECTION FOR DELIVERY ORDERS */}
-            {lastCompletedOrder.order_type === "delivery" && (
-              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2.5 text-center">
-                <div className="flex justify-between items-center text-xs font-bold text-slate-700">
-                  <span className="flex items-center gap-1.5">🛵 Request Driver (+961 3 826 136)</span>
-                  {dispatchStatusMsg ? (
-                    <span className="text-[10px] bg-[#25D366]/20 text-[#25D366] px-2.5 py-0.5 rounded-full font-black animate-pulse">
-                      {dispatchStatusMsg}
-                    </span>
-                  ) : (
-                    <span className="text-[10px] text-emerald-700 font-extrabold">⚡ Instant Dispatch</span>
-                  )}
-                </div>
-                <div className="text-[11px] text-slate-500 font-medium text-left">
-                  Select arrival ETA time to send WhatsApp to driver (+961 3 826 136):
-                </div>
-                <div className="grid grid-cols-6 gap-1.5">
-                  {["Now", "5", "15", "20", "30", "45"].map((time) => (
-                    <button
-                      key={time}
-                      type="button"
-                      onClick={() => handleSendDeliveryWhatsApp(time, "silent")}
-                      className="py-2.5 bg-[#25D366] hover:bg-[#20bd5a] text-black font-black text-xs rounded-xl transition-all shadow-md active:scale-95 flex items-center justify-center gap-0.5"
-                    >
-                      <span>⚡</span>
-                      <span>{time === "Now" ? "Now" : `${time}'`}</span>
-                    </button>
-                  ))}
-                </div>
-                <div className="flex justify-end pt-1">
-                  <button
-                    type="button"
-                    onClick={() => handleSendDeliveryWhatsApp("15", "manual")}
-                    className="text-[11px] text-slate-500 hover:text-slate-900 underline font-semibold"
-                  >
-                    Open WhatsApp Web/App Manually ➔
-                  </button>
-                </div>
-              </div>
-            )}
-
-            <button
-              onClick={() => setActiveTabModal(null)}
-              className="w-full py-3.5 bg-pos-primary hover:bg-pos-primary-hover text-white font-black rounded-xl text-xs transition-all shadow-lg cursor-pointer"
-            >
-              New Order ➔
-            </button>
-          </div>
-        </div>
-      )}
     
       {/* UNMAPPED BRANCH BLOCKING ALERT */}
       {!isResolvingBranch && branchMappingError && (
