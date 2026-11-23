@@ -718,7 +718,9 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
       setTicketItems(updated);
     } else {
       const newLineId = 'line-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7);
-      const finalPrice = typeof product.unit_price_usd === 'number' && !isNaN(product.unit_price_usd) ? product.unit_price_usd : 0;
+      const finalPrice = typeof (product as any).price === 'number' && (product as any).price > 0
+        ? (product as any).price
+        : (typeof product.unit_price_usd === 'number' && !isNaN(product.unit_price_usd) ? product.unit_price_usd : 0);
       const newItem: TicketItem = {
         line_item_id: newLineId,
         product_id: product.id,

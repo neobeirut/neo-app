@@ -265,6 +265,9 @@ export async function parseAndImportAlcoholSpreadsheet(file: File): Promise<Impo
 
       if (existingProd) {
         productId = existingProd.id;
+        if (price !== undefined && price !== null) {
+          productPayload.unit_price_usd = price;
+        }
         await supabase
           .from('products')
           .update(productPayload)
@@ -275,6 +278,7 @@ export async function parseAndImportAlcoholSpreadsheet(file: File): Promise<Impo
           .insert({
             restaurant_id: DEFAULT_RESTAURANT_ID,
             price: price ?? 0,
+            unit_price_usd: price ?? 0,
             inventory_mode: hasIngredients ? 'RECIPE' : 'NONE',
             ...productPayload
           })

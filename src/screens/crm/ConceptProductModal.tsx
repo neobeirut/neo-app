@@ -246,10 +246,12 @@ export default function ConceptProductModal({
     try {
       // 1. Save canonical master product
       const isAvailable = (masterData.status || 'Available') === 'Available';
+      const masterPrice = Number(masterData.price || 0);
       const masterPayload = {
         ...masterData,
         name: masterData.name.trim(),
-        price: Number(masterData.price || 0),
+        price: masterPrice,
+        unit_price_usd: masterPrice,
         is_active: masterData.is_active !== undefined ? masterData.is_active : isAvailable,
         show_in_mobile: masterData.show_in_mobile !== undefined ? masterData.show_in_mobile : true
       };

@@ -89,7 +89,7 @@ export const ProductSearchModal: React.FC<ProductSearchModalProps> = ({
               master_product_id: item.id,
               name: item.name,
               description: item.description || '',
-              unit_price_usd: Number(item.unit_price_usd || item.price || 0),
+              unit_price_usd: Number((item.price !== null && item.price !== undefined && Number(item.price) > 0) ? item.price : (item.unit_price_usd || item.price || 0)),
               image_url: item.image_url || '',
               category_id: item.category_id,
               category_name: 'Menu Item',
@@ -441,9 +441,11 @@ export const ProductSearchModal: React.FC<ProductSearchModalProps> = ({
                     const isUnavailable = product.status === 'Unavailable Today' || product.status === 'OUT_OF_STOCK' || is86;
                     const hasOptions = Boolean(product.customizations && product.customizations.length > 0);
                     const isJustAdded = recentAddedId === product.id;
-                    const price = typeof product.unit_price_usd === 'number'
-                      ? product.unit_price_usd
-                      : Number((product as any).price || 0);
+                    const price = typeof (product as any).price === 'number' && (product as any).price > 0
+                      ? (product as any).price
+                      : (typeof product.unit_price_usd === 'number' && product.unit_price_usd > 0
+                        ? product.unit_price_usd
+                        : Number((product as any).price || product.unit_price_usd || 0));
 
                     return (
                       <div

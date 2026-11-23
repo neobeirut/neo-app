@@ -2530,9 +2530,12 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         : 'line-' + Date.now() + '-' + Math.random().toString(36).substring(2, 8);
 
       const effectivePrice = resolveEffectivePosPrice(product, selectedChannel);
-      const finalPrice = typeof effectivePrice === 'number' && !isNaN(effectivePrice)
-        ? effectivePrice
+      const masterPrice = typeof (product as any).price === 'number' && (product as any).price > 0
+        ? (product as any).price
         : (typeof product.unit_price_usd === 'number' && !isNaN(product.unit_price_usd) ? product.unit_price_usd : 0);
+      const finalPrice = typeof effectivePrice === 'number' && !isNaN(effectivePrice) && effectivePrice > 0
+        ? effectivePrice
+        : masterPrice;
       setTicketItems([
         ...ticketItems,
         {

@@ -336,9 +336,12 @@ export default function CrmProductsTab({ onNavigateToModifiers, onProductsCountC
     setSavingProduct(true);
     try {
       const isAvailable = (formData.status || 'Available') === 'Available';
+      const priceNum = Number(formData.price) || 0;
       const payload = {
         ...formData,
         name: formData.name.trim(),
+        price: priceNum,
+        unit_price_usd: priceNum,
         is_active: formData.is_active !== undefined ? formData.is_active : isAvailable,
         show_in_mobile: formData.show_in_mobile !== undefined ? formData.show_in_mobile : true
       };

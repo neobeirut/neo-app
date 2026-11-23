@@ -1265,9 +1265,12 @@ export const crmService = {
 
   async createProduct(product: Partial<Product>): Promise<Product> {
     const restaurantId = getActiveRestaurantId();
+    const numPrice = product.price !== undefined ? Number(product.price) : ((product as any).unit_price_usd !== undefined ? Number((product as any).unit_price_usd) : 0);
     const insertPayload: any = {
       show_in_mobile: product.show_in_mobile !== undefined ? product.show_in_mobile : true,
       ...product,
+      price: numPrice,
+      unit_price_usd: numPrice,
       restaurant_id: restaurantId,
       created_at: new Date().toISOString()
     };
@@ -1285,6 +1288,27 @@ export const crmService = {
       data = res.data;
     } else if (error) {
       throw error;
+    }
+
+    const assignedConceptId = product.concept_id || '00000000-0000-0000-0000-000000000001';
+    if (data?.id) {
+      try {
+        await supabase.from('product_concept_configurations').upsert({
+          restaurant_id: restaurantId,
+          product_id: data.id,
+          concept_id: assignedConceptId,
+          display_name: data.name,
+          selling_price: numPrice,
+          is_active: data.is_active !== false,
+          is_available: true,
+          is_visible: true,
+          description: data.description || '',
+          main_image_url: data.image_url || '',
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'restaurant_id,product_id,concept_id' });
+      } catch (e) {
+        console.warn('Failed to upsert concept configuration on createProduct:', e);
+      }
     }
 
     if (product.concept_id && data?.id) {
@@ -1316,6 +1340,17 @@ export const crmService = {
     const restaurantId = getActiveRestaurantId();
     // Strip computed/joined fields that are not real DB columns
     const { category, customization_count, ...dbUpdates } = updates as any;
+
+    // Ensure price and unit_price_usd remain synchronized
+    if (dbUpdates.price !== undefined) {
+      dbUpdates.price = Number(dbUpdates.price);
+      if (dbUpdates.unit_price_usd === undefined) {
+        dbUpdates.unit_price_usd = dbUpdates.price;
+      }
+    } else if (dbUpdates.unit_price_usd !== undefined && dbUpdates.price === undefined) {
+      dbUpdates.price = Number(dbUpdates.unit_price_usd);
+    }
+
     let { data, error } = await supabase
       .from('products')
       .update(dbUpdates)
@@ -1330,6 +1365,21 @@ export const crmService = {
       data = res.data;
     } else if (error) {
       throw error;
+    }
+
+    // Keep concept configuration selling_price in sync with updated product price
+    if (dbUpdates.price !== undefined && id) {
+      try {
+        const prodPrice = Number(dbUpdates.price);
+        const targetConceptId = updates.concept_id || data?.concept_id || '00000000-0000-0000-0000-000000000001';
+        await supabase
+          .from('product_concept_configurations')
+          .update({ selling_price: prodPrice, updated_at: new Date().toISOString() })
+          .eq('product_id', id)
+          .eq('concept_id', targetConceptId);
+      } catch (e) {
+        console.warn('Failed to sync concept config selling price on updateProduct:', e);
+      }
     }
 
     if (updates.concept_id && id) {

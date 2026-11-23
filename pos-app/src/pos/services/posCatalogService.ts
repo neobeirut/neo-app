@@ -80,9 +80,19 @@ export function resolveEffectivePosPrice(product: PosProduct, channel?: string |
     }
   }
 
-  return product.unit_price_usd !== undefined && product.unit_price_usd !== null && !isNaN(Number(product.unit_price_usd))
+  // Authoritative price precedence: product.unit_price_usd (resolved effective price) -> (product as any).price -> fallback 0
+  const unitUsd = product.unit_price_usd !== undefined && product.unit_price_usd !== null && !isNaN(Number(product.unit_price_usd))
     ? Number(product.unit_price_usd)
-    : 0;
+    : NaN;
+  const directPrice = (product as any).price !== undefined && (product as any).price !== null && !isNaN(Number((product as any).price))
+    ? Number((product as any).price)
+    : NaN;
+
+  if (!isNaN(unitUsd) && unitUsd > 0) return unitUsd;
+  if (!isNaN(directPrice) && directPrice > 0) return directPrice;
+  if (!isNaN(unitUsd)) return unitUsd;
+  if (!isNaN(directPrice)) return directPrice;
+  return 0;
 }
 
 /**
@@ -329,15 +339,27 @@ async function fetchCatalogFromSupabase(
             });
           }
 
-          const conceptPrice = activeConfig.selling_price !== undefined && activeConfig.selling_price !== null && !isNaN(Number(activeConfig.selling_price))
+          const rawConceptPrice = activeConfig.selling_price !== undefined && activeConfig.selling_price !== null && !isNaN(Number(activeConfig.selling_price))
             ? Number(activeConfig.selling_price)
             : NaN;
 
-          const masterPrice = p.unit_price_usd !== undefined && p.unit_price_usd !== null && !isNaN(Number(p.unit_price_usd))
+          const numBasePrice = p.price !== undefined && p.price !== null && !isNaN(Number(p.price))
+            ? Number(p.price)
+            : NaN;
+
+          const numUnitUsd = p.unit_price_usd !== undefined && p.unit_price_usd !== null && !isNaN(Number(p.unit_price_usd))
             ? Number(p.unit_price_usd)
-            : (p.price !== undefined && p.price !== null && !isNaN(Number(p.price))
-              ? Number(p.price)
-              : 0);
+            : NaN;
+
+          // Master price: authoritative backend p.price takes precedence over p.unit_price_usd
+          const masterPrice = !isNaN(numBasePrice) && numBasePrice > 0
+            ? numBasePrice
+            : (!isNaN(numUnitUsd) && numUnitUsd > 0 ? numUnitUsd : (!isNaN(numBasePrice) ? numBasePrice : (!isNaN(numUnitUsd) ? numUnitUsd : 0)));
+
+          // Concept price is used if > 0, or if 0 only when masterPrice is also 0; otherwise fallback to masterPrice
+          const conceptPrice = !isNaN(rawConceptPrice) && (rawConceptPrice > 0 || masterPrice === 0)
+            ? rawConceptPrice
+            : NaN;
 
           const effectivePrice = !isNaN(conceptPrice) ? conceptPrice : masterPrice;
 
@@ -384,9 +406,10 @@ async function fetchCatalogFromSupabase(
         if (matchesTarget) {
           const numPrice = p.price !== null && p.price !== undefined ? parseFloat(String(p.price)) : NaN;
           const numUnit = p.unit_price_usd !== null && p.unit_price_usd !== undefined ? parseFloat(String(p.unit_price_usd)) : NaN;
-          const price = !isNaN(numUnit)
-            ? numUnit
-            : (!isNaN(numPrice) ? numPrice : 0);
+          // Prefer authoritative p.price if positive, then unit_price_usd
+          const price = !isNaN(numPrice) && numPrice > 0
+            ? numPrice
+            : (!isNaN(numUnit) && numUnit > 0 ? numUnit : (!isNaN(numPrice) ? numPrice : (!isNaN(numUnit) ? numUnit : 0)));
 
           resolvedProducts.push({
             id: p.id,
