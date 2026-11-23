@@ -37,6 +37,7 @@ interface DailyPaymentsModalProps {
   activeShiftName?: string;
   activeShiftDate?: string;
   activeShiftId?: string;
+  activeShiftOpenedAt?: string;
   branchId?: string;
   restaurantId?: string;
   systemExchangeRate?: number;
@@ -51,6 +52,7 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
   activeShiftName = 'AM',
   activeShiftDate,
   activeShiftId,
+  activeShiftOpenedAt,
   branchId,
   restaurantId,
   systemExchangeRate,
@@ -198,36 +200,94 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
 
   useEffect(() => {
     if (isOpen) {
-      if (activeShiftDate) {
-        const d = activeShiftDate.includes('T') ? activeShiftDate.split('T')[0] : (activeShiftDate.includes(' ') ? activeShiftDate.split(' ')[0] : activeShiftDate);
-        setDate(d);
-      }
-      if (activeShiftName) {
-        setShift(activeShiftName === 'PM' ? 'PM' : 'AM');
-      }
+      const currentToday = (activeShiftDate ? String(activeShiftDate).split('T')[0].split(' ')[0] : '') || new Date().toLocaleDateString('en-CA');
+      const currentShift = activeShiftName === 'PM' ? 'PM' : 'AM';
+      setDate(currentToday);
+      setShift(currentShift);
+      setInvDate(currentToday);
       loadMasterData();
-      loadExpensesList();
-      loadTodaysInvoices();
+      loadExpensesList(branchName, currentToday, currentShift);
+      loadTodaysInvoices(currentToday);
     }
   }, [isOpen, activeShiftDate, activeShiftName, branchName]);
 
-  
-  const loadTodaysInvoices = async () => {
+  const isInvoiceLocked = (inv: any): boolean => {
+    // 1. If POS itself has no open shift, all invoices are locked
+    if (!isShiftActive) return true;
+
+    const effectiveToday = (activeShiftDate ? String(activeShiftDate).split('T')[0].split(' ')[0] : '') || date || new Date().toLocaleDateString('en-CA');
+
+    // 2. Check if any linked shift from payments is closed or belongs to a different shift
+    const allocations = inv.supplier_payment_allocations || [];
+    for (const alloc of allocations) {
+      const paymentShift = alloc.payment?.shift_cash;
+      if (paymentShift && paymentShift.status === 'closed') {
+        return true;
+      }
+      if (activeShiftId && alloc.payment?.pos_shift_id && alloc.payment.pos_shift_id !== activeShiftId) {
+        return true;
+      }
+    }
+
+    // 3. Check daily_payments linked to this invoice
+    const dailyPayments = inv.daily_payments || [];
+    for (const dp of dailyPayments) {
+      const dpDate = dp.date ? String(dp.date).split('T')[0].split(' ')[0] : '';
+      if (dpDate && dpDate < effectiveToday) {
+        return true;
+      }
+    }
+
+    // 4. Check creation date: if created on a previous day than current active shift date
+    const createdDateStr = inv.created_at ? String(inv.created_at).split('T')[0].split(' ')[0] : '';
+    if (createdDateStr && createdDateStr < effectiveToday) {
+      return true;
+    }
+
+    // 5. Check if invoice was created before the current active shift was opened
+    if (activeShiftOpenedAt && inv.created_at) {
+      if (new Date(inv.created_at).getTime() < new Date(activeShiftOpenedAt).getTime() - 60000) {
+        return true;
+      }
+    }
+
+    return false;
+  };
+
+  const loadTodaysInvoices = async (targetDay?: string) => {
     setLoadingInvoices(true);
     try {
-      const targetDate = date || (activeShiftDate ? String(activeShiftDate).split('T')[0] : '') || new Date().toISOString().split('T')[0];
-      const localDate = new Date().toLocaleDateString('en-CA');
+      const effectiveToday = targetDay || (activeShiftDate ? String(activeShiftDate).split('T')[0].split(' ')[0] : '') || date || new Date().toLocaleDateString('en-CA');
       const res = await api.getSupplierInvoices({ branch_id: branchId });
       if (res && res.success && Array.isArray(res.data)) {
         const filtered = res.data.filter((inv: any) => {
-          const invDateStr = inv.invoice_date ? String(inv.invoice_date).split('T')[0] : '';
-          const createdDateStr = inv.created_at ? String(inv.created_at).split('T')[0] : '';
-          return (
-            invDateStr === targetDate ||
-            invDateStr === localDate ||
-            createdDateStr === targetDate ||
-            createdDateStr === localDate
-          );
+          const invDateStr = inv.invoice_date ? String(inv.invoice_date).split('T')[0].split(' ')[0] : '';
+          const createdDateStr = inv.created_at ? String(inv.created_at).split('T')[0].split(' ')[0] : '';
+
+          // 1. Invoices created on a previous day must NEVER be shown in Today's Invoices
+          if (createdDateStr && createdDateStr < effectiveToday) {
+            return false;
+          }
+
+          // 2. Invoices created before the active shift opened must not be shown if from a closed shift
+          if (activeShiftOpenedAt && inv.created_at) {
+            if (new Date(inv.created_at).getTime() < new Date(activeShiftOpenedAt).getTime() - 60000) {
+              const allocations = inv.supplier_payment_allocations || [];
+              const isClosedShift = allocations.some((a: any) => a.payment?.shift_cash?.status === 'closed');
+              if (isClosedShift) return false;
+            }
+          }
+
+          // 3. Must match today: either created today, or (if no created_at) dated today
+          const isCreatedToday = createdDateStr === effectiveToday;
+          const isDatedToday = invDateStr === effectiveToday;
+
+          // If created on a different date, exclude
+          if (createdDateStr && createdDateStr !== effectiveToday) {
+            return false;
+          }
+
+          return isCreatedToday || isDatedToday;
         });
         setTodaysInvoices(filtered);
       }
@@ -239,7 +299,7 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
   };
 
   const handleDeleteInvoice = async (inv: any) => {
-    if (!isShiftActive) {
+    if (isInvoiceLocked(inv)) {
       alert('Action blocked: Invoices cannot be deleted after the shift has been closed. Invoices are official and locked once the shift is closed.');
       return;
     }
@@ -301,10 +361,13 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
     setLoadingMaster(false);
   };
 
-  const loadExpensesList = async () => {
+  const loadExpensesList = async (targetBranch?: string, targetDate?: string, targetShift?: string) => {
     setLoadingPayments(true);
     try {
-      const res = await getDailyPayments(branchName, date, shift);
+      const b = targetBranch || branchName;
+      const d = targetDate || date || (activeShiftDate ? String(activeShiftDate).split('T')[0].split(' ')[0] : '') || new Date().toLocaleDateString('en-CA');
+      const s = targetShift || shift;
+      const res = await getDailyPayments(b, d, s);
       if (res.success) {
         setDailyPaymentsList(res.data);
       }
@@ -1366,7 +1429,15 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
                         </button>
                       )}
 
-                      {isShiftActive ? (
+                      {isInvoiceLocked(inv) ? (
+                        <div 
+                          className="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-400 border border-slate-200 text-xs font-semibold flex items-center gap-1.5 cursor-not-allowed select-none"
+                          title="The shift for this invoice is already closed. Invoices are official and locked once the shift is closed."
+                        >
+                          <Lock size={13} className="text-slate-400" />
+                          <span>Locked</span>
+                        </div>
+                      ) : (
                         <button
                           type="button"
                           onClick={() => handleDeleteInvoice(inv)}
@@ -1381,14 +1452,6 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
                           )}
                           <span>Delete</span>
                         </button>
-                      ) : (
-                        <div 
-                          className="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-400 border border-slate-200 text-xs font-semibold flex items-center gap-1.5 cursor-not-allowed"
-                          title="Shift is closed. Invoices are official and locked."
-                        >
-                          <Lock size={13} />
-                          <span>Locked</span>
-                        </div>
                       )}
                     </div>
                   </div>
@@ -1523,7 +1586,7 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
                     )}
                   </div>
 
-                  {isShiftActive ? (
+                  {isShiftActive && (!p.date || String(p.date).split('T')[0].split(' ')[0] >= ((activeShiftDate ? String(activeShiftDate).split('T')[0] : '') || date || new Date().toLocaleDateString('en-CA'))) ? (
                     <button
                       type="button"
                       onClick={() => handleDeleteHistoricalDailyPayment(p.id)}

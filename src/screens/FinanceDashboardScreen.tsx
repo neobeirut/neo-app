@@ -103,9 +103,9 @@ export default function FinanceDashboardScreen({ user }: FinanceDashboardScreenP
   // Load branch list & dynamically collect branches present in data
   useEffect(() => {
     api.getBranchesList().then(res => {
-      const dbBranches = (res.success && res.data) ? res.data.map((b: any) => b.name).filter(Boolean) : [];
-      const shiftBranches = shiftData.map((s: any) => s.branch).filter(Boolean);
-      const payBranches = paymentData.map((p: any) => p.branch).filter(Boolean);
+      const dbBranches = (res.success && res.data) ? res.data.map((b: any) => b?.name).filter(Boolean) : [];
+      const shiftBranches = shiftData.map((s: any) => s?.branch).filter(Boolean);
+      const payBranches = paymentData.map((p: any) => p?.branch).filter(Boolean);
       const combined = Array.from(new Set(['All', 'Naccache', ...dbBranches, ...shiftBranches, ...payBranches]));
       setBranches(combined);
     });
@@ -233,8 +233,10 @@ export default function FinanceDashboardScreen({ user }: FinanceDashboardScreenP
     const dayBranchMap: Record<string, { AM?: any; PM?: any }> = {};
 
     shiftData.forEach(row => {
-      const dateKey = cleanDateStr(row.date);
-      const key = `${dateKey}_${row.branch}`;
+      if (!row) return;
+      const dateKey = cleanDateStr(row.date || row.created_at);
+      if (!dateKey) return;
+      const key = `${dateKey}_${row.branch || 'Unknown'}`;
       if (!dayBranchMap[key]) dayBranchMap[key] = {};
       const sRaw = String(row.shift || '').toUpperCase().trim();
       const normShift = (sRaw.includes('PM') || sRaw.includes('NIGHT') || sRaw.includes('EVENING') || sRaw === '2') ? 'PM' : 'AM';
@@ -315,9 +317,10 @@ export default function FinanceDashboardScreen({ user }: FinanceDashboardScreenP
       totalShortagesUsd += dayShortageUsd;
 
       // Daily trend mapping
-      const refRow = pm || am;
-      const dateStr = cleanDateStr(refRow.date);
-      const branch = refRow.branch;
+      const refRow = pm || am || Object.values(group)[0];
+      if (!refRow) return;
+      const dateStr = cleanDateStr(refRow.date || refRow.created_at);
+      const branch = refRow.branch || 'Unknown';
 
       if (!dailyMap[dateStr]) dailyMap[dateStr] = 0;
       dailyMap[dateStr] += daySalesUsd;
@@ -418,11 +421,14 @@ export default function FinanceDashboardScreen({ user }: FinanceDashboardScreenP
 
     const dayBranchMap: Record<string, { AM?: any; PM?: any }> = {};
     shiftData.forEach(row => {
-      const d = cleanDateStr(row.date);
-      if (d >= prev13 && d <= exactToStr) {
-        const key = `${d}_${row.branch}`;
+      if (!row) return;
+      const d = cleanDateStr(row.date || row.created_at);
+      if (d && d >= prev13 && d <= exactToStr) {
+        const key = `${d}_${row.branch || 'Unknown'}`;
         if (!dayBranchMap[key]) dayBranchMap[key] = {};
-        dayBranchMap[key][row.shift as 'AM' | 'PM'] = row;
+        const sRaw = String(row.shift || '').toUpperCase().trim();
+        const normShift = (sRaw.includes('PM') || sRaw.includes('NIGHT') || sRaw.includes('EVENING') || sRaw === '2') ? 'PM' : 'AM';
+        dayBranchMap[key][normShift] = row;
       }
     });
 
@@ -447,7 +453,10 @@ export default function FinanceDashboardScreen({ user }: FinanceDashboardScreenP
           (num(am.actual_usd) + num(am.credit_card_usd));
       }
 
-      const dateStr = cleanDateStr((pm || am).date);
+      const refRow = pm || am || Object.values(group)[0];
+      if (!refRow) return;
+      const dateStr = cleanDateStr(refRow.date || refRow.created_at);
+      if (!dateStr) return;
       const dayName = daysArr[new Date(dateStr).getUTCDay()];
 
       if (dateStr >= prev6 && dateStr <= exactToStr) {
@@ -512,21 +521,26 @@ export default function FinanceDashboardScreen({ user }: FinanceDashboardScreenP
     const grouped: Record<string, { AM?: any; PM?: any }> = {};
     
     shiftData.forEach(row => {
-      const dateStr = cleanDateStr(row.date);
-      const key = `${dateStr}_${row.branch}`;
+      if (!row) return;
+      const dateStr = cleanDateStr(row.date || row.created_at);
+      if (!dateStr) return;
+      const key = `${dateStr}_${row.branch || 'Unknown'}`;
       if (!grouped[key]) {
         grouped[key] = {};
       }
-      grouped[key][row.shift as 'AM' | 'PM'] = row;
+      const sRaw = String(row.shift || '').toUpperCase().trim();
+      const normShift = (sRaw.includes('PM') || sRaw.includes('NIGHT') || sRaw.includes('EVENING') || sRaw === '2') ? 'PM' : 'AM';
+      grouped[key][normShift] = row;
     });
 
     return Object.keys(grouped).map(key => {
       const { AM, PM } = grouped[key];
       // Extract date & branch from the actual row data to avoid splitting issues
       // when branch names contain underscores
-      const refRow = AM || PM;
-      const date = cleanDateStr(refRow.date);
-      const branch = refRow.branch;
+      const refRow = AM || PM || Object.values(grouped[key])[0];
+      if (!refRow) return null;
+      const date = cleanDateStr(refRow.date || refRow.created_at);
+      const branch = refRow.branch || 'Unknown';
       
       const rate = PM?.rate || AM?.rate || 90000;
       
@@ -549,7 +563,7 @@ export default function FinanceDashboardScreen({ user }: FinanceDashboardScreenP
 
       // Payments from daily_payments split by type
       const dayPayments = paymentData.filter(
-        p => p.branch === branch && cleanDateStr(p.date) === date
+        p => p && p.branch === branch && cleanDateStr(p.date || p.created_at) === date
       );
 
       // Suppliers sum — paid-only (unpaid suppliers appear in the Unpaid Invoices info row)
@@ -582,7 +596,7 @@ export default function FinanceDashboardScreen({ user }: FinanceDashboardScreenP
       const totalCashOut = getConverted(cashOutUsd, cashOutLbp);
 
       // Shift level payments for details drawer — paid-only per shift
-      const amPayments = dayPayments.filter(p => p.shift === 'AM');
+      const amPayments = dayPayments.filter(p => String(p?.shift || '').toUpperCase().includes('AM'));
       const amSuppliersUsd = amPayments.filter(p => p.type === 'Supplier' && p.status !== 'Unpaid').reduce((sum, p) => sum + num(p.amount_usd), 0);
       const amSuppliersLbp = amPayments.filter(p => p.type === 'Supplier' && p.status !== 'Unpaid').reduce((sum, p) => sum + num(p.amount_lbp), 0);
       const amDeliveryUsd = amPayments.filter(p => p.type === 'Delivery' && p.status !== 'Unpaid').reduce((sum, p) => sum + num(p.amount_usd), 0);
@@ -590,7 +604,7 @@ export default function FinanceDashboardScreen({ user }: FinanceDashboardScreenP
       const amUnpaidUsd = amPayments.filter(p => (p.type === 'Supplier' || p.type === 'Delivery') && p.status === 'Unpaid').reduce((sum, p) => sum + num(p.amount_usd), 0);
       const amUnpaidLbp = amPayments.filter(p => (p.type === 'Supplier' || p.type === 'Delivery') && p.status === 'Unpaid').reduce((sum, p) => sum + num(p.amount_lbp), 0);
 
-      const pmPayments = dayPayments.filter(p => p.shift === 'PM');
+      const pmPayments = dayPayments.filter(p => String(p?.shift || '').toUpperCase().includes('PM'));
       const pmSuppliersUsd = pmPayments.filter(p => p.type === 'Supplier' && p.status !== 'Unpaid').reduce((sum, p) => sum + num(p.amount_usd), 0);
       const pmSuppliersLbp = pmPayments.filter(p => p.type === 'Supplier' && p.status !== 'Unpaid').reduce((sum, p) => sum + num(p.amount_lbp), 0);
       const pmDeliveryUsd = pmPayments.filter(p => p.type === 'Delivery' && p.status !== 'Unpaid').reduce((sum, p) => sum + num(p.amount_usd), 0);
@@ -600,11 +614,11 @@ export default function FinanceDashboardScreen({ user }: FinanceDashboardScreenP
 
       // E-Wallet Aggregations
       const dayWallets = walletData.filter(
-        w => w.shift_cash?.branch === branch && cleanDateStr(w.shift_cash?.date) === date
+        w => w && w.shift_cash?.branch === branch && cleanDateStr(w.shift_cash?.date || w.shift_cash?.created_at) === date
       );
       const totalWallets = dayWallets.reduce((sum, w) => sum + num(w.amount_usd) + (num(w.amount_lbp) / rate), 0);
-      const amWallets = dayWallets.filter(w => w.shift_cash?.shift === 'AM');
-      const pmWallets = dayWallets.filter(w => w.shift_cash?.shift === 'PM');
+      const amWallets = dayWallets.filter(w => String(w?.shift_cash?.shift || '').toUpperCase().includes('AM'));
+      const pmWallets = dayWallets.filter(w => String(w?.shift_cash?.shift || '').toUpperCase().includes('PM'));
 
       // Variance
       const variance = num(AM?.difference_usd) + num(PM?.difference_usd);
@@ -667,7 +681,7 @@ export default function FinanceDashboardScreen({ user }: FinanceDashboardScreenP
         AM,
         PM
       };
-    }).sort((a, b) => b.date.localeCompare(a.date) || a.branch.localeCompare(b.branch));
+    }).filter((item): item is NonNullable<typeof item> => Boolean(item)).sort((a, b) => (b.date || '').localeCompare(a.date || '') || (a.branch || '').localeCompare(b.branch || ''));
   }, [shiftData, paymentData, walletData, reelCreditMap, activeTab]);
 
   const dailyCashTotals = useMemo(() => {
@@ -685,18 +699,19 @@ export default function FinanceDashboardScreen({ user }: FinanceDashboardScreenP
     let totalWalletsUsd = 0;
 
     dailyAvailableCash.forEach(item => {
-      totalOpeningUsd += item.totalOpening;
-      totalClosingUsd += item.totalClosing;
-      totalSuppliersUsd += item.totalSuppliers;
-      totalDeliveryUsd += item.totalDelivery;
-      totalCashOutUsd += item.totalCashOut;
-      totalCreditCardUsd += item.totalCreditCard;
-      totalOnCreditUsd += item.totalOnCredit;
-      totalVariance += item.variance;
-      totalCashInUsd += item.totalCashIn;
-      totalUnpaidUsd += item.totalUnpaid;
-      totalReelCreditUsd += item.totalReelCredit;
-      totalWalletsUsd += item.totalWallets;
+      if (!item) return;
+      totalOpeningUsd += item.totalOpening || 0;
+      totalClosingUsd += item.totalClosing || 0;
+      totalSuppliersUsd += item.totalSuppliers || 0;
+      totalDeliveryUsd += item.totalDelivery || 0;
+      totalCashOutUsd += item.totalCashOut || 0;
+      totalCreditCardUsd += item.totalCreditCard || 0;
+      totalOnCreditUsd += item.totalOnCredit || 0;
+      totalVariance += item.variance || 0;
+      totalCashInUsd += item.totalCashIn || 0;
+      totalUnpaidUsd += item.totalUnpaid || 0;
+      totalReelCreditUsd += item.totalReelCredit || 0;
+      totalWalletsUsd += item.totalWallets || 0;
     });
 
     return {
@@ -1634,7 +1649,7 @@ export default function FinanceDashboardScreen({ user }: FinanceDashboardScreenP
                           {s.user_name} ({s.shift} Shift)
                         </div>
                         <div style={{ fontSize: '12px', color: '#7f1d1d', marginTop: '2px', fontWeight: 500 }}>
-                          {s.date.split('T')[0]} | Branch: <span style={{ fontWeight: 700 }}>{s.branch}</span>
+                          {(s.date || '').split('T')[0] || 'N/A'} | Branch: <span style={{ fontWeight: 700 }}>{s.branch}</span>
                         </div>
                       </div>
                       <span style={{ fontSize: '16px', fontWeight: 900, color: '#b91c1c' }}>

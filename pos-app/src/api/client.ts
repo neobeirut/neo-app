@@ -384,7 +384,23 @@ export const api = {
       .select(`
         *,
         supplier:suppliers(name, phone),
-        items:supplier_invoice_items(*)
+        items:supplier_invoice_items(*),
+        daily_payments (
+          id,
+          shift,
+          date
+        ),
+        supplier_payment_allocations (
+          payment:supplier_payments (
+            pos_shift_id,
+            shift_cash (
+              id,
+              status,
+              date,
+              shift
+            )
+          )
+        )
       `)
       .order('invoice_date', { ascending: false });
 

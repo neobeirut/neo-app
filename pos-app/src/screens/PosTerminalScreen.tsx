@@ -65,7 +65,9 @@ import {
 
 const safeTimeoutSignal = (ms: number) => typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function' ? safeTimeoutSignal(ms) : undefined;
 import { fireOrderRound, getBranchLocationKey, KdsScreen } from "../pos/kds";
+import { Search } from 'lucide-react';
 import { CustomerSearchModal } from "../pos/components/CustomerSearchModal";
+import { ProductSearchModal } from "../pos/components/ProductSearchModal";
 import {
   hasPosPermission,
   loadRestaurantRolePermissions,
@@ -1376,6 +1378,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   const [currentScreenId, setCurrentScreenId] = useState<string>('root');
   const [screenStack, setScreenStack] = useState<string[]>([]);
   const [isFeaturesModalOpen, setIsFeaturesModalOpen] = useState(false);
+  const [isProductSearchModalOpen, setIsProductSearchModalOpen] = useState(false);
   const [isPinLockOpen, setIsPinLockOpen] = useState<boolean>(() => {
     try {
       return localStorage.getItem('flow_pos_locked') === 'true';
@@ -4955,6 +4958,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                 Object.entries(conceptDraftCarts).map(([k, v]) => [k, Array.isArray(v) ? v.length : 0])
               )}
               canSwitchConcepts={isAdmin || Boolean(user?.can_switch_concepts) || Boolean(activeCashier?.can_switch_concepts) || hasPosPermission(activeCashier || user, 'switch_pos_concept')}
+              cashierName={activeCashier?.name || user?.name || ''}
               onWorkspaceChanged={handleWorkspaceChanged}
               onClearCartRequest={() => setTicketItems([])}
             />
@@ -5038,6 +5042,17 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
               </button>
             )}
 
+            {/* Magnifier: Full Menu Product Search with Touch Keyboard */}
+            <button
+              type="button"
+              onClick={() => setIsProductSearchModalOpen(true)}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold border border-slate-300 transition active:scale-95 cursor-pointer shadow-xs shrink-0"
+              title="Search entire menu products (Touch Keyboard & Catalog Search)"
+            >
+              <Search className="w-3.5 h-3.5 text-[#1e5c4f]" />
+              <span className="hidden sm:inline">Search</span>
+            </button>
+
             <button
               type="button"
               onClick={() => setIs86ModalOpen(true)}
@@ -5085,12 +5100,6 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                 compact
                 className="px-1.5 sm:px-2 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 text-xs font-bold flex items-center justify-center cursor-pointer transition shadow-xs"
               />
-            </div>
-
-            {/* Cashier Badge */}
-            <div className="flex items-center gap-1 px-2 py-1 rounded-xl bg-white border border-slate-300 text-xs font-bold text-slate-800 shadow-xs shrink-0">
-              <span className="text-amber-500 text-sm">👤</span>
-              <span className="text-slate-900 font-black max-w-[65px] sm:max-w-[85px] lg:max-w-[110px] truncate">{activeCashier?.name || user?.name || "Cashier"}</span>
             </div>
 
             {/* Background Sync Pill */}
@@ -7903,6 +7912,17 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         initialTab={customerSearchTab}
       />
 
+      {/* FULL MENU PRODUCT SEARCH MODAL WITH TOUCH KEYBOARD */}
+      <ProductSearchModal
+        isOpen={isProductSearchModalOpen}
+        onClose={() => setIsProductSearchModalOpen(false)}
+        onSelectProduct={(prod) => handleQuickAddProduct(prod)}
+        productsCatalog={products}
+        restaurantId={currentRestaurantId}
+        conceptId={workspaceState.activeConcept.id}
+        isProduct86d={isProduct86d}
+      />
+
       {/* OVERDUE SHIFT ALERT MODAL */}
       <OverdueShiftModal
         onResolveTables={() => { setIsOverdueModalOpen(false); setPosActiveView("tables"); }}
@@ -7992,6 +8012,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         activeShiftName={activeShift?.shift || 'AM'}
         activeShiftDate={activeShift?.date}
         activeShiftId={activeShift?.id}
+        activeShiftOpenedAt={activeShift?.opened_at || activeShift?.created_at}
         systemExchangeRate={exchangeRate}
         restaurantId={currentRestaurantId}
         isShiftOpen={isShiftOpen}

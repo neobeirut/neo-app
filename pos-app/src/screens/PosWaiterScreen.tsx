@@ -74,9 +74,11 @@ import {
   MoveRight,
   Smartphone,
   Loader2,
-  RotateCcw
+  RotateCcw,
+  Search
 } from 'lucide-react';
 import { PwaInstallModal } from '../pos/components/PwaInstallModal';
+import { ProductSearchModal } from '../pos/components/ProductSearchModal';
 
 const safeTimeoutSignal = (ms: number) => typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(ms) : undefined;
 
@@ -326,6 +328,9 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
   const [isModifierModalOpen, setIsModifierModalOpen] = useState(false);
   const [modifyingProduct, setModifyingProduct] = useState<any | null>(null);
   const [modifyingItemIndex, setModifyingItemIndex] = useState<number | null>(null);
+
+  // Full Menu Product Search Modal State
+  const [isProductSearchModalOpen, setIsProductSearchModalOpen] = useState(false);
 
   // Toast / Banner notice
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
@@ -1507,6 +1512,17 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
             </div>
           </div>
 
+          {/* Quick Product Search with Touch Keyboard */}
+          <button
+            type="button"
+            onClick={() => setIsProductSearchModalOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#F5F6F4] hover:bg-slate-200 text-[#242B28] border border-[#E0E3DF] text-xs font-bold transition active:scale-95 cursor-pointer shadow-xs"
+            title="Search entire menu products with touch keyboard"
+          >
+            <Search className="w-4 h-4 text-[#1e5c4f]" />
+            <span className="hidden sm:inline">Search</span>
+          </button>
+
           {/* Quick 86 Items Button */}
           <button
             type="button"
@@ -1658,21 +1674,34 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
                   )}
                 </div>
 
-                {/* Quick 86 shortcut while ordering */}
-                <button
-                  type="button"
-                  onClick={() => setIs86ModalOpen(true)}
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-[#242B28] border border-slate-300 text-xs font-bold transition active:scale-95 cursor-pointer shadow-xs"
-                  title="View Daily 86 Missing Items"
-                >
-                  <span>🚫</span>
-                  <span className="hidden sm:inline">86 Items</span>
-                  {active86Items.length > 0 && (
-                    <span className="px-1.5 py-0.5 rounded-full bg-rose-500 text-white text-[10px] font-black leading-none">
-                      {active86Items.length}
-                    </span>
-                  )}
-                </button>
+                <div className="flex items-center gap-1.5">
+                  {/* Quick Search shortcut while ordering */}
+                  <button
+                    type="button"
+                    onClick={() => setIsProductSearchModalOpen(true)}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-[#242B28] border border-slate-300 text-xs font-bold transition active:scale-95 cursor-pointer shadow-xs"
+                    title="Search entire menu products with touch keyboard"
+                  >
+                    <Search className="w-3.5 h-3.5 text-[#1e5c4f]" />
+                    <span className="hidden sm:inline">Search</span>
+                  </button>
+
+                  {/* Quick 86 shortcut while ordering */}
+                  <button
+                    type="button"
+                    onClick={() => setIs86ModalOpen(true)}
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-[#242B28] border border-slate-300 text-xs font-bold transition active:scale-95 cursor-pointer shadow-xs"
+                    title="View Daily 86 Missing Items"
+                  >
+                    <span>🚫</span>
+                    <span className="hidden sm:inline">86 Items</span>
+                    {active86Items.length > 0 && (
+                      <span className="px-1.5 py-0.5 rounded-full bg-rose-500 text-white text-[10px] font-black leading-none">
+                        {active86Items.length}
+                      </span>
+                    )}
+                  </button>
+                </div>
               </div>
 
               {/* Dynamic Grid Matrix: Automatically adapts columns and font to tablet direction */}
@@ -2233,6 +2262,23 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
         conceptName={currentUser?.concept_name || 'NÉO'}
         branchName={branchName}
         onRefresh={refetch86}
+      />
+
+      {/* FULL MENU PRODUCT SEARCH MODAL WITH TOUCH KEYBOARD */}
+      <ProductSearchModal
+        isOpen={isProductSearchModalOpen}
+        onClose={() => setIsProductSearchModalOpen(false)}
+        onSelectProduct={(prod) => {
+          if (view !== 'table' || !currentTable) {
+            alert("⚠️ Please select and open a table first before adding items to the ticket.");
+            return;
+          }
+          handleAddItem(prod);
+        }}
+        productsCatalog={products}
+        restaurantId={restaurantId}
+        conceptId={activeConceptId}
+        isProduct86d={isProduct86d}
       />
     </div>
   );

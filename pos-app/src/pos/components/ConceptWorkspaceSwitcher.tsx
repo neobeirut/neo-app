@@ -10,8 +10,23 @@ interface ConceptWorkspaceSwitcherProps {
   cartItemCount: number;
   draftCartCounts?: Record<string, number>;
   canSwitchConcepts?: boolean;
+  cashierName?: string;
   onWorkspaceChanged: (newState: TerminalWorkspaceState) => void;
   onClearCartRequest?: () => void;
+}
+
+export function getStaffInitials(name?: string): string {
+  if (!name || !name.trim()) return '';
+  const clean = name.replace(/\(.*?\)/g, '').replace(/\[.*?\]/g, '').trim();
+  if (!clean || clean.toLowerCase() === 'cashier') return '';
+  const parts = clean.split(/[\s_-]+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  }
+  if (parts.length === 1) {
+    return parts[0].slice(0, 2).toUpperCase();
+  }
+  return '';
 }
 
 export const ConceptWorkspaceSwitcher: React.FC<ConceptWorkspaceSwitcherProps> = ({
@@ -19,6 +34,7 @@ export const ConceptWorkspaceSwitcher: React.FC<ConceptWorkspaceSwitcherProps> =
   cartItemCount,
   draftCartCounts = {},
   canSwitchConcepts = true,
+  cashierName,
   onWorkspaceChanged,
   onClearCartRequest
 }) => {
@@ -28,17 +44,21 @@ export const ConceptWorkspaceSwitcher: React.FC<ConceptWorkspaceSwitcherProps> =
   const active = workspaceState.activeConcept;
   const isMultiConceptEnabled = Boolean(canSwitchConcepts && (workspaceState.allowedConcepts?.length || 0) > 1);
 
+  const initials = getStaffInitials(cashierName);
+  const brandLabel = active.code || active.name;
+  const displayTitle = initials ? `${brandLabel} - ${initials}` : brandLabel;
+
   // When the user has access to only 1 concept, the dropdown to select concepts is NOT displayed.
   // Displays only a clean dedicated static concept identity pill.
   if (!isMultiConceptEnabled) {
     return (
       <div
-        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-black text-white shadow-sm border border-white/20 select-none"
+        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-black text-white shadow-sm border border-white/20 select-none shrink-0"
         style={{ backgroundColor: active.primary_color }}
-        title={`Dedicated ${active.name} POS Workspace`}
+        title={cashierName ? `${active.name} — Staff: ${cashierName}` : `Dedicated ${active.name} POS Workspace`}
       >
         <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
-        <span className="tracking-wide uppercase text-xs">{active.name}</span>
+        <span className="tracking-wide uppercase text-xs whitespace-nowrap">{displayTitle}</span>
       </div>
     );
   }
@@ -70,13 +90,13 @@ export const ConceptWorkspaceSwitcher: React.FC<ConceptWorkspaceSwitcherProps> =
         <button
           type="button"
           onClick={() => setIsOpen(!isOpen)}
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-black text-white shadow-sm transition-all active:scale-95 border border-white/20 hover:brightness-110 cursor-pointer"
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-black text-white shadow-sm transition-all active:scale-95 border border-white/20 hover:brightness-110 cursor-pointer shrink-0"
           style={{ backgroundColor: active.primary_color }}
-          title={`Active Workspace: ${active.name} — Click to switch`}
+          title={cashierName ? `${active.name} — Staff: ${cashierName} (Click to switch)` : `Active Workspace: ${active.name} — Click to switch`}
         >
           <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
-          <span className="tracking-wide uppercase text-xs">{active.name}</span>
-          <svg className="w-3 h-3 opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <span className="tracking-wide uppercase text-xs whitespace-nowrap">{displayTitle}</span>
+          <svg className="w-3 h-3 opacity-80 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
           </svg>
         </button>
