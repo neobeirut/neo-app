@@ -122,8 +122,19 @@ export default function CrmProductsTab({ onNavigateToModifiers, onProductsCountC
     } else if (channelFilter === 'pos_only') {
       list = list.filter(p => p.show_in_mobile === false);
     }
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      list = list.filter(p => {
+        const pName = (p.name || '').toLowerCase();
+        const pDesc = (p.description || '').toLowerCase();
+        const cat = categories.find(c => c.id === p.category_id);
+        const catName = (cat?.name || '').toLowerCase();
+        const cfgName = Object.values(conceptConfigsMap[String(p.id)] || {}).some(c => (c.display_name || '').toLowerCase().includes(q));
+        return pName.includes(q) || pDesc.includes(q) || catName.includes(q) || cfgName;
+      });
+    }
     return list;
-  }, [products, selectedConcept, selectedSection, categories, channelFilter, conceptConfigsMap]);
+  }, [products, selectedConcept, selectedSection, categories, channelFilter, conceptConfigsMap, search]);
 
   // Product Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -463,8 +474,18 @@ export default function CrmProductsTab({ onNavigateToModifiers, onProductsCountC
               placeholder="Search product name or ingredient..."
               value={search}
               onChange={e => setSearch(e.target.value)}
-              style={{ width: '100%', padding: '8px 10px 8px 34px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '13px', outline: 'none' }}
+              style={{ width: '100%', padding: '8px 30px 8px 34px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '13px', outline: 'none' }}
             />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch('')}
+                style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}
+                title="Clear search"
+              >
+                <X size={14} />
+              </button>
+            )}
           </form>
 
           {/* View Mode Toggle */}
