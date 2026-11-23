@@ -49,7 +49,7 @@ import { useRestaurantTheme } from '../pos/theme/useRestaurantTheme';
 import PosPinScreen from '../pos/components/PosPinScreen';
 import { TableTransferModal } from '../pos/components/TableTransferModal';
 import { PosModifierModal, partitionCustomizations } from '../pos/components/PosModifierModal';
-import { usePos86 } from '../pos/hooks/usePos86';
+import { usePos86, type Pos86Item } from '../pos/hooks/usePos86';
 import { Pos86Modal } from '../pos/components/Pos86Modal';
 import { KNOWN_CONCEPT_PROFILES, posWorkspaceService } from '../pos/services/posWorkspaceService';
 import {
@@ -300,6 +300,28 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
   // Catalog & Screens State (matching POS Terminal matrix)
   const [categories, setCategories] = useState<PosCategory[]>([]);
   const [products, setProducts] = useState<PosProduct[]>([]);
+
+  // Merge 86 items from menu_86 records AND any catalog products marked Unavailable
+  const combined86Items: Pos86Item[] = useMemo(() => {
+    const list: Pos86Item[] = [...active86Items];
+    const knownNames = new Set(active86Items.map(i => (i.name || '').toLowerCase().trim()));
+    (products || []).forEach((p: any) => {
+      const pStatus = String((p as any).status || '').toLowerCase();
+      const isUnavail = pStatus === 'unavailable today' || pStatus === '86' || pStatus === 'unavailable' || pStatus === 'out_of_stock' || (p as any).is_available === false;
+      if (isUnavail) {
+        const pName = (p.name || '').trim();
+        if (pName && !knownNames.has(pName.toLowerCase())) {
+          list.push({
+            name: pName,
+            type: 'menu',
+            department: 'Kitchen'
+          });
+          knownNames.add(pName.toLowerCase());
+        }
+      }
+    });
+    return list;
+  }, [active86Items, products]);
   const [posScreens, setPosScreens] = useState<PosScreen[]>([]);
   const [currentScreenId, setCurrentScreenId] = useState<string>('root');
   const [screenStack, setScreenStack] = useState<string[]>([]);
@@ -1534,9 +1556,9 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
           >
             <span>🚫</span>
             <span className="hidden sm:inline">86 Items</span>
-            {active86Items.length > 0 && (
+            {combined86Items.length > 0 && (
               <span className="px-1.5 py-0.5 rounded-full bg-rose-500 text-white text-[10px] font-black leading-none">
-                {active86Items.length}
+                {combined86Items.length}
               </span>
             )}
           </button>
@@ -1697,9 +1719,9 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
                   >
                     <span>🚫</span>
                     <span className="hidden sm:inline">86 Items</span>
-                    {active86Items.length > 0 && (
+                    {combined86Items.length > 0 && (
                       <span className="px-1.5 py-0.5 rounded-full bg-rose-500 text-white text-[10px] font-black leading-none">
-                        {active86Items.length}
+                        {combined86Items.length}
                       </span>
                     )}
                   </button>
@@ -2260,7 +2282,7 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
       <Pos86Modal
         isOpen={is86ModalOpen}
         onClose={() => setIs86ModalOpen(false)}
-        items={active86Items}
+        items={combined86Items}
         conceptName={currentUser?.concept_name || 'NÉO'}
         branchName={branchName}
         onRefresh={refetch86}

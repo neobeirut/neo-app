@@ -1382,6 +1382,29 @@ export const crmService = {
       }
     }
 
+    // Keep concept configuration availability in sync with updated product status / is_active
+    if ((dbUpdates.status !== undefined || dbUpdates.is_active !== undefined) && id) {
+      try {
+        const rawStatus = String(dbUpdates.status || data?.status || '').toLowerCase();
+        const isAvail = (dbUpdates.status === undefined || dbUpdates.status === 'Available') &&
+                        !['unavailable', 'unavailable today', '86', 'out_of_stock'].includes(rawStatus) &&
+                        (dbUpdates.is_active === undefined || dbUpdates.is_active !== false);
+        const isActive = dbUpdates.is_active !== undefined ? dbUpdates.is_active !== false : true;
+        const targetConceptId = updates.concept_id || data?.concept_id || '00000000-0000-0000-0000-000000000001';
+        await supabase
+          .from('product_concept_configurations')
+          .update({
+            is_available: isAvail,
+            is_active: isActive,
+            updated_at: new Date().toISOString()
+          })
+          .eq('product_id', id)
+          .eq('concept_id', targetConceptId);
+      } catch (e) {
+        console.warn('Failed to sync concept config availability on updateProduct:', e);
+      }
+    }
+
     if (updates.concept_id && id) {
       try {
         const map = JSON.parse(localStorage.getItem('flow_product_concept_map') || '{}');

@@ -66,30 +66,17 @@ export function usePos86(branchName?: string, conceptId?: string) {
         console.warn('[usePos86] Error fetching today 86 records with filter:', error);
       }
 
-      // Fallback: If no records found with branch/concept filter, check today records more broadly
+      // Fallback: If no records found for today with strict filter, retry with matching concept filter
       if (!records || records.length === 0) {
-        const { data: fbToday, error: fbErr } = await supabase
-          .from('menu_86')
-          .select('*')
+        let fbQuery = supabase.from('menu_86').select('*');
+        if (effectiveBranch) fbQuery = fbQuery.ilike('branch', effectiveBranch);
+        if (effectiveConceptUuid) fbQuery = fbQuery.or(`concept_id.eq.${effectiveConceptUuid},concept_id.is.null`);
+        const { data: fbToday, error: fbErr } = await fbQuery
           .gte('date', `${todayStr}T00:00:00.000Z`)
           .lte('date', `${todayStr}T23:59:59.999Z`)
           .order('date', { ascending: false });
         if (!fbErr && fbToday && fbToday.length > 0) {
           records = fbToday;
-        } else {
-          // If timezone difference exists (e.g. UTC date saved slightly earlier/later), check latest records within 36 hours
-          const { data: latest } = await supabase
-            .from('menu_86')
-            .select('*')
-            .order('date', { ascending: false })
-            .limit(5);
-          if (latest && latest.length > 0) {
-            const latestDate = new Date(latest[0].date || latest[0].created_at);
-            const diffHours = Math.abs(now.getTime() - latestDate.getTime()) / (1000 * 60 * 60);
-            if (diffHours <= 36) {
-              records = latest;
-            }
-          }
         }
       }
 

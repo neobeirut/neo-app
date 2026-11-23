@@ -13,7 +13,7 @@ import type { BranchCapabilities } from "../pos/services/branchMapping";
 import { TablesScreen, getOrCreateTableAndSession, loadFloorState, closeTableSession, requestBill, deleteTable } from "../pos/tables";
 import type { PosTable } from "../pos/tables";
 import { BranchMappingAlert } from "../pos/components/BranchMappingAlert";
-import { usePos86 } from "../pos/hooks/usePos86";
+import { usePos86, type Pos86Item } from "../pos/hooks/usePos86";
 import { usePosUpsell } from "../pos/hooks/usePosUpsell";
 import { UpsellRecommendationBar } from "../pos/components/UpsellRecommendationBar";
 import { DiscountManagerModal } from "../pos/components/DiscountManagerModal";
@@ -1058,6 +1058,28 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   // Data States
   const [categories, setCategories] = useState([]);
   const [products, setProducts] = useState([]);
+
+  // Merge 86 items from menu_86 records AND any catalog products marked Unavailable
+  const combined86Items: Pos86Item[] = useMemo(() => {
+    const list: Pos86Item[] = [...active86Items];
+    const knownNames = new Set(active86Items.map(i => (i.name || '').toLowerCase().trim()));
+    (products || []).forEach((p: any) => {
+      const pStatus = String(p.status || '').toLowerCase();
+      const isUnavail = pStatus === 'unavailable today' || pStatus === '86' || pStatus === 'unavailable' || pStatus === 'out_of_stock' || p.is_available === false;
+      if (isUnavail) {
+        const pName = (p.name || '').trim();
+        if (pName && !knownNames.has(pName.toLowerCase())) {
+          list.push({
+            name: pName,
+            type: 'menu',
+            department: 'Kitchen'
+          });
+          knownNames.add(pName.toLowerCase());
+        }
+      }
+    });
+    return list;
+  }, [active86Items, products]);
 
   // FLOW Upsell Recommendations Hook
   const { activeUpsells } = usePosUpsell(
@@ -5065,9 +5087,9 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
               <span>🚫</span>
               <span className="hidden sm:inline">86 Items</span>
               <span className="sm:hidden">86</span>
-              {active86Items.length > 0 && (
+              {combined86Items.length > 0 && (
                 <span className="px-1.5 py-0.5 rounded-full bg-rose-500 text-white text-[10px] font-black leading-none">
-                  {active86Items.length}
+                  {combined86Items.length}
                 </span>
               )}
             </button>
@@ -8744,7 +8766,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       <Pos86Modal
         isOpen={is86ModalOpen}
         onClose={() => setIs86ModalOpen(false)}
-        items={active86Items}
+        items={combined86Items}
         conceptName={workspaceState.activeConcept?.name || 'NÉO'}
         branchName={currentBranchName}
         onRefresh={refetch86}

@@ -292,7 +292,13 @@ async function fetchCatalogFromSupabase(
     const resolvedProducts: PosProduct[] = [];
 
     prodData
-      .filter((p: any) => p.is_active !== false)
+      .filter((p: any) => {
+        if (p.status === 'deleted' || p.status === 'archived') return false;
+        if (p.is_active === false && p.status !== 'Unavailable Today' && p.status !== '86' && p.status !== 'Unavailable' && p.status !== 'out_of_stock') {
+          return false;
+        }
+        return true;
+      })
       .forEach((p: any) => {
         const catName = (p.category_id ? categoryMap.get(p.category_id) : null) || 'General';
         const pbs = pbsMap.get(p.id);
@@ -317,7 +323,9 @@ async function fetchCatalogFromSupabase(
             return;
           }
           if (activeConfig.is_available === false) {
-            status = 'Unavailable Today';
+            if (p.status !== 'Available') {
+              status = 'Unavailable Today';
+            }
           }
 
           // Build channel overrides map

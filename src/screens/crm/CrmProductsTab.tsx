@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useActiveConcept } from '../../context/ConceptContext';
 import { 
   ShoppingBag, Search, Plus, Edit2, Trash2, CheckCircle, 
   XCircle, Clock, Tag, Sliders, RefreshCw, X, Image as ImageIcon,
@@ -42,6 +43,15 @@ export default function CrmProductsTab({ onNavigateToModifiers, onProductsCountC
 
   // Commercial Concepts Filter
   const [selectedConcept, setSelectedConcept] = useState<string>('all');
+  const { activeConcept: globalActiveConcept, conceptId: globalConceptId } = useActiveConcept();
+
+  useEffect(() => {
+    if (globalConceptId) {
+      setSelectedConcept(globalConceptId);
+    } else if (globalActiveConcept === 'ALL') {
+      setSelectedConcept('all');
+    }
+  }, [globalConceptId, globalActiveConcept]);
   const [concepts, setConcepts] = useState<any[]>([
     { id: '00000000-0000-0000-0000-000000000001', code: 'NEO', name: 'NÉO (Restaurant & Bakery)', color: '#1e5c4f' },
     { id: '00000000-0000-0000-0000-000000000002', code: 'OVRLOAD', name: 'OVRLOAD (Loaded Wraps & Delivery)', color: '#ea580c' },
@@ -297,6 +307,11 @@ export default function CrmProductsTab({ onNavigateToModifiers, onProductsCountC
     if (['unavailable', 'unavailable today', '86', 'out_of_stock'].includes(rawStatus) || p.is_active === false) {
       return true;
     }
+    const currentConcept = selectedConcept !== 'all' ? selectedConcept : (p.concept_id || '00000000-0000-0000-0000-000000000001');
+    const cfg = conceptConfigsMap[String(p.id)]?.[currentConcept];
+    if (cfg && cfg.is_available === false) {
+      return true;
+    }
     const pClean = cleanName(p.name);
     return active86Items.some(it => {
       const itClean = cleanName(it.name);
@@ -307,10 +322,45 @@ export default function CrmProductsTab({ onNavigateToModifiers, onProductsCountC
   const handleToggleStatus = async (product: Product) => {
     const isCurrentlyUnavail = isProduct86d(product);
     const newStatus = isCurrentlyUnavail ? 'Available' : 'Unavailable Today';
-    const newIsActive = newStatus === 'Available';
+    const newIsActive = true;
+    const currentConcept = selectedConcept !== 'all' ? selectedConcept : (product.concept_id || '00000000-0000-0000-0000-000000000001');
     try {
       await crmService.updateProduct(product.id, { status: newStatus, is_active: newIsActive });
       setProducts(prev => prev.map(p => p.id === product.id ? { ...p, status: newStatus, is_active: newIsActive } : p));
+
+      setConceptConfigsMap(prev => {
+        const prodConfigs = { ...(prev[String(product.id)] || {}) };
+        if (prodConfigs[currentConcept]) {
+          prodConfigs[currentConcept] = {
+            ...prodConfigs[currentConcept],
+            is_available: !isCurrentlyUnavail
+          };
+        }
+        return { ...prev, [String(product.id)]: prodConfigs };
+      });
+
+      try {
+        const todayStr = new Date().toISOString().split('T')[0];
+        let updated86 = [...active86Items];
+        const pClean = cleanName(product.name);
+        if (isCurrentlyUnavail) {
+          updated86 = updated86.filter(it => cleanName(it.name) !== pClean);
+        } else {
+          if (!updated86.some(it => cleanName(it.name) === pClean)) {
+            const catName = categories.find(c => c.id === product.category_id)?.name || '';
+            const dept = catName.toLowerCase().includes('bar') || catName.toLowerCase().includes('cocktail') || catName.toLowerCase().includes('drink') ? 'Bar' : 'Kitchen';
+            updated86.push({
+              name: product.name,
+              type: 'menu',
+              department: dept
+            });
+          }
+        }
+        setActive86Items(updated86);
+        await api.save86('Badaro', updated86, todayStr, currentConcept);
+      } catch (e86) {
+        console.warn('Could not sync 86 table:', e86);
+      }
     } catch (err: any) {
       alert('Failed to toggle status: ' + err.message);
     }
@@ -910,12 +960,23 @@ export default function CrmProductsTab({ onNavigateToModifiers, onProductsCountC
                       </span>
                     )}
                     {(() => {
-                      const cObj = concepts.find(c => c.id === (p.concept_id || '00000000-0000-0000-0000-000000000001')) || concepts[0];
-                      return (
-                        <span style={{ backgroundColor: cObj.color || '#1e5c4f', color: '#fff', fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }}>
+                      const activeConceptsForProd = concepts.filter(c => {
+                        const cfg = conceptConfigsMap[String(p.id)]?.[c.id];
+                        if (cfg !== undefined) return Boolean(cfg.is_active);
+                        return Boolean(p.concept_id && p.concept_id === c.id);
+                      });
+                      if (activeConceptsForProd.length === 0) {
+                        return (
+                          <span style={{ backgroundColor: 'rgba(100, 116, 139, 0.75)', color: '#fff', fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '12px' }}>
+                            Unassigned
+                          </span>
+                        );
+                      }
+                      return activeConceptsForProd.map(cObj => (
+                        <span key={cObj.id} style={{ backgroundColor: cObj.color || '#1e5c4f', color: '#fff', fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }}>
                           {cObj.code}
                         </span>
-                      );
+                      ));
                     })()}
                   </div>
 
@@ -1098,12 +1159,23 @@ export default function CrmProductsTab({ onNavigateToModifiers, onProductsCountC
                         {p.category?.name || 'General'}
                       </span>
                       {(() => {
-                        const cObj = concepts.find(c => c.id === (p.concept_id || '00000000-0000-0000-0000-000000000001')) || concepts[0];
-                        return (
-                          <span style={{ backgroundColor: `${cObj.color}18`, color: cObj.color, border: `1px solid ${cObj.color}35`, padding: '2px 6px', borderRadius: '4px', fontSize: '10px', fontWeight: 700 }}>
+                        const activeConceptsForProd = concepts.filter(c => {
+                          const cfg = conceptConfigsMap[String(p.id)]?.[c.id];
+                          if (cfg !== undefined) return Boolean(cfg.is_active);
+                          return Boolean(p.concept_id && p.concept_id === c.id);
+                        });
+                        if (activeConceptsForProd.length === 0) {
+                          return (
+                            <span style={{ backgroundColor: '#f1f5f9', color: '#64748b', border: '1px solid #cbd5e1', padding: '2px 6px', borderRadius: '4px', fontSize: '10px', fontWeight: 700 }}>
+                              Unassigned
+                            </span>
+                          );
+                        }
+                        return activeConceptsForProd.map(cObj => (
+                          <span key={cObj.id} style={{ backgroundColor: `${cObj.color}18`, color: cObj.color, border: `1px solid ${cObj.color}35`, padding: '2px 6px', borderRadius: '4px', fontSize: '10px', fontWeight: 700 }}>
                             {cObj.code}
                           </span>
-                        );
+                        ));
                       })()}
                     </div>
                   </td>

@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import type { Product, Category } from '../../api/crmService';
 import { crmService } from '../../api/crmService';
+import { api } from '../../api/client';
 import { 
   conceptProductService, 
   CORE_CONCEPTS, 
@@ -247,8 +248,12 @@ export default function ConceptProductModal({
       // 1. Save canonical master product
       const isAvailable = (masterData.status || 'Available') === 'Available';
       const masterPrice = Number(masterData.price || 0);
+      const enabledConceptIds = Object.keys(conceptConfigs).filter(cid => conceptConfigs[cid]?.is_active);
+      const firstActiveConceptId = enabledConceptIds.length > 0 ? enabledConceptIds[0] : null;
+
       const masterPayload = {
         ...masterData,
+        concept_id: firstActiveConceptId || masterData.concept_id || null,
         name: masterData.name.trim(),
         price: masterPrice,
         unit_price_usd: masterPrice,
@@ -261,6 +266,27 @@ export default function ConceptProductModal({
         savedProduct = await crmService.updateProduct(product.id, masterPayload);
       } else {
         savedProduct = await crmService.createProduct(masterPayload);
+      }
+
+      // If disabled in a concept, remove product from today's menu_86 for that concept
+      try {
+        const todayStr = new Date().toISOString().split('T')[0];
+        const res86 = await api.get86Logs(todayStr);
+        if (res86?.success && Array.isArray(res86.data)) {
+          for (const rec of res86.data) {
+            const rCid = rec.concept_id || '00000000-0000-0000-0000-000000000001';
+            const isConceptDisabled = conceptConfigs[rCid] && !conceptConfigs[rCid].is_active;
+            if (isConceptDisabled && Array.isArray(rec.items)) {
+              const pClean = masterPayload.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+              const filteredItems = rec.items.filter((it: any) => (it.name || '').toLowerCase().replace(/[^a-z0-9]/g, '') !== pClean);
+              if (filteredItems.length !== rec.items.length) {
+                await api.save86(rec.branch || 'Badaro', filteredItems, todayStr, rCid);
+              }
+            }
+          }
+        }
+      } catch (clean86Err) {
+        console.warn('Could not auto-clean disabled concept from 86 log:', clean86Err);
       }
 
       // 2. Ensure each concept has proper product_id attached
