@@ -3564,6 +3564,8 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     if (discountType === "5%") return subtotal * 0.05;
     if (discountType === "10%") return subtotal * 0.10;
     if (discountType === "15%" || discountType === "wa15") return subtotal * 0.15;
+    if (discountType === "20%") return subtotal * 0.20;
+    if (discountType === "management" || discountType === "100%") return subtotal;
     if (discountType === "toters") return subtotal * (totersDiscountPercent / 100);
     if (discountType === "noknok") return subtotal * (noknokDiscountPercent / 100);
     if (discountType === "custom") {
@@ -3591,12 +3593,86 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     if (discountType === "5%") return "5%";
     if (discountType === "10%") return "10%";
     if (discountType === "15%") return "15%";
+    if (discountType === "20%") return "20%";
+    if (discountType === "management" || discountType === "100%") return "Management (100%)";
     if (discountType === "wa15") return "WhatsApp 15%";
     if (discountType === "toters") return `Toters (${totersDiscountPercent}%)`;
     if (discountType === "noknok") return `NokNok (${noknokDiscountPercent}%)`;
     if (discountType === "custom") return discountIsPercent ? `${discountValInput}%` : `$${discountValInput}`;
     return "Discount";
   })();
+
+  // Manual discount handlers with strict role/override permission check and supervisor authorization
+  const handleOpenDiscountPresetsModal = () => {
+    const staffUser = activeCashier || user;
+    if (hasPosPermission(staffUser, 'apply_discount')) {
+      setIsDiscountPresetsModalOpen(true);
+    } else {
+      setSupervisorAuthRequest({
+        actionKey: 'apply_discount',
+        actionTitle: 'Authorize Manual Discount',
+        tableNumber: activeTableContext?.tableCode || null,
+        orderId: editingOrderId || activeTableContext?.orderId || null,
+        requireReason: true,
+        defaultReason: 'Manual discount authorization',
+        onAuthorized: async () => {
+          setIsDiscountPresetsModalOpen(true);
+        }
+      });
+    }
+  };
+
+  const handleRemoveDiscount = () => {
+    const staffUser = activeCashier || user;
+    if (hasPosPermission(staffUser, 'apply_discount')) {
+      setDiscountType("none");
+      setDiscountValInput(10);
+      setSelectedDiscountRule(null);
+    } else {
+      setSupervisorAuthRequest({
+        actionKey: 'apply_discount',
+        actionTitle: 'Authorize Remove Discount',
+        tableNumber: activeTableContext?.tableCode || null,
+        orderId: editingOrderId || activeTableContext?.orderId || null,
+        requireReason: true,
+        defaultReason: 'Remove discount authorization',
+        onAuthorized: async () => {
+          setDiscountType("none");
+          setDiscountValInput(10);
+          setSelectedDiscountRule(null);
+        }
+      });
+    }
+  };
+
+  const applyManualDiscount = (type: string, val?: any, isPct: boolean = true) => {
+    const staffUser = activeCashier || user;
+    const doApply = () => {
+      setSelectedDiscountRule(null);
+      setDiscountType(type);
+      if (val !== undefined) setDiscountValInput(val);
+      setDiscountIsPercent(isPct);
+      setIsDiscountPresetsModalOpen(false);
+    };
+
+    if (type === 'none' || hasPosPermission(staffUser, 'apply_discount')) {
+      doApply();
+    } else {
+      setSupervisorAuthRequest({
+        actionKey: 'apply_discount',
+        actionTitle: `Authorize ${type === 'management' ? 'Management 100%' : type} Discount`,
+        tableNumber: activeTableContext?.tableCode || null,
+        orderId: editingOrderId || activeTableContext?.orderId || null,
+        previousValue: discountType,
+        newValue: { type, val, isPct },
+        requireReason: true,
+        defaultReason: `${type === 'management' ? 'Management 100%' : type} discount authorization`,
+        onAuthorized: async () => {
+          doApply();
+        }
+      });
+    }
+  };
 
   const handlePrintPreCheckDoc = async (table: PosTable) => {
     const staffUser = activeCashier || user;
@@ -6439,17 +6515,14 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                     <div className="flex items-center justify-between gap-1 bg-amber-50 border border-amber-300 px-2 py-1 rounded-lg text-amber-900 text-sm font-black shadow-xs">
                       <span
                         className="truncate cursor-pointer hover:underline"
-                        onClick={() => setIsDiscountPresetsModalOpen(true)}
+                        onClick={handleOpenDiscountPresetsModal}
                         title="Click to change discount preset"
                       >
                         🏷️ {discountLabel} (-${discountAmount.toFixed(2)})
                       </span>
                       <button
                         type="button"
-                        onClick={() => {
-                          setDiscountType("none");
-                          setDiscountValInput(10);
-                        }}
+                        onClick={handleRemoveDiscount}
                         className="text-slate-400 hover:text-rose-600 font-bold ml-1 p-0.5 cursor-pointer text-sm"
                         title="Remove discount"
                       >
@@ -6459,7 +6532,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                   ) : (
                     <button
                       type="button"
-                      onClick={() => setIsDiscountPresetsModalOpen(true)}
+                      onClick={handleOpenDiscountPresetsModal}
                       className="w-full px-2.5 py-1.5 bg-[#F5F6F4] hover:bg-slate-200 border border-[#E0E3DF] hover:border-amber-400 rounded-lg text-xs font-black text-slate-700 hover:text-slate-900 transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
                     >
                       <span>🏷️</span>
@@ -8371,87 +8444,51 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
             <div className="grid grid-cols-2 gap-2 text-xs font-bold">
               <button
                 type="button"
-                onClick={() => {
-                  setDiscountType("none");
-                  setIsDiscountPresetsModalOpen(false);
-                }}
+                onClick={() => applyManualDiscount("none")}
                 className={`p-3 bg-[#0F1115] border rounded-xl text-center text-gray-300 hover:text-white transition cursor-pointer ${
-                  discountType === 'none' ? 'border-[#eb660c] text-white' : 'border-[#262D3D] hover:border-[#eb660c]'
+                  discountType === 'none' ? 'border-[#eb660c] text-white ring-1 ring-[#eb660c]' : 'border-[#262D3D] hover:border-[#eb660c]'
                 }`}
               >
                 None (0%)
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  setDiscountType("5%");
-                  setIsDiscountPresetsModalOpen(false);
-                }}
+                onClick={() => applyManualDiscount("5%")}
                 className={`p-3 bg-[#0F1115] border rounded-xl text-center text-white transition cursor-pointer ${
-                  discountType === '5%' ? 'border-[#eb660c]' : 'border-[#262D3D] hover:border-[#eb660c]'
+                  discountType === '5%' ? 'border-[#eb660c] ring-1 ring-[#eb660c]' : 'border-[#262D3D] hover:border-[#eb660c]'
                 }`}
               >
                 5% Off
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  setDiscountType("10%");
-                  setIsDiscountPresetsModalOpen(false);
-                }}
+                onClick={() => applyManualDiscount("10%")}
                 className={`p-3 bg-[#0F1115] border rounded-xl text-center text-white transition cursor-pointer ${
-                  discountType === '10%' ? 'border-[#eb660c]' : 'border-[#262D3D] hover:border-[#eb660c]'
+                  discountType === '10%' ? 'border-[#eb660c] ring-1 ring-[#eb660c]' : 'border-[#262D3D] hover:border-[#eb660c]'
                 }`}
               >
                 10% Off
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  setDiscountType("15%");
-                  setIsDiscountPresetsModalOpen(false);
-                }}
+                onClick={() => applyManualDiscount("20%")}
                 className={`p-3 bg-[#0F1115] border rounded-xl text-center text-white transition cursor-pointer ${
-                  discountType === '15%' ? 'border-[#eb660c]' : 'border-[#262D3D] hover:border-[#eb660c]'
+                  discountType === '20%' ? 'border-[#eb660c] ring-1 ring-[#eb660c]' : 'border-[#262D3D] hover:border-[#eb660c]'
                 }`}
               >
-                15% Off
+                20% Off
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  setDiscountType("wa15");
-                  setIsDiscountPresetsModalOpen(false);
-                }}
-                className={`p-3 bg-[#0F1115] border rounded-xl text-center text-emerald-400 transition cursor-pointer ${
-                  discountType === 'wa15' ? 'border-[#eb660c]' : 'border-[#262D3D] hover:border-[#eb660c]'
+                onClick={() => applyManualDiscount("management")}
+                className={`col-span-2 p-3 bg-amber-500/10 border rounded-xl text-center font-black transition cursor-pointer flex items-center justify-center gap-1.5 ${
+                  discountType === 'management' || discountType === '100%'
+                    ? 'border-amber-400 text-amber-300 ring-2 ring-amber-400/50 bg-amber-500/20'
+                    : 'border-amber-500/40 text-amber-400 hover:border-amber-400 hover:bg-amber-500/20'
                 }`}
               >
-                WhatsApp 15%
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setDiscountType("toters");
-                  setIsDiscountPresetsModalOpen(false);
-                }}
-                className={`p-3 bg-[#0F1115] border rounded-xl text-center text-teal-300 transition cursor-pointer ${
-                  discountType === 'toters' ? 'border-[#eb660c]' : 'border-[#262D3D] hover:border-[#eb660c]'
-                }`}
-              >
-                Toters ({totersDiscountPercent}%)
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setDiscountType("noknok");
-                  setIsDiscountPresetsModalOpen(false);
-                }}
-                className={`p-3 bg-[#0F1115] border rounded-xl text-center text-rose-300 transition cursor-pointer ${
-                  discountType === 'noknok' ? 'border-[#eb660c]' : 'border-[#262D3D] hover:border-[#eb660c]'
-                }`}
-              >
-                NokNok ({noknokDiscountPercent}%)
+                <span>👑</span>
+                <span>Management (100% Off)</span>
               </button>
             </div>
 
@@ -8474,8 +8511,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                 <button
                   type="button"
                   onClick={() => {
-                    setDiscountType("custom");
-                    setIsDiscountPresetsModalOpen(false);
+                    applyManualDiscount("custom", discountValInput, discountIsPercent);
                   }}
                   className="px-4 py-2 bg-[#eb660c] hover:bg-[#ff771f] text-white rounded-xl text-xs font-black shadow transition cursor-pointer"
                 >
