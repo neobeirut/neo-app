@@ -50,44 +50,6 @@
         padding: 24px 0 60px 0;
       }
 
-      /* Test Version Header Banner */
-      .staging-badge-wrapper {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        margin-bottom: 24px;
-      }
-
-      .staging-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        padding: 8px 18px;
-        border-radius: 9999px;
-        background: rgba(245, 158, 11, 0.12);
-        border: 1px solid rgba(245, 158, 11, 0.4);
-        color: var(--accent-amber);
-        font-weight: 800;
-        font-size: 13px;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        box-shadow: 0 0 20px rgba(245, 158, 11, 0.15);
-      }
-
-      .pulse-dot {
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-        background-color: var(--accent-amber);
-        box-shadow: 0 0 10px var(--accent-amber);
-        animation: pulse 2s infinite ease-in-out;
-      }
-
-      @keyframes pulse {
-        0%, 100% { opacity: 1; transform: scale(1); }
-        50% { opacity: 0.4; transform: scale(0.85); }
-      }
-
       /* Title Section */
       .header-section {
         text-align: center;
@@ -286,19 +248,13 @@
   </head>
   <body>
     <div class="container">
-      <!-- Staging Header Badge -->
-      <div class="staging-badge-wrapper">
-        <div class="staging-badge">
-          <span class="pulse-dot"></span>
-          TEST VERSION — STAGING ENVIRONMENT
-        </div>
-      </div>
+      
 
       <!-- Hero Header -->
       <header class="header-section">
-        <h1 class="app-title">FLOW Testing Environment</h1>
+        <h1 class="app-title">FLOW Operations Environment</h1>
         <p class="app-subtitle">
-          Authoritative deployment testing suite for FLOW operations. Select an application below to launch in staging mode.
+          Authoritative suite for FLOW operations. Select an application below to launch.
         </p>
       </header>
 

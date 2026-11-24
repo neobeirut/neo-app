@@ -45,23 +45,6 @@ export default function LoginScreen({ onLogin }: { onLogin: (user: any) => void 
   return (
     <div className="auth-container">
       <div className="auth-card">
-        {(typeof window !== 'undefined' && window.location.pathname.startsWith('/new')) && (
-          <div style={{
-            marginBottom: '16px',
-            padding: '6px 12px',
-            borderRadius: '9999px',
-            backgroundColor: 'rgba(245, 158, 11, 0.15)',
-            border: '1px solid rgba(245, 158, 11, 0.4)',
-            color: '#f59e0b',
-            fontSize: '11px',
-            fontWeight: 800,
-            letterSpacing: '0.06em',
-            textAlign: 'center',
-            textTransform: 'uppercase'
-          }}>
-            ⚠️ FLOW TEST VERSION — STAGING
-          </div>
-        )}
         <div className="auth-brand">
           <div className="auth-brand-logo">
             <Layers size={28} color="#ffffff" />

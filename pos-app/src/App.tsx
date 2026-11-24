@@ -216,9 +216,6 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      <div className="fixed bottom-2 right-2 z-[9999] px-2.5 py-0.5 bg-amber-500/20 border border-amber-500/40 text-amber-400 font-bold text-[10px] rounded-full pointer-events-none uppercase tracking-wider backdrop-blur-sm select-none shadow-md">
-        TEST VERSION
-      </div>
       <HashRouter>
         <Routes>
           {!user || isLocked ? (

@@ -315,23 +315,6 @@ import ConceptSelector from './components/common/ConceptSelector';
             </span>
           </div>
         </div>
-        {(typeof window !== 'undefined' && window.location.pathname.startsWith('/new')) && (
-          <div style={{
-            margin: '6px 12px 10px 12px',
-            padding: '4px 8px',
-            borderRadius: '6px',
-            backgroundColor: 'rgba(245, 158, 11, 0.15)',
-            border: '1px solid rgba(245, 158, 11, 0.4)',
-            color: '#f59e0b',
-            fontSize: '10px',
-            fontWeight: 800,
-            letterSpacing: '0.06em',
-            textAlign: 'center',
-            textTransform: 'uppercase'
-          }}>
-            ⚠️ TEST VERSION
-          </div>
-        )}
         <div className="sidebar-nav-container">
           {menuGroups.map(group => {
             const visibleItems = group.items.filter((item: any) => {
@@ -605,21 +588,6 @@ function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () 
               <Users size={18} color="var(--text-muted)" />
               <span style={{ fontWeight: 600, fontSize: '14px' }}>{user.name}</span>
               <span style={{ fontSize: '12px', background: '#eef2f5', color: 'var(--primary)', padding: '4px 8px', borderRadius: '12px' }}>{user.role}</span>
-              {(typeof window !== 'undefined' && window.location.pathname.startsWith('/new')) && (
-                <span style={{
-                  fontSize: '11px',
-                  background: 'rgba(245, 158, 11, 0.15)',
-                  color: '#b45309',
-                  border: '1px solid rgba(245, 158, 11, 0.4)',
-                  padding: '3px 8px',
-                  borderRadius: '12px',
-                  fontWeight: 700,
-                  letterSpacing: '0.04em',
-                  textTransform: 'uppercase'
-                }}>
-                  TEST VERSION
-                </span>
-              )}
               <span style={{ fontSize: '11px', background: '#dcfce7', color: '#15803d', padding: '3px 8px', borderRadius: '12px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
                 <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#22c55e' }} />
                 v1.0.7 • Multi-Storage & Department Sync
