@@ -6192,16 +6192,16 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                 return (
                 <div
                   key={index}
-                  className={`rounded-xl p-2.5 space-y-1.5 transition ${
+                  className={`rounded-xl p-2 transition ${
                     isSelected
                       ? "bg-[#E9F4ED] border border-[#1e5c4f]/40 shadow-sm"
                       : "bg-[#F5F6F4] border border-[#E0E3DF] hover:border-slate-300 shadow-sm"
                   }`}
                   style={isSelected ? { borderColor: `${primaryColor}60` } : undefined}
                 >
-                  {/* ROW 1: name + price on same line, qty controls, trash */}
-                  <div className="flex items-center justify-between gap-1">
-                    {/* Name (clickable to edit options or open item) */}
+                  {/* ROW: name, price + inline ingredients on the right, qty controls, trash */}
+                  <div className="flex items-start justify-between gap-1">
+                    {/* Name & Price with Ingredients (clickable to edit options or open item) */}
                     <button
                       type="button"
                       onClick={() => {
@@ -6239,20 +6239,47 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                           </span>
                         )}
                       </div>
-                      <div className="flex items-baseline gap-2 mt-0.5 flex-wrap">
-                        <span className="text-sm font-black" style={{ color: primaryColor }}>
+
+                      {/* PRICE + INGREDIENTS LIST ON THE RIGHT OF THE PRICE (MINIMIZE BASKET SPACE) */}
+                      <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                        <span className="text-sm font-black shrink-0" style={{ color: primaryColor }}>
                           ${(item.unit_price * item.qty).toFixed(2)}
                         </span>
                         {item.qty !== 1 && (
-                          <span className="text-xs text-slate-500 font-semibold">
+                          <span className="text-xs text-slate-500 font-semibold shrink-0">
                             (${Number(item.unit_price).toFixed(2)} × {item.qty}{item.unit_of_measure || ''})
+                          </span>
+                        )}
+
+                        {/* Ingredients / Customizations start directly on the right of the price */}
+                        {item.selectedCustomizations && item.selectedCustomizations.length > 0 && (() => {
+                          const { addons, removals } = partitionCustomizations(item.selectedCustomizations);
+                          return (
+                            <span className="inline-flex items-center gap-1 flex-wrap">
+                              {addons.map((a, i) => (
+                                <span key={`a-${i}`} className="text-[11px] bg-white text-[#242B28] px-1.5 py-0.2 rounded border border-[#E0E3DF] font-medium leading-tight">
+                                  + {a}
+                                </span>
+                              ))}
+                              {removals.map((r, i) => (
+                                <span key={`r-${i}`} className="text-[11px] bg-rose-50 text-rose-700 px-1.5 py-0.2 rounded border border-rose-200 font-extrabold leading-tight">
+                                  - {r}
+                                </span>
+                              ))}
+                            </span>
+                          );
+                        })()}
+
+                        {item.note && (
+                          <span className="text-[11px] text-amber-700 italic font-medium leading-tight">
+                            Note: {item.note}
                           </span>
                         )}
                       </div>
                     </button>
 
                     {/* Qty controls */}
-                    <div className="flex items-center gap-0.5 bg-white border border-[#E0E3DF] rounded p-0.5 flex-shrink-0">
+                    <div className="flex items-center gap-0.5 bg-white border border-[#E0E3DF] rounded p-0.5 flex-shrink-0 mt-0.5">
                       <button
                         type="button"
                         onClick={() => handleUpdateQty(index, -1)}
@@ -6277,33 +6304,12 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                       type="button"
                       onClick={() => handlePromptVoid(index)}
                       disabled={!isShiftOpen}
-                      className="text-rose-500 hover:text-rose-700 hover:bg-rose-50 p-1.5 rounded text-base transition-all active:scale-90 flex items-center justify-center cursor-pointer flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+                      className="text-rose-500 hover:text-rose-700 hover:bg-rose-50 p-1.5 rounded text-base transition-all active:scale-90 flex items-center justify-center cursor-pointer flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed mt-0.5"
                       title={!isShiftOpen ? "Shift is closed" : Boolean(item.isOrdered && (editingOrderId || activeTableContext?.orderId) && item.qty <= Number(item.originalQty || 0)) ? "Authorize Item Void (Requires Manager PIN)" : "Remove / Discard Draft Quantity"}
                     >
                       🗑️
                     </button>
                   </div>
-
-                  {/* Customizations: addons green, removals red (no REMOVE: label) */}
-                  {item.selectedCustomizations && item.selectedCustomizations.length > 0 && (() => {
-                    const { addons, removals } = partitionCustomizations(item.selectedCustomizations);
-                    return (
-                      <div className="flex flex-wrap gap-1 pt-0.5">
-                        {addons.map((a, i) => (
-                          <span key={`a-${i}`} className="text-xs bg-white text-[#242B28] px-2 py-0.5 rounded border border-[#E0E3DF] font-medium">
-                            + {a}
-                          </span>
-                        ))}
-                        {removals.map((r, i) => (
-                          <span key={`r-${i}`} className="text-xs bg-rose-50 text-rose-700 px-2 py-0.5 rounded border border-rose-200 font-extrabold">
-                            - {r}
-                          </span>
-                        ))}
-                      </div>
-                    );
-                  })()}
-
-                  {item.note && <p className="text-xs text-amber-700 italic">Note: {item.note}</p>}
                 </div>
               );
             })
