@@ -1544,7 +1544,7 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
             title="Search entire menu products with touch keyboard"
           >
             <Search className="w-4 h-4 text-[#1e5c4f]" />
-            <span className="hidden sm:inline">Search</span>
+            <span>Search</span>
           </button>
 
           {/* Quick 86 Items Button */}
@@ -1707,7 +1707,7 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
                     title="Search entire menu products with touch keyboard"
                   >
                     <Search className="w-3.5 h-3.5 text-[#1e5c4f]" />
-                    <span className="hidden sm:inline">Search</span>
+                    <span>Search</span>
                   </button>
 
                   {/* Quick 86 shortcut while ordering */}

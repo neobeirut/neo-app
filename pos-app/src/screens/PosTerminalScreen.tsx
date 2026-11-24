@@ -1088,6 +1088,25 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   );
   const [selectedCategory, setSelectedCategory] = useState("⭐ Favorites");
 
+  // Global Keyboard Shortcut for Product Search (Ctrl+K or /)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || (target as any).isContentEditable)) {
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsProductSearchModalOpen(prev => !prev);
+      } else if (e.key === '/') {
+        e.preventDefault();
+        setIsProductSearchModalOpen(true);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   // Favorites persistence state (localStorage)
   const [favoriteProductIds, setFavoriteProductIds] = useState(() => {
     if (typeof window !== "undefined") {
@@ -5071,11 +5090,11 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
             <button
               type="button"
               onClick={() => setIsProductSearchModalOpen(true)}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold border border-slate-300 transition active:scale-95 cursor-pointer shadow-xs shrink-0"
-              title="Search entire menu products (Touch Keyboard & Catalog Search)"
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-[#1e5c4f] border border-emerald-300 text-xs font-black transition active:scale-95 cursor-pointer shadow-xs shrink-0"
+              title="Search entire menu products (Touch Keyboard & Catalog Search) [Ctrl+K or /]"
             >
               <Search className="w-3.5 h-3.5 text-[#1e5c4f]" />
-              <span className="hidden sm:inline">Search</span>
+              <span>Search</span>
             </button>
 
             <button
