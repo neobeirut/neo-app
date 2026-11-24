@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Search, X, Delete, Plus, Check, Utensils, AlertCircle, Layers, Sparkles } from 'lucide-react';
+import { Search, X, Delete, Plus, Check, Utensils, AlertCircle, Sparkles } from 'lucide-react';
+import Fuse from 'fuse.js';
 import { supabase } from '../../api/supabase';
 import type { PosProduct } from '../services/posCatalogService';
 
@@ -14,6 +15,37 @@ export interface ProductSearchModalProps {
   currencySymbol?: string;
 }
 
+// Normalize accents/diacritics and symbols for robust matching
+function normalizeSearchText(text: string): string {
+  return (text || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+// Levenshtein distance for fuzzy typo matching
+function levenshteinDistance(s1: string, s2: string): number {
+  const m = s1.length;
+  const n = s2.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  const d: number[][] = [];
+  for (let i = 0; i <= m; i++) d[i] = [i];
+  for (let j = 0; j <= n; j++) d[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      const cost = s1[i - 1] === s2[j - 1] ? 0 : 1;
+      d[i][j] = Math.min(
+        d[i - 1][j] + 1,
+        d[i][j - 1] + 1,
+        d[i - 1][j - 1] + cost
+      );
+    }
+  }
+  return d[m][n];
+}
+
 export const ProductSearchModal: React.FC<ProductSearchModalProps> = ({
   isOpen,
   onClose,
@@ -25,7 +57,6 @@ export const ProductSearchModal: React.FC<ProductSearchModalProps> = ({
   currencySymbol = '$'
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [dbExtraProducts, setDbExtraProducts] = useState<PosProduct[]>([]);
   const [isSearchingDb, setIsSearchingDb] = useState(false);
   const [recentAddedId, setRecentAddedId] = useState<string | number | null>(null);
@@ -37,7 +68,6 @@ export const ProductSearchModal: React.FC<ProductSearchModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       setSearchQuery('');
-      setSelectedCategory('ALL');
       setDbExtraProducts([]);
       setRecentAddedId(null);
       setTimeout(() => {
@@ -129,36 +159,94 @@ export const ProductSearchModal: React.FC<ProductSearchModalProps> = ({
     return list;
   }, [productsCatalog, dbExtraProducts]);
 
-  // Filter products by search term and selected category
-  const filteredProducts = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    return combinedPool.filter(product => {
-      // Category filter
-      if (selectedCategory !== 'ALL') {
-        const catName = (product.category_name || '').toLowerCase();
-        if (catName !== selectedCategory.toLowerCase()) return false;
-      }
-
-      // Query filter
-      if (!q) return true;
-      const nameMatch = (product.name || '').toLowerCase().includes(q);
-      const catMatch = (product.category_name || '').toLowerCase().includes(q);
-      const descMatch = (product.description || '').toLowerCase().includes(q);
-      const idMatch = String(product.id) === q;
-      return nameMatch || catMatch || descMatch || idMatch;
+  // Fuse.js search engine instance for fuzzy matching across all categories
+  const fuseInstance = useMemo(() => {
+    return new Fuse(combinedPool, {
+      keys: [
+        { name: 'name', weight: 0.75 },
+        { name: 'category_name', weight: 0.15 },
+        { name: 'description', weight: 0.1 }
+      ],
+      threshold: 0.4,
+      distance: 100,
+      ignoreLocation: true,
+      minMatchCharLength: 2,
+      shouldSort: true
     });
-  }, [combinedPool, searchQuery, selectedCategory]);
-
-  // Extract unique categories for quick filter chips
-  const availableCategories = useMemo(() => {
-    const cats = new Set<string>();
-    combinedPool.forEach(p => {
-      if (p.category_name && p.category_name.trim()) {
-        cats.add(p.category_name.trim());
-      }
-    });
-    return Array.from(cats).sort((a, b) => a.localeCompare(b));
   }, [combinedPool]);
+
+  // Intelligent Search with tokenized fuzzy matching (e.g. "Pan" -> "Pain", "pain chocolat" -> "Pain au chocolat")
+  // Returns empty array when query is empty (as requested: do not show all items on open)
+  const filteredProducts = useMemo(() => {
+    const rawQ = searchQuery.trim();
+    if (!rawQ) return [];
+
+    const normQ = normalizeSearchText(rawQ);
+    const qTokens = normQ.split(/\s+/).filter(Boolean);
+
+    // Fuse.js matches
+    const fuseMap = new Map<string, { score: number; rank: number }>();
+    if (fuseInstance) {
+      const fuseResults = fuseInstance.search(normQ);
+      fuseResults.forEach((r, idx) => {
+        fuseMap.set(String(r.item.id), { score: r.score ?? 0.5, rank: idx });
+      });
+    }
+
+    const scored: { item: PosProduct; score: number }[] = [];
+
+    for (const item of combinedPool) {
+      const normName = normalizeSearchText(item.name);
+      const normCat = normalizeSearchText(item.category_name);
+      const normDesc = normalizeSearchText(item.description);
+      const itemWords = (normName + ' ' + normCat).split(/[\s\-_,.:;'/+()]+/).filter(Boolean);
+
+      let tokenMatchScore = 0;
+      let allTokensMatched = true;
+
+      for (const qToken of qTokens) {
+        let bestTokenScore = 999;
+        for (const iWord of itemWords) {
+          if (iWord === qToken) {
+            bestTokenScore = 0;
+            break;
+          }
+          if (iWord.startsWith(qToken)) {
+            bestTokenScore = Math.min(bestTokenScore, 0.1);
+          } else if (iWord.includes(qToken)) {
+            bestTokenScore = Math.min(bestTokenScore, 0.25);
+          } else {
+            // Typo / fuzzy tolerance (e.g. "pan" -> "pain")
+            const maxDist = qToken.length <= 4 ? 1 : (qToken.length <= 7 ? 2 : 3);
+            const dist = levenshteinDistance(qToken, iWord);
+            if (dist <= maxDist) {
+              bestTokenScore = Math.min(bestTokenScore, 0.4 + dist * 0.2);
+            }
+          }
+        }
+
+        if (bestTokenScore >= 999) {
+          allTokensMatched = false;
+          break;
+        } else {
+          tokenMatchScore += bestTokenScore;
+        }
+      }
+
+      const fuseInfo = fuseMap.get(String(item.id));
+      if (allTokensMatched || fuseInfo) {
+        let finalScore = allTokensMatched ? tokenMatchScore : 10;
+        // Prioritize exact substring or prefix in product name
+        if (normName.includes(normQ)) finalScore -= 2.0;
+        if (normName.startsWith(normQ)) finalScore -= 1.0;
+        if (fuseInfo) finalScore += (fuseInfo.score || 0) * 2;
+        scored.push({ item, score: finalScore });
+      }
+    }
+
+    scored.sort((a, b) => a.score - b.score || a.item.name.length - b.item.name.length);
+    return scored.map(s => s.item);
+  }, [combinedPool, searchQuery, fuseInstance]);
 
   // Touch Keyboard Handlers
   const handleKeyClick = (char: string) => {
@@ -214,11 +302,11 @@ export const ProductSearchModal: React.FC<ProductSearchModalProps> = ({
               <div className="flex items-center gap-2">
                 <h2 className="text-base sm:text-lg font-black tracking-wide">Menu Product Search</h2>
                 <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                  Full Catalog
+                  Intelligent Search
                 </span>
               </div>
               <p className="text-xs text-slate-400">
-                Search all menu products across categories, even if not pinned to POS screens
+                Fuzzy search across all categories (e.g. &ldquo;Pan&rdquo; finds &ldquo;Pain&rdquo;, &ldquo;pain chocolat&rdquo; finds &ldquo;Pain au chocolat&rdquo;)
               </p>
             </div>
           </div>
@@ -257,7 +345,7 @@ export const ProductSearchModal: React.FC<ProductSearchModalProps> = ({
                   type="text"
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
-                  placeholder="Type product name, category, or code..."
+                  placeholder="Type product name (e.g. pan, burger)..."
                   className="flex-1 bg-transparent text-slate-900 font-black text-base sm:text-lg placeholder-slate-400 focus:outline-none tracking-wide"
                   autoFocus
                 />
@@ -274,7 +362,9 @@ export const ProductSearchModal: React.FC<ProductSearchModalProps> = ({
               </div>
               <div className="flex items-center justify-between mt-1.5 px-1 text-[11px] text-slate-500 font-bold">
                 <span>
-                  {filteredProducts.length} matching item{filteredProducts.length === 1 ? '' : 's'}
+                  {searchQuery.trim() === ''
+                    ? 'Start typing to search all categories...'
+                    : `${filteredProducts.length} matching item${filteredProducts.length === 1 ? '' : 's'}`}
                 </span>
                 {isSearchingDb && (
                   <span className="text-amber-600 flex items-center gap-1 animate-pulse">
@@ -380,61 +470,58 @@ export const ProductSearchModal: React.FC<ProductSearchModalProps> = ({
             </div>
           </div>
 
-          {/* RIGHT COLUMN: CATEGORY FILTER PILLS & SCROLLABLE PRODUCT RESULTS */}
+          {/* RIGHT COLUMN: SCROLLABLE PRODUCT RESULTS (NO CATEGORY PILLS, DEFAULTS TO ALL CATEGORIES) */}
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden bg-[#F5F6F4]">
-            {/* Category Filter Horizontal Pills */}
-            {availableCategories.length > 0 && (
-              <div className="px-3 sm:px-4 py-2 sm:py-2.5 bg-white border-b border-slate-200 flex items-center gap-1.5 overflow-x-auto no-scrollbar shrink-0 shadow-xs">
-                <button
-                  type="button"
-                  onClick={() => setSelectedCategory('ALL')}
-                  className={`px-3 py-1 rounded-xl text-xs font-black transition cursor-pointer shrink-0 ${
-                    selectedCategory === 'ALL'
-                      ? 'bg-[#1e5c4f] text-white shadow-xs'
-                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                  }`}
-                >
-                  ALL CATEGORIES ({combinedPool.length})
-                </button>
-                {availableCategories.map(cat => (
-                  <button
-                    key={cat}
-                    type="button"
-                    onClick={() => setSelectedCategory(cat)}
-                    className={`px-3 py-1 rounded-xl text-xs font-black transition cursor-pointer shrink-0 uppercase ${
-                      selectedCategory.toLowerCase() === cat.toLowerCase()
-                        ? 'bg-[#1e5c4f] text-white shadow-xs'
-                        : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                    }`}
-                  >
-                    {cat}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* Product Cards Grid */}
+            {/* Product Results Area */}
             <div className="flex-1 p-3 sm:p-4 overflow-y-auto">
-              {filteredProducts.length === 0 ? (
+              {/* STATE 1: Empty Query -> Welcoming prompt, no list of all items */}
+              {searchQuery.trim() === '' ? (
+                <div className="h-full flex flex-col items-center justify-center text-center p-8 text-slate-400 select-none">
+                  <div className="w-16 h-16 rounded-2xl bg-[#1e5c4f]/10 border border-[#1e5c4f]/20 flex items-center justify-center text-[#1e5c4f] mb-4 shadow-inner">
+                    <Search className="w-8 h-8" />
+                  </div>
+                  <h3 className="text-base sm:text-lg font-black text-slate-800 mb-1">
+                    Search Across All Menu Categories
+                  </h3>
+                  <p className="text-xs text-slate-500 max-w-sm mb-5 leading-relaxed">
+                    Type a dish name, bread, beverage, or keyword on the keyboard. Typo-tolerant search will find items instantly.
+                  </p>
+                  <div className="flex flex-wrap justify-center gap-2 max-w-md">
+                    {['Pain', 'Croissant', 'Baguette', 'Burger', 'Coffee', 'Salad'].map(suggestion => (
+                      <button
+                        key={suggestion}
+                        type="button"
+                        onClick={() => {
+                          setSearchQuery(suggestion);
+                          inputRef.current?.focus();
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-white hover:bg-emerald-50 text-slate-700 hover:text-[#1e5c4f] font-bold text-xs border border-slate-200 hover:border-emerald-300 transition cursor-pointer shadow-xs active:scale-95"
+                      >
+                        🔍 {suggestion}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : filteredProducts.length === 0 ? (
+                /* STATE 2: Query entered, but no matching products */
                 <div className="h-full flex flex-col items-center justify-center text-center p-8">
                   <div className="w-14 h-14 rounded-full bg-slate-200/80 flex items-center justify-center text-slate-400 mb-3">
                     <Utensils className="w-7 h-7" />
                   </div>
                   <h3 className="text-base font-black text-slate-800 mb-1">No products found</h3>
                   <p className="text-xs text-slate-500 max-w-sm">
-                    No menu items matched &ldquo;{searchQuery}&rdquo;. Try another search keyword or clear filters.
+                    No menu items matched &ldquo;{searchQuery}&rdquo;. Try another spelling or search keyword.
                   </p>
-                  {searchQuery && (
-                    <button
-                      type="button"
-                      onClick={handleClear}
-                      className="mt-3 px-4 py-2 rounded-xl bg-[#1e5c4f] text-white font-bold text-xs transition active:scale-95 cursor-pointer shadow-xs"
-                    >
-                      Clear Search
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={handleClear}
+                    className="mt-3 px-4 py-2 rounded-xl bg-[#1e5c4f] text-white font-bold text-xs transition active:scale-95 cursor-pointer shadow-xs"
+                  >
+                    Clear Search
+                  </button>
                 </div>
               ) : (
+                /* STATE 3: Query entered with matching results */
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-2.5">
                   {filteredProducts.map(product => {
                     const is86 = isProduct86d ? isProduct86d(product.id || product) : false;
@@ -532,8 +619,11 @@ export const ProductSearchModal: React.FC<ProductSearchModalProps> = ({
             {/* FOOTER BAR: SUMMARY & CLOSE */}
             <div className="p-3 bg-white border-t border-slate-200 flex items-center justify-between shrink-0">
               <div className="text-xs text-slate-500 font-semibold">
-                Showing <strong className="text-slate-900 font-black">{filteredProducts.length}</strong> of{' '}
-                <strong className="text-slate-900 font-black">{combinedPool.length}</strong> menu products
+                {searchQuery.trim() === '' ? (
+                  <span>Ready to search across <strong className="text-slate-900 font-black">{combinedPool.length}</strong> menu products</span>
+                ) : (
+                  <span>Showing <strong className="text-slate-900 font-black">{filteredProducts.length}</strong> matching of <strong className="text-slate-900 font-black">{combinedPool.length}</strong> menu products</span>
+                )}
               </div>
 
               <button
