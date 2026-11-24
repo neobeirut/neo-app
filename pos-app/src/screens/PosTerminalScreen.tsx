@@ -1355,7 +1355,16 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   const [customizationQty, setCustomizationQty] = useState(1);
   const [customizationError, setCustomizationError] = useState("");
   const [customizationStep, setCustomizationStep] = useState(0);
+  const [expandedModifiers, setExpandedModifiers] = useState<Record<number, boolean>>({});
   const modifierTabsContainerRef = useRef<HTMLDivElement | null>(null);
+
+  const toggleExpandedModifiers = (idx: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setExpandedModifiers(prev => ({
+      ...prev,
+      [idx]: !prev[idx]
+    }));
+  };
 
   // Auto-scroll stepper tabs container so the active tab is always centered and in view
   useEffect(() => {
@@ -6251,30 +6260,114 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                           </span>
                         )}
 
-                        {/* Ingredients / Customizations start directly on the right of the price */}
-                        {item.selectedCustomizations && item.selectedCustomizations.length > 0 && (() => {
-                          const { addons, removals } = partitionCustomizations(item.selectedCustomizations);
+                        {/* Ingredients / Customizations start directly on the right of the price (collapsed by default if exceeding 1 line) */}
+                        {(() => {
+                          const hasCust = item.selectedCustomizations && item.selectedCustomizations.length > 0;
+                          const hasNote = Boolean(item.note && item.note.trim());
+                          if (!hasCust && !hasNote) return null;
+
+                          const { addons, removals } = hasCust
+                            ? partitionCustomizations(item.selectedCustomizations)
+                            : { addons: [], removals: [] };
+
+                          const allBadges: { type: 'addon' | 'removal'; text: string }[] = [
+                            ...addons.map(a => ({ type: 'addon' as const, text: a })),
+                            ...removals.map(r => ({ type: 'removal' as const, text: r }))
+                          ];
+
+                          const isExpanded = Boolean(expandedModifiers[index]);
+
+                          // Check if modifiers exceed 1 line: more than 2 badges, or 2 badges with length > 16 chars, or 1 badge + note
+                          const totalLength = allBadges.reduce((sum, b) => sum + b.text.length, 0) + (hasNote ? item.note.length : 0);
+                          const exceedsOneLine = allBadges.length > 2 || (allBadges.length === 2 && totalLength > 16) || (allBadges.length === 1 && hasNote);
+
+                          if (!exceedsOneLine) {
+                            return (
+                              <span className="inline-flex items-center gap-1 flex-wrap">
+                                {allBadges.map((b, i) => (
+                                  <span
+                                    key={i}
+                                    className={`text-[11px] px-1.5 py-0.2 rounded border font-medium leading-tight ${
+                                      b.type === 'removal'
+                                        ? 'bg-rose-50 text-rose-700 border-rose-200 font-extrabold'
+                                        : 'bg-white text-[#242B28] border-[#E0E3DF]'
+                                    }`}
+                                  >
+                                    {b.type === 'removal' ? `- ${b.text}` : `+ ${b.text}`}
+                                  </span>
+                                ))}
+                                {hasNote && (
+                                  <span className="text-[11px] text-amber-700 italic font-medium leading-tight truncate max-w-[140px]">
+                                    Note: {item.note}
+                                  </span>
+                                )}
+                              </span>
+                            );
+                          }
+
+                          // Collapsed state (default): keep strictly on 1 line with "+X more ▾" pill
+                          if (!isExpanded) {
+                            const firstBadge = allBadges[0];
+                            const hiddenCount = allBadges.length - 1 + (hasNote ? 1 : 0);
+
+                            return (
+                              <span className="inline-flex items-center gap-1 flex-nowrap shrink-0">
+                                {firstBadge && (
+                                  <span
+                                    className={`text-[11px] px-1.5 py-0.2 rounded border font-medium leading-tight truncate max-w-[130px] shrink-0 ${
+                                      firstBadge.type === 'removal'
+                                        ? 'bg-rose-50 text-rose-700 border-rose-200 font-extrabold'
+                                        : 'bg-white text-[#242B28] border-[#E0E3DF]'
+                                    }`}
+                                  >
+                                    {firstBadge.type === 'removal' ? `- ${firstBadge.text}` : `+ ${firstBadge.text}`}
+                                  </span>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={(e) => toggleExpandedModifiers(index, e)}
+                                  className="text-[10px] font-black px-1.5 py-0.5 rounded-md bg-emerald-50 hover:bg-emerald-100 text-[#1e5c4f] border border-emerald-300 transition-all active:scale-95 cursor-pointer shrink-0 shadow-2xs flex items-center gap-0.5"
+                                  title="Click to view all choices/modifiers"
+                                >
+                                  <span>+{hiddenCount} more</span>
+                                  <span>▾</span>
+                                </button>
+                              </span>
+                            );
+                          }
+
+                          // Expanded state: wrap all badges & note, plus "less ▴" button
                           return (
                             <span className="inline-flex items-center gap-1 flex-wrap">
-                              {addons.map((a, i) => (
-                                <span key={`a-${i}`} className="text-[11px] bg-white text-[#242B28] px-1.5 py-0.2 rounded border border-[#E0E3DF] font-medium leading-tight">
-                                  + {a}
+                              {allBadges.map((b, i) => (
+                                <span
+                                  key={i}
+                                  className={`text-[11px] px-1.5 py-0.2 rounded border font-medium leading-tight ${
+                                    b.type === 'removal'
+                                      ? 'bg-rose-50 text-rose-700 border-rose-200 font-extrabold'
+                                      : 'bg-white text-[#242B28] border-[#E0E3DF]'
+                                  }`}
+                                >
+                                  {b.type === 'removal' ? `- ${b.text}` : `+ ${b.text}`}
                                 </span>
                               ))}
-                              {removals.map((r, i) => (
-                                <span key={`r-${i}`} className="text-[11px] bg-rose-50 text-rose-700 px-1.5 py-0.2 rounded border border-rose-200 font-extrabold leading-tight">
-                                  - {r}
+                              {hasNote && (
+                                <span className="text-[11px] text-amber-700 italic font-medium leading-tight block w-full mt-0.5">
+                                  Note: {item.note}
                                 </span>
-                              ))}
+                              )}
+                              <button
+                                type="button"
+                                onClick={(e) => toggleExpandedModifiers(index, e)}
+                                className="text-[10px] font-black px-1.5 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 transition-all active:scale-95 cursor-pointer shrink-0 shadow-2xs flex items-center gap-0.5"
+                                title="Collapse choices/modifiers"
+                              >
+                                <span>less</span>
+                                <span>▴</span>
+                              </button>
                             </span>
                           );
                         })()}
-
-                        {item.note && (
-                          <span className="text-[11px] text-amber-700 italic font-medium leading-tight">
-                            Note: {item.note}
-                          </span>
-                        )}
                       </div>
                     </button>
 
