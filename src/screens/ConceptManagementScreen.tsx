@@ -1577,24 +1577,24 @@ export default function ConceptManagementScreen({ user, permissions }: { user: a
                     <label className="block text-[11px] font-semibold text-gray-700 mb-1">Toters Commission %</label>
                     <input
                       type="number"
-                      step="0.5"
+                      step="any"
                       min="0"
                       max="100"
                       value={formData.toters_commission_pct}
-                      onChange={(e) => setFormData({ ...formData, toters_commission_pct: parseFloat(e.target.value) || 0 })}
+                      onChange={(e) => setFormData({ ...formData, toters_commission_pct: e.target.value })}
                       className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-xs font-mono font-bold bg-white"
-                      placeholder="e.g. 15.0"
+                      placeholder="e.g. 27.75"
                     />
                   </div>
                   <div>
                     <label className="block text-[11px] font-semibold text-gray-700 mb-1">NokNok Commission %</label>
                     <input
                       type="number"
-                      step="0.5"
+                      step="any"
                       min="0"
                       max="100"
                       value={formData.noknok_commission_pct}
-                      onChange={(e) => setFormData({ ...formData, noknok_commission_pct: parseFloat(e.target.value) || 0 })}
+                      onChange={(e) => setFormData({ ...formData, noknok_commission_pct: e.target.value })}
                       className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-xs font-mono font-bold bg-white"
                       placeholder="e.g. 15.0"
                     />
@@ -1603,11 +1603,11 @@ export default function ConceptManagementScreen({ user, permissions }: { user: a
                     <label className="block text-[11px] font-semibold text-gray-700 mb-1">WhatsApp Customer Promo %</label>
                     <input
                       type="number"
-                      step="0.5"
+                      step="any"
                       min="0"
                       max="100"
                       value={formData.whatsapp_promo_pct}
-                      onChange={(e) => setFormData({ ...formData, whatsapp_promo_pct: parseFloat(e.target.value) || 0 })}
+                      onChange={(e) => setFormData({ ...formData, whatsapp_promo_pct: e.target.value })}
                       className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-xs font-mono font-bold bg-white"
                       placeholder="e.g. 0.0"
                     />
@@ -1616,11 +1616,11 @@ export default function ConceptManagementScreen({ user, permissions }: { user: a
                     <label className="block text-[11px] font-semibold text-gray-700 mb-1">Pickup Customer Disc %</label>
                     <input
                       type="number"
-                      step="0.5"
+                      step="any"
                       min="0"
                       max="100"
                       value={formData.pickup_discount_pct}
-                      onChange={(e) => setFormData({ ...formData, pickup_discount_pct: parseFloat(e.target.value) || 0 })}
+                      onChange={(e) => setFormData({ ...formData, pickup_discount_pct: e.target.value })}
                       className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-xs font-mono font-bold bg-white"
                       placeholder="e.g. 0.0"
                     />
@@ -1906,7 +1906,7 @@ export default function ConceptManagementScreen({ user, permissions }: { user: a
                           </label>
                           <input
                             type="number"
-                            step="0.25"
+                            step="0.01"
                             min="0"
                             required
                             value={newProdPrice}

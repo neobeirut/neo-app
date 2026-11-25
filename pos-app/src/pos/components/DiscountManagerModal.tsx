@@ -358,9 +358,9 @@ export function DiscountManagerModal({
                   </label>
                   <input
                     type="number"
-                    inputMode="numeric"
-                    step={formType === 'percent' ? '1' : '0.5'}
-                    min="0.1"
+                    inputMode="decimal"
+                    step="any"
+                    min="0.01"
                     placeholder={formType === 'percent' ? 'e.g. 20' : 'e.g. 5.00'}
                     value={formValue}
                     onChange={(e) => setFormValue(e.target.value)}
