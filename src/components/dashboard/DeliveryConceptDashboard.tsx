@@ -25,7 +25,7 @@ export default function DeliveryConceptDashboard({
   user,
   permissions
 }: DeliveryConceptDashboardProps) {
-  const [range, setRange] = useState<'today' | 'yesterday' | 'week' | 'month' | 'all'>('today');
+  const [range, setRange] = useState<'today' | 'yesterday' | 'week' | 'month' | 'all'>('month');
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<DeliveryDashboardData | null>(null);
 
@@ -94,7 +94,7 @@ export default function DeliveryConceptDashboard({
         <div className="flex items-center gap-2 self-start md:self-auto">
           {/* Time Range Selector */}
           <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-semibold">
-            {(['today', 'yesterday', 'week', 'month'] as const).map((r) => (
+            {(['today', 'yesterday', 'week', 'month', 'all'] as const).map((r) => (
               <button
                 key={r}
                 onClick={() => setRange(r)}
@@ -104,7 +104,7 @@ export default function DeliveryConceptDashboard({
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                {r === 'week' ? 'Last 7 Days' : r}
+                {r === 'week' ? 'Last 7 Days' : (r === 'all' ? 'All Time' : r)}
               </button>
             ))}
           </div>

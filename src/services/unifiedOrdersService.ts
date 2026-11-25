@@ -228,17 +228,17 @@ function applyOrderFilters(query: any, filters: OrderFilters) {
   if (filters.channel && filters.channel !== 'All') {
     const ch = filters.channel;
     if (ch === 'Toters') {
-      q = q.ilike('order_source', '%toter%');
+      q = q.or('sales_channel.eq.TOTERS,order_source.ilike.%toter%');
     } else if (ch === 'NokNok') {
-      q = q.ilike('order_source', '%nok%');
+      q = q.or('sales_channel.eq.NOKNOK,order_source.ilike.%nok%');
     } else if (ch === 'WhatsApp') {
-      q = q.or('order_source.ilike.%whatsapp%,order_source.ilike.%wa%');
+      q = q.or('sales_channel.eq.WHATSAPP,order_source.ilike.%whatsapp%');
     } else if (ch === 'Pickup') {
-      q = q.or('order_type.ilike.%pick%,order_type.ilike.%take%,order_source.ilike.%pick%');
+      q = q.or('sales_channel.eq.POS_PICKUP,order_type.ilike.%pick%,order_source.ilike.%pick%');
     } else if (ch === 'App') {
-      q = q.or('order_source.ilike.%app%,order_source.ilike.%web%,order_source.ilike.%online%');
+      q = q.or('sales_channel.eq.DIRECT_APP,order_source.eq.App');
     } else if (ch === 'POS') {
-      q = q.or('order_source.ilike.%pos%,order_source.ilike.%in-store%,order_source.ilike.%in_store%');
+      q = q.or('sales_channel.eq.POS,sales_channel.eq.IN_STORE,order_source.ilike.%pos%,order_source.ilike.%in-store%');
     }
   }
 
