@@ -414,6 +414,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
           setScreenStack([]);
           setCurrentScreenId(rootScreen.id);
         }
+        fetchBranchStatusAndPrompt(newState.activeConcept);
       } catch (screenErr) {
         console.error('Failed to rebuild screen matrix for concept:', screenErr);
       }
@@ -1688,33 +1689,36 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   const [posClosureReason, setPosClosureReason] = useState("Overloaded");
   const [isSavingBranchStatus, setIsSavingBranchStatus] = useState(false);
 
-  const fetchBranchStatusAndPrompt = async () => {
+  const fetchBranchStatusAndPrompt = async (targetConcept?: any) => {
     try {
-      if (!HAS_COMMERCE_API) {
-        const { data: bList } = await supabase.from('branches').select('*').limit(5);
-        if (bList && bList.length > 0) {
-          const mainBranch = bList[0];
-          setBranchStatus(mainBranch);
-          setPosOperationalStatus(mainBranch.operational_status || "open");
-          setPosClosureReason(mainBranch.closure_reason || "");
-        }
-        return;
-      }
-      const res = await fetchWithTimeout(`${COMMERCE_API_BASE}/api/branches`, {}, 8000);
-      const data = await res.json();
-      if (data.branches && data.branches.length > 0) {
-        const mainBranch = data.branches[0];
-        const status = mainBranch.operational_status || (mainBranch.orders_active === false ? "closed" : "open");
-        const reason = mainBranch.closure_reason || "Overloaded";
-        
-        setBranchStatus(mainBranch);
-        setPosOperationalStatus(status);
-        setPosClosureReason(reason);
+      const activeConcept = targetConcept || workspaceState?.activeConcept;
+      const isOvrload = activeConcept?.code === 'OVRLOAD' || activeConcept?.id === '00000000-0000-0000-0000-000000000002';
 
-        if (!hasShownInitialBranchModal) {
-          setHasShownInitialBranchModal(true);
-          setShowBranchStatusModal(true);
+      if (isOvrload) {
+        try {
+          const res = await fetchWithTimeout("https://ovrload-backend-production.up.railway.app/api/branches", {}, 8000);
+          const data = await res.json();
+          if (data.branches && data.branches.length > 0) {
+            const mainBranch = data.branches[0];
+            const status = mainBranch.operational_status || (mainBranch.orders_active === false ? "closed" : "open");
+            const reason = mainBranch.closure_reason || "Overloaded";
+            
+            setBranchStatus(mainBranch);
+            setPosOperationalStatus(status);
+            setPosClosureReason(reason);
+            return;
+          }
+        } catch (apiErr) {
+          console.warn("OVRLOAD live branch fetch failed, falling back to local:", apiErr);
         }
+      }
+
+      const { data: bList } = await supabase.from('branches').select('*').limit(5);
+      if (bList && bList.length > 0) {
+        const mainBranch = bList[0];
+        setBranchStatus(mainBranch);
+        setPosOperationalStatus(mainBranch.operational_status || "open");
+        setPosClosureReason(mainBranch.closure_reason || "");
       }
     } catch (err) {
       console.error("Error fetching branch status in POS:", err);
@@ -1726,34 +1730,65 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     setIsSavingBranchStatus(true);
     try {
       const finalReason = posOperationalStatus !== "open" ? (posClosureReason || "Overloaded") : null;
-      const res = await fetch(`${COMMERCE_API_BASE}/api/branches/${branchStatus.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: branchStatus.name || "Cloud Kitchen",
-          operational_status: posOperationalStatus,
-          closure_reason: finalReason,
-          orders_active: posOperationalStatus === "open",
-          is_active: posOperationalStatus !== "closed",
-        }),
-      });
+      const isOvrload = workspaceState?.activeConcept?.code === 'OVRLOAD' || workspaceState?.activeConcept?.id === '00000000-0000-0000-0000-000000000002';
 
-      if (res.ok) {
-        const data = await res.json();
-        const updated = data.branch || {
-          ...branchStatus,
-          operational_status: posOperationalStatus,
-          closure_reason: finalReason,
-          orders_active: posOperationalStatus === "open",
-        };
-        setBranchStatus(updated);
-        setShowBranchStatusModal(false);
-        alert("Branch operational status updated successfully!");
-      } else {
-        const err = await res.json();
-        alert("Failed to update status: " + (err.error || "Unknown error"));
+      if (isOvrload) {
+        const branchId = branchStatus.id || 1;
+        const res = await fetch(`https://ovrload-backend-production.up.railway.app/api/branches/${branchId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: branchStatus.name || "Cloud Kitchen",
+            operational_status: posOperationalStatus,
+            closure_reason: finalReason,
+            orders_active: posOperationalStatus === "open",
+            is_active: posOperationalStatus !== "closed",
+          }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          const updated = data.branch || {
+            ...branchStatus,
+            operational_status: posOperationalStatus,
+            closure_reason: finalReason,
+            orders_active: posOperationalStatus === "open",
+          };
+          setBranchStatus(updated);
+          setShowBranchStatusModal(false);
+
+          // Background sync to FLOW supabase branches table
+          await supabase.from('branches').update({
+            operational_status: posOperationalStatus,
+            closure_reason: finalReason,
+            orders_active: posOperationalStatus === "open"
+          }).eq('id', branchStatus.id).catch(() => {});
+
+          return;
+        } else {
+          const err = await res.json();
+          alert("Failed to update status on OVRLOAD online store: " + (err.error || "Unknown error"));
+          return;
+        }
       }
-    } catch (e) {
+
+      // Default non-OVRLOAD branch updates
+      const { error: sbErr } = await supabase.from('branches').update({
+        operational_status: posOperationalStatus,
+        closure_reason: finalReason,
+        orders_active: posOperationalStatus === "open",
+      }).eq('id', branchStatus.id);
+
+      if (sbErr) throw sbErr;
+
+      setBranchStatus(prev => ({
+        ...prev,
+        operational_status: posOperationalStatus,
+        closure_reason: finalReason,
+        orders_active: posOperationalStatus === "open"
+      }));
+      setShowBranchStatusModal(false);
+    } catch (e: any) {
       console.error("Error saving branch status from POS:", e);
       alert("Error saving branch status: " + e.message);
     } finally {
@@ -1762,7 +1797,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   };
 
   const getRealtimeBranchStatusInfo = (branch, currentPosStatus, currentReason) => {
-    if (!branch) return { text: "🟢 Open", description: "Store is Open", badgeClass: "bg-emerald-900/40 text-emerald-300 border-emerald-500/50", isOpen: true };
+    if (!branch) return { text: "🟢 Open", description: "Store is Open", badgeClass: "bg-emerald-50 text-emerald-800 border-emerald-200", isOpen: true };
 
     const status = currentPosStatus || branch.operational_status || "open";
     const reasonText = currentReason ? ` (${currentReason})` : "";
@@ -1771,7 +1806,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       return {
         text: `🔴 Closed (Hidden)`,
         description: `Store is Closed${reasonText}`,
-        badgeClass: "bg-rose-900/40 text-rose-300 border-rose-500/50",
+        badgeClass: "bg-rose-50 text-rose-800 border-rose-200",
         isOpen: false
       };
     }
@@ -1804,7 +1839,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       return {
         text: `📅 Closed on ${capitalizedDay}`,
         description: `Kitchen Closed on ${capitalizedDay}${reasonText}`,
-        badgeClass: "bg-rose-900/40 text-rose-300 border-rose-500/50",
+        badgeClass: "bg-rose-50 text-rose-800 border-rose-200",
         isOpen: false
       };
     }
@@ -1814,14 +1849,14 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         return {
           text: `🕒 Closed (Opens ${openTime})`,
           description: `Store is Closed (Opens today at ${openTime})`,
-          badgeClass: "bg-amber-900/40 text-amber-300 border-amber-500/50",
+          badgeClass: "bg-amber-50 text-amber-800 border-amber-200",
           isOpen: false
         };
       } else {
         return {
           text: `🕒 Closed (${openTime}-${closeTime})`,
           description: `Store is Closed (Operating Hours: ${openTime} - ${closeTime})`,
-          badgeClass: "bg-amber-900/40 text-amber-300 border-amber-500/50",
+          badgeClass: "bg-amber-50 text-amber-800 border-amber-200",
           isOpen: false
         };
       }
@@ -1831,14 +1866,14 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       return {
         text: `⏳ Closed 1h${reasonText}`,
         description: `Store is Closed For an Hour${reasonText}`,
-        badgeClass: "bg-amber-900/40 text-amber-300 border-amber-500/50",
+        badgeClass: "bg-amber-50 text-amber-900 border-amber-300 font-black",
         isOpen: false
       };
     } else if (status === "closed_today") {
       return {
         text: `🌙 Closed Today${reasonText}`,
         description: `Store is Closed For Today${reasonText}`,
-        badgeClass: "bg-purple-900/40 text-purple-300 border-purple-500/50",
+        badgeClass: "bg-purple-50 text-purple-900 border-purple-200",
         isOpen: false
       };
     }
@@ -1846,7 +1881,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     return {
       text: `🟢 Open / Accepting Orders`,
       description: `Store is Open (Operating Hours: ${openTime} - ${closeTime})`,
-      badgeClass: "bg-emerald-900/40 text-emerald-300 border-emerald-500/50",
+      badgeClass: "bg-emerald-50 text-emerald-800 border-emerald-200",
       isOpen: true
     };
   };
@@ -5249,6 +5284,43 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
               </button>
             )}
 
+            {/* Store Operational Status Control Pill (One-click toggle/hold for https://ovrload-nine.vercel.app/) */}
+            <button
+              type="button"
+              onClick={() => {
+                fetchBranchStatusAndPrompt();
+                setShowBranchStatusModal(true);
+              }}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-black transition active:scale-95 cursor-pointer shadow-xs shrink-0 border ${
+                posOperationalStatus === "closed_hour"
+                  ? "bg-amber-100 hover:bg-amber-200 border-amber-400 text-amber-950 animate-pulse"
+                  : posOperationalStatus === "closed" || posOperationalStatus === "closed_today"
+                  ? "bg-rose-100 hover:bg-rose-200 border-rose-300 text-rose-900"
+                  : "bg-emerald-50 hover:bg-emerald-100 border-emerald-300 text-emerald-800"
+              }`}
+              title={`Online Store Status (${workspaceState.activeConcept.name}): ${posOperationalStatus} - Click to pause orders (Hold) or close store`}
+            >
+              {posOperationalStatus === "closed_hour" ? (
+                <>
+                  <span className="text-amber-600">⏳</span>
+                  <span className="hidden sm:inline">Store: On Hold (60m)</span>
+                  <span className="sm:hidden">Hold 60m</span>
+                </>
+              ) : posOperationalStatus === "closed" || posOperationalStatus === "closed_today" ? (
+                <>
+                  <span className="text-rose-600">🔴</span>
+                  <span className="hidden sm:inline">Store: Closed</span>
+                  <span className="sm:hidden">Closed</span>
+                </>
+              ) : (
+                <>
+                  <span className="text-emerald-600">🟢</span>
+                  <span className="hidden sm:inline">Store: Open</span>
+                  <span className="sm:hidden">Open</span>
+                </>
+              )}
+            </button>
+
             {/* Quick Delivery POS Navigation Shortcuts (Held Orders) */}
             <div className="flex items-center gap-1 shrink-0">
               <button
@@ -7356,7 +7428,14 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                 <span className="text-2xl">⚙️</span>
                 <div>
                   <h3 className="font-extrabold text-base text-slate-900">Store Operational Status</h3>
-                  <p className="text-[11px] text-slate-500 font-medium">{branchStatus?.name || "Cloud Kitchen"}</p>
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    {workspaceState.activeConcept.code === 'OVRLOAD' ? (
+                      <span className="flex items-center gap-1 text-[#eb660c] font-bold">
+                        <span>Connected to</span>
+                        <a href="https://ovrload-nine.vercel.app/" target="_blank" rel="noreferrer" className="underline hover:text-orange-700">ovrload-nine.vercel.app</a>
+                      </span>
+                    ) : (branchStatus?.name || "Store / Kitchen")}
+                  </p>
                 </div>
               </div>
               <button
