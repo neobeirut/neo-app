@@ -5323,7 +5323,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
               </button>
             )}
 
-            {/* Quick Delivery POS Navigation Shortcuts (Held Orders) */}
+            {/* Quick Delivery POS Navigation Shortcuts (Held Orders & Staff Switch / Logout) */}
             <div className="flex items-center gap-1 shrink-0">
               <button
                 type="button"
@@ -5342,6 +5342,17 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                 compact
                 className="px-1.5 sm:px-2 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 text-xs font-bold flex items-center justify-center cursor-pointer transition shadow-xs"
               />
+              {/* User Profile & Switch / Logout Button */}
+              <button
+                type="button"
+                onClick={() => setIsSecurityModalOpen(true)}
+                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 text-xs font-bold transition active:scale-95 cursor-pointer shadow-xs shrink-0"
+                title={`Logged in as ${activeCashier?.name || user?.name || 'Cashier'} — Click to Switch User or Log Out (Shift stays open)`}
+              >
+                <span>👤</span>
+                <span className="hidden lg:inline font-bold text-slate-700 truncate max-w-[90px]">{activeCashier?.name || user?.name || 'Staff'}</span>
+                <span className="text-[10px] text-slate-400">▼</span>
+              </button>
             </div>
 
             {/* Background Sync Pill */}
@@ -5848,15 +5859,15 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
 
                 {/* 6 ACTION BUTTONS DOCK (EMBEDDED IN LEFT 65% PANEL) */}
                 <div className="h-[48px] sm:h-[52px] md:h-14 bg-white border-t-2 border-[#E0E3DF] px-1 sm:px-2 py-1 flex items-center gap-1 sm:gap-1.5 flex-shrink-0 z-20 shadow-md overflow-x-auto no-scrollbar">
-                  {/* 0 - Quick 1-Tap Lock (Far Left) */}
+                  {/* 0 - Quick User Switch / Lock / Log Out */}
                   <button
                     type="button"
-                    onClick={handleQuickLock}
+                    onClick={() => setIsSecurityModalOpen(true)}
                     className="h-full px-2 sm:px-2.5 md:px-3 rounded-xl bg-amber-50 hover:bg-amber-100 active:scale-95 text-amber-900 font-black text-xs sm:text-sm tracking-wider flex items-center justify-center gap-1 sm:gap-1.5 border border-amber-300 shadow-sm transition cursor-pointer shrink-0"
-                    title="Lock Terminal immediately so another user must enter their PIN"
+                    title="Switch Staff or Log Out (Shift stays open)"
                   >
-                    <span className="text-sm sm:text-base shrink-0">🔒</span>
-                    <span className="hidden md:inline">Lock</span>
+                    <span className="text-sm sm:text-base shrink-0">👤</span>
+                    <span className="hidden md:inline">User</span>
                   </button>
 
                   {/* 1 - Features (Protected by POS Permission: access_features) */}
@@ -8911,7 +8922,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
           <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-sm p-6 space-y-4 text-slate-900 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between border-b border-slate-200 pb-3">
               <h3 className="font-black text-base text-slate-900 flex items-center gap-2">
-                <span>🔒</span> Terminal Security
+                <span>👤</span> Staff Profile & Session
               </h3>
               <button
                 type="button"
@@ -8922,10 +8933,17 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
               </button>
             </div>
 
-            <p className="text-xs text-slate-600">
-              Current cashier: <strong className="text-slate-900">{activeCashier?.name || user?.name || 'Cashier'}</strong>.
-              Choose an action below:
-            </p>
+            <div className="space-y-1.5 text-xs">
+              <div className="text-slate-600">
+                Current active staff: <strong className="text-slate-900 font-black">{activeCashier?.name || user?.name || 'Cashier'}</strong>
+              </div>
+              {isShiftOpen && (
+                <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-semibold flex items-center gap-2">
+                  <span>🟢</span>
+                  <span>Register shift is active. Switching staff or logging out will <strong>keep the shift open</strong> for the team.</span>
+                </div>
+              )}
+            </div>
 
             <div className="space-y-2.5 pt-1">
               {/* Switch Cashier / Lock */}
@@ -8935,12 +8953,12 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                   setIsSecurityModalOpen(false);
                   handleQuickLock();
                 }}
-                className="w-full p-3.5 rounded-2xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-left flex items-center gap-3 transition cursor-pointer active:scale-98 shadow-xs"
+                className="w-full p-3.5 rounded-2xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-left flex items-center gap-3 transition cursor-pointer active:scale-98 shadow-xs"
               >
-                <span className="text-2xl p-2 rounded-xl bg-amber-100 text-amber-800 border border-amber-200">🔒</span>
+                <span className="text-2xl p-2 rounded-xl bg-amber-100 text-amber-900 border border-amber-200">🔄</span>
                 <div>
-                  <div className="font-black text-sm text-slate-900">Lock Screen / Switch Staff</div>
-                  <div className="text-[11px] text-slate-500">Keep session active, require PIN to unlock</div>
+                  <div className="font-black text-sm text-slate-900">Switch Staff / Change User</div>
+                  <div className="text-[11px] text-slate-600">Lock terminal to enter another staff PIN (Shift stays open)</div>
                 </div>
               </button>
 
@@ -8952,10 +8970,10 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                 }}
                 className="w-full p-3.5 rounded-2xl bg-rose-50 hover:bg-rose-100 border border-rose-300 text-left flex items-center gap-3 transition cursor-pointer active:scale-98 shadow-xs"
               >
-                <span className="text-2xl p-2 rounded-xl bg-rose-100 text-rose-800 border border-rose-200">🚪</span>
+                <span className="text-2xl p-2 rounded-xl bg-rose-100 text-rose-900 border border-rose-200">🚪</span>
                 <div>
-                  <div className="font-black text-sm text-rose-900">Log Out Completely</div>
-                  <div className="text-[11px] text-rose-700">Sign out, clear all sessions, return to login</div>
+                  <div className="font-black text-sm text-rose-950">Log Out Completely</div>
+                  <div className="text-[11px] text-rose-700">Exit POS and return to login screen (Shift stays open)</div>
                 </div>
               </button>
             </div>

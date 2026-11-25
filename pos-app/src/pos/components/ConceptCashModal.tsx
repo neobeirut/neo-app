@@ -1005,6 +1005,9 @@ export const ConceptCashModal: React.FC<ConceptCashModalProps> = ({
               <div>
                 <h4 className="font-black text-sm text-slate-900">Close {activeConcept.name} Shift (Blind Cash Count)</h4>
                 <p className="text-xs text-slate-500">Count physical bills in the cash drawer without viewing expected totals first.</p>
+                <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-xl text-[11px] text-blue-800 font-medium">
+                  💡 <strong>Need to change cashiers or log out?</strong> You do not need to close the shift. Use the 👤 User button in the top bar to switch staff or log out while keeping this shift open.
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
