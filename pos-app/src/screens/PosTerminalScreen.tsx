@@ -5284,42 +5284,44 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
               </button>
             )}
 
-            {/* Store Operational Status Control Pill (One-click toggle/hold for https://ovrload-nine.vercel.app/) */}
-            <button
-              type="button"
-              onClick={() => {
-                fetchBranchStatusAndPrompt();
-                setShowBranchStatusModal(true);
-              }}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-black transition active:scale-95 cursor-pointer shadow-xs shrink-0 border ${
-                posOperationalStatus === "closed_hour"
-                  ? "bg-amber-100 hover:bg-amber-200 border-amber-400 text-amber-950 animate-pulse"
-                  : posOperationalStatus === "closed" || posOperationalStatus === "closed_today"
-                  ? "bg-rose-100 hover:bg-rose-200 border-rose-300 text-rose-900"
-                  : "bg-emerald-50 hover:bg-emerald-100 border-emerald-300 text-emerald-800"
-              }`}
-              title={`Online Store Status (${workspaceState.activeConcept.name}): ${posOperationalStatus} - Click to pause orders (Hold) or close store`}
-            >
-              {posOperationalStatus === "closed_hour" ? (
-                <>
-                  <span className="text-amber-600">⏳</span>
-                  <span className="hidden sm:inline">Store: On Hold (60m)</span>
-                  <span className="sm:hidden">Hold 60m</span>
-                </>
-              ) : posOperationalStatus === "closed" || posOperationalStatus === "closed_today" ? (
-                <>
-                  <span className="text-rose-600">🔴</span>
-                  <span className="hidden sm:inline">Store: Closed</span>
-                  <span className="sm:hidden">Closed</span>
-                </>
-              ) : (
-                <>
-                  <span className="text-emerald-600">🟢</span>
-                  <span className="hidden sm:inline">Store: Open</span>
-                  <span className="sm:hidden">Open</span>
-                </>
-              )}
-            </button>
+            {/* Store Operational Status Control Pill (Only for OVRLOAD online store - excluded from NÉO) */}
+            {workspaceState.activeConcept?.code === 'OVRLOAD' && (
+              <button
+                type="button"
+                onClick={() => {
+                  fetchBranchStatusAndPrompt();
+                  setShowBranchStatusModal(true);
+                }}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-black transition active:scale-95 cursor-pointer shadow-xs shrink-0 border ${
+                  posOperationalStatus === "closed_hour"
+                    ? "bg-amber-100 hover:bg-amber-200 border-amber-400 text-amber-950 animate-pulse"
+                    : posOperationalStatus === "closed" || posOperationalStatus === "closed_today"
+                    ? "bg-rose-100 hover:bg-rose-200 border-rose-300 text-rose-900"
+                    : "bg-emerald-50 hover:bg-emerald-100 border-emerald-300 text-emerald-800"
+                }`}
+                title={`Online Store Status (${workspaceState.activeConcept.name}): ${posOperationalStatus} - Click to pause orders (Hold) or close store`}
+              >
+                {posOperationalStatus === "closed_hour" ? (
+                  <>
+                    <span className="text-amber-600">⏳</span>
+                    <span className="hidden sm:inline">Store: On Hold (60m)</span>
+                    <span className="sm:hidden">Hold 60m</span>
+                  </>
+                ) : posOperationalStatus === "closed" || posOperationalStatus === "closed_today" ? (
+                  <>
+                    <span className="text-rose-600">🔴</span>
+                    <span className="hidden sm:inline">Store: Closed</span>
+                    <span className="sm:hidden">Closed</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-emerald-600">🟢</span>
+                    <span className="hidden sm:inline">Store: Open</span>
+                    <span className="sm:hidden">Open</span>
+                  </>
+                )}
+              </button>
+            )}
 
             {/* Quick Delivery POS Navigation Shortcuts (Held Orders) */}
             <div className="flex items-center gap-1 shrink-0">
@@ -7339,19 +7341,21 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
             </div>
 
             <div className="space-y-4 text-xs">
-              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2">
-                <span className="font-extrabold text-pos-primary text-xs block uppercase tracking-wider">Store Operational Control:</span>
-                <button
-                  onClick={() => {
-                    setActiveTabModal(null);
-                    fetchBranchStatusAndPrompt();
-                    setShowBranchStatusModal(true);
-                  }}
-                  className="w-full py-2.5 bg-white hover:bg-slate-100 text-slate-800 font-extrabold rounded-xl transition-all text-xs border border-slate-300 flex items-center justify-center gap-2 shadow-xs cursor-pointer"
-                >
-                  ⚙️ Change Store Opening / Closure Status
-                </button>
-              </div>
+              {workspaceState.activeConcept?.code === 'OVRLOAD' && (
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2">
+                  <span className="font-extrabold text-pos-primary text-xs block uppercase tracking-wider">Store Operational Control:</span>
+                  <button
+                    onClick={() => {
+                      setActiveTabModal(null);
+                      fetchBranchStatusAndPrompt();
+                      setShowBranchStatusModal(true);
+                    }}
+                    className="w-full py-2.5 bg-white hover:bg-slate-100 text-slate-800 font-extrabold rounded-xl transition-all text-xs border border-slate-300 flex items-center justify-center gap-2 shadow-xs cursor-pointer"
+                  >
+                    ⚙️ Change Store Opening / Closure Status
+                  </button>
+                </div>
+              )}
 
               <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2">
                 <span className="font-extrabold text-amber-800 text-xs block uppercase tracking-wider">Thermal Printer Configuration:</span>
