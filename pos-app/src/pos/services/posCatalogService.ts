@@ -243,9 +243,25 @@ async function fetchCatalogFromSupabase(
       settingsMap[s.setting_key] = s.setting_value;
     });
 
+    let conceptTotersRate = parseFloat(settingsMap.toters_discount_percent || '27.5');
+    let conceptNoknokRate = parseFloat(settingsMap.noknok_discount_percent || '15');
+    try {
+      const { data: bcData } = await supabase
+        .from('business_concepts')
+        .select('id, metadata')
+        .eq('id', targetConceptId)
+        .maybeSingle();
+      if (bcData?.metadata?.channel_agreements?.toters_commission_pct !== undefined) {
+        conceptTotersRate = Number(bcData.metadata.channel_agreements.toters_commission_pct);
+      }
+      if (bcData?.metadata?.channel_agreements?.noknok_commission_pct !== undefined) {
+        conceptNoknokRate = Number(bcData.metadata.channel_agreements.noknok_commission_pct);
+      }
+    } catch {}
+
     const parsedSettings: PosCatalogSettings = {
-      toters_discount_percent: parseFloat(settingsMap.toters_discount_percent || '15'),
-      noknok_discount_percent: parseFloat(settingsMap.noknok_discount_percent || '15'),
+      toters_discount_percent: conceptTotersRate,
+      noknok_discount_percent: conceptNoknokRate,
       print_server_ip: settingsMap.print_server_ip || DEFAULT_SETTINGS.print_server_ip,
       print_server_port: parseInt(settingsMap.print_server_port || String(DEFAULT_SETTINGS.print_server_port), 10)
     };

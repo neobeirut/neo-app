@@ -382,6 +382,28 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       const data = await fetchPosCatalog(currentRestaurantId, currentBranchId || commerceBranchLink?.flow_branch_id, newState.activeConcept.id);
       if (data.categories) setCategories(data.categories);
       if (data.products) setProducts(data.products);
+      if (data.settings) {
+        if (data.settings.toters_discount_percent !== undefined) {
+          setTotersDiscountPercent(data.settings.toters_discount_percent);
+          setConceptChannelAgreements(prev => ({
+            ...prev,
+            [newState.activeConcept.id]: {
+              ...(prev[newState.activeConcept.id] || { noknokCommissionPct: 15, whatsappPromoPct: 0, pickupDiscountPct: 0 }),
+              totersCommissionPct: data.settings.toters_discount_percent
+            }
+          }));
+        }
+        if (data.settings.noknok_discount_percent !== undefined) {
+          setNoknokDiscountPercent(data.settings.noknok_discount_percent);
+          setConceptChannelAgreements(prev => ({
+            ...prev,
+            [newState.activeConcept.id]: {
+              ...(prev[newState.activeConcept.id] || { totersCommissionPct: 27.5, whatsappPromoPct: 0, pickupDiscountPct: 0 }),
+              noknokCommissionPct: data.settings.noknok_discount_percent
+            }
+          }));
+        }
+      }
 
       // Rebuild touch screen matrix specifically for the newly activated concept
       try {
@@ -1156,7 +1178,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     pickupDiscountPct: number;
   }>>({
     '00000000-0000-0000-0000-000000000002': { // OVRLOAD
-      totersCommissionPct: 15,
+      totersCommissionPct: 27.5,
       noknokCommissionPct: 15,
       whatsappPromoPct: 0,
       pickupDiscountPct: 0,
@@ -1176,7 +1198,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   });
 
   const activeAgreement = conceptChannelAgreements[workspaceState.activeConcept.id] || {
-    totersCommissionPct: workspaceState.activeConcept?.code === 'OVRLOAD' ? 15 : 0,
+    totersCommissionPct: workspaceState.activeConcept?.code === 'OVRLOAD' ? 27.5 : 0,
     noknokCommissionPct: workspaceState.activeConcept?.code === 'OVRLOAD' ? 15 : 0,
     whatsappPromoPct: 0,
     pickupDiscountPct: 0
@@ -1191,7 +1213,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   ]);
 
   // Admin Configured Channel Discounts
-  const [totersDiscountPercent, setTotersDiscountPercent] = useState(15);
+  const [totersDiscountPercent, setTotersDiscountPercent] = useState(27.5);
   const [noknokDiscountPercent, setNoknokDiscountPercent] = useState(15);
 
   // Discount Selection State
@@ -1994,7 +2016,6 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       const data = await fetchPosCatalog(currentRestaurantId, currentBranchId || commerceBranchLink?.flow_branch_id, workspaceState.activeConcept.id);
       if (data.categories) setCategories(data.categories);
       if (data.products) setProducts(data.products);
-
       // Load POS Screen Matrix (modifiable screens & subscreens)
       try {
         const screens = await fetchPosScreens(currentRestaurantId, data.categories || [], data.products || [], workspaceState.activeConcept.id);
@@ -2008,8 +2029,26 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       }
 
       if (data.settings) {
-        if (data.settings.toters_discount_percent !== undefined) setTotersDiscountPercent(data.settings.toters_discount_percent);
-        if (data.settings.noknok_discount_percent !== undefined) setNoknokDiscountPercent(data.settings.noknok_discount_percent);
+        if (data.settings.toters_discount_percent !== undefined) {
+          setTotersDiscountPercent(data.settings.toters_discount_percent);
+          setConceptChannelAgreements(prev => ({
+            ...prev,
+            [workspaceState.activeConcept.id]: {
+              ...(prev[workspaceState.activeConcept.id] || { noknokCommissionPct: 15, whatsappPromoPct: 0, pickupDiscountPct: 0 }),
+              totersCommissionPct: data.settings.toters_discount_percent
+            }
+          }));
+        }
+        if (data.settings.noknok_discount_percent !== undefined) {
+          setNoknokDiscountPercent(data.settings.noknok_discount_percent);
+          setConceptChannelAgreements(prev => ({
+            ...prev,
+            [workspaceState.activeConcept.id]: {
+              ...(prev[workspaceState.activeConcept.id] || { totersCommissionPct: 27.5, whatsappPromoPct: 0, pickupDiscountPct: 0 }),
+              noknokCommissionPct: data.settings.noknok_discount_percent
+            }
+          }));
+        }
         if (data.settings.print_server_ip) setPrintServerIP(data.settings.print_server_ip);
         if (data.settings.print_server_port) setPrintServerPort(Number(data.settings.print_server_port));
       }
