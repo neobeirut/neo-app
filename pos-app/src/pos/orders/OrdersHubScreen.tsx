@@ -316,13 +316,12 @@ export const OrdersHubScreen: React.FC<OrdersHubScreenProps> = ({
         recordDeliveryExpenseForOrder({
           orderId: adaptedUpdated.id,
           deliveryFee: Number(adaptedUpdated.deliveryFee || 0),
+          conceptId: adaptedUpdated.rawOrder?.concept_id || (adaptedUpdated.conceptCode === 'OVRLOAD' ? '00000000-0000-0000-0000-000000000002' : adaptedUpdated.conceptCode === 'WICKD' ? '00000000-0000-0000-0000-000000000003' : '00000000-0000-0000-0000-000000000001'),
           orderType: adaptedUpdated.orderType,
           orderSource: adaptedUpdated.orderSource || adaptedUpdated.channel,
           paymentMethod: adaptedUpdated.paymentMethod,
           customerName: adaptedUpdated.customerName,
-          branchName: activeShift?.branch || branchName,
-          shiftName: activeShift?.shift,
-          shiftDate: activeShift?.date,
+          branchName: branchName,
           cashierName: activeCashierName,
           restaurantId: restaurantId || undefined
         }).catch(() => {});

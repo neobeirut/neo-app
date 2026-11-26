@@ -94,6 +94,7 @@ export function resolveCanonicalSalesChannel(
 export async function recordDeliveryExpenseForOrder(params: {
   orderId: number | string;
   deliveryFee: number;
+  conceptId?: string;
   orderType?: string;
   orderSource?: string;
   paymentMethod?: string;
@@ -122,6 +123,11 @@ export async function recordDeliveryExpenseForOrder(params: {
     }
 
     const rid = params.restaurantId || getGlobalRestaurantId() || '79256f11-a9f8-4fec-901d-69baf929762d';
+    const resolvedConceptId =
+      params.conceptId ||
+      ((src.includes('whatsapp') || oType === 'delivery')
+        ? '00000000-0000-0000-0000-000000000002'
+        : '00000000-0000-0000-0000-000000000001');
     const orderTag = `Order #${params.orderId}`;
 
     // Idempotency check: do not duplicate if already recorded for this order
@@ -136,20 +142,28 @@ export async function recordDeliveryExpenseForOrder(params: {
       return { success: true, skipped: true };
     }
 
-    // Resolve active open shift so date/branch/shift match DailyPaymentsModal & CloseShiftModal
+    // Resolve active open shift strictly for THIS concept (e.g. OVRLOAD shift, never NEO's shift)
     let resolvedBranch = params.branchName || '';
     let resolvedShift = params.shiftName || '';
     let resolvedDate = params.shiftDate ? String(params.shiftDate).split('T')[0].split(' ')[0] : '';
 
     if (!resolvedBranch || !resolvedShift || !resolvedDate) {
       try {
-        const { data: openShifts } = await supabase
+        let shiftQuery = supabase
           .from('shift_cash')
-          .select('branch, shift, date')
+          .select('branch, shift, date, concept_id')
           .eq('restaurant_id', rid)
           .eq('status', 'open')
           .order('created_at', { ascending: false })
           .limit(1);
+
+        if (resolvedConceptId === '00000000-0000-0000-0000-000000000001') {
+          shiftQuery = shiftQuery.or(`concept_id.eq.${resolvedConceptId},concept_id.is.null`);
+        } else {
+          shiftQuery = shiftQuery.eq('concept_id', resolvedConceptId);
+        }
+
+        const { data: openShifts } = await shiftQuery;
         if (openShifts && openShifts.length > 0) {
           if (!resolvedBranch && openShifts[0].branch) resolvedBranch = openShifts[0].branch;
           if (!resolvedShift && openShifts[0].shift) resolvedShift = openShifts[0].shift;
@@ -163,8 +177,9 @@ export async function recordDeliveryExpenseForOrder(params: {
     }
     if (!resolvedBranch) resolvedBranch = 'Badaro';
     if (!resolvedShift) {
-      const hour = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Beirut', hour: '2-digit', hour12: false }).format(new Date()));
-      resolvedShift = hour < 16 ? 'AM' : 'PM';
+      resolvedShift = resolvedConceptId === '00000000-0000-0000-0000-000000000002'
+        ? 'ALL DAY'
+        : (Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Beirut', hour: '2-digit', hour12: false }).format(new Date())) < 16 ? 'AM' : 'PM');
     }
 
     const customerSuffix = params.customerName && params.customerName.trim()
@@ -183,7 +198,8 @@ export async function recordDeliveryExpenseForOrder(params: {
       has_invoice: false,
       user_name: params.cashierName || 'Cashier',
       status: 'Paid',
-      restaurant_id: rid
+      restaurant_id: rid,
+      concept_id: resolvedConceptId
     }]);
 
     if (insErr) {
@@ -450,6 +466,7 @@ export async function createDirectOrder(payload: CreateOrderPayload) {
         recordDeliveryExpenseForOrder({
           orderId: orderData.id,
           deliveryFee: Number(orderData.delivery_fee || 0),
+          conceptId: orderData.concept_id || resolvedConceptId,
           orderType: orderData.order_type,
           orderSource: orderData.order_source,
           paymentMethod: orderData.payment_method,
@@ -587,6 +604,7 @@ export async function updateDirectOrderStatus(orderId: number | string, patch: a
         recordDeliveryExpenseForOrder({
           orderId: data.id,
           deliveryFee: Number(data.delivery_fee || 0),
+          conceptId: data.concept_id || existingOrder.concept_id,
           orderType: data.order_type,
           orderSource: data.order_source,
           paymentMethod: data.payment_method,

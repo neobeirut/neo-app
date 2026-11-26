@@ -573,6 +573,7 @@ export async function submitPayment(
         await recordDeliveryExpenseForOrder({
           orderId: params.orderId,
           deliveryFee: orderDeliveryFee,
+          conceptId: order.concept_id,
           orderType: order.order_type,
           orderSource: order.order_source,
           paymentMethod: params.payment.method || order.payment_method,

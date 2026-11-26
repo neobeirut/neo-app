@@ -40,6 +40,7 @@ interface DailyPaymentsModalProps {
   activeShiftOpenedAt?: string;
   branchId?: string;
   restaurantId?: string;
+  conceptId?: string;
   systemExchangeRate?: number;
   isShiftOpen?: boolean;
 }
@@ -55,6 +56,7 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
   activeShiftOpenedAt,
   branchId,
   restaurantId,
+  conceptId,
   systemExchangeRate,
   isShiftOpen
 }) => {
@@ -367,7 +369,7 @@ export const DailyPaymentsModal: React.FC<DailyPaymentsModalProps> = ({
       const b = targetBranch || branchName;
       const d = targetDate || date || (activeShiftDate ? String(activeShiftDate).split('T')[0].split(' ')[0] : '') || new Date().toLocaleDateString('en-CA');
       const s = targetShift || shift;
-      const res = await getDailyPayments(b, d, s);
+      const res = await getDailyPayments(b, d, s, conceptId);
       if (res.success) {
         setDailyPaymentsList(res.data);
       }

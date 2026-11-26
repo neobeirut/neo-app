@@ -177,6 +177,7 @@ export const DriverHandoverModal: React.FC<DriverHandoverModalProps> = ({
         await recordDeliveryExpenseForOrder({
           orderId: order.id,
           deliveryFee,
+          conceptId: order.concept_id || order.conceptId,
           orderType: 'delivery',
           orderSource: order.order_source || order.channel || 'WhatsApp',
           paymentMethod: order.payment_method || 'Cash USD',

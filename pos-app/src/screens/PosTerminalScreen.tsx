@@ -8541,6 +8541,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         activeShiftOpenedAt={activeShift?.opened_at || activeShift?.created_at}
         systemExchangeRate={exchangeRate}
         restaurantId={currentRestaurantId}
+        conceptId={workspaceState.activeConcept.id}
         isShiftOpen={isShiftOpen}
       />
 

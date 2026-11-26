@@ -1146,7 +1146,7 @@ export async function closeShift(params: CloseShiftParams): Promise<{ success: b
 /**
  * Fetch daily payments for branch, date, and shift
  */
-export async function getDailyPayments(branch: string, date: string, shift: string = 'All') {
+export async function getDailyPayments(branch: string, date: string, shift: string = 'All', conceptId?: string) {
   try {
     let query = supabase
       .from('daily_payments')
@@ -1158,6 +1158,13 @@ export async function getDailyPayments(branch: string, date: string, shift: stri
     }
     if (shift && shift !== 'All') {
       query = query.eq('shift', shift);
+    }
+    if (conceptId) {
+      if (conceptId === '00000000-0000-0000-0000-000000000001') {
+        query = query.or(`concept_id.eq.${conceptId},concept_id.is.null`);
+      } else {
+        query = query.eq('concept_id', conceptId);
+      }
     }
     const { data, error } = await query.order('created_at', { ascending: false });
     if (error) return { success: false, error: error.message, data: [] };
