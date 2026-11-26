@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   posWorkspaceService,
   type ConceptWorkspaceInfo,
@@ -40,6 +41,28 @@ export const ConceptWorkspaceSwitcher: React.FC<ConceptWorkspaceSwitcherProps> =
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isSwitching, setIsSwitching] = useState(false);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number }>({ top: 56, left: 12 });
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const updatePosition = () => {
+      if (triggerRef.current) {
+        const rect = triggerRef.current.getBoundingClientRect();
+        setMenuPos({
+          top: rect.bottom + 8,
+          left: Math.max(8, rect.left)
+        });
+      }
+    };
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+    };
+  }, [isOpen]);
 
   const active = workspaceState.activeConcept;
   const isMultiConceptEnabled = Boolean(canSwitchConcepts && (workspaceState.allowedConcepts?.length || 0) > 1);
@@ -86,8 +109,9 @@ export const ConceptWorkspaceSwitcher: React.FC<ConceptWorkspaceSwitcherProps> =
   return (
     <>
       {/* Brand Pill Trigger Button with Dropdown (Visible only for Multi-Concept Authorized Users) */}
-      <div className="relative inline-block text-left">
+      <div className="relative inline-block text-left shrink-0">
         <button
+          ref={triggerRef}
           type="button"
           onClick={() => setIsOpen(!isOpen)}
           className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-black text-white shadow-sm transition-all active:scale-95 border border-white/20 hover:brightness-110 cursor-pointer shrink-0"
@@ -96,52 +120,63 @@ export const ConceptWorkspaceSwitcher: React.FC<ConceptWorkspaceSwitcherProps> =
         >
           <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
           <span className="tracking-wide uppercase text-xs whitespace-nowrap">{displayTitle}</span>
-          <svg className="w-3 h-3 opacity-80 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg className={`w-3 h-3 opacity-80 shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
           </svg>
         </button>
 
-        {/* Dropdown Menu */}
-        {isOpen && (
-          <div className="absolute left-0 mt-2 w-56 rounded-2xl bg-slate-900/95 backdrop-blur-xl border border-slate-700/80 shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95 duration-100">
-            <div className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800 mb-1">
-              Select Concept Workspace
+        {/* Portal Dropdown Menu — renders above all overflow-hidden header containers */}
+        {isOpen && typeof document !== 'undefined' && createPortal(
+          <>
+            <div
+              className="fixed inset-0 z-[9998]"
+              onClick={() => setIsOpen(false)}
+            />
+            <div
+              style={{ top: menuPos.top, left: menuPos.left }}
+              className="fixed w-56 rounded-2xl bg-slate-900/95 backdrop-blur-xl border border-slate-700/80 shadow-2xl p-2 z-[9999] animate-in fade-in zoom-in-95 duration-100"
+            >
+              <div className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800 mb-1">
+                Select Concept Workspace
+              </div>
+              <div className="space-y-1">
+                {workspaceState.allowedConcepts.map(c => {
+                  const isSelected = c.id === active.id;
+                  const draftCount = draftCartCounts[c.id] || 0;
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      disabled={isSwitching}
+                      onClick={() => handleSelectConcept(c)}
+                      className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        isSelected
+                          ? 'bg-white/10 text-white border border-white/20'
+                          : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <span
+                          className="w-3 h-3 rounded-full shadow-sm"
+                          style={{ backgroundColor: c.primary_color }}
+                        />
+                        <span>{c.name}</span>
+                        {draftCount > 0 && !isSelected && (
+                          <span className="text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded font-mono">
+                            {draftCount} in draft
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">
+                        {c.receipt_prefix}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-            <div className="space-y-1">
-              {workspaceState.allowedConcepts.map(c => {
-                const isSelected = c.id === active.id;
-                const draftCount = draftCartCounts[c.id] || 0;
-                return (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => handleSelectConcept(c)}
-                    className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all ${
-                      isSelected
-                        ? 'bg-white/10 text-white border border-white/20'
-                        : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <span
-                        className="w-3 h-3 rounded-full shadow-sm"
-                        style={{ backgroundColor: c.primary_color }}
-                      />
-                      <span>{c.name}</span>
-                      {draftCount > 0 && !isSelected && (
-                        <span className="text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded font-mono">
-                          {draftCount} in draft
-                        </span>
-                      )}
-                    </div>
-                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">
-                      {c.receipt_prefix}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+          </>,
+          document.body
         )}
       </div>
     </>
