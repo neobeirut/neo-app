@@ -78,9 +78,16 @@ export const OrderCard: React.FC<OrderCardProps> = ({
     );
   };
 
-  const rawCode = order.tableLabel || order.customerName || '';
-  const cleanNum = rawCode.replace(/^table\s*[-#]?/i, '').replace(/^[Tt]/, '').trim();
-  const tableDisplayName = cleanNum ? `Table ${cleanNum}` : (order.tableLabel || order.customerName || order.orderNumber || 'Table');
+  const isTable = Boolean(order.isTableOrder || isTableVariant);
+  let cardHeaderTitle: string;
+  if (isTable) {
+    const rawCode = order.tableLabel || order.customerName || '';
+    const cleanNum = rawCode.replace(/^table\s*[-#]?/i, '').replace(/^[Tt]/, '').trim();
+    cardHeaderTitle = cleanNum ? `Table ${cleanNum}` : (order.tableLabel || order.orderNumber || 'Table');
+  } else {
+    const orderNumDisplay = order.orderNumber || (order.id ? `#${order.id}` : '');
+    cardHeaderTitle = orderNumDisplay ? `Order: ${orderNumDisplay}` : 'Order:';
+  }
 
   return (
     <div
@@ -99,7 +106,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({
           <div className="flex items-center justify-between gap-1 mb-2 flex-wrap">
             <div className="flex items-center gap-2 shrink-0">
               <span className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight shrink-0 whitespace-nowrap">
-                {tableDisplayName}
+                {cardHeaderTitle}
               </span>
               {order.conceptCode && order.conceptCode !== 'NEO' && (
                 <span className={`px-2 py-0.5 rounded text-[11px] font-black border flex items-center gap-0.5 ${
@@ -123,7 +130,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({
           <div className="flex items-center justify-between gap-1 mb-1.5">
             <div className="flex items-center gap-1 flex-wrap">
               <span className="text-sm font-black text-slate-900 tracking-wide">
-                {tableDisplayName}
+                {cardHeaderTitle}
               </span>
               {order.conceptCode && (
                 <span className={`px-1.5 py-0.5 rounded text-[9px] font-black border flex items-center gap-0.5 ${
