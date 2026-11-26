@@ -14,7 +14,7 @@ export function isScheduledCarryover(order: any) {
   return order.is_scheduled === true && Boolean(order.scheduled_for) && Number.isFinite(Date.parse(order.scheduled_for));
 }
 export function pendingPreparation(orders: any[], today = businessDay()) {
-  const pending = orders.filter(order => ['held', 'pending', 'new', 'confirmed', 'ready', 'open', 'occupied', 'bill_requested', 'preparing', 'paid'].includes(String(order.status || '').toLowerCase()));
+  const pending = orders.filter(order => order.is_canceled !== true && ['held', 'pending', 'new', 'confirmed', 'ready', 'open', 'occupied', 'bill_requested', 'preparing', 'paid'].includes(String(order.status || '').toLowerCase()));
   return { pending, blocking: pending.filter(order => !isScheduledCarryover(order)), future: pending.filter(order => isScheduledCarryover(order)) };
 }
 export async function loadPreparingOrders(
@@ -29,7 +29,7 @@ export async function loadPreparingOrders(
   const orders: any[] = [];
   for (let offset = 0; ; offset += 500) {
     let query = supabase.from('pos_orders')
-      .select('id,status,customer_name,table_label,is_scheduled,scheduled_for,concept_id')
+      .select('id,status,is_canceled,customer_name,table_label,is_scheduled,scheduled_for,concept_id')
       .eq('restaurant_id', restaurantId).in('branch_id', branches).in('status', ['held', 'pending', 'new', 'confirmed', 'ready', 'open', 'occupied', 'bill_requested', 'preparing', 'paid'])
       .order('id').range(offset, offset + 499);
     if (beforeTime) query = query.lt('created_at', beforeTime);
@@ -41,7 +41,7 @@ export async function loadPreparingOrders(
       }
     }
     let { data, error } = await query;
-    if (error && (String(error.message || '').includes('concept_id') || (error as any).code === '42703' || (error as any).code === 'PGRST204')) {
+    if (error && (String(error.message || '').includes('concept_id') || String(error.message || '').includes('is_canceled') || (error as any).code === '42703' || (error as any).code === 'PGRST204')) {
       let fallbackQuery = supabase.from('pos_orders')
         .select('id,status,customer_name,table_label,is_scheduled,scheduled_for')
         .eq('restaurant_id', restaurantId).in('branch_id', branches).in('status', ['held', 'pending', 'new', 'confirmed', 'ready', 'open', 'occupied', 'bill_requested', 'preparing', 'paid'])
@@ -52,7 +52,11 @@ export async function loadPreparingOrders(
       error = res.error;
     }
     if (error) throw new Error(error.message);
-    orders.push(...(data || []));
+    const activeRows = (data || []).filter((r: any) =>
+      r.is_canceled !== true &&
+      !['cancelled', 'canceled', 'void', 'voided'].includes(String(r.status || '').toLowerCase())
+    );
+    orders.push(...activeRows);
     if (!data || data.length < 500) break;
   }
   return orders;

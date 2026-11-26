@@ -887,6 +887,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
               items: []
             });
             if (!voidUpdate.success) throw new Error(voidUpdate.error);
+            if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('flow:order_cancelled'));
             if (activeTableContext?.sessionId) {
               await closeTableSession(activeTableContext.sessionId).catch(() => {});
             }
@@ -962,6 +963,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
           .from('pos_orders')
           .update({
             status: "cancelled",
+            is_canceled: true,
             special_instructions: reason ? `Voided: ${reason}` : 'Voided',
             updated_at: new Date().toISOString()
           })
@@ -986,6 +988,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     });
 
     if (result.success) {
+      if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('flow:order_cancelled'));
       // Dispatch Cancellation Tickets to original preparation printers (Phase 5)
       try {
         const cancelledItemsList = (voidType === 'item_void' && typeof targetItemIndex === 'number' && ticketItems[targetItemIndex])
@@ -2216,7 +2219,19 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     void refresh();
     const timer = setInterval(refresh, 10000);
     window.addEventListener('focus', refresh);
-    return () => { cancelled = true; clearInterval(timer); window.removeEventListener('focus', refresh); };
+    window.addEventListener('flow:order_settled', refresh);
+    window.addEventListener('flow:order_created', refresh);
+    window.addEventListener('flow:order_cancelled', refresh);
+    window.addEventListener('flow:table_settled', refresh);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+      window.removeEventListener('focus', refresh);
+      window.removeEventListener('flow:order_settled', refresh);
+      window.removeEventListener('flow:order_created', refresh);
+      window.removeEventListener('flow:order_cancelled', refresh);
+      window.removeEventListener('flow:table_settled', refresh);
+    };
   }, [currentRestaurantId, currentBranchId, commerceBranchLink?.flow_branch_id, commerceBranchLink?.external_branch_id, inventoryRevision]);
 
   const fetchOrdersQueue = async () => {
