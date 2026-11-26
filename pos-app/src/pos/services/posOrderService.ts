@@ -214,6 +214,48 @@ export async function recordDeliveryExpenseForOrder(params: {
   }
 }
 
+/**
+ * Sends concept-aware customer WhatsApp lifecycle notifications via Infobip templates:
+ * - order_confirmation ({{1}}=orderId, {{2}}=full order details)
+ * - preparing -> order_preparing ({{1}}=total including delivery)
+ * - ready -> order_ready ({{1}}=#orderId)
+ * - completed (delivery only) -> out_for_delivery ({{1}}=#orderId)
+ */
+export async function notifyCustomerWhatsApp(params: {
+  orderId: number | string;
+  conceptId?: string;
+  event: 'order_confirmation' | 'preparing' | 'ready' | 'completed';
+  customerPhone?: string | null;
+  orderType?: string;
+  orderSource?: string;
+  totalAmount?: number;
+  orderDetails?: string;
+}): Promise<void> {
+  try {
+    if (!params.customerPhone || !String(params.customerPhone).trim()) return;
+    const srcLower = String(params.orderSource || '').toLowerCase();
+    if (srcLower.includes('toter') || srcLower.includes('nok')) return;
+    if (params.event === 'completed' && String(params.orderType || '').toLowerCase() !== 'delivery') return;
+
+    await fetch('https://ovrload-nine.vercel.app/api/pos/notify-customer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        orderId: params.orderId,
+        conceptId: params.conceptId,
+        event: params.event,
+        customerPhone: params.customerPhone,
+        orderType: params.orderType,
+        orderSource: params.orderSource,
+        totalAmount: params.totalAmount,
+        orderDetails: params.orderDetails
+      })
+    });
+  } catch (err) {
+    console.warn('[notifyCustomerWhatsApp] Non-fatal warning:', err);
+  }
+}
+
 export async function createDirectOrder(payload: CreateOrderPayload) {
   let persistedOrderId: number | string | undefined;
   try {

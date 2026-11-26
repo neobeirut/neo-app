@@ -586,6 +586,29 @@ export async function submitPayment(
       }
     }
 
+    // 9. Notify customer on WhatsApp if delivery order just transitioned to completed
+    if (
+      isFullyPaid &&
+      orderUpdate.status === 'completed' &&
+      order.status !== 'completed' &&
+      String(order.order_type || '').toLowerCase() === 'delivery' &&
+      order.customer_phone
+    ) {
+      import('../services/posOrderService')
+        .then(({ notifyCustomerWhatsApp }) =>
+          notifyCustomerWhatsApp({
+            orderId: params.orderId,
+            conceptId: order.concept_id,
+            event: 'completed',
+            customerPhone: order.customer_phone,
+            orderType: order.order_type,
+            orderSource: order.order_source,
+            totalAmount: Number(order.total_amount || 0)
+          })
+        )
+        .catch(() => {});
+    }
+
     const fin = await getFinancialSummary(params.orderId);
     if (!fin.success) {
       return {

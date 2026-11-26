@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../api/supabase';
 import { COMMERCE_API_BASE, HAS_COMMERCE_API } from '../config';
-import { recordDeliveryExpenseForOrder } from '../services/posOrderService';
+import { recordDeliveryExpenseForOrder, notifyCustomerWhatsApp } from '../services/posOrderService';
 
 export interface DriverHandoverModalProps {
   isOpen: boolean;
@@ -184,6 +184,19 @@ export const DriverHandoverModal: React.FC<DriverHandoverModalProps> = ({
           customerName: order.customer_name || order.customerName || driverName,
           cashierName: activeCashierName || 'Cashier',
           restaurantId: order.restaurant_id
+        }).catch(() => {});
+      }
+
+      // Notify customer that their delivery order is out for delivery
+      if (order.customer_phone || order.customerPhone) {
+        notifyCustomerWhatsApp({
+          orderId: order.id,
+          conceptId: order.concept_id || order.conceptId,
+          event: 'completed',
+          customerPhone: order.customer_phone || order.customerPhone,
+          orderType: 'delivery',
+          orderSource: order.order_source || order.channel || 'WhatsApp',
+          totalAmount: customerTotal
         }).catch(() => {});
       }
 

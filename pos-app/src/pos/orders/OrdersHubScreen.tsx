@@ -9,7 +9,7 @@ import { adaptOvrloadOrder } from './orderAdapter';
 import type { FlowPosOrder } from './orderAdapter';
 
 import { COMMERCE_API_BASE, DRIVER_DISPATCH_API_BASE, HAS_COMMERCE_API } from '../config';
-import { updateDirectOrderStatus, claimDirectOrder, recordDeliveryExpenseForOrder } from '../services/posOrderService';
+import { updateDirectOrderStatus, claimDirectOrder, recordDeliveryExpenseForOrder, notifyCustomerWhatsApp } from '../services/posOrderService';
 import { buildPreparationPrintJobs, dispatchPhysicalPrintJobs } from '../services/ticketRoutingService';
 import { supabase } from '../../api/supabase';
 
@@ -305,6 +305,28 @@ export const OrdersHubScreen: React.FC<OrdersHubScreenProps> = ({
       // Auto-print kitchen ticket once when accepting a NEW order (e.g. incoming WhatsApp online order)
       if (wasNewOrder && (newStatus === 'confirmed' || newStatus === 'preparing')) {
         printOrderKitchenTicket(adaptedUpdated, false).catch(() => {});
+      }
+
+      // Send concept-aware customer WhatsApp status notifications on transition
+      const resolvedConceptId =
+        adaptedUpdated.rawOrder?.concept_id ||
+        (adaptedUpdated.conceptCode === 'OVRLOAD'
+          ? '00000000-0000-0000-0000-000000000002'
+          : adaptedUpdated.conceptCode === 'WICKD'
+          ? '00000000-0000-0000-0000-000000000003'
+          : '00000000-0000-0000-0000-000000000001');
+      if (prevRawStatus !== newStatus && adaptedUpdated.customerPhone) {
+        if (newStatus === 'preparing' || newStatus === 'ready' || (newStatus === 'completed' && adaptedUpdated.orderType === 'delivery')) {
+          notifyCustomerWhatsApp({
+            orderId: adaptedUpdated.id,
+            conceptId: resolvedConceptId,
+            event: newStatus as 'preparing' | 'ready' | 'completed',
+            customerPhone: adaptedUpdated.customerPhone,
+            orderType: adaptedUpdated.orderType,
+            orderSource: adaptedUpdated.orderSource || adaptedUpdated.channel,
+            totalAmount: adaptedUpdated.totalAmount
+          }).catch(() => {});
+        }
       }
 
       // Record delivery fee as Delivery Expense in Payments when closing a delivery order
