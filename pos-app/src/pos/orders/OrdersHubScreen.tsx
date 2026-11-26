@@ -108,6 +108,10 @@ export const OrdersHubScreen: React.FC<OrdersHubScreenProps> = ({
   const [isRefundModalOpen, setIsRefundModalOpen] = useState(false);
   const [orderForPaymentAction, setOrderForPaymentAction] = useState<FlowPosOrder | null>(null);
   const [handoverTargetOrder, setHandoverTargetOrder] = useState<FlowPosOrder | null>(null);
+  const [driverPromptOrder, setDriverPromptOrder] = useState<FlowPosOrder | null>(null);
+  const [driverPromptPhone, setDriverPromptPhone] = useState<string>('9613826136');
+  const [driverDispatchStatusMsg, setDriverDispatchStatusMsg] = useState<string>('');
+  const [isSendingDriverDispatch, setIsSendingDriverDispatch] = useState<boolean>(false);
 
   const isOrderCanceled = (order: FlowPosOrder | null | undefined): boolean => {
     if (!order) return false;
@@ -198,7 +202,22 @@ export const OrdersHubScreen: React.FC<OrdersHubScreenProps> = ({
 
     await refreshOrders();
     if (updatedOrder) {
-      setActiveDetailOrder(adaptOvrloadOrder(updatedOrder));
+      const adaptedUpdated = adaptOvrloadOrder(updatedOrder);
+      const chLower = String(adaptedUpdated.channel || '').toLowerCase();
+      const isAggregator = chLower.includes('toter') || chLower.includes('nok');
+      const shouldPromptDriver =
+        newStatus === 'confirmed' &&
+        adaptedUpdated.orderType === 'delivery' &&
+        !isAggregator;
+
+      if (shouldPromptDriver) {
+        setActiveDetailOrder(null);
+        setDriverPromptPhone('9613826136');
+        setDriverDispatchStatusMsg('');
+        setDriverPromptOrder(adaptedUpdated);
+      } else {
+        setActiveDetailOrder(adaptedUpdated);
+      }
     }
   };
 
@@ -236,39 +255,89 @@ export const OrdersHubScreen: React.FC<OrdersHubScreenProps> = ({
        activeConceptFilter === 'WICKD' ? '00000000-0000-0000-0000-000000000003' :
        '00000000-0000-0000-0000-000000000002');
 
-    const targetDriverPhone = customDriverPhone || (order as any).driverPhone || (order as any).driver_phone || '96170123456';
+    const rawTargetPhone = customDriverPhone || (order as any).driverPhone || (order as any).driver_phone || '9613826136';
+    const targetDriverPhone = String(rawTargetPhone).replace(/\D/g, '') || '9613826136';
 
-    if (DRIVER_DISPATCH_API_BASE) {
-      try {
-        const res = await fetch(`${DRIVER_DISPATCH_API_BASE}/api/pos/dispatch-driver`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            orderId: order.id,
-            conceptId,
-            etaMinutes: etaMinutes || '15',
-            messageText: msg,
-            phone: targetDriverPhone,
-            driverPhone: targetDriverPhone,
-            dispatch_operation_id: dispatchOpId
-          })
-        });
-        const data = await res.json();
-        if (!res.ok || data.blocked) {
-          console.warn('[handleDispatchDriver] Dispatch blocked or error:', data.error);
-          alert(`Driver Dispatch Notice: ${data.error || 'Could not notify driver'}`);
-        } else if (res.ok && data.success) {
-          return;
-        }
-      } catch (e) {
-        console.warn('Driver dispatch API unavailable, updating directly:', e);
+    const dispatchEndpoint = DRIVER_DISPATCH_API_BASE
+      ? `${DRIVER_DISPATCH_API_BASE}/api/pos/dispatch-driver`
+      : 'https://ovrload-nine.vercel.app/api/pos/dispatch-driver';
+
+    let whatsappSent = false;
+    try {
+      const res = await fetch(dispatchEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId: order.id,
+          conceptId,
+          etaMinutes: etaMinutes || '15',
+          messageText: msg,
+          phone: targetDriverPhone,
+          driverPhone: targetDriverPhone,
+          dispatch_operation_id: dispatchOpId
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.blocked) {
+        console.warn('[handleDispatchDriver] Dispatch blocked or error:', data.error);
+        alert(`Driver Dispatch Notice: ${data.error || 'Could not notify driver'}`);
+      } else if (res.ok && data.success) {
+        whatsappSent = true;
       }
+    } catch (e) {
+      console.warn('Driver dispatch API unavailable, updating order record:', e);
     }
 
+    const existingInst = String(order.specialInstructions || '').trim();
+    const dispatchNote = `Driver Dispatched to +${targetDriverPhone} (ETA: ${etaInfo.etaText})`;
+    const nextInst = existingInst && !existingInst.includes('Driver Dispatched')
+      ? `${existingInst} | ${dispatchNote}`
+      : dispatchNote;
+
     await supabase.from('pos_orders').update({
-      special_instructions: `Driver Dispatched to ${targetDriverPhone} (ETA: ${etaInfo.etaText})`,
+      special_instructions: nextInst,
       updated_at: new Date().toISOString()
     }).eq('id', order.id);
+
+    return whatsappSent;
+  };
+
+  const handleDriverPromptSend = async (etaMinutes: string, mode: 'silent' | 'manual' = 'silent') => {
+    if (!driverPromptOrder || isSendingDriverDispatch) return;
+    const cleanPhone = String(driverPromptPhone || '9613826136').replace(/\D/g, '') || '9613826136';
+    const etaInfo = formatDriverArrivalEta(etaMinutes);
+    const msg = `Hello, driver needed for Order #${driverPromptOrder.id} ${etaInfo.etaText}\nThank you`;
+
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      try { navigator.clipboard.writeText(msg); } catch {}
+    }
+
+    if (mode === 'manual') {
+      const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`;
+      window.open(waUrl, '_blank');
+      setTimeout(() => {
+        setDriverDispatchStatusMsg('');
+        setDriverPromptOrder(null);
+      }, 600);
+      return;
+    }
+
+    setIsSendingDriverDispatch(true);
+    setDriverDispatchStatusMsg(`Sending driver request (${etaInfo.etaText})... ⏳`);
+    try {
+      await handleDispatchDriver(driverPromptOrder, etaMinutes, cleanPhone);
+      setDriverDispatchStatusMsg(`Driver Requested (${etaInfo.etaText})! ✓`);
+      await refreshOrders();
+    } catch {
+      setDriverDispatchStatusMsg(`Request Sent (${etaInfo.etaText}) ✓`);
+    } finally {
+      setIsSendingDriverDispatch(false);
+    }
+
+    setTimeout(() => {
+      setDriverDispatchStatusMsg('');
+      setDriverPromptOrder(null);
+    }, 1200);
   };
 
   const handleClaimOrder = async (order: FlowPosOrder, forceOverride = false) => {
@@ -594,6 +663,100 @@ export const OrdersHubScreen: React.FC<OrdersHubScreenProps> = ({
         isShiftOpen={isShiftOpen}
         onOpenShift={onOpenShift}
       />
+
+      {/* Ask for Driver Dispatch Popup after Accepting a Delivery Order */}
+      {driverPromptOrder && (
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
+          <div className="bg-[#181C24] border border-[#262D3D] rounded-2xl w-full max-w-md p-6 space-y-4 text-white shadow-2xl text-center">
+            <div className="w-12 h-12 rounded-full bg-emerald-950 border border-emerald-500/50 text-emerald-400 text-2xl flex items-center justify-center mx-auto font-black">
+              ✓
+            </div>
+            <div>
+              <h3 className="font-black text-lg text-white">Order #{driverPromptOrder.id} Accepted!</h3>
+              <p className="text-xs text-gray-400 mt-1">Do you want to request a driver on WhatsApp?</p>
+            </div>
+
+            <div className="p-3.5 bg-[#0F1115] border border-[#262D3D] rounded-xl text-xs space-y-1 text-left">
+              <div className="flex justify-between font-bold text-white">
+                <span>Customer:</span>
+                <span>{driverPromptOrder.customerName}</span>
+              </div>
+              <div className="flex justify-between font-bold text-white">
+                <span>Total Amount:</span>
+                <span className="text-[#eb660c]">${Number(driverPromptOrder.totalAmount || 0).toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-gray-400">
+                <span>Order Type / Channel:</span>
+                <span>{driverPromptOrder.orderType} • {driverPromptOrder.channel}</span>
+              </div>
+            </div>
+
+            <div className="bg-[#0F1115] border border-[#262D3D] rounded-xl p-3.5 space-y-2.5 text-center">
+              <div className="flex justify-between items-center text-xs font-bold text-gray-300">
+                <span className="flex items-center gap-1.5">🛵 Request Driver</span>
+                {driverDispatchStatusMsg ? (
+                  <span className="text-[10px] bg-[#25D366]/20 text-[#25D366] px-2.5 py-0.5 rounded-full font-black animate-pulse">
+                    {driverDispatchStatusMsg}
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-[#25D366] font-extrabold">⚡ Instant WhatsApp</span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2 text-left">
+                <span className="text-[11px] text-gray-400 font-semibold shrink-0">Driver Phone:</span>
+                <input
+                  type="text"
+                  value={driverPromptPhone}
+                  onChange={(e) => setDriverPromptPhone(e.target.value)}
+                  className="flex-1 bg-[#181C24] border border-[#262D3D] rounded-lg px-2.5 py-1.5 text-xs font-mono font-bold text-white focus:outline-none focus:border-[#25D366]"
+                  placeholder="9613826136"
+                />
+              </div>
+
+              <div className="text-[11px] text-gray-400 font-medium text-left">
+                Select arrival ETA time to send WhatsApp to driver:
+              </div>
+              <div className="grid grid-cols-6 gap-1.5">
+                {['Now', '5', '15', '20', '30', '45'].map((time) => (
+                  <button
+                    key={time}
+                    type="button"
+                    disabled={isSendingDriverDispatch}
+                    onClick={() => handleDriverPromptSend(time, 'silent')}
+                    className="py-2.5 bg-[#25D366] hover:bg-[#20bd5a] disabled:opacity-50 text-black font-black text-xs rounded-xl transition-all shadow-md active:scale-95 flex items-center justify-center gap-0.5 cursor-pointer"
+                  >
+                    <span>⚡</span>
+                    <span>{time === 'Now' ? 'Now' : `${time}'`}</span>
+                  </button>
+                ))}
+              </div>
+              <div className="flex justify-end pt-1">
+                <button
+                  type="button"
+                  disabled={isSendingDriverDispatch}
+                  onClick={() => handleDriverPromptSend('15', 'manual')}
+                  className="text-[11px] text-gray-400 hover:text-white underline font-semibold cursor-pointer"
+                >
+                  Open WhatsApp Web/App Manually ➔
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              disabled={isSendingDriverDispatch}
+              onClick={() => {
+                setDriverDispatchStatusMsg('');
+                setDriverPromptOrder(null);
+              }}
+              className="w-full py-3 bg-[#262D3D] hover:bg-[#323B50] text-white font-black rounded-xl text-xs transition-all cursor-pointer"
+            >
+              No Driver Needed / Close
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Driver Handover Cash Collection Modal */}
       {handoverTargetOrder && (
