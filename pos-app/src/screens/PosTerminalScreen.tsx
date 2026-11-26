@@ -4694,7 +4694,10 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       : ((customerName && customerName.trim() && customerName.trim() !== ".") ? customerName.trim() : fallbackCustomer);
     const isAdvance = Boolean(paymentDetails?.isAdvancePayment);
     const targetOrderId = editingOrderId || activeTableContext?.orderId;
-    const finalOrderStatus = isAdvance ? "paid" : "completed";
+    const isTotersOrder = effectiveChannel === 'Toters' || (actualPaymentMethod || '').toLowerCase().includes('toter');
+    const isNoknokOrder = effectiveChannel === 'NokNok' || (actualPaymentMethod || '').toLowerCase().includes('nok');
+    const isAggregatorOrder = isTotersOrder || isNoknokOrder;
+    const finalOrderStatus = isAggregatorOrder ? "preparing" : (isAdvance ? "paid" : "completed");
     const advanceInstructions = isAdvance ? "[PAID_IN_ADVANCE]" : undefined;
 
     const effectiveBranchId = currentBranchId || commerceBranchLink?.flow_branch_id;
@@ -4703,11 +4706,9 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       return;
     }
 
-    const isTotersOrder = effectiveChannel === 'Toters';
-    const isNoknokOrder = effectiveChannel === 'NokNok';
     const commissionPct = isTotersOrder ? activeAgreement.totersCommissionPct : isNoknokOrder ? activeAgreement.noknokCommissionPct : 0;
     const commissionUsd = (subtotal * (commissionPct / 100));
-    const netReceivableUsd = ['Toters', 'NokNok'].includes(effectiveChannel) ? (total - commissionUsd) : total;
+    const netReceivableUsd = isAggregatorOrder ? (total - commissionUsd) : total;
 
     const directPayload: any = {
       branch_id: effectiveBranchId,
@@ -4735,7 +4736,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       invoice_series: workspaceState.activeConcept.receipt_prefix || 'MAIN',
       tendered_amount: paymentDetails?.tenderedAmount !== undefined 
         ? paymentDetails.tenderedAmount 
-        : ((finalOrderStatus === 'completed' || finalOrderStatus === 'paid') ? total : 0),
+        : ((finalOrderStatus === 'completed' || finalOrderStatus === 'paid' || isAggregatorOrder) ? total : 0),
       payment_status: 'paid',
       is_inventory_commit: true,
       tendered_currency: paymentDetails?.tenderedCurrency || "USD",

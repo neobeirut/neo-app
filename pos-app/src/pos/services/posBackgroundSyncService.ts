@@ -246,7 +246,8 @@ async function executePaymentSync(p: any): Promise<boolean> {
 
   // 4. Notify UI of final confirmed order id
   if (typeof window !== 'undefined' && completedOrderId) {
-    window.dispatchEvent(new CustomEvent('flow:order_settled', {
+    const isPreparingOnly = String(directPayload?.status || '').toLowerCase() === 'preparing';
+    window.dispatchEvent(new CustomEvent(isPreparingOnly ? 'flow:order_created' : 'flow:order_settled', {
       detail: {
         orderId: completedOrderId,
         tableCode: settledTableCode,
