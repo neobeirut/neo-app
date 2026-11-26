@@ -1719,6 +1719,22 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
 
       if (isOvrload) {
         try {
+          const res = await fetchWithTimeout("https://ovrload-nine.vercel.app/api/branch-status", { cache: "no-store" }, 8000);
+          if (res.ok) {
+            const mainBranch = await res.json();
+            if (mainBranch && mainBranch.id) {
+              const status = mainBranch.manual_override || mainBranch.operational_status || (mainBranch.orders_active === false ? "closed" : "open");
+              const reason = mainBranch.closure_reason || "Overloaded";
+              setBranchStatus(mainBranch);
+              setPosOperationalStatus(status);
+              setPosClosureReason(reason);
+              return;
+            }
+          }
+        } catch (liveErr) {
+          console.warn("OVRLOAD live branch-status fetch failed, trying Railway fallback:", liveErr);
+        }
+        try {
           const res = await fetchWithTimeout("https://ovrload-backend-production.up.railway.app/api/branches", {}, 8000);
           const data = await res.json();
           if (data.branches && data.branches.length > 0) {
@@ -1757,16 +1773,19 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
 
       if (isOvrload) {
         const branchId = branchStatus.id || 1;
-        const res = await fetch(`https://ovrload-backend-production.up.railway.app/api/branches/${branchId}`, {
+        const payloadBody = JSON.stringify({
+          name: branchStatus.name || "Cloud Kitchen",
+          operational_status: posOperationalStatus,
+          closure_reason: finalReason,
+          orders_active: posOperationalStatus === "open",
+          is_active: posOperationalStatus !== "closed",
+        });
+
+        // Primary: update live ovrload-nine storefront with same-day POS override (auto-resets next day)
+        const res = await fetch("https://ovrload-nine.vercel.app/api/branch-status", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: branchStatus.name || "Cloud Kitchen",
-            operational_status: posOperationalStatus,
-            closure_reason: finalReason,
-            orders_active: posOperationalStatus === "open",
-            is_active: posOperationalStatus !== "closed",
-          }),
+          body: payloadBody,
         });
 
         if (res.ok) {
@@ -1774,13 +1793,20 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
           const updated = data.branch || {
             ...branchStatus,
             operational_status: posOperationalStatus,
+            manual_override: posOperationalStatus,
             closure_reason: finalReason,
             orders_active: posOperationalStatus === "open",
           };
           setBranchStatus(updated);
           setShowBranchStatusModal(false);
 
-          // Background sync to FLOW supabase branches table
+          // Best-effort mirror to legacy Railway backend & FLOW supabase branches table
+          fetch(`https://ovrload-backend-production.up.railway.app/api/branches/${branchId}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: payloadBody,
+          }).catch(() => {});
+
           try {
             await supabase.from('branches').update({
               operational_status: posOperationalStatus,
@@ -1791,7 +1817,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
 
           return;
         } else {
-          const err = await res.json();
+          const err = await res.json().catch(() => ({}));
           alert("Failed to update status on OVRLOAD online store: " + (err.error || "Unknown error"));
           return;
         }
