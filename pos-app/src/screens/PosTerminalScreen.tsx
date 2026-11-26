@@ -2212,7 +2212,13 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     const refresh = async () => {
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
       try {
-        const rows = await loadPreparingOrders(currentBranchId || commerceBranchLink?.flow_branch_id, commerceBranchLink?.external_branch_id, currentRestaurantId);
+        const rows = await loadPreparingOrders(
+          currentBranchId || commerceBranchLink?.flow_branch_id,
+          commerceBranchLink?.external_branch_id,
+          currentRestaurantId,
+          undefined,
+          workspaceState.activeConcept.id
+        );
         if (!cancelled) setPreparingOrderCount(rows.length);
       } catch { if (!cancelled) setPreparingOrderCount(null); }
     };
@@ -2232,7 +2238,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       window.removeEventListener('flow:order_cancelled', refresh);
       window.removeEventListener('flow:table_settled', refresh);
     };
-  }, [currentRestaurantId, currentBranchId, commerceBranchLink?.flow_branch_id, commerceBranchLink?.external_branch_id, inventoryRevision]);
+  }, [currentRestaurantId, currentBranchId, commerceBranchLink?.flow_branch_id, commerceBranchLink?.external_branch_id, inventoryRevision, workspaceState.activeConcept.id]);
 
   const fetchOrdersQueue = async () => {
     if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
