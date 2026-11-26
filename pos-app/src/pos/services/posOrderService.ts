@@ -86,6 +86,118 @@ export function resolveCanonicalSalesChannel(
   return 'DINE_IN';
 }
 
+/**
+ * Records a delivery order's delivery fee as a 'Delivery' expense in `daily_payments`
+ * so it appears under Payments (Delivery Expense) rather than being added to food income / petty cash.
+ * Idempotent per orderId: skips if a Delivery payment record already exists for this order.
+ */
+export async function recordDeliveryExpenseForOrder(params: {
+  orderId: number | string;
+  deliveryFee: number;
+  orderType?: string;
+  orderSource?: string;
+  paymentMethod?: string;
+  customerName?: string;
+  branchName?: string;
+  shiftName?: string;
+  shiftDate?: string;
+  cashierName?: string;
+  restaurantId?: string;
+}): Promise<{ success: boolean; skipped?: boolean; error?: string }> {
+  try {
+    const fee = Number(params.deliveryFee || 0);
+    if (!Number.isFinite(fee) || fee <= 0) {
+      return { success: true, skipped: true };
+    }
+
+    const oType = String(params.orderType || '').toLowerCase();
+    if (oType && oType !== 'delivery') {
+      return { success: true, skipped: true };
+    }
+
+    const src = String(params.orderSource || '').toLowerCase();
+    const pm = String(params.paymentMethod || '').toLowerCase();
+    if (src.includes('toter') || src.includes('nok') || pm.includes('toter') || pm.includes('nok')) {
+      return { success: true, skipped: true };
+    }
+
+    const rid = params.restaurantId || getGlobalRestaurantId() || '79256f11-a9f8-4fec-901d-69baf929762d';
+    const orderTag = `Order #${params.orderId}`;
+
+    // Idempotency check: do not duplicate if already recorded for this order
+    const { data: existing } = await supabase
+      .from('daily_payments')
+      .select('id')
+      .eq('type', 'Delivery')
+      .ilike('supplier', `%${orderTag}%`)
+      .limit(1);
+
+    if (existing && existing.length > 0) {
+      return { success: true, skipped: true };
+    }
+
+    // Resolve active open shift so date/branch/shift match DailyPaymentsModal & CloseShiftModal
+    let resolvedBranch = params.branchName || '';
+    let resolvedShift = params.shiftName || '';
+    let resolvedDate = params.shiftDate ? String(params.shiftDate).split('T')[0].split(' ')[0] : '';
+
+    if (!resolvedBranch || !resolvedShift || !resolvedDate) {
+      try {
+        const { data: openShifts } = await supabase
+          .from('shift_cash')
+          .select('branch, shift, date')
+          .eq('restaurant_id', rid)
+          .eq('status', 'open')
+          .order('created_at', { ascending: false })
+          .limit(1);
+        if (openShifts && openShifts.length > 0) {
+          if (!resolvedBranch && openShifts[0].branch) resolvedBranch = openShifts[0].branch;
+          if (!resolvedShift && openShifts[0].shift) resolvedShift = openShifts[0].shift;
+          if (!resolvedDate && openShifts[0].date) resolvedDate = String(openShifts[0].date).split('T')[0].split(' ')[0];
+        }
+      } catch {}
+    }
+
+    if (!resolvedDate) {
+      resolvedDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Beirut' }).format(new Date());
+    }
+    if (!resolvedBranch) resolvedBranch = 'Badaro';
+    if (!resolvedShift) {
+      const hour = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Beirut', hour: '2-digit', hour12: false }).format(new Date()));
+      resolvedShift = hour < 16 ? 'AM' : 'PM';
+    }
+
+    const customerSuffix = params.customerName && params.customerName.trim()
+      ? ` (${params.customerName.trim()})`
+      : '';
+    const supplierLabel = `Delivery Expense — ${orderTag}${customerSuffix}`;
+
+    const { error: insErr } = await supabase.from('daily_payments').insert([{
+      date: resolvedDate,
+      branch: resolvedBranch,
+      shift: resolvedShift,
+      supplier: supplierLabel,
+      amount_usd: Number(fee.toFixed(2)),
+      amount_lbp: 0,
+      type: 'Delivery',
+      has_invoice: false,
+      user_name: params.cashierName || 'Cashier',
+      status: 'Paid',
+      restaurant_id: rid
+    }]);
+
+    if (insErr) {
+      console.warn('[recordDeliveryExpenseForOrder] Insert warning:', insErr.message);
+      return { success: false, error: insErr.message };
+    }
+
+    return { success: true };
+  } catch (err: any) {
+    console.warn('[recordDeliveryExpenseForOrder] Exception:', err);
+    return { success: false, error: err?.message };
+  }
+}
+
 export async function createDirectOrder(payload: CreateOrderPayload) {
   let persistedOrderId: number | string | undefined;
   try {
@@ -332,6 +444,20 @@ export async function createDirectOrder(payload: CreateOrderPayload) {
       } catch (seqEx) {
         console.warn('[createDirectOrder] Invoice sequencing RPC skipped or not yet migrated:', seqEx);
       }
+
+      // Record delivery fee as Delivery Expense in daily_payments when a delivery order is closed
+      if (orderData.status === 'completed' && Number(orderData.delivery_fee || 0) > 0) {
+        recordDeliveryExpenseForOrder({
+          orderId: orderData.id,
+          deliveryFee: Number(orderData.delivery_fee || 0),
+          orderType: orderData.order_type,
+          orderSource: orderData.order_source,
+          paymentMethod: orderData.payment_method,
+          customerName: orderData.customer_name,
+          cashierName: orderData.cashier_name,
+          restaurantId
+        }).catch(() => {});
+      }
     }
 
     return {
@@ -454,6 +580,20 @@ export async function updateDirectOrderStatus(orderId: number | string, patch: a
         } catch (seqEx) {
           console.warn('[updateDirectOrderStatus] Invoice sequencing RPC skipped or not yet migrated:', seqEx);
         }
+      }
+
+      // Record delivery fee as Delivery Expense in daily_payments when a delivery order is closed
+      if (data.status === 'completed' && Number(data.delivery_fee || 0) > 0) {
+        recordDeliveryExpenseForOrder({
+          orderId: data.id,
+          deliveryFee: Number(data.delivery_fee || 0),
+          orderType: data.order_type,
+          orderSource: data.order_source,
+          paymentMethod: data.payment_method,
+          customerName: data.customer_name,
+          cashierName: data.cashier_name,
+          restaurantId: data.restaurant_id
+        }).catch(() => {});
       }
     }
     return { success: true, order: data, orderId, inventory };

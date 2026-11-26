@@ -565,6 +565,26 @@ export async function submitPayment(
       }
     }
 
+    // 8. Record delivery fee as Delivery Expense in Payments when delivery order is settled
+    const orderDeliveryFee = Number(order.delivery_fee || 0);
+    if (isFullyPaid && orderDeliveryFee > 0 && String(order.order_type || '').toLowerCase() === 'delivery') {
+      try {
+        const { recordDeliveryExpenseForOrder } = await import('../services/posOrderService');
+        await recordDeliveryExpenseForOrder({
+          orderId: params.orderId,
+          deliveryFee: orderDeliveryFee,
+          orderType: order.order_type,
+          orderSource: order.order_source,
+          paymentMethod: params.payment.method || order.payment_method,
+          customerName: order.customer_name,
+          cashierName: params.cashierName || order.cashier_name,
+          restaurantId
+        });
+      } catch (delErr) {
+        console.warn('[submitPayment] Delivery expense recording warning:', delErr);
+      }
+    }
+
     const fin = await getFinancialSummary(params.orderId);
     if (!fin.success) {
       return {

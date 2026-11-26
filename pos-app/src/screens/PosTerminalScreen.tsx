@@ -4961,11 +4961,13 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       (paymentDetails?.paymentMethod && paymentDetails.paymentMethod.toLowerCase().includes('cash'));
 
     let shiftCashMovement: any = null;
+    const effectiveOrderDeliveryFee = (!isDineIn && orderType === 'delivery') ? (Number(deliveryFee) || 0) : 0;
     if (isCashMethod && !isAggregator) {
       const shiftTargetId = activeShift?.id || 'active-shift';
       const movementOpId = `pos-cash-${completedOrderId}-${Date.now()}`;
       const isLbp = paymentDetails?.tenderedCurrency === 'LBP' || actualPaymentMethod.toLowerCase().includes('lbp');
-      const finalCashAmt = Number(total || subtotal || 0);
+      // Petty cash receives food revenue only; delivery fee goes to Delivery Expense in Payments
+      const finalCashAmt = Math.max(0, Number(total || subtotal || 0) - effectiveOrderDeliveryFee);
 
       if (finalCashAmt > 0) {
         const movementLabel = chLower.includes('app')

@@ -9,7 +9,7 @@ import { adaptOvrloadOrder } from './orderAdapter';
 import type { FlowPosOrder } from './orderAdapter';
 
 import { COMMERCE_API_BASE, DRIVER_DISPATCH_API_BASE, HAS_COMMERCE_API } from '../config';
-import { updateDirectOrderStatus, claimDirectOrder } from '../services/posOrderService';
+import { updateDirectOrderStatus, claimDirectOrder, recordDeliveryExpenseForOrder } from '../services/posOrderService';
 import { buildPreparationPrintJobs, dispatchPhysicalPrintJobs } from '../services/ticketRoutingService';
 import { supabase } from '../../api/supabase';
 
@@ -305,6 +305,27 @@ export const OrdersHubScreen: React.FC<OrdersHubScreenProps> = ({
       // Auto-print kitchen ticket once when accepting a NEW order (e.g. incoming WhatsApp online order)
       if (wasNewOrder && (newStatus === 'confirmed' || newStatus === 'preparing')) {
         printOrderKitchenTicket(adaptedUpdated, false).catch(() => {});
+      }
+
+      // Record delivery fee as Delivery Expense in Payments when closing a delivery order
+      if (
+        (newStatus === 'completed' || newStatus === 'delivered') &&
+        adaptedUpdated.orderType === 'delivery' &&
+        Number(adaptedUpdated.deliveryFee || 0) > 0
+      ) {
+        recordDeliveryExpenseForOrder({
+          orderId: adaptedUpdated.id,
+          deliveryFee: Number(adaptedUpdated.deliveryFee || 0),
+          orderType: adaptedUpdated.orderType,
+          orderSource: adaptedUpdated.orderSource || adaptedUpdated.channel,
+          paymentMethod: adaptedUpdated.paymentMethod,
+          customerName: adaptedUpdated.customerName,
+          branchName: activeShift?.branch || branchName,
+          shiftName: activeShift?.shift,
+          shiftDate: activeShift?.date,
+          cashierName: activeCashierName,
+          restaurantId: restaurantId || undefined
+        }).catch(() => {});
       }
 
       const chLower = String(adaptedUpdated.channel || '').toLowerCase();

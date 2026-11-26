@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../api/supabase';
 import { COMMERCE_API_BASE, HAS_COMMERCE_API } from '../config';
+import { recordDeliveryExpenseForOrder } from '../services/posOrderService';
 
 export interface DriverHandoverModalProps {
   isOpen: boolean;
@@ -159,6 +160,30 @@ export const DriverHandoverModal: React.FC<DriverHandoverModalProps> = ({
 
       if (updateErr) {
         console.warn('Direct pos_orders update error (non-fatal if commerce API succeeded):', updateErr);
+      }
+
+      // 3b. Ensure invoice number is allocated and delivery fee is recorded as Delivery Expense in Payments
+      if (!order.invoice_number) {
+        try {
+          await supabase.rpc('allocate_concept_invoice_number', {
+            p_order_id: Number(order.id),
+            p_idempotency_key: idempotencyKey,
+            p_fiscal_series: 'DEFAULT'
+          });
+        } catch {}
+      }
+
+      if (deliveryFee > 0) {
+        await recordDeliveryExpenseForOrder({
+          orderId: order.id,
+          deliveryFee,
+          orderType: 'delivery',
+          orderSource: order.order_source || order.channel || 'WhatsApp',
+          paymentMethod: order.payment_method || 'Cash USD',
+          customerName: order.customer_name || order.customerName || driverName,
+          cashierName: activeCashierName || 'Cashier',
+          restaurantId: order.restaurant_id
+        }).catch(() => {});
       }
 
       // 4. Record physical cash-in into active shift movements if shift is open

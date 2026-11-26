@@ -587,23 +587,25 @@ export async function getDailyBranchControlSummary(branchIdentifier: string, dat
     const liveTenders = { cash_usd: 0, cash_lbp: 0, whish_usd: 0, card_usd: 0, toters_usd: 0, noknok_usd: 0 };
     for (const o of liveOrders) {
       const total = Number(o.total_amount) || 0;
-      liveNetSales += total;
+      const delFee = Number(o.delivery_fee) || 0;
+      const foodIncome = Math.max(0, total - delFee);
+      liveNetSales += foodIncome;
       liveDiscounts += Number(o.discount_amount) || 0;
       liveOrderCount++;
       const pm = (o.payment_method || '').toLowerCase();
       const curr = (o.tendered_currency || '').toLowerCase();
       if (pm.includes('cash') && (curr === 'lbp' || pm.includes('lbp'))) {
-        liveTenders.cash_lbp += total * (Number(o.exchange_rate) || 90000);
+        liveTenders.cash_lbp += foodIncome * (Number(o.exchange_rate) || 90000);
       } else if (pm.includes('whish') || pm.includes('wish')) {
-        liveTenders.whish_usd += total;
+        liveTenders.whish_usd += foodIncome;
       } else if (pm.includes('card') || pm.includes('visa') || pm.includes('mastercard')) {
-        liveTenders.card_usd += total;
+        liveTenders.card_usd += foodIncome;
       } else if (pm.includes('toters')) {
         liveTenders.toters_usd += total;
       } else if (pm.includes('noknok') || pm.includes('no knok')) {
         liveTenders.noknok_usd += total;
       } else {
-        liveTenders.cash_usd += total;
+        liveTenders.cash_usd += foodIncome;
       }
     }
 
