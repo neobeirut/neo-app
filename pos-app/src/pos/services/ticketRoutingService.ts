@@ -916,12 +916,18 @@ export async function dispatchPhysicalPrintJobs(jobs: PhysicalPrinterTicketJob[]
   }
 
   const isVirtual = isVirtualPrintModeActive();
+  const isHttpsPublic =
+    typeof window !== 'undefined' &&
+    window.location.protocol === 'https:' &&
+    !['localhost', '127.0.0.1'].includes(window.location.hostname) &&
+    !/^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(window.location.hostname);
   const defaultHost = (typeof window !== 'undefined' && window.location.hostname && window.location.hostname !== '192.168.18.195') ? window.location.hostname : '127.0.0.1';
   let storedIp = localStorage.getItem('flow_pos_print_server_ip');
   if (storedIp === '192.168.18.195') storedIp = null;
   const bridgeIp = storedIp || defaultHost;
   const bridgePort = localStorage.getItem('flow_pos_print_server_port') || '9191';
   const bridgeUrl = `http://${bridgeIp}:${bridgePort}/print`;
+  const shouldSkipDirectBridge = isHttpsPublic && !storedIp;
 
   const results: Array<{ printer: string; success: boolean; error?: string }> = [];
   let dispatchedCount = 0;
@@ -976,11 +982,14 @@ export async function dispatchPhysicalPrintJobs(jobs: PhysicalPrinterTicketJob[]
     let printError: string | undefined = undefined;
 
     try {
+      if (shouldSkipDirectBridge) {
+        throw new Error('HTTPS cloud mode: queue directly to pos_print_jobs');
+      }
       const res = await fetch(bridgeUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(dispatchPayload),
-        signal: AbortSignal.timeout(2500)
+        signal: AbortSignal.timeout(5000)
       });
 
       if (res.ok) {

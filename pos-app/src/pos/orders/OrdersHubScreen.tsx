@@ -10,6 +10,7 @@ import type { FlowPosOrder } from './orderAdapter';
 
 import { COMMERCE_API_BASE, DRIVER_DISPATCH_API_BASE, HAS_COMMERCE_API } from '../config';
 import { updateDirectOrderStatus, claimDirectOrder } from '../services/posOrderService';
+import { buildPreparationPrintJobs, dispatchPhysicalPrintJobs } from '../services/ticketRoutingService';
 import { supabase } from '../../api/supabase';
 
 interface OrdersHubScreenProps {
@@ -142,7 +143,99 @@ export const OrdersHubScreen: React.FC<OrdersHubScreenProps> = ({
     }
   };
 
+  const printOrderKitchenTicket = async (orderObj: FlowPosOrder, isReprint = false) => {
+    try {
+      let rawItems: any[] =
+        (orderObj.rawOrder?.pos_order_items && orderObj.rawOrder.pos_order_items.length > 0
+          ? orderObj.rawOrder.pos_order_items
+          : orderObj.rawOrder?.items && orderObj.rawOrder.items.length > 0
+          ? orderObj.rawOrder.items
+          : orderObj.items) || [];
+
+      if (rawItems.length === 0 && orderObj.id) {
+        const { data: dbItems } = await supabase
+          .from('pos_order_items')
+          .select('*')
+          .eq('order_id', orderObj.id);
+        if (dbItems && dbItems.length > 0) {
+          rawItems = dbItems;
+        }
+      }
+
+      if (rawItems.length === 0) {
+        console.warn('[OrdersHub] No items found to print kitchen ticket for order #' + orderObj.id);
+        return;
+      }
+
+      const normalizedPrepItems = rawItems.map((it: any) => {
+        let parsedMods: any[] = [];
+        if (Array.isArray(it.customizations_json)) {
+          parsedMods = it.customizations_json;
+        } else if (Array.isArray(it.customizations)) {
+          parsedMods = it.customizations;
+        } else if (typeof it.customizations === 'string' && it.customizations.trim()) {
+          try {
+            const parsed = JSON.parse(it.customizations);
+            parsedMods = Array.isArray(parsed) ? parsed : [it.customizations];
+          } catch {
+            parsedMods = [it.customizations];
+          }
+        }
+        return {
+          ...it,
+          id: it.id || it.product_id,
+          product_id: it.product_id || it.productId,
+          name: it.product_name || it.name || 'Item',
+          qty: Number(it.quantity || it.qty || 1),
+          quantity: Number(it.quantity || it.qty || 1),
+          selectedCustomizations: parsedMods,
+          customizations: parsedMods,
+          note: it.comment || it.note || ''
+        };
+      });
+
+      const effBranchId = String(flowBranchId || orderObj.rawOrder?.branch_id || branchId || '9c214659-9cc7-4f33-b115-cbbb8a823a94');
+      const effRestId = restaurantId || orderObj.rawOrder?.restaurant_id || undefined;
+
+      const { jobs } = await buildPreparationPrintJobs({
+        orderMetadata: {
+          order_id: orderObj.id,
+          concept_name: orderObj.conceptName || orderObj.conceptCode || 'OVRLOAD',
+          table_label: orderObj.tableLabel || undefined,
+          table_code: orderObj.tableLabel || undefined,
+          customer_name: !orderObj.isTableOrder ? orderObj.customerName : undefined,
+          guest_count: orderObj.guestCount || 1,
+          waiter_name: orderObj.waiterName || activeCashierName || 'Staff',
+          cashier_name: activeCashierName || 'Cashier',
+          service_type: orderObj.orderType || 'delivery',
+          fire_round: 1,
+          is_reprint: isReprint,
+          is_scheduled: Boolean(orderObj.isScheduled),
+          scheduled_for: orderObj.scheduledFor || undefined,
+          scheduled_time_display: orderObj.scheduledTimeDisplay || undefined,
+          scheduled_notes: orderObj.scheduledNotes || undefined
+        },
+        items: normalizedPrepItems,
+        branchId: effBranchId,
+        restaurantId: effRestId
+      });
+
+      if (jobs.length > 0) {
+        await dispatchPhysicalPrintJobs(jobs);
+      }
+    } catch (printErr) {
+      console.warn('[OrdersHub] Kitchen ticket print error:', printErr);
+    }
+  };
+
   const handleStatusUpdate = async (orderId: string | number, newStatus: string, expectedVersion: number) => {
+    const prevOrder =
+      (activeDetailOrder && String(activeDetailOrder.id) === String(orderId) ? activeDetailOrder : null) ||
+      orders.find(o => String(o.id) === String(orderId)) ||
+      null;
+    const prevRawStatus = String(prevOrder?.rawStatus || '').toLowerCase();
+    const wasNewOrder = prevOrder?.statusGroup === 'NEW' || prevRawStatus === 'new' || prevRawStatus === 'pending';
+
     if (activeDetailOrder && String(activeDetailOrder.id) === String(orderId)) {
       if (isOrderCanceled(activeDetailOrder)) {
         throw new Error('This order is canceled and cannot be updated.');
@@ -202,7 +295,18 @@ export const OrdersHubScreen: React.FC<OrdersHubScreenProps> = ({
 
     await refreshOrders();
     if (updatedOrder) {
-      const adaptedUpdated = adaptOvrloadOrder(updatedOrder);
+      const mergedRaw = {
+        ...(prevOrder?.rawOrder || {}),
+        ...updatedOrder,
+        pos_order_items: updatedOrder.pos_order_items || prevOrder?.rawOrder?.pos_order_items || prevOrder?.items
+      };
+      const adaptedUpdated = adaptOvrloadOrder(mergedRaw);
+
+      // Auto-print kitchen ticket once when accepting a NEW order (e.g. incoming WhatsApp online order)
+      if (wasNewOrder && (newStatus === 'confirmed' || newStatus === 'preparing')) {
+        printOrderKitchenTicket(adaptedUpdated, false).catch(() => {});
+      }
+
       const chLower = String(adaptedUpdated.channel || '').toLowerCase();
       const isAggregator = chLower.includes('toter') || chLower.includes('nok');
       const shouldPromptDriver =
@@ -654,6 +758,7 @@ export const OrdersHubScreen: React.FC<OrdersHubScreenProps> = ({
         onRequestVoid={onRequestVoid}
         onRequestDispatch={handleDispatchDriver}
         onReprint={onReprint}
+        onReprintKitchen={(order) => printOrderKitchenTicket(order, true)}
         onClaimOrder={handleClaimOrder}
         onReleaseOrder={handleReleaseOrder}
         onSettleOrder={onSettleOrder}

@@ -10,6 +10,7 @@ export interface OrderDetailsModalProps {
   onRequestVoid?: (order: FlowPosOrder) => void;
   onRequestDispatch?: (order: FlowPosOrder, etaMinutes: string) => Promise<boolean | void>;
   onReprint?: (order: FlowPosOrder) => void;
+  onReprintKitchen?: (order: FlowPosOrder) => Promise<void> | void;
   onClaimOrder?: (order: FlowPosOrder, forceOverride?: boolean) => Promise<boolean | void>;
   onReleaseOrder?: (order: FlowPosOrder) => Promise<boolean | void>;
   onTakePayment?: (order: FlowPosOrder) => void;
@@ -31,6 +32,7 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
   onRequestVoid,
   onRequestDispatch,
   onReprint,
+  onReprintKitchen,
   onClaimOrder,
   onReleaseOrder,
   onTakePayment,
@@ -590,15 +592,37 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
         {/* Contextual Action Footer */}
         <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-2 flex-wrap">
           {/* Left Actions: Print / Reprint & Open in Ticket */}
-          <div className="flex items-center gap-2">
-            {onReprint && !order.isMigration && (
+          <div className="flex items-center gap-2 flex-wrap">
+            {onReprintKitchen && !order.isMigration && (
               <button
                 type="button"
-                onClick={() => onReprint(order)}
-                className="px-3.5 py-2.5 bg-white hover:bg-slate-100 text-slate-800 hover:text-slate-950 rounded-xl text-xs font-extrabold transition flex items-center gap-1.5 border border-slate-300 shadow-xs"
+                onClick={async () => {
+                  try {
+                    await onReprintKitchen(order);
+                    setDispatchSuccessMsg('Kitchen ticket sent to printer ✓');
+                    setTimeout(() => setDispatchSuccessMsg(null), 2500);
+                  } catch (err: any) {
+                    setActionError(err?.message || 'Failed to print kitchen ticket');
+                  }
+                }}
+                className="px-3.5 py-2.5 bg-white hover:bg-slate-100 text-slate-800 hover:text-slate-950 rounded-xl text-xs font-extrabold transition flex items-center gap-1.5 border border-slate-300 shadow-xs cursor-pointer"
+              >
+                <span>🍳</span>
+                <span>Print Kitchen</span>
+              </button>
+            )}
+            {onReprint && !order.isMigration && !['Toters', 'NokNok'].includes(order.channel) && (
+              <button
+                type="button"
+                onClick={() => {
+                  onReprint(order);
+                  setDispatchSuccessMsg('Customer receipt sent to printer ✓');
+                  setTimeout(() => setDispatchSuccessMsg(null), 2500);
+                }}
+                className="px-3.5 py-2.5 bg-white hover:bg-slate-100 text-slate-800 hover:text-slate-950 rounded-xl text-xs font-extrabold transition flex items-center gap-1.5 border border-slate-300 shadow-xs cursor-pointer"
               >
                 <span>🖨️</span>
-                <span>Print Ticket</span>
+                <span>Print Receipt</span>
               </button>
             )}
 

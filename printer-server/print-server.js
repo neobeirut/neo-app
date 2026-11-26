@@ -14,6 +14,7 @@ const net = require('net');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const zlib = require('zlib');
 const querystring = require('querystring');
 const { exec } = require('child_process');
 const { createClient } = require('@supabase/supabase-js');
@@ -91,11 +92,12 @@ async function syncAdminSettings() {
     const bId = config.branch_id;
 
     // Parallel fetch from Supabase
-    const [printersRes, routesRes, appSettingsRes, branchRes] = await Promise.allSettled([
+    const [printersRes, routesRes, appSettingsRes, branchRes, conceptsRes] = await Promise.allSettled([
       supabase.from('pos_printers').select('*').eq('restaurant_id', rId).eq('branch_id', bId).eq('is_active', true).order('name'),
       supabase.from('pos_printer_section_routes').select('*, printer:pos_printers(*)').eq('restaurant_id', rId).eq('branch_id', bId),
       supabase.from('app_settings').select('*'),
-      supabase.from('branches').select('*').eq('id', bId).single()
+      supabase.from('branches').select('*').eq('id', bId).single(),
+      supabase.from('business_concepts').select('id, code, name, logo_url')
     ]);
 
     // 1. Process Printers
@@ -144,6 +146,18 @@ async function syncAdminSettings() {
       config.branch_name = branchRes.value.data.name || config.branch_name;
     }
 
+    // 5. Concept Logos
+    if (conceptsRes.status === 'fulfilled' && Array.isArray(conceptsRes.value.data)) {
+      adminSettings.conceptLogos = adminSettings.conceptLogos || {};
+      conceptsRes.value.data.forEach(c => {
+        if (c && c.logo_url) {
+          if (c.id) adminSettings.conceptLogos[c.id] = c.logo_url;
+          if (c.code) adminSettings.conceptLogos[String(c.code).toUpperCase()] = c.logo_url;
+          if (c.name) adminSettings.conceptLogos[String(c.name).toUpperCase()] = c.logo_url;
+        }
+      });
+    }
+
     adminSettings.lastSyncAt = new Date().toISOString();
     // Silent success log
   } catch (err) {
@@ -164,9 +178,15 @@ const ALIGN_CENTER = ESC + 'a\x01';
 const ALIGN_RIGHT  = ESC + 'a\x02';
 const BOLD_ON      = ESC + 'E\x01';
 const BOLD_OFF     = ESC + 'E\x00';
-const DOUBLE_SIZE  = ESC + '!\x30';
-const DOUBLE_WIDTH = ESC + '!\x20';
-const NORMAL       = ESC + '!\x00';
+const DOUBLE_SIZE    = ESC + '!\x30';
+const DOUBLE_WIDTH   = ESC + '!\x20';
+const DOUBLE_HEIGHT  = ESC + '!\x10';
+const NORMAL         = ESC + '!\x00';
+const FONT_A         = ESC + 'M\x00';
+const LETTER_SPACE_2 = ESC + ' \x02';
+const LETTER_SPACE_0 = ESC + ' \x00';
+const LINE_SPACE_LG  = ESC + '3\x48';
+const LINE_SPACE_DEF = ESC + '2';
 const CUT          = GS  + 'V\x41\x00';
 const FEED         = '\n\n\n\n';
 const DLE_EOT_1    = '\x10\x04\x01'; // Query printer real-time status
@@ -225,17 +245,181 @@ function recordJournalEntry(entry) {
 loadJournal();
 
 // ── 7. Render Formatters ────────────────────────────────────────────────────
+const logoRasterCache = new Map();
+
+function paethPredictor(a, b, c) {
+  const p = a + b - c;
+  const pa = Math.abs(p - a);
+  const pb = Math.abs(p - b);
+  const pc = Math.abs(p - c);
+  if (pa <= pb && pa <= pc) return a;
+  if (pb <= pc) return b;
+  return c;
+}
+
+function pngBufferToEscPosRaster(buf, maxWidthPx = 280, maxHeightPx = 140) {
+  try {
+    if (!Buffer.isBuffer(buf) || buf.length < 33) return '';
+    if (buf[0] !== 0x89 || buf[1] !== 0x50 || buf[2] !== 0x4e || buf[3] !== 0x47) return '';
+
+    let width = 0, height = 0, bitDepth = 0, colorType = 0;
+    let palette = null;
+    let trns = null;
+    const idatChunks = [];
+    let offset = 8;
+    while (offset + 12 <= buf.length) {
+      const length = buf.readUInt32BE(offset);
+      const type = buf.toString('ascii', offset + 4, offset + 8);
+      const dataStart = offset + 8;
+      const dataEnd = dataStart + length;
+      if (dataEnd > buf.length) break;
+      if (type === 'IHDR') {
+        width = buf.readUInt32BE(dataStart);
+        height = buf.readUInt32BE(dataStart + 4);
+        bitDepth = buf[dataStart + 8];
+        colorType = buf[dataStart + 9];
+      } else if (type === 'PLTE') {
+        palette = buf.subarray(dataStart, dataEnd);
+      } else if (type === 'tRNS') {
+        trns = buf.subarray(dataStart, dataEnd);
+      } else if (type === 'IDAT') {
+        idatChunks.push(buf.subarray(dataStart, dataEnd));
+      } else if (type === 'IEND') {
+        break;
+      }
+      offset = dataEnd + 4;
+    }
+
+    if (!width || !height || bitDepth !== 8 || idatChunks.length === 0) return '';
+    const bppMap = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 };
+    const bpp = bppMap[colorType];
+    if (!bpp) return '';
+
+    const raw = zlib.inflateSync(Buffer.concat(idatChunks));
+    const stride = width * bpp;
+    const pixels = Buffer.alloc(height * stride);
+
+    for (let y = 0; y < height; y++) {
+      const filterType = raw[y * (stride + 1)];
+      const rowSrc = y * (stride + 1) + 1;
+      const rowDst = y * stride;
+      for (let x = 0; x < stride; x++) {
+        const val = raw[rowSrc + x];
+        const a = x >= bpp ? pixels[rowDst + x - bpp] : 0;
+        const b = y > 0 ? pixels[rowDst - stride + x] : 0;
+        const c = (x >= bpp && y > 0) ? pixels[rowDst - stride + x - bpp] : 0;
+        let recon = val;
+        if (filterType === 1) recon = (val + a) & 0xff;
+        else if (filterType === 2) recon = (val + b) & 0xff;
+        else if (filterType === 3) recon = (val + ((a + b) >> 1)) & 0xff;
+        else if (filterType === 4) recon = (val + paethPredictor(a, b, c)) & 0xff;
+        pixels[rowDst + x] = recon;
+      }
+    }
+
+    const scale = Math.min(1, maxWidthPx / width, maxHeightPx / height);
+    const outW = Math.max(8, Math.floor(width * scale));
+    const outH = Math.max(8, Math.floor(height * scale));
+    const widthBytes = Math.ceil(outW / 8);
+    const raster = Buffer.alloc(widthBytes * outH);
+
+    for (let y = 0; y < outH; y++) {
+      const srcY = Math.min(height - 1, Math.floor(y / scale));
+      for (let x = 0; x < outW; x++) {
+        const srcX = Math.min(width - 1, Math.floor(x / scale));
+        const idx = srcY * stride + srcX * bpp;
+        let r = 255, g = 255, b = 255, a = 255;
+        if (colorType === 6) {
+          r = pixels[idx]; g = pixels[idx + 1]; b = pixels[idx + 2]; a = pixels[idx + 3];
+        } else if (colorType === 2) {
+          r = pixels[idx]; g = pixels[idx + 1]; b = pixels[idx + 2];
+        } else if (colorType === 4) {
+          r = g = b = pixels[idx]; a = pixels[idx + 1];
+        } else if (colorType === 0) {
+          r = g = b = pixels[idx];
+        } else if (colorType === 3 && palette) {
+          const pIdx = pixels[idx];
+          r = palette[pIdx * 3] ?? 255;
+          g = palette[pIdx * 3 + 1] ?? 255;
+          b = palette[pIdx * 3 + 2] ?? 255;
+          if (trns && pIdx < trns.length) a = trns[pIdx];
+        }
+        const alpha = a / 255;
+        const cr = r * alpha + 255 * (1 - alpha);
+        const cg = g * alpha + 255 * (1 - alpha);
+        const cb = b * alpha + 255 * (1 - alpha);
+        const lum = 0.299 * cr + 0.587 * cg + 0.114 * cb;
+        if (lum < 165) {
+          raster[y * widthBytes + (x >> 3)] |= (0x80 >> (x & 7));
+        }
+      }
+    }
+
+    const header = Buffer.from([
+      0x1d, 0x76, 0x30, 0x00,
+      widthBytes & 0xff, (widthBytes >> 8) & 0xff,
+      outH & 0xff, (outH >> 8) & 0xff
+    ]);
+    return ALIGN_CENTER + Buffer.concat([header, raster]).toString('latin1') + '\n';
+  } catch (err) {
+    console.warn('[PrintServer] Logo PNG raster conversion warning:', err.message);
+    return '';
+  }
+}
+
+async function getEscPosLogo(logoUrl, paperWidth = 80) {
+  if (!logoUrl || typeof logoUrl !== 'string') return '';
+  const trimmed = logoUrl.trim();
+  if (!trimmed) return '';
+  const maxW = paperWidth === 58 ? 200 : 280;
+  const maxH = paperWidth === 58 ? 100 : 140;
+  const cacheKey = `${trimmed}_${maxW}`;
+  if (logoRasterCache.has(cacheKey)) return logoRasterCache.get(cacheKey);
+  try {
+    let buf = null;
+    if (trimmed.startsWith('data:image/png;base64,')) {
+      buf = Buffer.from(trimmed.slice('data:image/png;base64,'.length), 'base64');
+    } else if (/^https?:\/\//i.test(trimmed)) {
+      const res = await fetch(trimmed, { signal: AbortSignal.timeout(2500) });
+      if (res.ok) {
+        buf = Buffer.from(await res.arrayBuffer());
+      }
+    } else if (fs.existsSync(trimmed)) {
+      buf = fs.readFileSync(trimmed);
+    }
+    const escpos = buf ? pngBufferToEscPosRaster(buf, maxW, maxH) : '';
+    logoRasterCache.set(cacheKey, escpos);
+    return escpos;
+  } catch (err) {
+    console.warn('[PrintServer] Could not load logo for receipt:', err.message);
+    return '';
+  }
+}
 
 /**
  * 1. Customer Bill / Guest Check / Receipt
  */
-function formatCustomerBill(json, paperWidth = 80) {
+async function formatCustomerBill(json, paperWidth = 80) {
   const W = getLineWidth(paperWidth);
   let out = INIT;
   const isPreCheck = json.isPreCheck === true || json.title?.includes('PRE-CHECK') || json.title?.includes('GUEST CHECK');
 
+  const conceptLogoMap = adminSettings.conceptLogos || {};
+  const conceptLogoUrl =
+    json.logo_url ||
+    (json.concept_id && conceptLogoMap[json.concept_id]) ||
+    (json.concept_code && conceptLogoMap[String(json.concept_code).toUpperCase()]) ||
+    (json.concept_name && conceptLogoMap[String(json.concept_name).toUpperCase()]) ||
+    adminSettings.logo_url ||
+    '';
+
+  const logoRaster = await getEscPosLogo(conceptLogoUrl, paperWidth);
+  if (logoRaster) {
+    out += logoRaster;
+  }
+
   out += ALIGN_CENTER + BOLD_ON;
-  out += (json.restaurant_name || adminSettings.restaurant_name || 'NÉO BEIRUT').toUpperCase() + '\n';
+  out += (json.concept_name || json.restaurant_name || adminSettings.restaurant_name || 'NÉO BEIRUT').toUpperCase() + '\n';
   out += NORMAL;
 
   out += divider('=', W);
@@ -329,20 +513,31 @@ function formatCustomerBill(json, paperWidth = 80) {
  * 2. Preparation Ticket (Kitchen, Bar, Bakery, Pastry)
  */
 function formatPreparationTicket(json, paperWidth = 80) {
-  const W = getLineWidth(paperWidth);
-  let out = INIT;
+  const W = paperWidth === 58 ? 28 : 38;
+  let out = INIT + FONT_A + LINE_SPACE_LG + LETTER_SPACE_2;
   const isCancelled = json.isCancellation === true || json.title?.includes('CANCELLED') || json.ticket_type === 'cancellation';
   const isReprint = json.is_reprint === true || json.title?.includes('REPRINT') || json.ticket_type === 'reprint';
 
   out += ALIGN_CENTER + BOLD_ON;
+  const conceptName = String(json.concept_name || json.conceptName || json.concept_code || json.restaurant_name || adminSettings.restaurant_name || '').trim();
+  if (conceptName) {
+    out += DOUBLE_SIZE + conceptName.toUpperCase() + '\n' + NORMAL + BOLD_ON;
+  }
+  const rawTitle = String(json.title || json.station || json.section_key || 'KITCHEN')
+    .replace(/\*/g, '')
+    .replace(/\bPREPARATION\s+CHIT\b/i, '')
+    .replace(/\bPREPARATION\s+TICKET\b/i, '')
+    .replace(/\bCHIT\b/i, '')
+    .trim();
+  const cleanTitle = rawTitle || String(json.station || json.section_key || 'KITCHEN').trim().toUpperCase();
   if (isCancelled) {
     out += DOUBLE_SIZE + '*** ITEM CANCELLED ***\n' + NORMAL + BOLD_ON;
     if (json.reason) out += `REASON: ${json.reason}\n`;
   } else if (isReprint) {
     out += DOUBLE_SIZE + '*** REPRINT ***\n' + NORMAL + BOLD_ON;
-    out += (json.title || 'PREPARATION TICKET') + '\n';
+    out += cleanTitle.toUpperCase() + '\n';
   } else {
-    out += DOUBLE_SIZE + (json.title || 'PREPARATION TICKET') + '\n';
+    out += DOUBLE_SIZE + cleanTitle.toUpperCase() + '\n';
   }
   out += NORMAL + divider('=', W);
 
@@ -351,8 +546,23 @@ function formatPreparationTicket(json, paperWidth = 80) {
   }
 
   out += ALIGN_LEFT;
-  const tableStr = json.table_label || json.table_code || json.table || 'N/A';
-  out += BOLD_ON + DOUBLE_WIDTH + padLine(`TABLE: ${tableStr}`, json.order_id ? `#${json.order_id}` : '', W) + NORMAL;
+  const serviceTypeLower = String(json.service_type || json.order_type || '').toLowerCase();
+  const rawTable = json.table_code || json.table_label || json.table || '';
+  const hasTableValue = Boolean(rawTable && String(rawTable).trim() !== '' && String(rawTable).trim().toUpperCase() !== 'N/A');
+  const isNonTableService = ['takeout', 'pickup', 'delivery', 'sell', 'direct', 'pos', 'counter', 'walkin', 'walk-in'].includes(serviceTypeLower);
+  const isTableOrder = Boolean(json.table_code) || (hasTableValue && !isNonTableService);
+
+  if (isTableOrder) {
+    const tableStr = String(rawTable).replace(/^table\s+/i, '').trim() || 'N/A';
+    out += BOLD_ON + DOUBLE_SIZE + `TABLE: ${tableStr}` + (json.order_id ? ` #${json.order_id}` : '') + '\n' + NORMAL + BOLD_OFF;
+  } else {
+    const orderNum = json.order_id || json.id || 'N/A';
+    const clientName = String(json.customer_name || json.client_name || (hasTableValue ? rawTable : '') || '').trim();
+    out += BOLD_ON + DOUBLE_SIZE + `Order: #${orderNum}\n` + NORMAL + BOLD_OFF;
+    if (clientName) {
+      out += BOLD_ON + `Client: ${clientName}\n` + BOLD_OFF;
+    }
+  }
   out += padLine(`Server: ${json.waiter_name || json.waiter || 'Staff'}`, `Guests: ${json.guest_count || 1}`, W);
   out += padLine(`Time: ${json.timestamp || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`, `Round: #${json.fire_round || 1}`, W);
 
@@ -376,32 +586,63 @@ function formatPreparationTicket(json, paperWidth = 80) {
 
     out += BOLD_ON + `${qtyStr} ${indent}${nameStr}\n` + BOLD_OFF;
 
-    if (Array.isArray(item.modifiers) && item.modifiers.length > 0) {
-      for (const mod of item.modifiers) {
+    let rawMods = item.modifiers || item.selectedCustomizations || item.customizations || [];
+    if (typeof rawMods === 'string') {
+      try {
+        const parsed = JSON.parse(rawMods);
+        rawMods = Array.isArray(parsed) ? parsed : rawMods.split(',').map(s => s.trim()).filter(Boolean);
+      } catch {
+        rawMods = rawMods.split(',').map(s => s.trim()).filter(Boolean);
+      }
+    }
+    if (!Array.isArray(rawMods)) rawMods = [];
+    if (rawMods.length === 0) {
+      if (Array.isArray(item.addons)) {
+        rawMods = rawMods.concat(item.addons.map(a => typeof a === 'string' ? { name: a, customization_type: 'addon' } : { ...a, customization_type: a.customization_type || 'addon' }));
+      }
+      if (Array.isArray(item.removals)) {
+        rawMods = rawMods.concat(item.removals.map(r => typeof r === 'string' ? { name: r, customization_type: 'removal', action: 'remove' } : { ...r, customization_type: 'removal', action: 'remove' }));
+      }
+    }
+
+    if (rawMods.length > 0) {
+      for (const mod of rawMods) {
         let modName = '';
         let isRemoval = false;
+        let groupName = '';
+        let modQty = 1;
         if (typeof mod === 'string') {
           modName = mod.trim();
-          isRemoval = modName.toLowerCase().startsWith('no ') || modName.toLowerCase().startsWith('without ') || modName.toLowerCase().startsWith('remove: ') || modName.startsWith('- ');
+          isRemoval = modName.toLowerCase().startsWith('no ') || modName.toLowerCase().startsWith('without ') || modName.toLowerCase().startsWith('remove:') || modName.toLowerCase().startsWith('remove ') || modName.startsWith('- ');
         } else if (typeof mod === 'object' && mod !== null) {
-          modName = (mod.name || mod.ingredient || mod.option_name || mod.label || '').trim();
+          modName = String(mod.name || mod.ingredient || mod.option_name || mod.label || mod.customization_name || '').trim();
+          groupName = String(mod.option_group_name || '').trim();
+          modQty = Number(mod.quantity || mod.qty || 1);
+          const groupLower = groupName.toLowerCase();
+          const typeLower = String(mod.customization_type || mod.type || '').toLowerCase();
           isRemoval = (
             mod.action === 'remove' ||
             mod.action === 'no' ||
-            (mod.customization_type || '').toLowerCase() === 'removal' ||
-            (mod.customization_type || '').toLowerCase() === 'remove' ||
+            typeLower === 'removal' ||
+            typeLower === 'remove' ||
+            groupLower.includes('remove') ||
             modName.toLowerCase().startsWith('no ') ||
             modName.toLowerCase().startsWith('without ') ||
-            modName.toLowerCase().startsWith('remove: ') ||
+            modName.toLowerCase().startsWith('remove:') ||
+            modName.toLowerCase().startsWith('remove ') ||
             modName.startsWith('- ')
           );
         }
         if (!modName) continue;
         const cleanName = modName.replace(/^\[?[-+]\s*\]?\s*/i, '').replace(/^(no|without|remove:?)\s+/i, '').replace(/\]$/, '').trim();
+        const qtySuffix = modQty > 1 ? ` x${modQty}` : '';
         if (isRemoval) {
-          out += BOLD_ON + `       * REMOVE: ${cleanName}\n` + BOLD_OFF;
+          out += BOLD_ON + `       * REMOVE: ${cleanName || modName}\n` + BOLD_OFF;
         } else {
-          out += `       + ${cleanName || modName}\n`;
+          const groupLower = groupName.toLowerCase();
+          const isGenericAddon = !groupName || ['general', 'add on', 'add-on', 'addon', 'add-ons', 'addons', 'add ons', 'add_on', 'add_ons', 'extra', 'extras'].includes(groupLower);
+          const label = isGenericAddon ? 'ADD ON' : groupName.toUpperCase();
+          out += `       + ${label}: ${cleanName || modName}${qtySuffix}\n`;
         }
       }
     }
@@ -411,9 +652,7 @@ function formatPreparationTicket(json, paperWidth = 80) {
     }
   }
 
-  out += divider('=', W);
-  out += ALIGN_CENTER + `FLOW POS Intelligent Routing • #${json.order_id || 'Chit'}\n`;
-  out += FEED + CUT;
+  out += LETTER_SPACE_0 + LINE_SPACE_DEF + NORMAL + FEED + CUT;
   return out;
 }
 
@@ -547,24 +786,85 @@ async function sendToNetworkPrinter(host, port, payloadString) {
 async function sendToWindowsSpooler(printerName, payloadString) {
   return new Promise((resolve) => {
     try {
-      const tempFile = path.join(DATA_DIR, `spool_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.bin`);
-      fs.writeFileSync(tempFile, payloadString, 'binary');
+      const spoolId = `spool_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      const binFile = path.join(DATA_DIR, `${spoolId}.bin`);
+      const ps1File = path.join(DATA_DIR, `${spoolId}.ps1`);
+
+      fs.writeFileSync(binFile, payloadString, 'binary');
 
       const psScript = `
-        $printer = "${printerName}";
-        $path = "${tempFile.replace(/\\/g, '\\\\')}";
-        if (Get-Printer -Name $printer -ErrorAction SilentlyContinue) {
-          [System.IO.File]::ReadAllBytes($path) | Out-Printer -Name $printer;
-          Exit 0;
-        } else {
-          Exit 1;
+$code = @'
+using System;
+using System.IO;
+using System.Runtime.InteropServices;
+public class FlowRawPrinter {
+    [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Ansi)]
+    public class DOCINFOA {
+        [MarshalAs(UnmanagedType.LPStr)] public string pDocName;
+        [MarshalAs(UnmanagedType.LPStr)] public string pOutputFile;
+        [MarshalAs(UnmanagedType.LPStr)] public string pDataType;
+    }
+    [DllImport("winspool.Drv", EntryPoint="OpenPrinterA", SetLastError=true, CharSet=CharSet.Ansi)]
+    public static extern bool OpenPrinter(string szPrinter, out IntPtr hPrinter, IntPtr pd);
+    [DllImport("winspool.Drv", EntryPoint="ClosePrinter", SetLastError=true)]
+    public static extern bool ClosePrinter(IntPtr hPrinter);
+    [DllImport("winspool.Drv", EntryPoint="StartDocPrinterA", SetLastError=true, CharSet=CharSet.Ansi)]
+    public static extern bool StartDocPrinter(IntPtr hPrinter, int level, [In, MarshalAs(UnmanagedType.LPStruct)] DOCINFOA di);
+    [DllImport("winspool.Drv", EntryPoint="EndDocPrinter", SetLastError=true)]
+    public static extern bool EndDocPrinter(IntPtr hPrinter);
+    [DllImport("winspool.Drv", EntryPoint="StartPagePrinter", SetLastError=true)]
+    public static extern bool StartPagePrinter(IntPtr hPrinter);
+    [DllImport("winspool.Drv", EntryPoint="EndPagePrinter", SetLastError=true)]
+    public static extern bool EndPagePrinter(IntPtr hPrinter);
+    [DllImport("winspool.Drv", EntryPoint="WritePrinter", SetLastError=true)]
+    public static extern bool WritePrinter(IntPtr hPrinter, IntPtr pBytes, int dwCount, out int dwWritten);
+
+    public static bool Print(string printer, byte[] bytes) {
+        IntPtr h = IntPtr.Zero;
+        DOCINFOA di = new DOCINFOA();
+        di.pDocName = "FLOW Receipt";
+        di.pDataType = "RAW";
+        if (OpenPrinter(printer, out h, IntPtr.Zero)) {
+            if (StartDocPrinter(h, 1, di)) {
+                if (StartPagePrinter(h)) {
+                    IntPtr p = Marshal.AllocCoTaskMem(bytes.Length);
+                    Marshal.Copy(bytes, 0, p, bytes.Length);
+                    int w = 0;
+                    WritePrinter(h, p, bytes.Length, out w);
+                    Marshal.FreeCoTaskMem(p);
+                    EndPagePrinter(h);
+                }
+                EndDocPrinter(h);
+            }
+            ClosePrinter(h);
+            return true;
         }
-      `;
+        return false;
+    }
+}
+'@
+Add-Type -TypeDefinition $code -ErrorAction SilentlyContinue
 
-      exec(`powershell -ExecutionPolicy Bypass -Command "${psScript.replace(/\n/g, ' ')}"`, (err) => {
-        try { fs.unlinkSync(tempFile); } catch (e) {}
+$printer = "${printerName}";
+$binPath = "${binFile.replace(/\\/g, '\\\\')}";
+if (Test-Path $binPath) {
+    $bytes = [System.IO.File]::ReadAllBytes($binPath);
+    if ([FlowRawPrinter]::Print($printer, $bytes)) {
+        Write-Host "PRINT_OK";
+        exit 0;
+    }
+}
+exit 1;
+`;
 
-        if (!err) {
+      fs.writeFileSync(ps1File, psScript, 'utf8');
+
+      exec(`powershell -NoProfile -ExecutionPolicy Bypass -File "${ps1File}"`, (err, stdout, stderr) => {
+        try { fs.unlinkSync(binFile); } catch (e) {}
+        try { fs.unlinkSync(ps1File); } catch (e) {}
+
+        if (!err && (stdout || '').includes('PRINT_OK')) {
+          console.log(`[PrintServer] Windows Spooler accepted RAW job for "${printerName}"`);
           resolve({
             success: true,
             status: 'accepted',
@@ -572,10 +872,11 @@ async function sendToWindowsSpooler(printerName, payloadString) {
             printerName
           });
         } else {
+          console.error(`[PrintServer] Windows Spooler error for "${printerName}":`, err ? err.message : stderr);
           resolve({
             success: false,
             status: 'failed',
-            error: err.message || `Windows Spooler failed to reach printer "${printerName}"`,
+            error: err ? err.message : (stderr || `Spooler failed for ${printerName}`),
             transport: 'windows_driver',
             printerName
           });
@@ -667,7 +968,10 @@ async function processPrintJob(jobPayload, source = 'cloud') {
   const isWindowsDriver = printerInfo.connection_type === 'windows_driver' || Boolean(printerInfo.windows_printer_name);
   const targetIp = printerInfo.host || printerInfo.ip_address || '192.168.10.110';
   const targetPort = Number(printerInfo.port) || 9100;
-  const windowsPrinterName = printerInfo.windows_printer_name || printerInfo.name || 'POS-80';
+  let windowsPrinterName = printerInfo.windows_printer_name || printerInfo.name || 'invoice';
+  if (!windowsPrinterName || windowsPrinterName === 'Generic / Text Only' || windowsPrinterName === 'POS-80') {
+    windowsPrinterName = 'invoice';
+  }
   const paperWidth = Number(printerInfo.paper_width_mm) || 80;
 
   // 3. Format Payload
@@ -677,7 +981,7 @@ async function processPrintJob(jobPayload, source = 'cloud') {
   if (content.reportType || jobPayload.job_type === 'shift_report' || content.isXReport !== undefined) {
     formattedData = formatShiftReport(content, paperWidth);
   } else if (content.isCustomerBill || jobPayload.job_type === 'receipt' || jobPayload.job_type === 'bill' || jobPayload.job_type === 'pre_check') {
-    formattedData = formatCustomerBill(content, paperWidth);
+    formattedData = await formatCustomerBill(content, paperWidth);
   } else if (content.isKitchenTicket || jobPayload.job_type === 'prep_ticket' || content.type === 'kitchen_chit' || content.type === 'test_chit' || jobPayload.job_type === 'cancellation') {
     formattedData = formatPreparationTicket(content, paperWidth);
   } else if (jobPayload.rawText) {
@@ -756,14 +1060,19 @@ async function pollPendingCloudJobs() {
       console.log(`[CloudPoller] Picked up ${jobs.length} pending job(s) from Admin Cloud queue.`);
 
       for (const job of jobs) {
-        await supabase
+        const { data: claimed, error: claimErr } = await supabase
           .from('pos_print_jobs')
           .update({
             status: 'processing',
             started_at: new Date().toISOString()
           })
           .eq('id', job.id)
-          .eq('status', 'pending');
+          .eq('status', 'pending')
+          .select('id');
+
+        if (claimErr || !claimed || claimed.length === 0) {
+          continue;
+        }
 
         const jobPayload = {
           id: job.id,
@@ -1267,7 +1576,24 @@ const server = http.createServer(async (req, res) => {
   res.end('Not Found');
 });
 
-// ── 12. Startup ─────────────────────────────────────────────────────────────
+// ── 12. Startup & Error Resilience ─────────────────────────────────────────
+process.on('uncaughtException', (err) => {
+  console.error('[PrintServer CRITICAL] Uncaught Exception:', err.message || err);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[PrintServer CRITICAL] Unhandled Rejection:', reason);
+});
+
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`\n[FATAL] Port ${config.http_port} is already in use by another process!`);
+    console.error(`To fix this: Run 'stop-server.bat' to kill the background process on port ${config.http_port}, then try again.\n`);
+  } else {
+    console.error(`[PrintServer HTTP Error]:`, err);
+  }
+});
+
 server.listen(config.http_port, '0.0.0.0', () => {
   const localIps = getLocalIpAddresses();
   console.log(`================================================================`);

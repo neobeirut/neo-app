@@ -4300,7 +4300,8 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
             conceptName: activeConceptObj?.name,
             receiptPrefix: activeConceptObj?.receipt_prefix
           },
-          footerText: orderData.footer_message
+          footerText: orderData.footer_message,
+          printRequestId: orderData.printRequestId
         });
 
         if (billJob) {
@@ -5164,9 +5165,26 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     }, 1200);
   };
 
-  const handleReprintOrder = (order) => {
+  const handleReprintOrder = async (order) => {
+    let rawItems = (order.items && order.items.length > 0)
+      ? order.items
+      : (order.pos_order_items && order.pos_order_items.length > 0 ? order.pos_order_items : []);
+
+    if (rawItems.length === 0 && order.id) {
+      try {
+        const { data: dbItems } = await supabase
+          .from('pos_order_items')
+          .select('*')
+          .eq('order_id', order.id);
+        if (dbItems && dbItems.length > 0) rawItems = dbItems;
+      } catch {}
+    }
+
     const orderData = {
       id: order.id,
+      concept_id: order.concept_id || workspaceState.activeConcept?.id,
+      invoice_number: order.invoice_number,
+      invoice_series: order.invoice_series,
       order_source: order.order_source || "POS",
       order_type: order.order_type || "pickup",
       payment_method: order.payment_method || "Cash",
@@ -5177,8 +5195,11 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       delivery_fee: order.delivery_fee || 0,
       discount_amount: order.discount_amount || 0,
       total_amount: order.total_amount || 0,
-      items: (order.items || []).map((i) => {
-        const rawCusts = i.customizations
+      printRequestId: `reprint_${Date.now()}`,
+      items: rawItems.map((i) => {
+        const rawCusts = Array.isArray(i.customizations_json)
+          ? i.customizations_json
+          : i.customizations
           ? Array.isArray(i.customizations)
             ? i.customizations.map((c) => (typeof c === "string" ? { name: c } : c))
             : [{ name: String(i.customizations) }]
@@ -5194,6 +5215,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
           return `+ ${aName} (+$${aPrice.toFixed(2)})`;
         });
 
+        const itemNote = i.comment || i.note || "";
         return {
           qty: i.quantity || i.qty || 1,
           name: i.product_name || i.name || "Item",
@@ -5202,8 +5224,8 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
           customizations: paidAddons,
           addons: paidAddons.map((a: any) => a.name || a.ingredient || ''),
           removals: [],
-          customizations_print_text: printCustomizationLines.length > 0 ? printCustomizationLines : (item.note ? [item.note] : []),
-          note: i.comment || ""
+          customizations_print_text: printCustomizationLines.length > 0 ? printCustomizationLines : (itemNote ? [itemNote] : []),
+          note: itemNote
         };
       }),
       created_at: order.created_at || new Date().toISOString()
