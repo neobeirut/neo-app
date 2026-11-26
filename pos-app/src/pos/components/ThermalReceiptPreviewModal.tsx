@@ -153,7 +153,7 @@ export function formatEscPosText(data: ThermalReceiptData): string {
   const fmtMoney = (n: number) => '$' + Math.abs(Number(n) || 0).toFixed(2);
 
   const lines: string[] = [];
-  const resto = (data.restaurant_name || 'Neo Beirut').toUpperCase();
+  const resto = (isKitchen ? (data.concept_name || data.restaurant_name || 'Neo Beirut') : (data.restaurant_name || 'Neo Beirut')).toUpperCase();
   lines.push(center(resto));
 
   // ─────────────────────────────────────────────────────────────
@@ -165,41 +165,50 @@ export function formatEscPosText(data: ThermalReceiptData): string {
       const reason = data.reason || data.void_reason || 'Item Cancelled';
       lines.push(center(`REASON: ${reason.toUpperCase()}`));
     } else {
-      const chitTitle = data.title
-        ? `*** ${data.title.toUpperCase()} ***`
-        : data.station
-        ? `*** ${data.station.toUpperCase()} CHIT ***`
-        : '*** KITCHEN ORDER TICKET ***';
-      lines.push(center(chitTitle));
+      const rawTitle = String(data.title || data.station || 'KITCHEN')
+        .replace(/\*/g, '')
+        .replace(/\bPREPARATION\s+CHIT\b/i, '')
+        .replace(/\bPREPARATION\s+TICKET\b/i, '')
+        .replace(/\bCHIT\b/i, '')
+        .trim();
+      lines.push(center((rawTitle || data.station || 'KITCHEN').toUpperCase()));
     }
     if (data.station) {
       lines.push(center(`STATION: ${data.station.toUpperCase()}`));
     }
-    if (data.is_scheduled || data.scheduled_for || data.isScheduledOrder) {
-      const dueStr = data.scheduled_time_display || data.scheduled_for || 'SCHEDULED';
+    if ((data as any).is_scheduled || (data as any).scheduled_for || data.isScheduledOrder) {
+      const dueStr = (data as any).scheduled_time_display || (data as any).scheduled_for || 'SCHEDULED';
       lines.push(center('*** PRE-ORDER / SCHEDULED ***'));
       lines.push(center(`DUE TIME: ${dueStr.toUpperCase()}`));
-      const sNote = data.scheduled_notes || data.scheduled_note;
+      const sNote = (data as any).scheduled_notes || (data as any).scheduled_note;
       if (sNote) lines.push(center(`NOTE: ${sNote.toUpperCase()}`));
     }
     lines.push(divider('='));
 
-    const idStr = data.id || data.orderId ? `Order #${data.id || data.orderId}` : '';
-    const tableVal = data.table_code || data.table_label || data.table;
-    const tableStr = tableVal ? `Table: ${tableVal}` : '';
+    const orderNum = data.id || data.orderId || (data as any).order_id;
+    const idStr = orderNum ? `Order: #${orderNum}` : '';
+    const serviceTypeLower = String(data.service_type || data.order_type || '').toLowerCase();
+    const rawTable = data.table_code || data.table_label || data.table || '';
+    const hasTableValue = Boolean(rawTable && String(rawTable).trim() !== '' && String(rawTable).trim().toUpperCase() !== 'N/A');
+    const isNonTableService = ['takeout', 'pickup', 'delivery', 'sell', 'direct', 'pos', 'counter', 'walkin', 'walk-in'].includes(serviceTypeLower);
+    const isTableOrder = Boolean(data.table_code) || (hasTableValue && !isNonTableService);
+    const tableStr = isTableOrder ? `TABLE: ${String(rawTable).replace(/^table\s+/i, '').trim()}` : '';
+    const clientName = String(data.customer_name || (data as any).client_name || (!isTableOrder && hasTableValue ? rawTable : '') || '').trim();
     const d = new Date(data.created_at || Date.now());
     const p = (n: number) => String(n).padStart(2, '0');
     const dateStr = data.timestamp || `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()}  ${p(d.getHours())}:${p(d.getMinutes())}`;
 
-    if (tableStr && dateStr) {
+    if (isTableOrder) {
       lines.push(cols(tableStr, dateStr));
-    } else if (idStr && dateStr) {
-      lines.push(cols(idStr, dateStr));
-    }
-
-    if (idStr && tableStr) {
-      const guests = data.guest_count ? `Guests: ${data.guest_count}` : '';
-      lines.push(cols(idStr, guests));
+      if (idStr) {
+        const guests = data.guest_count ? `Guests: ${data.guest_count}` : '';
+        lines.push(cols(idStr, guests));
+      }
+    } else {
+      lines.push(cols(idStr || 'Order: #N/A', dateStr));
+      if (clientName) {
+        lines.push(`Client  : ${clientName}`);
+      }
     }
 
     const server = data.served_by || data.waiter_name || data.waiter || data.server_name || data.server || data.cashier_name || 'Staff';
@@ -240,25 +249,41 @@ export function formatEscPosText(data: ThermalReceiptData): string {
         if (!c) continue;
         let name = '';
         let isRem = false;
+        let groupName = '';
+        let modQty = 1;
         if (typeof c === 'string') {
           name = c.trim();
-          isRem = name.toLowerCase().startsWith('no ') || name.toLowerCase().startsWith('without ') || name.toLowerCase().startsWith('remove: ') || name.startsWith('- ');
+          isRem = name.toLowerCase().startsWith('no ') || name.toLowerCase().startsWith('without ') || name.toLowerCase().startsWith('remove:') || name.toLowerCase().startsWith('remove ') || name.startsWith('- ');
         } else if (typeof c === 'object' && c !== null) {
-          name = (c.name || c.ingredient || c.option_name || c.label || '').trim();
+          name = String(c.name || c.ingredient || c.option_name || c.label || c.customization_name || '').trim();
+          groupName = String(c.option_group_name || '').trim();
+          modQty = Number(c.quantity || c.qty || 1);
+          const groupLower = groupName.toLowerCase();
+          const typeLower = String(c.customization_type || c.type || '').toLowerCase();
           isRem = (
             c.action === 'remove' ||
             c.action === 'no' ||
-            (c.customization_type || '').toLowerCase() === 'removal' ||
-            (c.customization_type || '').toLowerCase() === 'remove' ||
+            typeLower === 'removal' ||
+            typeLower === 'remove' ||
+            groupLower.includes('remove') ||
             name.toLowerCase().startsWith('no ') ||
             name.toLowerCase().startsWith('without ') ||
-            name.toLowerCase().startsWith('remove: ') ||
+            name.toLowerCase().startsWith('remove:') ||
+            name.toLowerCase().startsWith('remove ') ||
             name.startsWith('- ')
           );
         }
         if (name) {
           const cleanName = name.replace(/^\[?[-+]\s*\]?\s*/i, '').replace(/^(no|without|remove:?)\s+/i, '').replace(/\]$/, '').trim();
-          lines.push(`       ${isRem ? `* REMOVE: ${cleanName}` : `+ ${cleanName || name}`}`);
+          const qtySuffix = modQty > 1 ? ` x${modQty}` : '';
+          if (isRem) {
+            lines.push(`       * REMOVE: ${cleanName || name}`);
+          } else {
+            const groupLower = groupName.toLowerCase();
+            const isGenericAddon = !groupName || ['general', 'add on', 'add-on', 'addon', 'add-ons', 'addons', 'add ons', 'add_on', 'add_ons', 'extra', 'extras'].includes(groupLower);
+            const label = isGenericAddon ? 'ADD ON' : groupName.toUpperCase();
+            lines.push(`       + ${label}: ${cleanName || name}${qtySuffix}`);
+          }
         }
       }
 
@@ -275,7 +300,6 @@ export function formatEscPosText(data: ThermalReceiptData): string {
     if (data.footer_message) {
       lines.push(center(data.footer_message));
     }
-    lines.push(center(isCancel ? '*** END OF CANCELLATION CHIT ***' : '*** END OF KITCHEN TICKET ***'));
 
     return lines.join('\n');
   }
@@ -463,12 +487,29 @@ export const ThermalReceiptPreviewModal: React.FC<Props> = ({ isOpen, onClose, d
   );
 
   const restoName = (activeTicketData?.restaurant_name || (typeof window !== 'undefined' ? localStorage.getItem('flow_pos_restaurant_name') : null) || 'Neo Beirut').toUpperCase();
+  const conceptHeaderName = (activeTicketData?.concept_name || restoName).toUpperCase();
   const legalName = activeTicketData?.company_legal_name || (typeof window !== 'undefined' ? localStorage.getItem('flow_pos_company_legal_name') : null) || 'Neo Beirut S.A.L.';
   const mofNumber = activeTicketData?.mof_number || (typeof window !== 'undefined' ? localStorage.getItem('flow_pos_mof_number') : null) || '382910-601';
-  const logoUrl = activeTicketData?.logo_url || (typeof window !== 'undefined' ? (localStorage.getItem('flow_pos_logo_url') || localStorage.getItem('flow_pos_restaurant_logo')) : null) || '';
+  const logoUrl =
+    activeTicketData?.logo_url ||
+    (typeof window !== 'undefined' && (activeTicketData as any)?.concept_id
+      ? localStorage.getItem(`flow_pos_concept_logo_${(activeTicketData as any).concept_id}`)
+      : null) ||
+    (typeof window !== 'undefined' && (activeTicketData as any)?.concept_code
+      ? localStorage.getItem(`flow_pos_concept_logo_${String((activeTicketData as any).concept_code).toUpperCase()}`)
+      : null) ||
+    (typeof window !== 'undefined' ? (localStorage.getItem('flow_pos_logo_url') || localStorage.getItem('flow_pos_restaurant_logo')) : null) ||
+    '';
   const exchangeRate = Number(activeTicketData?.exchange_rate || activeTicketData?.rate || 90000);
   const serverName = activeTicketData?.served_by || activeTicketData?.waiter_name || activeTicketData?.waiter || activeTicketData?.server_name || activeTicketData?.server || activeTicketData?.cashier_name || 'Staff';
-  const tableCode = activeTicketData?.table_code || activeTicketData?.table_label || activeTicketData?.table;
+  const rawTableCode = activeTicketData?.table_code || activeTicketData?.table_label || activeTicketData?.table;
+  const serviceTypeLower = String(activeTicketData?.service_type || activeTicketData?.order_type || '').toLowerCase();
+  const hasTableVal = Boolean(rawTableCode && String(rawTableCode).trim() !== '' && String(rawTableCode).trim().toUpperCase() !== 'N/A');
+  const isNonTableService = ['takeout', 'pickup', 'delivery', 'sell', 'direct', 'pos', 'counter', 'walkin', 'walk-in'].includes(serviceTypeLower);
+  const isTableOrder = Boolean(activeTicketData?.table_code) || (hasTableVal && !isNonTableService);
+  const tableCode = isTableOrder ? String(rawTableCode).replace(/^table\s+/i, '').trim() : undefined;
+  const orderNumber = activeTicketData?.id || activeTicketData?.orderId || (activeTicketData as any)?.order_id;
+  const clientName = String(activeTicketData?.customer_name || (activeTicketData as any)?.client_name || (!isTableOrder && hasTableVal ? rawTableCode : '') || '').trim();
   const guestCount = activeTicketData?.guest_count || 1;
   const footerMessage = activeTicketData?.footer_message || (isKitchen ? '' : 'Thank you for dining with us! Come back soon.');
 
@@ -874,9 +915,16 @@ export const ThermalReceiptPreviewModal: React.FC<Props> = ({ isOpen, onClose, d
 
                     {/* Kitchen Header */}
                     <div className="text-center pb-2">
-                      <h1 className="text-xl font-black tracking-wider text-black">{restoName}</h1>
+                      <h1 className="text-xl font-black tracking-wider text-black">{conceptHeaderName}</h1>
                       <div className={`text-[13px] font-black mt-1 uppercase tracking-wide ${isCancel ? 'text-rose-700' : 'text-amber-900'}`}>
-                        *** {isCancel ? 'CANCELLATION CHIT' : (activeTicketData.title || (activeTicketData.station ? `${activeTicketData.station} CHIT` : 'KITCHEN ORDER TICKET'))} ***
+                        {isCancel
+                          ? '*** CANCELLATION ***'
+                          : (String(activeTicketData.title || activeTicketData.station || 'KITCHEN')
+                              .replace(/\*/g, '')
+                              .replace(/\bPREPARATION\s+CHIT\b/i, '')
+                              .replace(/\bPREPARATION\s+TICKET\b/i, '')
+                              .replace(/\bCHIT\b/i, '')
+                              .trim() || activeTicketData.station || 'KITCHEN')}
                       </div>
                       {activeTicketData.station && (
                         <div className="text-[11px] font-bold text-amber-800 mt-0.5">
@@ -893,16 +941,30 @@ export const ThermalReceiptPreviewModal: React.FC<Props> = ({ isOpen, onClose, d
                     <div className="border-b-2 border-slate-900 my-2" />
 
                     {/* Order Metadata */}
-                    <div className="space-y-0.5 text-[11px] text-slate-800">
-                      <div className="flex justify-between">
-                        <span className="font-bold">{tableCode ? `Table ${tableCode}` : `#${activeTicketData.id || activeTicketData.orderId || 'ORDER'}`}</span>
-                        <span>{formattedDate()}</span>
-                      </div>
-                      {tableCode && (
-                        <div className="flex justify-between">
-                          <span>Table   : {tableCode}</span>
-                          <span>{activeTicketData.id || activeTicketData.orderId ? `Order #${activeTicketData.id || activeTicketData.orderId}` : (guestCount ? `Guests: ${guestCount}` : '')}</span>
-                        </div>
+                    <div className="space-y-0.5 text-[12px] text-slate-800">
+                      {isTableOrder ? (
+                        <>
+                          <div className="flex justify-between">
+                            <span className="font-bold">TABLE: {tableCode}</span>
+                            <span>{formattedDate()}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>{orderNumber ? `Order #${orderNumber}` : ''}</span>
+                            <span>{guestCount ? `Guests: ${guestCount}` : ''}</span>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="flex justify-between">
+                            <span className="font-bold">Order: #{orderNumber || 'N/A'}</span>
+                            <span>{formattedDate()}</span>
+                          </div>
+                          {clientName && (
+                            <div className="font-bold text-slate-950">
+                              Client: {clientName}
+                            </div>
+                          )}
+                        </>
                       )}
                       <div className="font-bold text-slate-950">
                         Server: {serverName}
@@ -922,17 +984,17 @@ export const ThermalReceiptPreviewModal: React.FC<Props> = ({ isOpen, onClose, d
                     <div className="border-b border-slate-400 mb-2" />
 
                     {/* Line Items */}
-                    <div className="space-y-2 text-[12px]">
+                    <div className="space-y-2 text-[13px]">
                       {items.length === 0 ? (
                         <div className="text-center py-4 text-slate-400 italic">No items on this ticket</div>
                       ) : (
                         items.map((item, idx) => (
                           <div key={idx} className={`space-y-0.5 p-1 rounded ${isCancel ? 'bg-rose-50 border border-rose-200' : ''}`}>
                             <div className="flex items-start">
-                              <span className={`inline-block w-8 font-black text-[13px] shrink-0 ${isCancel ? 'text-rose-700' : 'text-slate-950'}`}>
+                              <span className={`inline-block w-8 font-black text-[14px] shrink-0 ${isCancel ? 'text-rose-700' : 'text-slate-950'}`}>
                                 {item.qty}x
                               </span>
-                              <span className={`font-bold text-[13px] flex-1 ${isCancel ? 'text-rose-900' : 'text-black'}`}>
+                              <span className={`font-bold text-[14px] flex-1 ${isCancel ? 'text-rose-900' : 'text-black'}`}>
                                 {item.name}
                                 {isCancel && (
                                   <span className="text-[10px] bg-rose-200 text-rose-800 px-1 rounded ml-1 font-black">
@@ -944,31 +1006,43 @@ export const ThermalReceiptPreviewModal: React.FC<Props> = ({ isOpen, onClose, d
 
                             {/* Modifiers */}
                             {item.modifiers.length > 0 && (
-                              <div className="pl-8 space-y-0.5 text-[11px]">
+                              <div className="pl-8 space-y-0.5 text-[12px]">
                                 {item.modifiers.map((mod: any, mIdx: number) => {
                                   let modName = '';
                                   let isRemoval = false;
+                                  let groupName = '';
+                                  let modQty = 1;
                                   if (typeof mod === 'string') {
                                     modName = mod.trim();
-                                    isRemoval = modName.toLowerCase().startsWith('no ') || modName.toLowerCase().startsWith('without ') || modName.toLowerCase().startsWith('remove: ') || modName.startsWith('- ');
+                                    isRemoval = modName.toLowerCase().startsWith('no ') || modName.toLowerCase().startsWith('without ') || modName.toLowerCase().startsWith('remove:') || modName.toLowerCase().startsWith('remove ') || modName.startsWith('- ');
                                   } else if (typeof mod === 'object' && mod !== null) {
-                                    modName = (mod.name || mod.ingredient || mod.option_name || mod.label || '').trim();
+                                    modName = String(mod.name || mod.ingredient || mod.option_name || mod.label || mod.customization_name || '').trim();
+                                    groupName = String(mod.option_group_name || '').trim();
+                                    modQty = Number(mod.quantity || mod.qty || 1);
+                                    const groupLower = groupName.toLowerCase();
+                                    const typeLower = String(mod.customization_type || mod.type || '').toLowerCase();
                                     isRemoval = (
                                       mod.action === 'remove' ||
                                       mod.action === 'no' ||
-                                      (mod.customization_type || '').toLowerCase() === 'removal' ||
-                                      (mod.customization_type || '').toLowerCase() === 'remove' ||
+                                      typeLower === 'removal' ||
+                                      typeLower === 'remove' ||
+                                      groupLower.includes('remove') ||
                                       modName.toLowerCase().startsWith('no ') ||
                                       modName.toLowerCase().startsWith('without ') ||
-                                      modName.toLowerCase().startsWith('remove: ') ||
+                                      modName.toLowerCase().startsWith('remove:') ||
+                                      modName.toLowerCase().startsWith('remove ') ||
                                       modName.startsWith('- ')
                                     );
                                   }
                                   if (!modName) return null;
                                   const cleanModName = modName.replace(/^\[?[-+]\s*\]?\s*/i, '').replace(/^(no|without|remove:?)\s+/i, '').replace(/\]$/, '').trim();
+                                  const qtySuffix = modQty > 1 ? ` x${modQty}` : '';
+                                  const groupLower = groupName.toLowerCase();
+                                  const isGenericAddon = !groupName || ['general', 'add on', 'add-on', 'addon', 'add-ons', 'addons', 'add ons', 'add_on', 'add_ons', 'extra', 'extras'].includes(groupLower);
+                                  const label = isGenericAddon ? 'ADD ON' : groupName.toUpperCase();
                                   return (
                                     <div key={mIdx} className={isRemoval ? 'text-rose-700 font-bold tracking-wide' : 'text-slate-800 font-semibold'}>
-                                      {isRemoval ? `* REMOVE: ${cleanModName}` : `+ ${cleanModName || modName}`}
+                                      {isRemoval ? `* REMOVE: ${cleanModName || modName}` : `+ ${label}: ${cleanModName || modName}${qtySuffix}`}
                                     </div>
                                   );
                                 })}
@@ -1001,10 +1075,6 @@ export const ThermalReceiptPreviewModal: React.FC<Props> = ({ isOpen, onClose, d
                         {footerMessage}
                       </div>
                     )}
-
-                    <div className="text-center text-[11px] font-bold text-slate-500 tracking-wider">
-                      *** {isCancel ? 'END OF CANCELLATION CHIT' : 'END OF KITCHEN TICKET'} ***
-                    </div>
                   </>
                 ) : (
                   /* ═════════════════════════════════════════════════════════════ */
@@ -1032,7 +1102,7 @@ export const ThermalReceiptPreviewModal: React.FC<Props> = ({ isOpen, onClose, d
                     <div className="border-b-2 border-slate-900 my-2" />
 
                     {/* Order Metadata */}
-                    <div className="space-y-0.5 text-[11px] text-slate-800">
+                    <div className="space-y-0.5 text-[12px] text-slate-800">
                       <div className="flex justify-between">
                         <span className="font-bold">{tableCode ? `Table ${tableCode}` : `#${activeTicketData.id || 'ORDER'}`}</span>
                         <span>{formattedDate()}</span>

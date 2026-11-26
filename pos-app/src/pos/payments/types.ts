@@ -58,6 +58,8 @@ export interface OrderFinancialSummary {
   paymentStatus: PaymentStatus;
   fulfillmentStatus?: string;
   version?: number;
+  invoice_number?: string;
+  invoice_series?: string;
 }
 
 export interface TenderItem {

@@ -1300,9 +1300,14 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
 
       // 2. Dispatch printer tickets in background
       if (unprintedItems.length > 0) {
+        const resolvedConceptName =
+          Object.values(KNOWN_CONCEPT_PROFILES).find(c => c.id === resolvedConcept)?.name ||
+          currentUser?.concept_name ||
+          'NÉO';
         buildPreparationPrintJobs({
           orderMetadata: {
             order_id: targetOrderId || `Table-${capturedContext?.tableCode}`,
+            concept_name: resolvedConceptName,
             table_label: capturedContext?.tableCode,
             table_code: capturedContext?.tableCode,
             guest_count: capturedContext?.guestCount || 1,

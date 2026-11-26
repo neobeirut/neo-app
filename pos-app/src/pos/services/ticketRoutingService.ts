@@ -46,8 +46,10 @@ export interface ExpandedPrepItem {
 
 export interface OrderPrintMetadata {
   order_id: number | string;
+  concept_name?: string;
   table_label?: string;
   table_code?: string;
+  customer_name?: string;
   guest_count?: number;
   waiter_name?: string;
   cashier_name?: string;
@@ -330,7 +332,7 @@ export function expandOrderItemsForPreparation(
 
     if (bundle) {
       // Find components selected within the bundle
-      const custs = item.selectedCustomizations || item.customizations || [];
+      const custs = item.selectedCustomizations || item.customizations || item.modifiers || [];
       
       // Separate top-level choices (products selected in groups like "Your Eggs", "Your Coffee")
       // from child modifiers (like "Oat Milk" on Coffee)
@@ -414,7 +416,7 @@ export function expandOrderItemsForPreparation(
         preparation_section: resolution.section_key,
         print_preparation_ticket: true,
         is_bundle_component: false,
-        modifiers: item.selectedCustomizations || item.customizations || [],
+        modifiers: item.selectedCustomizations || item.customizations || item.modifiers || [],
         notes: item.note || item.comment || '',
         note: item.note || item.comment || '',
         original_item_id: item.id || item.product_id,
@@ -502,13 +504,14 @@ export async function buildPreparationPrintJobs(params: {
     const isSched = Boolean(meta.is_scheduled || meta.scheduled_for);
     const dueTime = meta.scheduled_time_display || meta.scheduled_for || '';
     const stationTitle = isReprint
-      ? `*** REPRINT ${sectionName.toUpperCase()} CHIT ***`
+      ? `REPRINT - ${sectionName.toUpperCase()}`
       : isSched
-      ? `*** PRE-ORDER (DUE: ${dueTime}) ***`
-      : `*** ${sectionName.toUpperCase()} PREPARATION CHIT ***`;
+      ? `PRE-ORDER (DUE: ${dueTime})`
+      : sectionName.toUpperCase();
 
     const ticketPayload = {
       isKitchenTicket: true,
+      concept_name: meta.concept_name || undefined,
       station: sectionName,
       station_code: sectionName.toUpperCase(),
       section_key: sectionName,
@@ -517,10 +520,12 @@ export async function buildPreparationPrintJobs(params: {
       printer_ip: group.printer.ip_address,
       printer_port: group.printer.port,
       order_id: meta.order_id,
-      table_label: meta.table_label || meta.table_code || 'N/A',
+      table_code: meta.table_code || undefined,
+      table_label: meta.table_label || meta.table_code || undefined,
+      customer_name: meta.customer_name || undefined,
       guest_count: meta.guest_count || 1,
       waiter_name: meta.waiter_name || 'Staff',
-      service_type: meta.service_type || 'dine_in',
+      service_type: meta.service_type || (meta.table_code ? 'dine_in' : 'takeout'),
       timestamp: meta.timestamp || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       fire_round: meta.fire_round || 1,
       is_reprint: isReprint,
@@ -538,12 +543,15 @@ export async function buildPreparationPrintJobs(params: {
         note: it.note || it.notes || '',
         modifiers: (it.modifiers || []).map((m: any) => {
           if (typeof m === 'string') return m;
-          const mName = m.name || m.ingredient || '';
+          const mName = (m.name || m.ingredient || m.option_name || m.label || m.customization_name || '').trim();
+          const groupLower = (m.option_group_name || '').toLowerCase();
+          const typeLower = (m.customization_type || m.type || '').toLowerCase();
           const isRem = (
             m.action === 'remove' ||
             m.action === 'no' ||
-            (m.customization_type || '').toLowerCase() === 'removal' ||
-            (m.customization_type || '').toLowerCase() === 'remove' ||
+            typeLower === 'removal' ||
+            typeLower === 'remove' ||
+            groupLower.includes('remove') ||
             mName.toLowerCase().startsWith('no ') ||
             mName.toLowerCase().startsWith('without ') ||
             mName.toLowerCase().startsWith('remove: ') ||
@@ -552,13 +560,18 @@ export async function buildPreparationPrintJobs(params: {
           return {
             name: mName,
             action: isRem ? 'remove' : 'add',
-            customization_type: isRem ? 'removal' : 'addon'
+            customization_type: isRem ? 'removal' : (m.customization_type || m.type || 'addon'),
+            option_group_name: m.option_group_name || undefined,
+            quantity: Number(m.quantity || m.qty || 1)
           };
         })
       }))
     };
 
-    const idempotencyKey = `order_${meta.order_id}_fire_${meta.fire_round || 1}_printer_${printerId}${meta.is_reprint ? '_reprint_' + Date.now() : ''}`;
+    const orderKeyPart = (!meta.order_id || String(meta.order_id) === 'Chit')
+      ? `chit_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
+      : String(meta.order_id);
+    const idempotencyKey = `order_${orderKeyPart}_fire_${meta.fire_round || 1}_printer_${printerId}${meta.is_reprint ? '_reprint_' + Date.now() : ''}`;
 
     jobs.push({
       printer: group.printer,
@@ -624,6 +637,8 @@ export async function buildMainBillPrintJob(params: {
     isCustomerBill: true,
     title: conceptTitle,
     concept_id: ord.concept_id,
+    concept_code: ord.concept_code,
+    concept_name: ord.concept_name || params.conceptBranding?.conceptName,
     receipt_prefix: params.conceptBranding?.receiptPrefix,
     restaurant_name: ord.restaurant_name || (typeof window !== 'undefined' ? localStorage.getItem('flow_pos_restaurant_name') : null) || 'Neo Beirut',
     company_legal_name: ord.company_legal_name || (typeof window !== 'undefined' ? localStorage.getItem('flow_pos_company_legal_name') : null) || 'Neo Beirut S.A.L.',
@@ -677,12 +692,16 @@ export function buildCancellationJob(params: {
   const payload = {
     isKitchenTicket: true,
     isCancellation: true,
+    concept_name: meta.concept_name || undefined,
     title: '*** ITEM VOID / CANCELLED ***',
     printer_name: params.originalPrinter.name,
     printer_ip: params.originalPrinter.ip_address,
     printer_port: params.originalPrinter.port,
     order_id: meta.order_id,
-    table_label: meta.table_label || 'N/A',
+    table_code: meta.table_code || undefined,
+    table_label: meta.table_label || meta.table_code || undefined,
+    customer_name: meta.customer_name || undefined,
+    service_type: meta.service_type || (meta.table_code ? 'dine_in' : 'takeout'),
     waiter_name: meta.waiter_name || 'Staff',
     timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     reason: params.reason || 'Manager void authorization',
@@ -691,7 +710,7 @@ export function buildCancellationJob(params: {
         name: `[CANCELLED] ${it.name}`,
         qty: it.qty || it.quantity || 1,
         note: `VOID: ${params.reason || 'Customer request'}`,
-        modifiers: it.selectedCustomizations || it.modifiers || []
+        modifiers: it.selectedCustomizations || it.customizations || it.modifiers || []
       }
     ]
   };
@@ -759,12 +778,16 @@ export async function buildCancellationPrintJobs(params: {
     const payload = {
       isKitchenTicket: true,
       isCancellation: true,
+      concept_name: meta.concept_name || undefined,
       title: '*** ITEM VOID / CANCELLED ***',
       printer_name: group.printer.name,
       printer_ip: group.printer.ip_address,
       printer_port: group.printer.port,
       order_id: meta.order_id,
-      table_label: meta.table_label || 'N/A',
+      table_code: meta.table_code || undefined,
+      table_label: meta.table_label || meta.table_code || undefined,
+      customer_name: meta.customer_name || undefined,
+      service_type: meta.service_type || (meta.table_code ? 'dine_in' : 'takeout'),
       waiter_name: meta.waiter_name || 'Staff',
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       reason: params.reason || 'Item void / cancellation',
@@ -776,12 +799,15 @@ export async function buildCancellationPrintJobs(params: {
         note: `VOID: ${params.reason || 'Item cancelled'}`,
         modifiers: (it.modifiers || []).map((m: any) => {
           if (typeof m === 'string') return m;
-          const mName = m.name || m.ingredient || '';
+          const mName = (m.name || m.ingredient || m.option_name || m.label || m.customization_name || '').trim();
+          const groupLower = (m.option_group_name || '').toLowerCase();
+          const typeLower = (m.customization_type || m.type || '').toLowerCase();
           const isRem = (
             m.action === 'remove' ||
             m.action === 'no' ||
-            (m.customization_type || '').toLowerCase() === 'removal' ||
-            (m.customization_type || '').toLowerCase() === 'remove' ||
+            typeLower === 'removal' ||
+            typeLower === 'remove' ||
+            groupLower.includes('remove') ||
             mName.toLowerCase().startsWith('no ') ||
             mName.toLowerCase().startsWith('without ') ||
             mName.toLowerCase().startsWith('remove: ') ||
@@ -790,7 +816,9 @@ export async function buildCancellationPrintJobs(params: {
           return {
             name: mName,
             action: isRem ? 'remove' : 'add',
-            customization_type: isRem ? 'removal' : 'addon'
+            customization_type: isRem ? 'removal' : (m.customization_type || m.type || 'addon'),
+            option_group_name: m.option_group_name || undefined,
+            quantity: Number(m.quantity || m.qty || 1)
           };
         })
       }))

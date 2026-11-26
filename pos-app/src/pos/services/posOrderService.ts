@@ -321,9 +321,12 @@ export async function createDirectOrder(payload: CreateOrderPayload) {
           p_idempotency_key: payload.client_order_token || `order-${orderId}`,
           p_fiscal_series: 'DEFAULT'
         });
-        if (!seqErr && seqData && seqData.invoice_number) {
+        if (seqErr) {
+          console.warn('[createDirectOrder] Invoice sequencing RPC error:', seqErr);
+        } else if (seqData && seqData.invoice_number) {
           orderData.invoice_number = seqData.invoice_number;
-          orderData.invoice_sequence_number = seqData.sequence_number;
+          orderData.invoice_series = seqData.invoice_series;
+          orderData.invoice_sequence_number = seqData.sequence ?? seqData.sequence_number;
           orderData.invoice_issued_at = seqData.issued_at;
         }
       } catch (seqEx) {
@@ -440,9 +443,12 @@ export async function updateDirectOrderStatus(orderId: number | string, patch: a
             p_idempotency_key: patch.client_order_token || `order-${orderId}`,
             p_fiscal_series: 'DEFAULT'
           });
-          if (!seqErr && seqData && seqData.invoice_number) {
+          if (seqErr) {
+            console.warn('[updateDirectOrderStatus] Invoice sequencing RPC error:', seqErr);
+          } else if (seqData && seqData.invoice_number) {
             data.invoice_number = seqData.invoice_number;
-            data.invoice_sequence_number = seqData.sequence_number;
+            data.invoice_series = seqData.invoice_series;
+            data.invoice_sequence_number = seqData.sequence ?? seqData.sequence_number;
             data.invoice_issued_at = seqData.issued_at;
           }
         } catch (seqEx) {

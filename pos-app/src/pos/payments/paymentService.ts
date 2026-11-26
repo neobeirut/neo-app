@@ -212,7 +212,9 @@ export async function getFinancialSummary(
         amountRemaining,
         paymentStatus,
         fulfillmentStatus: order?.status,
-        version: order?.version
+        version: order?.version,
+        invoice_number: order?.invoice_number || undefined,
+        invoice_series: order?.invoice_series || undefined
       },
       payments,
       refunds
@@ -374,6 +376,22 @@ export async function submitPayment(
         }
       }
 
+      // Allocate concept invoice number if fully paid and not yet issued
+      if (isFullyPaid && !order.invoice_number) {
+        try {
+          const { error: seqErr } = await supabase.rpc('allocate_concept_invoice_number', {
+            p_order_id: Number(params.orderId),
+            p_idempotency_key: operationId || `order-${params.orderId}`,
+            p_fiscal_series: 'DEFAULT'
+          });
+          if (seqErr) {
+            console.warn('[submitPayment] Recovery invoice allocation error:', seqErr);
+          }
+        } catch (seqEx) {
+          console.warn('[submitPayment] Recovery invoice allocation exception:', seqEx);
+        }
+      }
+
       const fin = await getFinancialSummary(params.orderId);
       if (!fin.success) {
         return { success: false, error: fin.error || 'Failed to get financial summary after payment recovery' };
@@ -528,6 +546,22 @@ export async function submitPayment(
         }
       } catch (invErr) {
         console.warn('[submitPayment] Inventory commit warning:', invErr);
+      }
+    }
+
+    // 7. Allocate concept invoice number when fully paid
+    if (isFullyPaid && !order.invoice_number) {
+      try {
+        const { error: seqErr } = await supabase.rpc('allocate_concept_invoice_number', {
+          p_order_id: Number(params.orderId),
+          p_idempotency_key: operationId || `order-${params.orderId}`,
+          p_fiscal_series: 'DEFAULT'
+        });
+        if (seqErr) {
+          console.warn('[submitPayment] Invoice allocation error:', seqErr);
+        }
+      } catch (seqEx) {
+        console.warn('[submitPayment] Invoice allocation exception:', seqEx);
       }
     }
 

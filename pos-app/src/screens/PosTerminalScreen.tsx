@@ -996,7 +996,11 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         const cancelJobs = await buildCancellationPrintJobs({
           orderMetadata: {
             order_id: orderId,
-            table_label: voidModalState.tableNumber || (activeTableContext ? `Table ${activeTableContext.tableCode}` : 'Order'),
+            concept_name: workspaceState.activeConcept?.name || 'NÉO',
+            table_code: activeTableContext?.tableCode,
+            table_label: voidModalState.tableNumber || activeTableContext?.tableCode || undefined,
+            customer_name: !activeTableContext ? (customerName.trim() || 'Direct Order') : undefined,
+            service_type: activeTableContext ? 'dine_in' : (orderType || 'takeout'),
             waiter_name: activeCashier?.name || user?.name || 'Staff'
           },
           cancelledItems: cancelledItemsList,
@@ -1561,6 +1565,25 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         console.warn("[POS] Error loading VAT settings:", err);
       });
 
+    // Fetch per-concept logos from business_concepts
+    (async () => {
+      try {
+        const { data: conceptsData } = await supabase
+          .from('business_concepts')
+          .select('id, code, name, logo_url');
+        if (Array.isArray(conceptsData)) {
+          conceptsData.forEach((c: any) => {
+            if (c?.logo_url) {
+              if (c.id) localStorage.setItem(`flow_pos_concept_logo_${c.id}`, c.logo_url);
+              if (c.code) localStorage.setItem(`flow_pos_concept_logo_${String(c.code).toUpperCase()}`, c.logo_url);
+            }
+          });
+        }
+      } catch (err) {
+        console.warn("[POS] Error loading concept logos:", err);
+      }
+    })();
+
     // Fetch receipt and company legal settings
     (async () => {
       try {
@@ -1758,11 +1781,13 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
           setShowBranchStatusModal(false);
 
           // Background sync to FLOW supabase branches table
-          await supabase.from('branches').update({
-            operational_status: posOperationalStatus,
-            closure_reason: finalReason,
-            orders_active: posOperationalStatus === "open"
-          }).eq('id', branchStatus.id).catch(() => {});
+          try {
+            await supabase.from('branches').update({
+              operational_status: posOperationalStatus,
+              closure_reason: finalReason,
+              orders_active: posOperationalStatus === "open"
+            }).eq('id', branchStatus.id);
+          } catch {}
 
           return;
         } else {
@@ -2910,9 +2935,12 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       isKitchenTicket: true,
       isKitchenFire: true,
       isSeparateFireTicket: true,
+      concept_name: workspaceState.activeConcept?.name || 'NÉO',
       title: "FIRE",
       table: tableLabel,
+      table_code: tableOrder?.tableCode || activeTableContext?.tableCode,
       table_label: tableLabel,
+      service_type: 'dine_in',
       text: "FIRE",
       content: `${tableLabel}\nFire`,
       fireRound: nextFire,
@@ -4215,23 +4243,37 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
 
       if (isCustomerBill) {
         // Customer Bill / Receipt / Pre-Check: route strictly to Main Bill Printer
+        const activeConceptObj = workspaceState.activeConcept;
+        const resolvedLogoUrl =
+          orderData.logo_url ||
+          (activeConceptObj?.id ? localStorage.getItem(`flow_pos_concept_logo_${activeConceptObj.id}`) : null) ||
+          (activeConceptObj?.code ? localStorage.getItem(`flow_pos_concept_logo_${String(activeConceptObj.code).toUpperCase()}`) : null) ||
+          localStorage.getItem('flow_pos_logo_url') ||
+          '';
         const billJob = await buildMainBillPrintJob({
           order: {
             ...orderData,
             order_id: orderData.id || orderData.order_id,
+            concept_id: orderData.concept_id || activeConceptObj?.id,
+            concept_code: orderData.concept_code || activeConceptObj?.code,
+            concept_name: orderData.concept_name || activeConceptObj?.name,
             subtotal: orderData.subtotal_amount || orderData.subtotal || 0,
             total: orderData.total_amount || orderData.total || 0,
             currency: orderData.currency || 'USD',
             exchange_rate: orderData.exchange_rate || exchangeRate || 90000,
             company_legal_name: orderData.company_legal_name || localStorage.getItem('flow_pos_company_legal_name') || 'Neo Beirut S.A.L.',
             mof_number: orderData.mof_number || localStorage.getItem('flow_pos_mof_number') || '382910-601',
-            restaurant_name: orderData.restaurant_name || localStorage.getItem('flow_pos_restaurant_name') || 'Neo Beirut',
-            logo_url: orderData.logo_url || localStorage.getItem('flow_pos_logo_url') || '',
+            restaurant_name: orderData.restaurant_name || activeConceptObj?.name || localStorage.getItem('flow_pos_restaurant_name') || 'Neo Beirut',
+            logo_url: resolvedLogoUrl,
             items: orderData.items || []
           },
           isPreCheck: Boolean(orderData.isPreCheck),
           branchId: effBranchId || undefined,
           restaurantId: currentRestaurantId,
+          conceptBranding: {
+            conceptName: activeConceptObj?.name,
+            receiptPrefix: activeConceptObj?.receipt_prefix
+          },
           footerText: orderData.footer_message
         });
 
@@ -4262,7 +4304,11 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         const { jobs } = await buildPreparationPrintJobs({
           orderMetadata: {
             order_id: orderData.id || orderData.order_id || 'Chit',
-            table_label: orderData.table_label || orderData.customer_name || 'Table',
+            concept_name: orderData.concept_name || workspaceState.activeConcept?.name || 'NÉO',
+            table_code: orderData.table_code || undefined,
+            table_label: orderData.table_label || orderData.table_code || undefined,
+            customer_name: orderData.customer_name || undefined,
+            service_type: orderData.service_type || orderData.order_type || (orderData.table_code || orderData.table_label ? 'dine_in' : 'takeout'),
             waiter_name: orderData.server || activeCashier?.name || user?.name || 'Staff'
           },
           items: orderData.items,
@@ -4402,12 +4448,16 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       id: heldOrderId || 'SCHEDULED',
       isKitchenTicket: true,
       isScheduledOrder: true,
+      concept_name: workspaceState.activeConcept?.name || 'NÉO',
       title: "*** SCHEDULED ORDER ***",
       scheduled_for: `${effScheduledDate} ${effScheduledTime}`,
       scheduled_time_display: formatScheduledTimeDisplay(effScheduledDate, effScheduledTime),
       scheduled_note: effScheduledNote,
       order_source: selectedChannel || "POS",
-      order_type: orderType,
+      order_type: isDineIn ? "dine_in" : orderType,
+      service_type: isDineIn ? "dine_in" : (orderType || "takeout"),
+      table_code: capturedContext?.tableCode,
+      table_label: capturedContext?.tableCode,
       customer_name: resolvedCustomerName,
       customer_phone: customerPhone,
       items: [
@@ -4483,8 +4533,10 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         buildPreparationPrintJobs({
           orderMetadata: {
             order_id: heldOrderId || 'Chit',
-            table_label: capturedContext ? capturedContext.tableCode : resolvedCustomerName,
+            concept_name: workspaceState.activeConcept?.name || 'NÉO',
+            table_label: capturedContext ? capturedContext.tableCode : undefined,
             table_code: capturedContext?.tableCode,
+            customer_name: !isDineIn ? resolvedCustomerName : (customerName.trim() || undefined),
             guest_count: capturedContext?.guestCount || 1,
             waiter_name: capturedContext?.waiterName || activeCashier?.name || user?.name || 'Staff',
             cashier_name: activeCashier?.name || user?.name || 'Cashier',
@@ -4753,8 +4805,18 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       ? "Pickup Customer"
       : "Direct Order";
 
+    const activeConceptObj = workspaceState.activeConcept;
+    const conceptLogoUrl =
+      (activeConceptObj?.id ? localStorage.getItem(`flow_pos_concept_logo_${activeConceptObj.id}`) : null) ||
+      (activeConceptObj?.code ? localStorage.getItem(`flow_pos_concept_logo_${String(activeConceptObj.code).toUpperCase()}`) : null) ||
+      localStorage.getItem('flow_pos_logo_url') ||
+      '';
+
     const completedOrderData = {
       id: completedOrderId,
+      concept_id: activeConceptObj?.id,
+      concept_code: activeConceptObj?.code,
+      concept_name: activeConceptObj?.name,
       order_source: effectiveChannel,
       order_type: isDineIn ? "dine_in" : orderType,
       payment_method: actualPaymentMethod,
@@ -4770,9 +4832,10 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       waiter_name: activeTableContext?.waiterName || activeCashier?.name || user?.name || "Staff",
       served_by: activeTableContext?.waiterName || activeCashier?.name || user?.name || "Staff",
       server_name: activeTableContext?.waiterName || activeCashier?.name || user?.name || "Staff",
-      restaurant_name: localStorage.getItem('flow_pos_restaurant_name') || "Neo Beirut",
+      restaurant_name: activeConceptObj?.name || localStorage.getItem('flow_pos_restaurant_name') || "Neo Beirut",
       company_legal_name: localStorage.getItem('flow_pos_company_legal_name') || "Neo Beirut S.A.L.",
       mof_number: localStorage.getItem('flow_pos_mof_number') || "382910-601",
+      logo_url: conceptLogoUrl,
       footer_message: localStorage.getItem('flow_pos_receipt_footer') || "Thank you for dining with us! Come back soon.",
       customer_phone: customerPhone,
       delivery_address: deliveryAddress,
@@ -4792,8 +4855,60 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       created_at: new Date().toISOString()
     };
 
-    // Print receipt asynchronously without blocking
-    handlePrint(completedOrderData).catch(pErr => console.warn("Receipt print warning:", pErr));
+    const chLower = (effectiveChannel || '').toLowerCase();
+    const isAggregator = chLower.includes('toter') || chLower.includes('nok') ||
+      (actualPaymentMethod || '').toLowerCase().includes('toter') ||
+      (actualPaymentMethod || '').toLowerCase().includes('nok');
+
+    // Dispatch preparation tickets for any unprinted items (e.g. direct Sell / Pay without Hold first)
+    const unprintedCheckoutItems: any[] = [];
+    for (const it of ticketItems) {
+      if (it.isHoldSeparator || it.name === 'HOLD') continue;
+      const orig = Number(it.originalQty || 0);
+      if (!it.isOrdered || orig === 0) {
+        unprintedCheckoutItems.push(it);
+      } else if (it.qty > orig) {
+        unprintedCheckoutItems.push({ ...it, qty: it.qty - orig });
+      }
+    }
+    const isScheduledForFutureCheckout = Boolean(
+      scheduledOrderTime &&
+      scheduledOrderDate &&
+      scheduledOrderDate > new Date().toISOString().split('T')[0]
+    );
+    if (!isScheduledForFutureCheckout && unprintedCheckoutItems.length > 0) {
+      buildPreparationPrintJobs({
+        orderMetadata: {
+          order_id: completedOrderId,
+          concept_name: activeConceptObj?.name || 'NÉO',
+          table_label: activeTableContext ? activeTableContext.tableCode : undefined,
+          table_code: activeTableContext?.tableCode,
+          customer_name: !isDineIn ? (finalCustomerName || defaultCustomer) : (customerName.trim() || undefined),
+          guest_count: activeTableContext?.guestCount || 1,
+          waiter_name: activeTableContext?.waiterName || activeCashier?.name || user?.name || 'Staff',
+          cashier_name: activeCashier?.name || user?.name || 'Cashier',
+          service_type: isDineIn ? 'dine_in' : (orderType || 'takeout'),
+          fire_round: 1,
+          is_scheduled: Boolean(scheduledOrderTime),
+          scheduled_for: scheduledOrderTime ? `${scheduledOrderDate} ${scheduledOrderTime}` : undefined,
+          scheduled_time_display: scheduledOrderTime ? formatScheduledTimeDisplay(scheduledOrderDate, scheduledOrderTime) : undefined,
+          scheduled_notes: scheduledOrderNote || undefined
+        },
+        items: unprintedCheckoutItems,
+        branchId: effectiveBranchId || undefined,
+        restaurantId: currentRestaurantId,
+        productsCatalog: products
+      }).then(({ jobs }) => {
+        if (jobs.length > 0) {
+          dispatchPhysicalPrintJobs(jobs).catch(pe => console.warn("Preparation ticket dispatch warning on checkout:", pe));
+        }
+      }).catch(pe => console.warn("Build preparation print jobs warning on checkout:", pe));
+    }
+
+    // Print customer receipt asynchronously — skip for Toters and NokNok aggregator orders
+    if (!isAggregator) {
+      handlePrint(completedOrderData).catch(pErr => console.warn("Receipt print warning:", pErr));
+    }
     setLastCompletedOrder(completedOrderData);
     updateTableFireCount(currentTableKey, 0);
 
@@ -4801,10 +4916,6 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     const isCashMethod = !actualPaymentMethod ||
       actualPaymentMethod.toLowerCase().includes('cash') ||
       (paymentDetails?.paymentMethod && paymentDetails.paymentMethod.toLowerCase().includes('cash'));
-
-    const chLower = (effectiveChannel || '').toLowerCase();
-    const isAggregator = chLower.includes('toter') || chLower.includes('nok') ||
-      actualPaymentMethod.toLowerCase().includes('toter') || actualPaymentMethod.toLowerCase().includes('nok');
 
     let shiftCashMovement: any = null;
     if (isCashMethod && !isAggregator) {
