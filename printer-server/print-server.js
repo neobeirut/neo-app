@@ -1029,7 +1029,7 @@ async function processPrintJob(jobPayload, source = 'cloud') {
   }
 
   const connType = String(printerInfo.connection_type || '').toLowerCase();
-  const isExplicitNetwork = ['network', 'tcp', 'ethernet', 'lan', 'ip'].includes(connType) && Boolean(printerInfo.host || printerInfo.ip_address);
+  const isExplicitNetwork = (connType.includes('network') || ['tcp', 'ethernet', 'lan', 'ip'].includes(connType)) && Boolean(printerInfo.host || printerInfo.ip_address);
   const isWindowsDriver = !isExplicitNetwork && (connType === 'windows_driver' || connType === 'usb' || Boolean(printerInfo.windows_printer_name));
   const targetIp = printerInfo.host || printerInfo.ip_address || '192.168.10.110';
   const targetPort = Number(printerInfo.port) || 9100;
@@ -1075,7 +1075,7 @@ async function processPrintJob(jobPayload, source = 'cloud') {
       const fb = adminSettings.fallbackPrinter;
       console.warn(`[PrintServer] Primary printer failed (${result.error}). Failing over to Fallback "${fb.name}" (${fb.ip_address})...`);
       const fbConnType = String(fb.connection_type || '').toLowerCase();
-      const fbIsExplicitNetwork = ['network', 'tcp', 'ethernet', 'lan', 'ip'].includes(fbConnType) && Boolean(fb.ip_address);
+      const fbIsExplicitNetwork = (fbConnType.includes('network') || ['tcp', 'ethernet', 'lan', 'ip'].includes(fbConnType)) && Boolean(fb.ip_address);
       if (!fbIsExplicitNetwork && (fbConnType === 'windows_driver' || fbConnType === 'usb' || fb.windows_printer_name)) {
         result = await sendToWindowsSpooler(fb.windows_printer_name || fb.name, formattedData);
       } else {
