@@ -53,27 +53,28 @@ export const OrderCard: React.FC<OrderCardProps> = ({
 
   const getSlaBadge = () => {
     const elapsedFormatted = formatElapsedHoursMinutes(order.elapsedMinutes);
-    const badgeTextSize = isTableVariant ? 'text-xs' : 'text-[10px]';
+    const badgeTextSize = 'text-[10px]';
+    const badgePad = isTableVariant ? 'px-1.5 py-0.5' : 'px-2 py-0.5';
     if (order.statusGroup === 'COMPLETED' || order.statusGroup === 'CANCELLED') {
-      return <span className={`text-slate-500 ${isTableVariant ? 'text-xs' : 'text-[11px]'} font-semibold shrink-0`}>{elapsedFormatted}</span>;
+      return <span className="text-slate-500 text-[10px] font-semibold shrink-0">{elapsedFormatted}</span>;
     }
     if (order.slaStatus === 'critical') {
       return (
-        <span className={`px-2 py-0.5 rounded-md bg-rose-100 text-rose-900 border border-rose-300 ${badgeTextSize} font-black animate-pulse flex items-center gap-1 shrink-0 whitespace-nowrap`}>
-          <span>⚠️</span> {elapsedFormatted}
+        <span className={`${badgePad} rounded bg-rose-100 text-rose-900 border border-rose-300 ${badgeTextSize} font-black animate-pulse flex items-center gap-0.5 shrink-0 whitespace-nowrap`}>
+          <span>⚠️</span>{elapsedFormatted}
         </span>
       );
     }
     if (order.slaStatus === 'warning') {
       return (
-        <span className={`px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 ${badgeTextSize} font-extrabold flex items-center gap-1 shrink-0 whitespace-nowrap`}>
-          <span>⏱️</span> {elapsedFormatted}
+        <span className={`${badgePad} rounded bg-amber-100 text-amber-900 border border-amber-300 ${badgeTextSize} font-extrabold flex items-center gap-0.5 shrink-0 whitespace-nowrap`}>
+          <span>⏱️</span>{elapsedFormatted}
         </span>
       );
     }
     return (
-      <span className={`px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-900 border border-emerald-300 ${badgeTextSize} font-bold flex items-center gap-1 shrink-0 whitespace-nowrap`}>
-        <span>⏱️</span> {elapsedFormatted}
+      <span className={`${badgePad} rounded bg-emerald-100 text-emerald-900 border border-emerald-300 ${badgeTextSize} font-bold flex items-center gap-0.5 shrink-0 whitespace-nowrap`}>
+        <span>⏱️</span>{elapsedFormatted}
       </span>
     );
   };
@@ -83,7 +84,9 @@ export const OrderCard: React.FC<OrderCardProps> = ({
   if (isTable) {
     const rawCode = order.tableLabel || order.customerName || '';
     const cleanNum = rawCode.replace(/^table\s*[-#]?/i, '').replace(/^[Tt]/, '').trim();
-    cardHeaderTitle = cleanNum ? `Table ${cleanNum}` : (order.tableLabel || order.orderNumber || 'Table');
+    cardHeaderTitle = isTableVariant
+      ? (cleanNum ? `T${cleanNum}` : (order.tableLabel || 'T'))
+      : (cleanNum ? `Table ${cleanNum}` : (order.tableLabel || order.orderNumber || 'Table'));
   } else {
     const orderNumDisplay = order.orderNumber || (order.id ? `#${order.id}` : '');
     cardHeaderTitle = orderNumDisplay ? `Order: ${orderNumDisplay}` : 'Order:';
@@ -93,7 +96,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({
     <div
       onClick={onClick}
       className={isTableVariant
-        ? 'select-none flex flex-col justify-between h-full p-1'
+        ? 'select-none flex flex-col justify-between h-full'
         : ('p-2.5 rounded-xl border transition-all cursor-pointer flex flex-col justify-between select-none shadow-xs hover:shadow-sm ' + (
           isSelected
             ? 'bg-[#E9F4ED] border-[#1e5c4f] ring-2 ring-[#1e5c4f]/30'
@@ -103,24 +106,18 @@ export const OrderCard: React.FC<OrderCardProps> = ({
     >
       <div>
         {isTableVariant ? (
-          <div className="flex items-center justify-between gap-1 mb-2 flex-wrap">
-            <div className="flex items-center gap-2 shrink-0">
-              <span className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight shrink-0 whitespace-nowrap">
+          <div className="flex items-center justify-between gap-1 mb-1">
+            <div className="flex items-center gap-1 min-w-0">
+              <span className="text-base sm:text-lg font-black text-slate-900 tracking-tight leading-none shrink-0 whitespace-nowrap">
                 {cardHeaderTitle}
               </span>
               {order.conceptCode && order.conceptCode !== 'NEO' && (
-                <span className={`px-2 py-0.5 rounded text-[11px] font-black border flex items-center gap-0.5 ${
+                <span className={`px-1 py-0.5 rounded text-[9px] font-black border leading-none ${
                   order.conceptCode === 'OVRLOAD'
                     ? 'bg-rose-100 text-rose-900 border-rose-300'
                     : 'bg-purple-100 text-purple-900 border-purple-300'
                 }`}>
-                  <span>{order.conceptCode === 'OVRLOAD' ? '🔥' : '✨'}</span>
-                  <span>{order.conceptName || order.conceptCode}</span>
-                </span>
-              )}
-              {order.isBillRequested && (
-                <span className="px-2 py-0.5 rounded text-[11px] font-black bg-amber-100 text-amber-900 border border-amber-300 animate-pulse shrink-0 whitespace-nowrap">
-                  🧾 Bill
+                  {order.conceptCode === 'OVRLOAD' ? '🔥' : '✨'}
                 </span>
               )}
             </div>
@@ -189,25 +186,18 @@ export const OrderCard: React.FC<OrderCardProps> = ({
           </div>
         )}
 
-        <div className="flex items-center justify-between text-xs mb-1">
+        <div className={`flex items-center justify-between text-xs ${isTableVariant ? 'mb-0.5' : 'mb-1'}`}>
           <div className="font-bold text-slate-800 min-w-0 flex-1">
             {isTableVariant ? (
-              <div className="flex items-center justify-between text-sm text-slate-700 font-bold mt-1">
-                <div className="flex items-center gap-2">
-                  {order.guestCount ? (
-                    <span className="text-slate-600 bg-slate-100 px-2 py-0.5 rounded text-xs font-black">
-                      👥 {order.guestCount}
-                    </span>
-                  ) : null}
-                  {order.waiterName && (
-                    <span className="text-amber-900 truncate font-black text-xs sm:text-sm">
-                      {order.waiterName.split(' ')[0]}
-                    </span>
-                  )}
-                </div>
-                {order.items?.length > 0 && (
-                  <span className="text-xs font-bold text-slate-400">
-                    {order.items.length} item{order.items.length !== 1 ? 's' : ''}
+              <div className="flex items-center gap-1.5 text-slate-700 font-bold">
+                {order.guestCount ? (
+                  <span className="text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded text-[10px] font-black leading-none shrink-0">
+                    👥{order.guestCount}
+                  </span>
+                ) : null}
+                {order.waiterName && (
+                  <span className="text-amber-900 truncate font-black text-[11px] leading-none">
+                    {order.waiterName.split(' ')[0]}
                   </span>
                 )}
               </div>
@@ -265,13 +255,13 @@ export const OrderCard: React.FC<OrderCardProps> = ({
       </div>
 
       {isTableVariant ? (
-        <div className="pt-2 mt-2 border-t border-slate-100 flex items-center justify-between">
-          <span className="text-base sm:text-lg font-black text-slate-900">
+        <div className="pt-1 mt-1 border-t border-slate-100 flex items-center justify-between gap-1">
+          <span className="text-sm font-black text-slate-900 leading-none">
             {'$' + order.totalAmount.toFixed(2)}
           </span>
           {order.isBillRequested && (
-            <span className="text-xs font-black uppercase px-2 py-0.5 rounded bg-sky-100 text-sky-800 border border-sky-300">
-              Bill Sent
+            <span className="text-[9px] font-black uppercase px-1 py-0.5 rounded bg-sky-100 text-sky-800 border border-sky-300 leading-none">
+              🧾
             </span>
           )}
         </div>

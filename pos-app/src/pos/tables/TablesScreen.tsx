@@ -333,7 +333,9 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
       }
     }
 
-    return Array.from(tableOrdersMap.values());
+    return Array.from(tableOrdersMap.entries())
+      .sort(([codeA], [codeB]) => codeA.localeCompare(codeB, undefined, { numeric: true, sensitivity: 'base' }))
+      .map(([, o]) => o);
   }, [openTableOrders, tables, cashierName, settledKeys]);
 
   // Synchronize active open tables count to POS header and top buttons
@@ -758,7 +760,7 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
                   </p>
                 </div>
               ) : (
-                <div className="grid gap-3" style={{gridTemplateColumns:'repeat(auto-fill,minmax(195px,1fr))'}}>
+                <div className="grid gap-2" style={{gridTemplateColumns:'repeat(auto-fill,minmax(130px,1fr))'}}>
                   {displayOpenTables.map(order => {
                     const tableCode = order.tableLabel || (order.customerName ? order.customerName.replace(/^Table\s*/i, '') : '1');
                     const matched = tables.find(t => t.table_code === tableCode || t.commerce_order_id === Number(order.id));
@@ -768,15 +770,15 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
                     return (
                       <div
                         key={order.id}
-                        className={`rounded-2xl border transition-all flex flex-col justify-between overflow-hidden shadow-xs hover:shadow-md ${
+                        className={`rounded-xl border transition-all flex flex-col justify-between overflow-hidden shadow-xs hover:shadow-md ${
                           isBillPrinted
-                            ? 'bg-sky-50/60 border-sky-300 ring-2 ring-sky-300/60'
+                            ? 'bg-sky-50/60 border-sky-300 ring-1 ring-sky-300/60'
                             : 'bg-white hover:border-slate-300 border-slate-200'
                         }`}
                       >
-                        {/* Order Card matching Orders page */}
+                        {/* Compact Table Card */}
                         <div
-                          className="p-2.5 flex-1 cursor-pointer"
+                          className="p-1.5 flex-1 cursor-pointer"
                           onClick={() => {
                             if (matched) setSelectedTableId(matched.id);
                             if (!shiftOpen) {
@@ -794,9 +796,9 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
                         </div>
 
                         {fire && fire.holds > 0 && fire.fired < fire.holds && (
-                          <div className="px-2.5 py-1.5 flex items-center justify-between gap-2 border-t border-slate-200 bg-slate-50">
-                            <span className="text-xs text-slate-700 font-bold" role="status">
-                              {fire.holds - fire.fired} course{fire.holds - fire.fired !== 1 ? 's' : ''} held
+                          <div className="px-1.5 py-1 flex items-center justify-between gap-1 border-t border-slate-200 bg-slate-50">
+                            <span className="text-[10px] text-slate-700 font-bold" role="status">
+                              {fire.holds - fire.fired} held
                             </span>
                             <button
                               type="button"
@@ -808,14 +810,14 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
                                 }
                                 onFireOrder?.(order);
                               }}
-                              className="px-3 py-1.5 rounded-xl bg-orange-600 hover:bg-orange-500 text-white text-xs font-black disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 transition shadow-xs"
+                              className="px-2 py-0.5 rounded-lg bg-orange-600 hover:bg-orange-500 text-white text-[10px] font-black disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 transition shadow-xs"
                             >
-                              {fire.busy ? 'Firing…' : '🔥 Fire'}
+                              {fire.busy ? '…' : '🔥'}
                             </button>
                           </div>
                         )}
-                        {/* Action Buttons Toolbar on Card: Print Bill, Settle & Cancel */}
-                        <div className={`p-2 bg-slate-50 border-t border-slate-200 grid ${onSettleTable ? 'grid-cols-3' : 'grid-cols-2'} gap-1.5`}>
+                        {/* Compact Icon-Only Action Bar: Bill & Settle */}
+                        <div className={`p-1 bg-slate-50 border-t border-slate-200 grid ${onSettleTable ? 'grid-cols-2' : 'grid-cols-1'} gap-1`}>
                           <button
                             type="button"
                             disabled={!shiftOpen}
@@ -826,15 +828,15 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
                               }
                               handlePrintBillForOrder(order);
                             }}
-                            className={`py-2 rounded-xl font-black text-xs sm:text-sm flex items-center justify-center gap-1.5 transition active:scale-95 ${
+                            className={`py-1 rounded-lg text-sm flex items-center justify-center transition active:scale-95 ${
                               !shiftOpen
                                 ? "bg-slate-100 text-slate-400 border border-slate-200 opacity-40 cursor-not-allowed"
                                 : "bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200 cursor-pointer shadow-xs"
                             }`}
-                            title={!shiftOpen ? "Cannot bill while shift is closed" : "Print customer pre-check bill receipt"}
+                            title={!shiftOpen ? "Cannot bill while shift is closed" : "Print Bill"}
+                            aria-label="Print Bill"
                           >
                             <span>🧾</span>
-                            <span className="truncate">Bill</span>
                           </button>
 
                           {onSettleTable && (
@@ -848,39 +850,17 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
                                 }
                                 handleSettleOrder(order);
                               }}
-                              className={`py-2 rounded-xl font-black text-xs sm:text-sm flex items-center justify-center gap-1.5 transition active:scale-95 ${
+                              className={`py-1 rounded-lg text-sm flex items-center justify-center transition active:scale-95 ${
                                 !shiftOpen
                                   ? "bg-slate-100 text-slate-400 border border-slate-200 opacity-40 cursor-not-allowed"
                                   : "bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 cursor-pointer shadow-xs"
                               }`}
-                              title={!shiftOpen ? "Cannot settle while shift is closed" : "Collect payment and close table"}
+                              title={!shiftOpen ? "Cannot settle while shift is closed" : "Settle Table"}
+                              aria-label="Settle Table"
                             >
                               <span>💳</span>
-                              <span className="truncate">Settle</span>
                             </button>
                           )}
-
-                          <button
-                            type="button"
-                            disabled={!shiftOpen}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (!shiftOpen) {
-                                onOpenShift?.();
-                                return;
-                              }
-                              handleCancelTableOrder(order);
-                            }}
-                            className={`py-2 rounded-xl font-black text-xs sm:text-sm flex items-center justify-center gap-1 transition active:scale-95 ${
-                              !shiftOpen
-                                ? "bg-slate-100 text-slate-400 border border-slate-200 opacity-40 cursor-not-allowed"
-                                : "bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 cursor-pointer shadow-xs"
-                            }`}
-                            title="Cancel order and release this table"
-                          >
-                            <span>✕</span>
-                            <span className="truncate">Cancel</span>
-                          </button>
                         </div>
                       </div>
                     );
