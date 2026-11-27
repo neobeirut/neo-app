@@ -11,8 +11,13 @@ export function readModifiers(line: any): any[] {
 
 function optionalId(value: any): number | null {
   if (value === '' || value === null || value === undefined) return null;
+  if (typeof value === 'string' && value.startsWith('sub_')) {
+    const parts = value.split('_');
+    const extracted = Number(parts[parts.length - 1]);
+    return Number.isSafeInteger(extracted) && extracted > 0 ? extracted : null;
+  }
   const id = Number(value);
-  if (!Number.isSafeInteger(id) || id <= 0) throw new Error('Invalid modifier identifier. Reload the product options.');
+  if (!Number.isSafeInteger(id) || id <= 0) return null;
   return id;
 }
 
@@ -21,7 +26,7 @@ export function serializeModifiers(value: any[]): any[] {
     const quantity = Number(option.quantity ?? option.qty ?? 1);
     if (!Number.isFinite(quantity) || quantity <= 0) throw new Error('Modifier quantity must be greater than zero.');
     return {
-      product_customization_id: optionalId(option.product_customization_id ?? option.id),
+      product_customization_id: optionalId(option.product_customization_id ?? option.original_id ?? option.id),
       customization_item_id: optionalId(option.customization_item_id),
       name: option.name || option.ingredient || '', quantity,
       price: Number(option.price ?? 0),
