@@ -20,6 +20,7 @@ export interface PosProduct {
   master_image_url?: string;
   category_id?: string | number;
   category_name?: string;
+  category_section?: string;
   concept_id?: string;
   sort_order?: number;
   status?: string;
@@ -267,11 +268,13 @@ async function fetchCatalogFromSupabase(
     };
 
     const categoryMap = new Map<number | string, string>();
+    const categorySectionMap = new Map<number | string, string>();
     const categories: PosCategory[] = catData
       .filter((c: any) => c.is_active !== false)
       .sort((a: any, b: any) => (a.display_order ?? 999) - (b.display_order ?? 999))
       .map((c: any) => {
         categoryMap.set(c.id, c.name);
+        if (c.section) categorySectionMap.set(c.id, c.section);
         return {
           id: c.id,
           name: c.name,
@@ -401,6 +404,7 @@ async function fetchCatalogFromSupabase(
             master_image_url: p.image_url || '',
             category_id: resolvedCategoryId,
             category_name: resolvedCategoryName,
+            category_section: (resolvedCategoryId ? categorySectionMap.get(resolvedCategoryId) : undefined) || (p.category_id ? categorySectionMap.get(p.category_id) : undefined),
             concept_id: targetConceptId,
             sort_order: activeConfig.display_order ?? p.display_order ?? 0,
             status,
@@ -445,6 +449,7 @@ async function fetchCatalogFromSupabase(
             master_image_url: p.image_url || '',
             category_id: p.category_id,
             category_name: catName,
+            category_section: p.category_id ? categorySectionMap.get(p.category_id) : undefined,
             concept_id: targetConceptId,
             sort_order: p.display_order ?? 0,
             status,

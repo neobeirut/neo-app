@@ -1317,7 +1317,7 @@ export default function PosSettingsScreen({ user }: { user?: any }) {
                   Route Preparation Sections to This Printer:
                 </label>
                 <div className="grid grid-cols-2 gap-2 max-h-32 overflow-y-auto p-2 bg-slate-50 border border-slate-200 rounded-xl">
-                  {['Kitchen', 'Bar', 'Pastry', 'Bakery', 'Cold Kitchen', 'Hot Kitchen'].map(sec => {
+                  {['Kitchen', 'OVRLOAD Kitchen', 'Bar', 'Pastry', 'Bakery', 'Cold Kitchen', 'Hot Kitchen'].map(sec => {
                     const isChecked = printerFormData.assignedSections.includes(sec);
                     return (
                       <label key={sec} className="flex items-center gap-2 cursor-pointer text-[11px] font-semibold text-slate-700">

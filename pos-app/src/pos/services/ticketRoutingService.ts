@@ -196,13 +196,15 @@ export function resolveItemPreparationSection(
 } {
   const pName = String(item.product_name_snapshot || item.product_name || item.name || '').trim();
   let cName = String(item.category_name || item.category || '').trim();
+  let cSection = String(item.category_section || '').trim();
+  let itemConceptId = String(item.concept_id || '').trim();
 
   // 1. Check if item has explicit properties directly
   let section = item.preparation_section || '';
   let override = item.prep_print_override || null;
 
   // 2. Check catalog if not present on item
-  if ((!section || !override || !cName) && productsCatalog && productsCatalog.length > 0) {
+  if ((!section || !override || !cName || !cSection || !itemConceptId) && productsCatalog && productsCatalog.length > 0) {
     const matched = productsCatalog.find(p => (
       (item.product_id && String(p.id) === String(item.product_id)) ||
       (p.name && p.name.toLowerCase() === pName.toLowerCase())
@@ -211,18 +213,29 @@ export function resolveItemPreparationSection(
       if (!section && matched.preparation_section) section = matched.preparation_section;
       if (!override && matched.prep_print_override) override = matched.prep_print_override;
       if (!cName) cName = String(matched.category_name || matched.category || matched.categories?.name || '').trim();
+      if (!cSection && matched.category_section) cSection = String(matched.category_section).trim();
+      if (!itemConceptId && matched.concept_id) itemConceptId = String(matched.concept_id).trim();
     }
   }
 
-  // 3. Heuristic resolution if still not set
+  // 3. Deterministic Category Station (authoritative unless product explicitly overrides)
+  const validStations = new Set(['kitchen', 'ovrload kitchen', 'bar', 'pastry', 'bakery', 'cold kitchen', 'hot kitchen', 'store', 'retail']);
+  if (!section && cSection && validStations.has(cSection.toLowerCase())) {
+    section = cSection;
+  }
+
+  // 4. Heuristic fallback ONLY if neither product nor category defines a station
   if (!section) {
     const combined = (pName + ' ' + cName).toLowerCase();
+    const isOvrloadConcept = itemConceptId === '00000000-0000-0000-0000-000000000002' || combined.includes('ovrload');
     if (cName.toLowerCase() === 'store' || cName.toLowerCase() === 'retail' || /\b(store|retail|merch|packaged|grocery)\b/i.test(combined)) {
       section = 'Store';
-    } else if (/\b(coffee|espresso|latte|cappuccino|nescafe|nescafé|mocha|frappe|frappé|cocoa|chai|infusion|tea|teas|juice|juices|drinks|beverage|beverages|cocktail|beer|wine|vodka|gin|whisky|mocktail|tonic|water|soda|lemonade|pepsi|cola|7up|perrier|almaza|american|americano|regular|decaf|v60|chemex|flat white|cortado|macchiato|matcha|shake|shakes|smoothie|hot chocolate|brew|milkshake)\b/i.test(combined)) {
+    } else if (/\b(coffee|espresso|latte|cappuccino|nescafe|nescafé|mocha|frappe|frappé|cocoa|chai|infusion|tea|teas|juice|juices|drinks|beverage|beverages|cocktail|cocktails|beer|wine|vodka|gin|whisky|mocktail|tonic|water|soda|lemonade|pepsi|cola|7up|perrier|almaza|american|americano|regular|decaf|v60|chemex|flat white|cortado|macchiato|matcha|shake|shakes|smoothie|hot chocolate|brew|milkshake|milkshakes)\b/i.test(combined)) {
       section = 'Bar';
-    } else if (/\b(cake|cakes|pastry|croissant|croissants|viennoiserie|viennoiseries|cookie|cookies|brownie|eclair|tart|tarte|dessert|desserts|bakery)\b/i.test(combined)) {
+    } else if (/\b(cake|cakes|pastry|croissant|croissants|viennoiserie|viennoiseries|cookie|cookies|brownie|eclair|tart|tarte|bakery|bread)\b/i.test(combined)) {
       section = 'Pastry';
+    } else if (isOvrloadConcept) {
+      section = 'OVRLOAD Kitchen';
     } else {
       section = 'Kitchen';
     }
