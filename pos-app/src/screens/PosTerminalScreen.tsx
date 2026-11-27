@@ -9062,6 +9062,31 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                 <span className="text-[10px] text-slate-500">{activeShift ? 'Close / X-Report' : 'Open Shift Float'}</span>
               </button>
 
+              {/* Reload / Update App */}
+              <button
+                type="button"
+                onClick={async () => {
+                  setIsFeaturesModalOpen(false);
+                  try {
+                    if ('caches' in window) {
+                      const keys = await caches.keys();
+                      await Promise.all(keys.map(k => caches.delete(k)));
+                    }
+                    if ('serviceWorker' in navigator) {
+                      const regs = await navigator.serviceWorker.getRegistrations();
+                      await Promise.all(regs.map(r => r.unregister()));
+                    }
+                  } catch {}
+                  window.location.reload();
+                }}
+                className="p-3 rounded-2xl bg-sky-50 hover:bg-sky-100 border border-sky-200 flex flex-col items-center justify-center gap-1 text-center transition active:scale-95 group cursor-pointer shadow-xs"
+                title="Clear app cache and reload latest POS version (keeps login & open shift)"
+              >
+                <span className="text-2xl group-hover:rotate-180 transition-transform duration-300">🔄</span>
+                <span className="font-extrabold text-xs text-sky-900">Reload App</span>
+                <span className="text-[10px] text-sky-700">Pull latest updates</span>
+              </button>
+
               {/* Held Shifts Audit (Manager) */}
               {heldShiftsCount > 0 && (
                 <button
