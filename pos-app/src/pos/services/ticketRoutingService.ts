@@ -964,6 +964,10 @@ export async function dispatchPhysicalPrintJobs(jobs: PhysicalPrinterTicketJob[]
     }
 
     // 3. Dispatch to local print server bridge
+    const isUsbPrinter =
+      job.printer.connection_type === 'windows_driver' ||
+      job.printer.connection_type === 'usb' ||
+      (!job.printer.ip_address && Boolean((job.printer as any).windows_printer_name));
     const dispatchPayload = {
       destination: job.printer.name,
       printer: {
@@ -971,7 +975,7 @@ export async function dispatchPhysicalPrintJobs(jobs: PhysicalPrinterTicketJob[]
         host: job.printer.ip_address,
         port: job.printer.port || 9100,
         connection_type: job.printer.connection_type,
-        windows_printer_name: (job.printer as any).windows_printer_name || job.printer.name
+        windows_printer_name: isUsbPrinter ? ((job.printer as any).windows_printer_name || job.printer.name) : null
       },
       content: job.ticket_payload,
       job_type: job.ticket_type,

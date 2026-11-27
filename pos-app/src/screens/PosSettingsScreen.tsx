@@ -240,7 +240,7 @@ export default function PosSettingsScreen({ user }: { user?: any }) {
   const handleTestPrint = async (printer: PosPrinter) => {
     setTestingPrinterId(printer.id);
     const bridgeUrl = `http://${printServerIP.trim()}:${printServerPort}/print`;
-    const isUsb = printer.connection_type === 'windows_driver' || printer.connection_type === 'usb' || Boolean((printer as any).windows_printer_name);
+    const isUsb = printer.connection_type === 'windows_driver' || printer.connection_type === 'usb' || (!printer.ip_address && Boolean((printer as any).windows_printer_name));
     const payload = {
       destination: printer.name,
       printer: {
@@ -248,7 +248,7 @@ export default function PosSettingsScreen({ user }: { user?: any }) {
         host: printer.ip_address,
         port: printer.port || 9100,
         connection_type: printer.connection_type,
-        windows_printer_name: (printer as any).windows_printer_name || printer.name
+        windows_printer_name: isUsb ? ((printer as any).windows_printer_name || printer.name) : null
       },
       job_type: 'test_print',
       idempotency_key: `test_${printer.id}_${Date.now()}`,
