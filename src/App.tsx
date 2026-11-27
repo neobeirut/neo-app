@@ -102,7 +102,7 @@ import ConceptSelector from './components/common/ConceptSelector';
 
     const isSectionEnabled = (key: string) => {
       if (user?.role?.toLowerCase() === 'superadmin') return true;
-      if (key === 'permissions' || key === 'pos_permissions' || key === 'company_settings' || key.startsWith('crm') || key.startsWith('reports') || key === 'reports') return true;
+      if (key === 'permissions' || key === 'pos_permissions' || key === 'company_settings' || key === 'live_daily_report' || key === 'pos_live_daily_report' || key.startsWith('crm') || key.startsWith('reports') || key === 'reports') return true;
       const enabledSections = user?.restaurants?.settings?.enabled_sections;
       if (!enabledSections) return true; // Default to enabled if not configured
       if (key === 'inventory_reporting' || key === 'cost_control' || key === 'daily_production') {
@@ -211,6 +211,7 @@ import ConceptSelector from './components/common/ConceptSelector';
       {
         name: 'Reports',
         items: [
+          { to: '/live-daily-report', label: 'Live Daily Transactions', icon: <Activity size={18} />, key: 'reports_live_daily' },
           { to: '/reports/recipes', label: 'Item Recipes Report', icon: <FileSpreadsheet size={18} />, key: 'reports_recipes' },
           { to: '/client-orders/reports', label: 'Client Orders Reports', icon: <FileText size={18} />, visible: canAccess('client_orders', !!permissions?.can_view_client_orders), key: 'client_orders' }
         ]
