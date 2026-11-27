@@ -1131,6 +1131,21 @@ export const ThermalReceiptPreviewModal: React.FC<Props> = ({ isOpen, onClose, d
                           <span>Guests: {guestCount}</span>
                         </div>
                       )}
+                      {!tableCode && clientName && (
+                        <div className="font-bold text-slate-950">
+                          Client: {clientName}
+                        </div>
+                      )}
+                      {!tableCode && (activeTicketData as any).customer_phone && (
+                        <div className="text-slate-700">
+                          Phone: {(activeTicketData as any).customer_phone}
+                        </div>
+                      )}
+                      {!tableCode && (activeTicketData as any).delivery_address && (
+                        <div className="text-slate-700">
+                          Address: {(activeTicketData as any).delivery_address}
+                        </div>
+                      )}
                       <div className="font-bold text-slate-950">
                         Served by: {serverName}
                       </div>

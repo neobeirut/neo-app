@@ -463,7 +463,22 @@ async function formatCustomerBill(json, paperWidth = 80) {
   out += NORMAL + divider('=', W);
 
   out += ALIGN_LEFT;
-  out += padLine(`Order: #${json.order_id || json.id || 'N/A'}`, json.table_label ? `Table: ${json.table_label}` : 'Direct', W);
+  const orderTypeLower = String(json.order_type || '').toLowerCase();
+  const isDeliveryOrder = orderTypeLower === 'delivery' || Number(json.delivery_fee || 0) > 0;
+  const hasRealTable = Boolean(json.table_label && String(json.table_label).trim() !== '' && String(json.table_label).trim().toUpperCase() !== 'N/A');
+  const rightOrderMeta = hasRealTable ? `Table: ${json.table_label}` : (isDeliveryOrder ? 'Delivery' : (orderTypeLower === 'pickup' ? 'Pickup' : 'Direct'));
+  out += padLine(`Order: #${json.order_id || json.id || 'N/A'}`, rightOrderMeta, W);
+  const rawClientName = String(json.customer_name || json.client_name || '').trim();
+  const isGenericClient = ['direct order', 'pickup customer', 'walk-in', 'walkin', 'n/a'].includes(rawClientName.toLowerCase());
+  if (rawClientName && (isDeliveryOrder || (!hasRealTable && !isGenericClient))) {
+    out += BOLD_ON + `Client: ${rawClientName}\n` + BOLD_OFF;
+  }
+  if (isDeliveryOrder && json.customer_phone && String(json.customer_phone).trim()) {
+    out += `Phone: ${String(json.customer_phone).trim()}\n`;
+  }
+  if (isDeliveryOrder && json.delivery_address && String(json.delivery_address).trim()) {
+    out += `Address: ${String(json.delivery_address).trim()}\n`;
+  }
   out += padLine(`Server: ${json.waiter_name || json.server_name || 'Staff'}`, `Guests: ${json.guest_count || 1}`, W);
   out += padLine(`Date: ${new Date().toLocaleDateString()}`, `Time: ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`, W);
 
