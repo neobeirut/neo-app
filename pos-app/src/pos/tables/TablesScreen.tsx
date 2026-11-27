@@ -370,29 +370,38 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
       return;
     }
     const tableCode = order.tableLabel || (order.customerName ? order.customerName.replace(/^Table\s*/i, '') : '1');
-    const matched = tables.find(t => t.table_code === tableCode || t.commerce_order_id === Number(order.id));
-    const tableObj: PosTable = matched || {
-      id: String(order.rawOrder?.table_id || 'table-' + order.id),
-      branch_id: branchId,
-      floor_area_id: '',
-      table_code: tableCode,
-      display_name: `Table ${tableCode}`,
-      capacity: order.guestCount || 2,
-      position_x: 0,
-      position_y: 0,
-      width: 7,
-      height: 7,
-      shape: 'square',
-      active: true,
-      sort_order: 0,
-      commerce_order_id: Number(order.id),
-      current_session_id: order.rawOrder?.session_id || null,
-      assigned_waiter: order.waiterName || cashierName,
-      guest_count: order.guestCount || 1,
-      status: 'bill_requested'
-    };
+    const numericOrderId = /^\d+$/.test(String(order.id)) ? Number(order.id) : null;
+    const matched = tables.find(t => t.table_code === tableCode || (numericOrderId && t.commerce_order_id === numericOrderId));
+    const tableObj: PosTable = matched
+      ? {
+          ...matched,
+          commerce_order_id: matched.commerce_order_id || numericOrderId,
+          current_session_id: matched.current_session_id || order.rawOrder?.session_id || null,
+          assigned_waiter: matched.assigned_waiter || order.waiterName || cashierName,
+          guest_count: matched.guest_count || order.guestCount || 1
+        }
+      : {
+          id: String(order.rawOrder?.table_id || 'table-' + order.id),
+          branch_id: branchId,
+          floor_area_id: '',
+          table_code: tableCode,
+          display_name: `Table ${tableCode}`,
+          capacity: order.guestCount || 2,
+          position_x: 0,
+          position_y: 0,
+          width: 7,
+          height: 7,
+          shape: 'square',
+          active: true,
+          sort_order: 0,
+          commerce_order_id: numericOrderId,
+          current_session_id: order.rawOrder?.session_id || null,
+          assigned_waiter: order.waiterName || cashierName,
+          guest_count: order.guestCount || 1,
+          status: 'bill_requested'
+        };
     if (onPrintPreCheckDoc) {
-      onPrintPreCheckDoc(tableObj);
+      await onPrintPreCheckDoc(tableObj);
     }
     refreshOrders();
     fetchState();

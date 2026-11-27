@@ -3848,12 +3848,69 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       setIsOpenShiftModalOpen(true);
       return;
     }
-    if (!table.commerce_order_id && !table.current_session_id) return;
+    if (!table.commerce_order_id && !table.current_session_id && !table.table_code) return;
     try {
       const ord = await fetchOrderWithItems(table.commerce_order_id, table.table_code, currentRestaurantId);
+      const activeConceptObj = workspaceState.activeConcept;
+      const isDefaultNeo =
+        !activeConceptObj ||
+        activeConceptObj.id === '00000000-0000-0000-0000-000000000001' ||
+        String(activeConceptObj.code || '').toUpperCase() === 'NEO';
+      const resolvedConceptLogo =
+        (activeConceptObj?.id ? localStorage.getItem(`flow_pos_concept_logo_${activeConceptObj.id}`) : null) ||
+        (activeConceptObj?.code ? localStorage.getItem(`flow_pos_concept_logo_${String(activeConceptObj.code).toUpperCase()}`) : null) ||
+        (isDefaultNeo ? localStorage.getItem('flow_pos_logo_url') : null) ||
+        '';
+
+      const parsedItems = ord?.items ? ord.items.map((it: any) => {
+        let allCusts: any = [];
+        try {
+          if (Array.isArray(it.customizations_json)) {
+            allCusts = it.customizations_json;
+          } else if (typeof it.customizations_json === 'string' && it.customizations_json.trim()) {
+            allCusts = JSON.parse(it.customizations_json);
+          } else if (Array.isArray(it.customizations)) {
+            allCusts = it.customizations;
+          }
+        } catch {
+          allCusts = Array.isArray(it.customizations) ? it.customizations : [];
+        }
+        // On customer guest check / bill, strictly omit zero-value modifiers (choices, removals, free add-ons)
+        const billCusts = (Array.isArray(allCusts) ? allCusts : []).filter((c: any) =>
+          typeof c === 'object' && c !== null && Number(c.price || c.unit_price || 0) > 0
+        );
+        return {
+          name: it.product_name || it.name,
+          qty: Number(it.quantity || it.qty || 1),
+          unit_price: parseFloat(it.unit_price || 0),
+          price: parseFloat(it.unit_price || 0),
+          total_price: parseFloat(it.total_price || (Number(it.unit_price || 0) * Number(it.quantity || it.qty || 1)) || 0),
+          selectedCustomizations: billCusts,
+          customizations: billCusts,
+          note: it.comment || it.note || ""
+        };
+      }) : ticketItems.map((it: any) => {
+        const allCusts = it.selectedCustomizations || [];
+        const billCusts = (Array.isArray(allCusts) ? allCusts : []).filter((c: any) =>
+          typeof c === 'object' && c !== null && Number(c.price || c.unit_price || 0) > 0
+        );
+        return {
+          name: it.name,
+          qty: it.qty,
+          unit_price: parseFloat(it.unit_price || 0),
+          price: parseFloat(it.unit_price || 0),
+          total_price: parseFloat(it.unit_price || 0) * (it.qty || 1),
+          selectedCustomizations: billCusts,
+          customizations: billCusts,
+          note: it.note || ""
+        };
+      });
+
+      const computedSubtotal = parsedItems.reduce((sum: number, it: any) => sum + Number(it.total_price || 0), 0);
 
       const preCheckPayload = {
         isPreCheck: true,
+        printRequestId: `precheck_${ord?.id || table.table_code}_${Date.now()}`,
         title: "GUEST CHECK / BILL — NOT PAID",
         id: ord?.id || `Table-${table.table_code}`,
         table_code: table.table_code,
@@ -3862,51 +3919,24 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         waiter_name: table.assigned_waiter || activeCashier?.name || user?.name || "Staff",
         served_by: table.assigned_waiter || activeCashier?.name || user?.name || "Staff",
         server_name: table.assigned_waiter || activeCashier?.name || user?.name || "Staff",
-        restaurant_name: localStorage.getItem('flow_pos_restaurant_name') || "Neo Beirut",
+        concept_id: ord?.concept_id || activeConceptObj?.id,
+        concept_code: activeConceptObj?.code,
+        concept_name: activeConceptObj?.name,
+        restaurant_name: activeConceptObj?.name || localStorage.getItem('flow_pos_restaurant_name') || "Neo Beirut",
         company_legal_name: localStorage.getItem('flow_pos_company_legal_name') || "Neo Beirut S.A.L.",
         mof_number: localStorage.getItem('flow_pos_mof_number') || "382910-601",
+        logo_url: resolvedConceptLogo,
         exchange_rate: exchangeRate || 89500,
         footer_message: localStorage.getItem('flow_pos_receipt_footer') || "Thank you for dining with us! Come back soon.",
         order_source: "Dine In",
         order_type: "dine_in",
-        items: ord?.items ? ord.items.map((it: any) => {
-          const allCusts = it.customizations_json ? JSON.parse(it.customizations_json) : (it.customizations || []);
-          // On customer guest check / bill, strictly omit zero-value modifiers (choices, removals, free add-ons)
-          const billCusts = (Array.isArray(allCusts) ? allCusts : []).filter((c: any) =>
-            typeof c === 'object' && c !== null && Number(c.price || c.unit_price || 0) > 0
-          );
-          return {
-            name: it.product_name || it.name,
-            qty: it.quantity,
-            unit_price: parseFloat(it.unit_price || 0),
-            price: parseFloat(it.unit_price || 0),
-            total_price: parseFloat(it.total_price || (it.unit_price * it.quantity) || 0),
-            selectedCustomizations: billCusts,
-            customizations: billCusts,
-            note: it.comment || it.note || ""
-          };
-        }) : ticketItems.map((it: any) => {
-          const allCusts = it.selectedCustomizations || [];
-          const billCusts = (Array.isArray(allCusts) ? allCusts : []).filter((c: any) =>
-            typeof c === 'object' && c !== null && Number(c.price || c.unit_price || 0) > 0
-          );
-          return {
-            name: it.name,
-            qty: it.qty,
-            unit_price: parseFloat(it.unit_price || 0),
-            price: parseFloat(it.unit_price || 0),
-            total_price: parseFloat(it.unit_price || 0) * (it.qty || 1),
-            selectedCustomizations: billCusts,
-            customizations: billCusts,
-            note: it.note || ""
-          };
-        }),
-        subtotal_amount: parseFloat(ord?.subtotal_amount || subtotal || 0),
+        items: parsedItems,
+        subtotal_amount: parseFloat(ord?.subtotal_amount || computedSubtotal || subtotal || 0),
         discount_amount: parseFloat(ord?.discount_amount || discountAmount || 0),
         is_vat_subscribed: isVatSubscribed,
         vat_rate: isVatSubscribed ? vatRate : 0,
         vat_amount: isVatSubscribed ? (parseFloat(ord?.vat_amount || 0) || vatAmount) : 0,
-        total_amount: parseFloat(ord?.total_amount || total || 0),
+        total_amount: parseFloat(ord?.total_amount || computedSubtotal || total || 0),
         created_at: ord?.created_at || new Date().toISOString()
       };
 
