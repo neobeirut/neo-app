@@ -1579,6 +1579,9 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
             if (c?.logo_url) {
               if (c.id) localStorage.setItem(`flow_pos_concept_logo_${c.id}`, c.logo_url);
               if (c.code) localStorage.setItem(`flow_pos_concept_logo_${String(c.code).toUpperCase()}`, c.logo_url);
+            } else if (c) {
+              if (c.id) localStorage.removeItem(`flow_pos_concept_logo_${c.id}`);
+              if (c.code) localStorage.removeItem(`flow_pos_concept_logo_${String(c.code).toUpperCase()}`);
             }
           });
         }
@@ -3966,10 +3969,22 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
         vat_rate: isVatSubscribed ? vatRate : 0,
         vat_amount: vatAmount,
         total_amount: total,
-        restaurant_name: localStorage.getItem('flow_pos_restaurant_name') || 'Neo Beirut',
+        concept_id: workspaceState.activeConcept?.id,
+        concept_code: workspaceState.activeConcept?.code,
+        concept_name: workspaceState.activeConcept?.name,
+        restaurant_name: workspaceState.activeConcept?.name || localStorage.getItem('flow_pos_restaurant_name') || 'Neo Beirut',
         company_legal_name: localStorage.getItem('flow_pos_company_legal_name') || 'Neo Beirut S.A.L.',
         mof_number: localStorage.getItem('flow_pos_mof_number') || '382910-601',
-        logo_url: localStorage.getItem('flow_pos_logo_url') || '',
+        logo_url: (() => {
+          const ac = workspaceState.activeConcept;
+          const isNeo = !ac || ac.id === '00000000-0000-0000-0000-000000000001' || String(ac.code || '').toUpperCase() === 'NEO';
+          return (
+            (ac?.id ? localStorage.getItem(`flow_pos_concept_logo_${ac.id}`) : null) ||
+            (ac?.code ? localStorage.getItem(`flow_pos_concept_logo_${String(ac.code).toUpperCase()}`) : null) ||
+            (isNeo ? localStorage.getItem('flow_pos_logo_url') : null) ||
+            ''
+          );
+        })(),
         created_at: new Date().toISOString()
       };
 
@@ -4274,13 +4289,33 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   };
 
   const handlePrint = async (orderData, requireAcknowledgement = false) => {
+    const activeConceptObj = workspaceState.activeConcept;
+    const effConceptId = orderData?.concept_id || activeConceptObj?.id;
+    const effConceptCode = orderData?.concept_code || activeConceptObj?.code;
+    const effConceptName = orderData?.concept_name || activeConceptObj?.name;
+    const isNeoConcept =
+      (!effConceptId && !effConceptCode && !effConceptName) ||
+      effConceptId === '00000000-0000-0000-0000-000000000001' ||
+      String(effConceptCode || '').toUpperCase() === 'NEO' ||
+      String(effConceptName || '').toUpperCase().startsWith('NÉO') ||
+      String(effConceptName || '').toUpperCase().startsWith('NEO');
+    const resolvedConceptLogoUrl =
+      (effConceptId ? localStorage.getItem(`flow_pos_concept_logo_${effConceptId}`) : null) ||
+      (effConceptCode ? localStorage.getItem(`flow_pos_concept_logo_${String(effConceptCode).toUpperCase()}`) : null) ||
+      (orderData?.logo_url && (isNeoConcept || !String(orderData.logo_url).toLowerCase().includes('neobeirut.com')) ? orderData.logo_url : '') ||
+      (isNeoConcept ? localStorage.getItem('flow_pos_logo_url') : null) ||
+      '';
+
     if (orderData && (orderData.isPreCheck || orderData.items)) {
       setReceiptPreviewData({
         ...orderData,
+        concept_id: effConceptId,
+        concept_code: effConceptCode,
+        concept_name: effConceptName,
         company_legal_name: orderData.company_legal_name || localStorage.getItem('flow_pos_company_legal_name') || 'Neo Beirut S.A.L.',
         mof_number: orderData.mof_number || localStorage.getItem('flow_pos_mof_number') || '382910-601',
-        restaurant_name: orderData.restaurant_name || localStorage.getItem('flow_pos_restaurant_name') || 'Neo Beirut',
-        logo_url: orderData.logo_url || localStorage.getItem('flow_pos_logo_url') || ''
+        restaurant_name: orderData.restaurant_name || effConceptName || localStorage.getItem('flow_pos_restaurant_name') || 'Neo Beirut',
+        logo_url: resolvedConceptLogoUrl
       });
     }
 
@@ -4290,28 +4325,21 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
 
       if (isCustomerBill) {
         // Customer Bill / Receipt / Pre-Check: route strictly to Main Bill Printer
-        const activeConceptObj = workspaceState.activeConcept;
-        const resolvedLogoUrl =
-          orderData.logo_url ||
-          (activeConceptObj?.id ? localStorage.getItem(`flow_pos_concept_logo_${activeConceptObj.id}`) : null) ||
-          (activeConceptObj?.code ? localStorage.getItem(`flow_pos_concept_logo_${String(activeConceptObj.code).toUpperCase()}`) : null) ||
-          localStorage.getItem('flow_pos_logo_url') ||
-          '';
         const billJob = await buildMainBillPrintJob({
           order: {
             ...orderData,
             order_id: orderData.id || orderData.order_id,
-            concept_id: orderData.concept_id || activeConceptObj?.id,
-            concept_code: orderData.concept_code || activeConceptObj?.code,
-            concept_name: orderData.concept_name || activeConceptObj?.name,
+            concept_id: effConceptId,
+            concept_code: effConceptCode,
+            concept_name: effConceptName,
             subtotal: orderData.subtotal_amount || orderData.subtotal || 0,
             total: orderData.total_amount || orderData.total || 0,
             currency: orderData.currency || 'USD',
             exchange_rate: orderData.exchange_rate || exchangeRate || 90000,
             company_legal_name: orderData.company_legal_name || localStorage.getItem('flow_pos_company_legal_name') || 'Neo Beirut S.A.L.',
             mof_number: orderData.mof_number || localStorage.getItem('flow_pos_mof_number') || '382910-601',
-            restaurant_name: orderData.restaurant_name || activeConceptObj?.name || localStorage.getItem('flow_pos_restaurant_name') || 'Neo Beirut',
-            logo_url: resolvedLogoUrl,
+            restaurant_name: orderData.restaurant_name || effConceptName || localStorage.getItem('flow_pos_restaurant_name') || 'Neo Beirut',
+            logo_url: resolvedConceptLogoUrl,
             items: orderData.items || []
           },
           isPreCheck: Boolean(orderData.isPreCheck),
@@ -4855,10 +4883,14 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       : "Direct Order";
 
     const activeConceptObj = workspaceState.activeConcept;
+    const isDefaultNeoActive =
+      !activeConceptObj ||
+      activeConceptObj.id === '00000000-0000-0000-0000-000000000001' ||
+      String(activeConceptObj.code || '').toUpperCase() === 'NEO';
     const conceptLogoUrl =
       (activeConceptObj?.id ? localStorage.getItem(`flow_pos_concept_logo_${activeConceptObj.id}`) : null) ||
       (activeConceptObj?.code ? localStorage.getItem(`flow_pos_concept_logo_${String(activeConceptObj.code).toUpperCase()}`) : null) ||
-      localStorage.getItem('flow_pos_logo_url') ||
+      (isDefaultNeoActive ? localStorage.getItem('flow_pos_logo_url') : null) ||
       '';
 
     const completedOrderData = {

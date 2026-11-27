@@ -97,7 +97,7 @@ async function syncAdminSettings() {
       supabase.from('pos_printer_section_routes').select('*, printer:pos_printers(*)').eq('restaurant_id', rId).eq('branch_id', bId),
       supabase.from('app_settings').select('*'),
       supabase.from('branches').select('*').eq('id', bId).single(),
-      supabase.from('business_concepts').select('id, code, name, logo_url')
+      supabase.from('business_concepts').select('id, code, name, logo_url, legal_entity_name, mof_tax_number')
     ]);
 
     // 1. Process Printers
@@ -146,16 +146,23 @@ async function syncAdminSettings() {
       config.branch_name = branchRes.value.data.name || config.branch_name;
     }
 
-    // 5. Concept Logos
+    // 5. Concept Logos & Metadata
     if (conceptsRes.status === 'fulfilled' && Array.isArray(conceptsRes.value.data)) {
-      adminSettings.conceptLogos = adminSettings.conceptLogos || {};
+      const nextLogos = {};
+      const nextConcepts = {};
       conceptsRes.value.data.forEach(c => {
-        if (c && c.logo_url) {
-          if (c.id) adminSettings.conceptLogos[c.id] = c.logo_url;
-          if (c.code) adminSettings.conceptLogos[String(c.code).toUpperCase()] = c.logo_url;
-          if (c.name) adminSettings.conceptLogos[String(c.name).toUpperCase()] = c.logo_url;
+        if (!c) return;
+        if (c.id) nextConcepts[c.id] = c;
+        if (c.code) nextConcepts[String(c.code).toUpperCase()] = c;
+        if (c.name) nextConcepts[String(c.name).toUpperCase()] = c;
+        if (c.logo_url) {
+          if (c.id) nextLogos[c.id] = c.logo_url;
+          if (c.code) nextLogos[String(c.code).toUpperCase()] = c.logo_url;
+          if (c.name) nextLogos[String(c.name).toUpperCase()] = c.logo_url;
         }
       });
+      adminSettings.conceptLogos = nextLogos;
+      adminSettings.conceptsByKey = nextConcepts;
     }
 
     adminSettings.lastSyncAt = new Date().toISOString();
@@ -404,14 +411,34 @@ async function formatCustomerBill(json, paperWidth = 80) {
   let out = INIT;
   const isPreCheck = json.isPreCheck === true || json.title?.includes('PRE-CHECK') || json.title?.includes('GUEST CHECK');
 
+  const conceptsByKey = adminSettings.conceptsByKey || {};
+  const conceptMeta =
+    (json.concept_id && conceptsByKey[json.concept_id]) ||
+    (json.concept_code && conceptsByKey[String(json.concept_code).toUpperCase()]) ||
+    (json.concept_name && conceptsByKey[String(json.concept_name).toUpperCase()]) ||
+    null;
+  const hasExplicitConcept = Boolean(json.concept_id || json.concept_code || json.concept_name);
+  const isDefaultNeo =
+    !hasExplicitConcept ||
+    json.concept_id === '00000000-0000-0000-0000-000000000001' ||
+    String(json.concept_code || '').toUpperCase() === 'NEO' ||
+    String(json.concept_name || '').toUpperCase().startsWith('NÉO') ||
+    String(json.concept_name || '').toUpperCase().startsWith('NEO');
   const conceptLogoMap = adminSettings.conceptLogos || {};
-  const conceptLogoUrl =
-    json.logo_url ||
+  const dbConceptLogo =
+    (conceptMeta && conceptMeta.logo_url) ||
     (json.concept_id && conceptLogoMap[json.concept_id]) ||
     (json.concept_code && conceptLogoMap[String(json.concept_code).toUpperCase()]) ||
     (json.concept_name && conceptLogoMap[String(json.concept_name).toUpperCase()]) ||
-    adminSettings.logo_url ||
     '';
+  const payloadLogo =
+    json.logo_url && (isDefaultNeo || (json.logo_url !== adminSettings.logo_url && !String(json.logo_url).toLowerCase().includes('neobeirut.com')))
+      ? json.logo_url
+      : '';
+  const conceptLogoUrl =
+    dbConceptLogo ||
+    payloadLogo ||
+    (isDefaultNeo ? (adminSettings.logo_url || '') : '');
 
   const logoRaster = await getEscPosLogo(conceptLogoUrl, paperWidth);
   if (logoRaster) {
@@ -419,8 +446,12 @@ async function formatCustomerBill(json, paperWidth = 80) {
   }
 
   out += ALIGN_CENTER + BOLD_ON;
-  out += (json.concept_name || json.restaurant_name || adminSettings.restaurant_name || 'NÉO BEIRUT').toUpperCase() + '\n';
-  out += NORMAL;
+  const headerBrandName = (json.concept_name || (conceptMeta && conceptMeta.name) || json.restaurant_name || adminSettings.restaurant_name || 'NÉO BEIRUT').toUpperCase();
+  if (!logoRaster) {
+    out += DOUBLE_SIZE + headerBrandName + '\n' + NORMAL;
+  } else {
+    out += headerBrandName + '\n' + NORMAL;
+  }
 
   out += divider('=', W);
   out += BOLD_ON + DOUBLE_SIZE;
@@ -491,11 +522,11 @@ async function formatCustomerBill(json, paperWidth = 80) {
   // Company Name, MOF, and Exchange Rate at the bottom
   out += divider('-', W);
   out += ALIGN_CENTER;
-  const compLegalName = json.company_legal_name || adminSettings.company_legal_name;
+  const compLegalName = json.company_legal_name || (conceptMeta && conceptMeta.legal_entity_name) || adminSettings.company_legal_name;
   if (compLegalName) {
     out += BOLD_ON + `${compLegalName}\n` + BOLD_OFF;
   }
-  const mof = json.mof_number || adminSettings.mof_number;
+  const mof = json.mof_number || (conceptMeta && conceptMeta.mof_tax_number) || adminSettings.mof_number;
   if (mof) {
     out += `MOF: ${mof}\n`;
   }

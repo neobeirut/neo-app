@@ -632,6 +632,20 @@ export async function buildMainBillPrintJob(params: {
     || params.footerText 
     || 'Thank you for dining with us! Come back soon.';
 
+  const hasExplicitConcept = Boolean(ord.concept_id || ord.concept_code || ord.concept_name || params.conceptBranding?.conceptName);
+  const isDefaultNeo =
+    !hasExplicitConcept ||
+    ord.concept_id === '00000000-0000-0000-0000-000000000001' ||
+    String(ord.concept_code || '').toUpperCase() === 'NEO' ||
+    String(ord.concept_name || params.conceptBranding?.conceptName || '').toUpperCase().startsWith('NÉO') ||
+    String(ord.concept_name || params.conceptBranding?.conceptName || '').toUpperCase().startsWith('NEO');
+  const resolvedConceptLogo =
+    (typeof window !== 'undefined' && ord.concept_id ? localStorage.getItem(`flow_pos_concept_logo_${ord.concept_id}`) : null) ||
+    (typeof window !== 'undefined' && ord.concept_code ? localStorage.getItem(`flow_pos_concept_logo_${String(ord.concept_code).toUpperCase()}`) : null) ||
+    (ord.logo_url && (isDefaultNeo || !String(ord.logo_url).toLowerCase().includes('neobeirut.com')) ? ord.logo_url : '') ||
+    (isDefaultNeo && typeof window !== 'undefined' ? localStorage.getItem('flow_pos_logo_url') : null) ||
+    '';
+
   const payload = {
     isPreCheck: isPre,
     isCustomerBill: true,
@@ -643,7 +657,7 @@ export async function buildMainBillPrintJob(params: {
     restaurant_name: ord.restaurant_name || (typeof window !== 'undefined' ? localStorage.getItem('flow_pos_restaurant_name') : null) || 'Neo Beirut',
     company_legal_name: ord.company_legal_name || (typeof window !== 'undefined' ? localStorage.getItem('flow_pos_company_legal_name') : null) || 'Neo Beirut S.A.L.',
     mof_number: ord.mof_number || (typeof window !== 'undefined' ? localStorage.getItem('flow_pos_mof_number') : null) || '382910-601',
-    logo_url: ord.logo_url || (typeof window !== 'undefined' ? localStorage.getItem('flow_pos_logo_url') : null) || '',
+    logo_url: resolvedConceptLogo,
     printer_name: mainPrinter.name,
     printer_ip: mainPrinter.ip_address,
     printer_port: mainPrinter.port,

@@ -74,6 +74,7 @@ export default function ConceptManagementScreen({ user, permissions }: { user: a
     status: 'INACTIVE', // New concepts are inactive by default
     primary_color: '#1e5c4f',
     secondary_color: '#ffffff',
+    logo_url: '',
     receipt_prefix: '',
     fiscal_series: 'MAIN',
     selected_branches: [] as string[],
@@ -264,6 +265,7 @@ export default function ConceptManagementScreen({ user, permissions }: { user: a
       status: 'INACTIVE', // Required: New concepts start INACTIVE
       primary_color: '#0284c7',
       secondary_color: '#ffffff',
+      logo_url: '',
       receipt_prefix: '',
       fiscal_series: 'MAIN',
       selected_branches: [],
@@ -556,6 +558,7 @@ export default function ConceptManagementScreen({ user, permissions }: { user: a
       status: concept.status || 'ACTIVE',
       primary_color: concept.primary_color || '#1e5c4f',
       secondary_color: concept.secondary_color || '#ffffff',
+      logo_url: concept.logo_url || '',
       receipt_prefix: concept.receipt_prefix || concept.code,
       fiscal_series: concept.metadata?.fiscal_series || 'MAIN',
       selected_branches: assigned,
@@ -654,6 +657,7 @@ export default function ConceptManagementScreen({ user, permissions }: { user: a
         status: formData.status,
         primary_color: formData.primary_color,
         secondary_color: formData.secondary_color,
+        logo_url: formData.logo_url?.trim() || null,
         receipt_prefix: cleanPrefix,
         metadata
       };
@@ -690,6 +694,7 @@ export default function ConceptManagementScreen({ user, permissions }: { user: a
             name: formData.name.trim(),
             primary_color: formData.primary_color,
             secondary_color: formData.secondary_color,
+            logo_url: formData.logo_url?.trim() || null,
             concept_type: formData.concept_type,
             status: formData.status,
             receipt_prefix: cleanPrefix,
@@ -731,6 +736,7 @@ export default function ConceptManagementScreen({ user, permissions }: { user: a
             status: formData.status, // Enforces INACTIVE on creation
             primary_color: formData.primary_color,
             secondary_color: formData.secondary_color,
+            logo_url: formData.logo_url?.trim() || null,
             receipt_prefix: cleanPrefix,
             metadata
           }])
@@ -1662,6 +1668,76 @@ export default function ConceptManagementScreen({ user, permissions }: { user: a
                       {formData.name || 'Brand Preview'} (Active)
                     </div>
                   </div>
+                </div>
+
+                {/* Concept Receipt Logo (Printed at top of thermal receipts) */}
+                <div className="pt-3 border-t border-gray-200 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-[11px] font-semibold text-gray-700">
+                      Receipt Logo (Printed at top of customer bills)
+                    </label>
+                    {formData.logo_url && (
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, logo_url: '' })}
+                        className="text-[11px] font-semibold text-rose-600 hover:underline"
+                      >
+                        Remove Logo
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <label className="px-3 py-1.5 bg-white border border-gray-300 rounded-lg text-xs font-semibold text-gray-700 hover:bg-gray-100 cursor-pointer shrink-0">
+                      Upload Logo Image
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          const reader = new FileReader();
+                          reader.onload = () => {
+                            const img = new Image();
+                            img.onload = () => {
+                              const maxW = 360;
+                              const maxH = 160;
+                              const scale = Math.min(1, maxW / img.width, maxH / img.height);
+                              const canvas = document.createElement('canvas');
+                              canvas.width = Math.max(1, Math.round(img.width * scale));
+                              canvas.height = Math.max(1, Math.round(img.height * scale));
+                              const ctx = canvas.getContext('2d');
+                              if (ctx) {
+                                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                                const pngDataUrl = canvas.toDataURL('image/png');
+                                setFormData((prev) => ({ ...prev, logo_url: pngDataUrl }));
+                              }
+                            };
+                            img.src = String(reader.result || '');
+                          };
+                          reader.readAsDataURL(file);
+                          e.target.value = '';
+                        }}
+                      />
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.logo_url.startsWith('data:image/') ? '' : formData.logo_url}
+                      onChange={(e) => setFormData({ ...formData, logo_url: e.target.value })}
+                      placeholder={formData.logo_url.startsWith('data:image/') ? 'Uploaded PNG logo saved (paste URL to replace)' : 'Or paste PNG logo URL (https://...)'}
+                      className="flex-1 px-2.5 py-1.5 border border-gray-300 rounded-lg text-xs bg-white"
+                    />
+                  </div>
+                  {formData.logo_url && (
+                    <div className="p-2.5 bg-white border border-gray-200 rounded-lg flex items-center justify-center">
+                      <img
+                        src={formData.logo_url}
+                        alt="Concept Receipt Logo Preview"
+                        className="max-h-16 max-w-[220px] object-contain"
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
 

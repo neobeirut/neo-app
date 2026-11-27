@@ -59,40 +59,29 @@ export const OpenShiftModal: React.FC<OpenShiftModalProps> = ({
     : ((amClosingUsd != null || amClosingLbp != null) ? 'AM' : null);
 
   const [shift, setShift] = useState<'AM' | 'PM' | 'ALL DAY'>(effectiveAllowedShift);
-  const [openingUsd, setOpeningUsd] = useState<string>('100');
-  const [openingLbp, setOpeningLbp] = useState<string>('0');
+  const [openingUsd, setOpeningUsd] = useState<string>('');
+  const [openingLbp, setOpeningLbp] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Lock shift selection to the system-allowed shift
+  // Lock shift selection to the system-allowed shift and clear inputs so cashier must enter actual count
   useEffect(() => {
     if (!isOpen) return;
     setShift(effectiveAllowedShift);
+    setOpeningUsd('');
+    setOpeningLbp('');
     setError(null);
   }, [isOpen, effectiveAllowedShift]);
 
-  // Pre-fill opening cash from handover when available
-  useEffect(() => {
-    if (!isOpen || statusLoading) return;
-    if (effectivePrefillUsd != null || effectivePrefillLbp != null) {
-      if (effectivePrefillUsd != null) {
-        setOpeningUsd(String(Math.round(effectivePrefillUsd * 100) / 100));
-      } else {
-        setOpeningUsd('0');
-      }
-      if (effectivePrefillLbp != null) {
-        setOpeningLbp(String(Math.round(effectivePrefillLbp)));
-      } else {
-        setOpeningLbp('0');
-      }
-    } else {
-      // Default initial float if no handover record exists
-      setOpeningUsd('100');
-      setOpeningLbp('0');
-    }
-  }, [isOpen, statusLoading, effectivePrefillUsd, effectivePrefillLbp, effectiveAllowedShift]);
-
   if (!isOpen) return null;
+
+  const hasEnteredOpeningAmounts =
+    openingUsd.trim() !== '' &&
+    !Number.isNaN(Number(openingUsd)) &&
+    Number(openingUsd) >= 0 &&
+    openingLbp.trim() !== '' &&
+    !Number.isNaN(Number(openingLbp)) &&
+    Number(openingLbp) >= 0;
 
   const actualDate = new Intl.DateTimeFormat('en-GB', {
     timeZone: 'Asia/Beirut',
@@ -104,6 +93,10 @@ export const OpenShiftModal: React.FC<OpenShiftModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!hasEnteredOpeningAmounts) {
+      setError('Please enter the actual counted USD and LBP opening amounts (enter 0 if none).');
+      return;
+    }
     if (!isConceptDeliveryMode) {
       if (statusLoading || statusError) return;
       if (effectiveAllowedShift === 'AM' && !effectiveIsAmEnabled) return;
@@ -114,8 +107,8 @@ export const OpenShiftModal: React.FC<OpenShiftModalProps> = ({
     setError(null);
 
     try {
-      const usd = parseFloat(openingUsd) || 0;
-      const lbp = parseFloat(openingLbp) || 0;
+      const usd = parseFloat(openingUsd);
+      const lbp = parseFloat(openingLbp);
       const targetShift = isConceptDeliveryMode ? 'ALL DAY' : (shift || effectiveAllowedShift);
 
       const res = await onConfirm({ openingUsd: usd, openingLbp: lbp, shift: targetShift });
@@ -245,11 +238,11 @@ export const OpenShiftModal: React.FC<OpenShiftModalProps> = ({
             </p>
           )}
 
-          {/* Handover Float Transfer Banner (PM -> AM or AM -> PM) */}
+          {/* Handover Float Reference Banner (PM -> AM or AM -> PM) */}
           {hasHandoverData && (
             <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs">
               <div className="flex items-center gap-2 text-emerald-800 font-black mb-1">
-                <span>🔄</span> {effectivePrefillSource === 'PM' ? 'PM Closing Cash Transferred' : 'AM Closing Cash Transferred'}
+                <span>🔄</span> {effectivePrefillSource === 'PM' ? 'Previous PM Closing Cash (Reference)' : 'Previous AM Closing Cash (Reference)'}
               </div>
               <div className="text-slate-700 space-y-0.5 font-mono">
                 {effectivePrefillUsd != null && (
@@ -259,7 +252,7 @@ export const OpenShiftModal: React.FC<OpenShiftModalProps> = ({
                   <div>LBP: <span className="text-slate-900 font-black">L.L. {effectivePrefillLbp.toLocaleString()}</span></div>
                 )}
               </div>
-              <div className="text-emerald-700 font-medium text-[11px] mt-1.5">Edit below if the actual physical drawer count differs.</div>
+              <div className="text-emerald-700 font-medium text-[11px] mt-1.5">Enter your actual counted USD & LBP amounts below to open the shift.</div>
             </div>
           )}
 
@@ -267,49 +260,36 @@ export const OpenShiftModal: React.FC<OpenShiftModalProps> = ({
           <div>
             <div className="flex items-center justify-between mb-1">
               <label className="text-xs font-bold text-slate-700">
-                Opening Float (USD $)
+                Actual Opening Float (USD $) *
               </label>
               {effectivePrefillSource && effectivePrefillUsd != null && (
-                <span className="text-[10px] text-emerald-700 font-bold">From {effectivePrefillSource} Closing</span>
+                <span className="text-[10px] text-emerald-700 font-bold">Prev {effectivePrefillSource}: ${effectivePrefillUsd.toFixed(2)}</span>
               )}
             </div>
             <div className="relative">
               <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-sm">$</span>
               <input
                 type="number"
-                inputMode="numeric"
+                inputMode="decimal"
                 step="any"
+                min="0"
                 required
                 value={openingUsd}
                 onChange={(e) => setOpeningUsd(e.target.value)}
                 className="w-full bg-white border border-slate-300 focus:border-[#1e5c4f] rounded-xl py-2.5 pl-8 pr-3 text-slate-900 font-mono font-bold text-sm outline-none shadow-2xs"
-                placeholder="0.00"
+                placeholder="Enter actual USD count"
               />
             </div>
-            {!hasHandoverData && (
-              <div className="flex gap-1.5 mt-1.5">
-                {[50, 100, 150, 200].map((preset) => (
-                  <button
-                    key={preset}
-                    type="button"
-                    onClick={() => setOpeningUsd(String(preset))}
-                    className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg text-[11px] font-mono text-slate-700 font-bold transition"
-                  >
-                    +${preset}
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
 
           {/* Opening LBP */}
           <div>
             <div className="flex items-center justify-between mb-1">
               <label className="text-xs font-bold text-slate-700">
-                Opening Float (LBP LL)
+                Actual Opening Float (LBP LL) *
               </label>
               {effectivePrefillSource && effectivePrefillLbp != null && (
-                <span className="text-[10px] text-emerald-700 font-bold">From {effectivePrefillSource} Closing</span>
+                <span className="text-[10px] text-emerald-700 font-bold">Prev {effectivePrefillSource}: L.L. {effectivePrefillLbp.toLocaleString()}</span>
               )}
             </div>
             <div className="relative">
@@ -318,10 +298,12 @@ export const OpenShiftModal: React.FC<OpenShiftModalProps> = ({
                 type="number"
                 inputMode="numeric"
                 step="any"
+                min="0"
+                required
                 value={openingLbp}
                 onChange={(e) => setOpeningLbp(e.target.value)}
                 className="w-full bg-white border border-slate-300 focus:border-[#1e5c4f] rounded-xl py-2.5 pl-10 pr-3 text-slate-900 font-mono font-bold text-sm outline-none shadow-2xs"
-                placeholder="0"
+                placeholder="Enter actual LBP count (0 if none)"
               />
             </div>
           </div>
@@ -340,6 +322,7 @@ export const OpenShiftModal: React.FC<OpenShiftModalProps> = ({
               type="submit"
               disabled={
                 isSubmitting ||
+                !hasEnteredOpeningAmounts ||
                 (!isConceptDeliveryMode && (
                   statusLoading ||
                   Boolean(statusError) ||
@@ -347,7 +330,7 @@ export const OpenShiftModal: React.FC<OpenShiftModalProps> = ({
                   (effectiveAllowedShift === 'PM' && !effectiveIsPmEnabled)
                 ))
               }
-              className="flex-1 py-2.5 bg-[#1e5c4f] hover:bg-[#16473D] disabled:opacity-40 text-white font-black text-xs rounded-xl transition shadow-md cursor-pointer"
+              className="flex-1 py-2.5 bg-[#1e5c4f] hover:bg-[#16473D] disabled:opacity-40 disabled:cursor-not-allowed text-white font-black text-xs rounded-xl transition shadow-md cursor-pointer"
             >
               {isSubmitting ? 'Opening Shift...' : isConceptDeliveryMode ? `Open Shift for ${concept?.name || 'Concept'}` : 'Unlock Payments & Open'}
             </button>

@@ -689,7 +689,7 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
       const targetDate = overrideDate || date || (shift.date ? (shift.date.includes('T') ? shift.date.split('T')[0] : shift.date.split(' ')[0]) : new Date().toISOString().split('T')[0]);
       const targetShift = overrideShift || shiftType;
       if (!date && targetDate) setDate(targetDate);
-      const res = await getDailyPayments(branchName, targetDate, targetShift, activeShift?.concept_id || '00000000-0000-0000-0000-000000000001');
+      const res = await getDailyPayments(branchName, targetDate, targetShift, (shift as any)?.concept_id || '00000000-0000-0000-0000-000000000001');
       if (res.success && res.data) {
         const records = res.data;
         const isCashOut = (t: string) => t === 'CashOut' || t === 'Cashout Loan' || t === 'Cashout Bank' || t === 'Cashout Salary';

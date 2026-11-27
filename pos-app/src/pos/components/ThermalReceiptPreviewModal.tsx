@@ -490,15 +490,29 @@ export const ThermalReceiptPreviewModal: React.FC<Props> = ({ isOpen, onClose, d
   const conceptHeaderName = (activeTicketData?.concept_name || restoName).toUpperCase();
   const legalName = activeTicketData?.company_legal_name || (typeof window !== 'undefined' ? localStorage.getItem('flow_pos_company_legal_name') : null) || 'Neo Beirut S.A.L.';
   const mofNumber = activeTicketData?.mof_number || (typeof window !== 'undefined' ? localStorage.getItem('flow_pos_mof_number') : null) || '382910-601';
+  const previewConceptId = (activeTicketData as any)?.concept_id;
+  const previewConceptCode = (activeTicketData as any)?.concept_code;
+  const previewConceptName = activeTicketData?.concept_name;
+  const hasExplicitPreviewConcept = Boolean(previewConceptId || previewConceptCode || previewConceptName);
+  const isDefaultNeoPreview =
+    !hasExplicitPreviewConcept ||
+    previewConceptId === '00000000-0000-0000-0000-000000000001' ||
+    String(previewConceptCode || '').toUpperCase() === 'NEO' ||
+    String(previewConceptName || '').toUpperCase().startsWith('NÉO') ||
+    String(previewConceptName || '').toUpperCase().startsWith('NEO');
   const logoUrl =
-    activeTicketData?.logo_url ||
-    (typeof window !== 'undefined' && (activeTicketData as any)?.concept_id
-      ? localStorage.getItem(`flow_pos_concept_logo_${(activeTicketData as any).concept_id}`)
+    (typeof window !== 'undefined' && previewConceptId
+      ? localStorage.getItem(`flow_pos_concept_logo_${previewConceptId}`)
       : null) ||
-    (typeof window !== 'undefined' && (activeTicketData as any)?.concept_code
-      ? localStorage.getItem(`flow_pos_concept_logo_${String((activeTicketData as any).concept_code).toUpperCase()}`)
+    (typeof window !== 'undefined' && previewConceptCode
+      ? localStorage.getItem(`flow_pos_concept_logo_${String(previewConceptCode).toUpperCase()}`)
       : null) ||
-    (typeof window !== 'undefined' ? (localStorage.getItem('flow_pos_logo_url') || localStorage.getItem('flow_pos_restaurant_logo')) : null) ||
+    (activeTicketData?.logo_url && (isDefaultNeoPreview || !String(activeTicketData.logo_url).toLowerCase().includes('neobeirut.com'))
+      ? activeTicketData.logo_url
+      : '') ||
+    (isDefaultNeoPreview && typeof window !== 'undefined'
+      ? (localStorage.getItem('flow_pos_logo_url') || localStorage.getItem('flow_pos_restaurant_logo'))
+      : null) ||
     '';
   const exchangeRate = Number(activeTicketData?.exchange_rate || activeTicketData?.rate || 90000);
   const serverName = activeTicketData?.served_by || activeTicketData?.waiter_name || activeTicketData?.waiter || activeTicketData?.server_name || activeTicketData?.server || activeTicketData?.cashier_name || 'Staff';
