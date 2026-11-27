@@ -964,8 +964,12 @@ export async function openShift(params: OpenShiftParams): Promise<{ success: boo
       if (latest?.length && latest[0].status !== 'closed') return { success: false, error: 'The previous shift must be closed before PM can open.' };
     }
 
-    const handover = await loadShiftHandover(params.branchId || params.branchIdentifier, targetRestaurantId, undefined, params.conceptId);
-    if (handover.blocked) return { success: false, error: handoverMessage(handover) };
+    // Morning (AM) shift cannot open if any open tables or unscheduled open orders remain.
+    // Afternoon (PM) shift can open and accept open tables or orders carried over from AM.
+    if (defaultShift === 'AM') {
+      const handover = await loadShiftHandover(params.branchId || params.branchIdentifier, targetRestaurantId, undefined, params.conceptId);
+      if (handover.blocked) return { success: false, error: handoverMessage(handover) };
+    }
     if (defaultShift === 'AM' && eligibility.allowedShift !== 'AM') {
       return { success: false, error: "Today's AM shift is already closed. Open the PM shift instead." };
     }
@@ -1056,9 +1060,14 @@ export async function closeShift(params: CloseShiftParams): Promise<{ success: b
       String(savedShift.notes || '').includes('00000000-0000-0000-0000-000000000003') ? '00000000-0000-0000-0000-000000000003' :
       '00000000-0000-0000-0000-000000000001'
     );
-    const period = await loadShiftReportingPeriod(savedShift, await getDrawerTerminalAliases(savedShift.branch_id || params.branchId, savedShift.terminal_id));
-    const handover = await loadShiftHandover(savedShift.branch_id || params.branchId, savedShift.restaurant_id, period.endTime, resolvedConceptId);
-    if (handover.blocked && !isDeliveryConcept) return { success: false, error: handoverMessage(handover) };
+    const isAmShift = String(savedShift.shift || '').toUpperCase() === 'AM';
+    // At night (PM close), all open tables and unscheduled orders must be closed (only scheduled orders may remain open).
+    // Morning (AM) shift may close with open tables/orders so the afternoon (PM) shift can continue them.
+    if (!isDeliveryConcept && !isAmShift) {
+      const period = await loadShiftReportingPeriod(savedShift, await getDrawerTerminalAliases(savedShift.branch_id || params.branchId, savedShift.terminal_id));
+      const handover = await loadShiftHandover(savedShift.branch_id || params.branchId, savedShift.restaurant_id, period.endTime, resolvedConceptId);
+      if (handover.blocked) return { success: false, error: handoverMessage(handover) };
+    }
 
     const updatePayload: any = {
       status: 'closed',

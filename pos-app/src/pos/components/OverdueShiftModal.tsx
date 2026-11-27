@@ -43,8 +43,9 @@ export const OverdueShiftModal: React.FC<OverdueShiftModalProps> = ({
     return () => { cancelled = true; };
   }, [isOpen, shift?.id, refresh]);
   if (!isOpen || !shift) return null;
+  const isAmShift = String(shift.shift || '').toUpperCase() === 'AM';
   const holdAllowed = canHoldPreviousPm(shift);
-  const blocked = checking || Boolean(checkError) || !handover || handover.blocked;
+  const blocked = !isAmShift && (checking || Boolean(checkError) || !handover || handover.blocked);
 
   // Formatting helpers
   const shiftDate = shift.date ? (shift.date.includes('T') ? shift.date.split('T')[0] : shift.date.split(' ')[0]) : 'Previous Day';
@@ -166,7 +167,7 @@ export const OverdueShiftModal: React.FC<OverdueShiftModalProps> = ({
                 <button onClick={onResolveOrders} className="px-3.5 py-2 rounded-xl bg-[#1e5c4f] hover:bg-[#16473D] text-white font-black text-xs cursor-pointer shadow-xs">Open Orders</button>
                 <button onClick={() => setRefresh(n => n + 1)} className="px-3.5 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold text-xs cursor-pointer">Recheck</button>
               </div>
-              <p className="text-xs text-slate-500">Resolve existing orders in the previous shift. A new shift cannot open yet. Scheduled orders may stay open whether paid or unpaid.</p>
+              <p className="text-xs text-slate-500">Close all open tables and unscheduled orders before closing or holding the night shift. Scheduled orders may stay open whether paid or unpaid.</p>
             </div>
           ) : mode === 'CHOICE' ? (
             <div className="space-y-3">

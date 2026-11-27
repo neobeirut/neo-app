@@ -26,7 +26,7 @@ export async function loadShiftHandover(
   
   if (!isDeliveryConcept) {
     for (let offset = 0; ; offset += 500) {
-      let q = supabase.from('pos_table_sessions').select('id,table_code,commerce_order_id,status').eq('restaurant_id', restaurantId)
+      let q = supabase.from('pos_table_sessions').select('id,commerce_order_id,status').eq('restaurant_id', restaurantId)
         .in('branch_id', branches).in('status', ['opening', 'occupied', 'bill_requested', 'closing']).order('id').range(offset, offset + 499);
       if (beforeTime) q = q.lt('opened_at', beforeTime);
       const { data, error } = await q;
@@ -40,5 +40,5 @@ export async function loadShiftHandover(
 }
 
 export function handoverMessage(state: Awaited<ReturnType<typeof loadShiftHandover>>) {
-  return `Close ${state.tables.length} open table(s) and ${state.blocking.length} unscheduled order(s) before closing or holding the previous shift or opening a new shift. Scheduled orders may remain open, paid or unpaid.`;
+  return `Close ${state.tables.length} open table(s) and ${state.blocking.length} unscheduled order(s) before closing the PM shift or opening the AM shift. Scheduled orders may remain open, paid or unpaid.`;
 }

@@ -177,13 +177,14 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
   const unpaidTables = useMemo(() => openTables.filter(t => !t.isPaidInAdvance), [openTables]);
   const unpaidOrders = useMemo(() => openOrders.filter(o => !o.isPaidInAdvance && !isFutureScheduled(o, shiftReportingPeriod(s).day)), [openOrders]);
   const unpaidCount = unpaidTables.length + unpaidOrders.length;
+  const pmBlockedByOpenEntities = shiftType === 'PM' && (openTables.length > 0 || openOrders.length > 0 || preparation.blocking.length > 0);
   const [checkingEntities, setCheckingEntities] = useState<boolean>(false);
   const [quickSettleLoading, setQuickSettleLoading] = useState<string | null>(null);
   const [creditPromptTarget, setCreditPromptTarget] = useState<{ type: 'table' | 'order'; id: string | number; orderId?: number; label: string; defaultName: string } | null>(null);
   const [creditPromptName, setCreditPromptName] = useState<string>('');
 
-  // Open Entities Popup state
-  const [showOpenEntitiesPopup, setShowOpenEntitiesPopup] = useState(true);
+  // Open Entities Popup state (auto-shown only for PM shift when blocking tables/orders exist)
+  const [showOpenEntitiesPopup, setShowOpenEntitiesPopup] = useState(false);
 
   // Financial Inputs (Mobile App ShiftCashScreen parity)
   const [salesLbp, setSalesLbp] = useState<string>('');
@@ -234,10 +235,14 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
   const [activeKeypadField, setActiveKeypadField] = useState<string>('actualUsd');
   const [numpadField, setNumpadField] = useState<{ label: string; value: string; setter: (v: string) => void } | null>(null);
 
-  // Auto-dismiss open entities popup when no open entities
+  // Auto-open popup only for PM shift when open tables/orders must be closed; auto-dismiss when none remain
   useEffect(() => {
-    if (openTables.length === 0 && openOrders.length === 0) setShowOpenEntitiesPopup(false);
-  }, [openTables, openOrders]);
+    if (openTables.length === 0 && openOrders.length === 0) {
+      setShowOpenEntitiesPopup(false);
+    } else if (shiftType === 'PM') {
+      setShowOpenEntitiesPopup(true);
+    }
+  }, [openTables, openOrders, shiftType]);
 
   // 1. Check Open Entities (Tables & Orders) and Calculate Shift Sales & On-Account
   const checkOpenEntitiesAndSales = async (currentRateVal: number, preloadedOrders?: any[]) => {
@@ -358,6 +363,7 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
       }
       if (ordersError) throw new Error(ordersError.message);
 
+      const activeTableOrderIds = new Set(formattedTables.map((t: any) => t.orderId).filter(Boolean));
       const activeOrders = (ordersData || []).filter((o: any) => {
         if (externalBranchId) {
           return [branchId, externalBranchId].filter(Boolean).map(String).includes(String(o.branch_id));
@@ -367,7 +373,11 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
         ...o,
         isPaidInAdvance: isOrderPaidInAdvance(o)
       }));
-      setOpenOrders(activeOrders.filter((o: any) => !isScheduledCarryover(o)));
+      setOpenOrders(activeOrders.filter((o: any) =>
+        !isScheduledCarryover(o) &&
+        !activeTableOrderIds.has(o.id) &&
+        !(typeof o.table_label === 'string' && o.table_label.trim().length > 0)
+      ));
 
 
       // 4. Compute Shift Sales (LBP) and On-Account (Receivables LBP)
@@ -930,16 +940,21 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
     if (isFinalizing) return;
     setIsFinalizing(true);
 
-    try {
-      const rows = await loadPreparingOrders(shift?.branch_id || branchId, externalBranchId, shift?.restaurant_id, (await loadShiftReportingPeriod(s, await getDrawerTerminalAliases(s.branch_id || branchId, s.terminal_id || terminalId))).endTime);
-      setPreparingOrders(rows);
-      setPreparingCheckError(null);
+    const isAmShift = String(s.shift || shiftType).toUpperCase() === 'AM';
+    if (!isAmShift) {
+      try {
+        const aliases = await getDrawerTerminalAliases(s.branch_id || branchId, s.terminal_id || terminalId);
+        const period = await loadShiftReportingPeriod(s, aliases);
+        const rows = await loadPreparingOrders(shift?.branch_id || branchId, externalBranchId, shift?.restaurant_id, period.endTime, s.concept_id);
+        setPreparingOrders(rows);
+        setPreparingCheckError(null);
 
-      const handover = await loadShiftHandover(s.branch_id || branchId, s.restaurant_id, (await loadShiftReportingPeriod(s, await getDrawerTerminalAliases(s.branch_id || branchId, s.terminal_id || terminalId))).endTime);
-      if (handover.blocked) { setErrorMessage(handoverMessage(handover)); setIsFinalizing(false); return; }
-    } catch (error: any) {
-      setPreparingCheckError(error.message); setErrorMessage('Cannot verify open tables and orders. Retry before closing.');
-      setIsFinalizing(false); return;
+        const handover = await loadShiftHandover(s.branch_id || branchId, s.restaurant_id, period.endTime, s.concept_id);
+        if (handover.blocked) { setErrorMessage(handoverMessage(handover)); setIsFinalizing(false); return; }
+      } catch (error: any) {
+        setPreparingCheckError(error.message); setErrorMessage('Cannot verify open tables and orders. Retry before closing.');
+        setIsFinalizing(false); return;
+      }
     }
 
     if (varianceCheck.requiresManagerApproval && !managerName) {
@@ -1368,8 +1383,14 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
                     <AlertTriangle size={20} />
                   </div>
                   <div>
-                    <div className="font-black text-base text-slate-900">Close Open Tables & Unscheduled Orders</div>
-                    <div className="text-xs text-slate-500">Paid tables must still be closed. Scheduled orders may remain open.</div>
+                    <div className="font-black text-base text-slate-900">
+                      {shiftType === 'AM' ? 'Open Tables & Orders (Carryover to PM)' : 'Close Open Tables & Unscheduled Orders'}
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      {shiftType === 'AM'
+                        ? 'You can close the AM shift now — open tables and orders will carry over to the PM shift.'
+                        : 'All open tables (even paid) and unscheduled orders must be closed at night. Scheduled orders may remain open.'}
+                    </div>
                   </div>
                 </div>
                 <button
@@ -2137,26 +2158,30 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
             )}
 
             <div role="status" className="text-xs text-amber-800 font-bold hidden sm:inline truncate max-w-xs">
-              {checkingPreparation ? 'Checking preparing orders…' : preparingCheckError ? `⚠️ ${preparingCheckError}` : preparation.pending.length > 0 ? (
-                <span><strong>{preparation.pending.length} preparing/paid.</strong></span>
+              {checkingPreparation ? 'Checking preparing orders…' : preparingCheckError ? `⚠️ ${preparingCheckError}` : preparation.blocking.length > 0 ? (
+                <span><strong>{preparation.blocking.length} preparing/paid.</strong></span>
               ) : null}
             </div>
           </div>
 
           <div className="flex items-center gap-3">
-            {(openTables.length > 0 || openOrders.length > 0) && (
+            {pmBlockedByOpenEntities ? (
               <span className="text-xs text-rose-700 font-black hidden sm:inline">
-                ⚠️ Close open tables & orders first
+                ⚠️ Close all open tables & unscheduled orders first
               </span>
-            )}
+            ) : shiftType === 'AM' && (openTables.length > 0 || openOrders.length > 0) ? (
+              <span className="text-xs text-amber-700 font-bold hidden sm:inline">
+                ℹ️ {openTables.length} table{openTables.length !== 1 ? 's' : ''} & {openOrders.length} order{openOrders.length !== 1 ? 's' : ''} will carry over to PM
+              </span>
+            ) : null}
 
             <button
               type="button"
-              disabled={isFinalizing || checkingPreparation || Boolean(preparingCheckError) || (shiftType === 'PM' && unpaidCount > 0) || (varianceCheck.requiresManagerApproval && !managerName)}
+              disabled={isFinalizing || (shiftType === 'PM' && (checkingPreparation || Boolean(preparingCheckError) || pmBlockedByOpenEntities)) || (varianceCheck.requiresManagerApproval && !managerName)}
               onClick={handleFinalizeClose}
               title={
-                shiftType === 'PM' && unpaidCount > 0
-                  ? 'All tables and unscheduled orders must be closed. Scheduled orders may remain open.'
+                pmBlockedByOpenEntities
+                  ? 'All open tables and unscheduled orders must be closed at night. Scheduled orders may remain open.'
                   : varianceCheck.requiresManagerApproval && !managerName
                   ? 'Manager authorization PIN required'
                   : undefined
