@@ -1253,6 +1253,8 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
     return false;
   }, [activeTableContext, ticketItems]);
 
+  const billPrintedKeysRef = useRef<Set<string>>(new Set());
+
   const isCurrentTableBillRequested = useMemo(() => {
     if (!activeTableContext) return false;
     const match = branchFloorTables.find(t => t.table_code === activeTableContext.tableCode);
@@ -3910,6 +3912,11 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
 
       await handlePrint(preCheckPayload);
 
+      // Mark bill as already printed so settling/closing does not reprint
+      if (ord?.id) billPrintedKeysRef.current.add(`order:${ord.id}`);
+      if (table.current_session_id) billPrintedKeysRef.current.add(`session:${table.current_session_id}`);
+      if (table.table_code) billPrintedKeysRef.current.add(`table:${table.table_code}`);
+
       // Transition table session to bill_requested
       if (table.current_session_id) {
         await requestBill(table.current_session_id);
@@ -3998,6 +4005,11 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       };
 
       await handlePrint(preCheckPayload);
+
+      // Mark bill as already printed so settling/closing does not reprint
+      if (orderId) billPrintedKeysRef.current.add(`order:${orderId}`);
+      if (activeTableContext?.sessionId) billPrintedKeysRef.current.add(`session:${activeTableContext.sessionId}`);
+      if (tableCode) billPrintedKeysRef.current.add(`table:${tableCode}`);
 
       // Transition session to bill_requested
       if (activeTableContext?.sessionId) {
@@ -4995,10 +5007,24 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       }).catch(pe => console.warn("Build preparation print jobs warning on checkout:", pe));
     }
 
-    // Print customer receipt asynchronously — skip for Toters and NokNok aggregator orders
-    if (!isAggregator) {
+    const wasBillAlreadyPrinted = Boolean(
+      isCurrentTableBillRequested ||
+      (completedOrderId && billPrintedKeysRef.current.has(`order:${completedOrderId}`)) ||
+      (settledSessionId && billPrintedKeysRef.current.has(`session:${settledSessionId}`)) ||
+      (settledTableCode && billPrintedKeysRef.current.has(`table:${settledTableCode}`)) ||
+      ordersQueue.some((o: any) =>
+        String(o.id) === String(completedOrderId) &&
+        (o.status === 'bill_requested' || String(o.special_instructions || '').includes('[BILL_PRINTED]'))
+      )
+    );
+
+    // Print customer receipt asynchronously — skip for Toters/NokNok aggregators and orders already printed via Print Bill (Keep Open)
+    if (!isAggregator && !wasBillAlreadyPrinted) {
       handlePrint(completedOrderData).catch(pErr => console.warn("Receipt print warning:", pErr));
     }
+    if (completedOrderId) billPrintedKeysRef.current.delete(`order:${completedOrderId}`);
+    if (settledSessionId) billPrintedKeysRef.current.delete(`session:${settledSessionId}`);
+    if (settledTableCode) billPrintedKeysRef.current.delete(`table:${settledTableCode}`);
     setLastCompletedOrder(completedOrderData);
     updateTableFireCount(currentTableKey, 0);
 
