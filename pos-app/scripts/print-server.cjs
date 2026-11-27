@@ -441,9 +441,13 @@ async function formatCustomerBill(json, paperWidth = 80) {
     out += headerBrandName + '\n' + NORMAL;
   }
 
+  const isReprint = json.is_reprint === true || String(json.title || '').toUpperCase().includes('REPRINT');
   out += divider('=', W);
   out += BOLD_ON + DOUBLE_SIZE;
-  out += isPreCheck ? 'GUEST CHECK\n' : 'RECEIPT\n';
+  out += isPreCheck ? 'GUEST CHECK\n' : (isReprint ? 'REPRINTED\n' : 'RECEIPT\n');
+  if (isReprint && !isPreCheck) {
+    out += NORMAL + BOLD_ON + '*** REPRINTED RECEIPT ***\n';
+  }
   out += NORMAL + divider('=', W);
 
   out += ALIGN_LEFT;

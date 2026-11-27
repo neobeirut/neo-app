@@ -676,8 +676,9 @@ export async function buildMainBillPrintJob(params: {
 
   const payload = {
     isPreCheck: isPre,
+    is_reprint: Boolean(ord.is_reprint),
     isCustomerBill: true,
-    title: conceptTitle,
+    title: ord.is_reprint ? '*** REPRINTED RECEIPT ***' : conceptTitle,
     concept_id: ord.concept_id,
     concept_code: ord.concept_code,
     concept_name: ord.concept_name || params.conceptBranding?.conceptName,

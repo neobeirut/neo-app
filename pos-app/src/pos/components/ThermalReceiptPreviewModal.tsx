@@ -1109,7 +1109,11 @@ export const ThermalReceiptPreviewModal: React.FC<Props> = ({ isOpen, onClose, d
                         <h1 className="text-xl font-black tracking-wider text-black">{restoName}</h1>
                       )}
                       <div className="text-[13px] font-bold text-slate-800 mt-1">
-                        {activeTicketData.isPreCheck ? '*** GUEST CHECK / BILL ***' : '*** RECEIPT ***'}
+                        {activeTicketData.isPreCheck
+                          ? '*** GUEST CHECK / BILL ***'
+                          : (activeTicketData as any).is_reprint || String(activeTicketData.title || '').toUpperCase().includes('REPRINT')
+                            ? '*** REPRINTED RECEIPT ***'
+                            : '*** RECEIPT ***'}
                       </div>
                     </div>
 

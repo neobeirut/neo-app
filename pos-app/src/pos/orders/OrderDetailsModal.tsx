@@ -593,7 +593,13 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
         <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-2 flex-wrap">
           {/* Left Actions: Print / Reprint & Open in Ticket */}
           <div className="flex items-center gap-2 flex-wrap">
-            {onReprintKitchen && !order.isMigration && (
+            {(() => {
+              const isCompletedOrder =
+                order.statusGroup === 'COMPLETED' ||
+                ['completed', 'paid', 'closed', 'delivered'].includes(String(order.rawStatus || '').toLowerCase());
+              return (
+                <>
+            {onReprintKitchen && !order.isMigration && !isCompletedOrder && (
               <button
                 type="button"
                 onClick={async () => {
@@ -616,17 +622,17 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
                 type="button"
                 onClick={() => {
                   onReprint(order);
-                  setDispatchSuccessMsg('Customer receipt sent to printer ✓');
+                  setDispatchSuccessMsg(isCompletedOrder ? 'Reprinted receipt sent to printer ✓' : 'Customer receipt sent to printer ✓');
                   setTimeout(() => setDispatchSuccessMsg(null), 2500);
                 }}
                 className="px-3.5 py-2.5 bg-white hover:bg-slate-100 text-slate-800 hover:text-slate-950 rounded-xl text-xs font-extrabold transition flex items-center gap-1.5 border border-slate-300 shadow-xs cursor-pointer"
               >
                 <span>🖨️</span>
-                <span>Print Receipt</span>
+                <span>{isCompletedOrder ? 'Reprint Receipt' : 'Print Receipt'}</span>
               </button>
             )}
 
-            {onOpenInTicket && !isCancelled && !order.isMigration && (
+            {onOpenInTicket && !isCancelled && !isCompletedOrder && !order.isMigration && (
               <button
                 type="button"
                 onClick={() => {
@@ -643,6 +649,9 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
                 <span>{order.isTableOrder ? 'Open Table in POS' : 'Open in Ticket'}</span>
               </button>
             )}
+                </>
+              );
+            })()}
 
             {/* Delivery Driver Dispatch Trigger Button */}
             {order.orderType === 'delivery' && !isCancelled && !order.isMigration && order.statusGroup !== 'COMPLETED' && (
@@ -782,7 +791,7 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
               </button>
             )}
 
-            {onTakePayment && order.paymentStatus !== 'paid' && order.paymentStatus !== 'paid_legacy' && order.statusGroup !== 'CANCELLED' && (
+            {onTakePayment && order.paymentStatus !== 'paid' && order.paymentStatus !== 'paid_legacy' && order.statusGroup !== 'CANCELLED' && order.statusGroup !== 'COMPLETED' && (
               <button
                 type="button"
                 onClick={() => {

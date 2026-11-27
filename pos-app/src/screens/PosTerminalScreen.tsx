@@ -5302,18 +5302,25 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
 
     const orderData = {
       id: order.id,
+      is_reprint: true,
+      title: '*** REPRINTED RECEIPT ***',
       concept_id: order.concept_id || workspaceState.activeConcept?.id,
       invoice_number: order.invoice_number,
       invoice_series: order.invoice_series,
       order_source: order.order_source || "POS",
       order_type: order.order_type || "pickup",
       payment_method: order.payment_method || "Cash",
+      table_label: order.table_label || order.table_code || undefined,
+      table_code: order.table_code || order.table_label || undefined,
+      guest_count: order.guest_count || 1,
+      waiter_name: order.waiter_name || order.cashier_name || "Staff",
       customer_name: order.customer_name || "",
       customer_phone: order.customer_phone || "",
       delivery_address: order.delivery_address || "",
       subtotal_amount: order.subtotal_amount || 0,
       delivery_fee: order.delivery_fee || 0,
       discount_amount: order.discount_amount || 0,
+      vat_amount: order.vat_amount || 0,
       total_amount: order.total_amount || 0,
       printRequestId: `reprint_${Date.now()}`,
       items: rawItems.map((i) => {
@@ -5764,6 +5771,14 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                     alert("This order is canceled and cannot be edited or modified.");
                     return;
                   }
+                  const isOrderCompleted =
+                    order.statusGroup === 'COMPLETED' ||
+                    ['completed', 'paid', 'closed', 'delivered'].includes(String(order.rawStatus || '').toLowerCase()) ||
+                    ['completed', 'paid', 'closed', 'delivered'].includes(String(order.rawOrder?.status || '').toLowerCase());
+                  if (isOrderCompleted) {
+                    alert("This order is already completed and cannot be edited or modified. Use Reprint Receipt to print a copy.");
+                    return;
+                  }
                   loadOrderToTicket(order.rawOrder, order.channel);
                   if (order.isTableOrder) {
                     const tableCode = order.tableLabel || (order.customerName ? order.customerName.replace(/^Table\s*/i, '') : '1');
@@ -5840,6 +5855,14 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                     ['cancelled', 'canceled', 'voided'].includes(String(order.rawOrder?.status || '').toLowerCase());
                   if (isOrderCancelled) {
                     alert("This order is canceled and cannot be settled.");
+                    return;
+                  }
+                  const isOrderCompleted =
+                    order.statusGroup === 'COMPLETED' ||
+                    ['completed', 'paid', 'closed', 'delivered'].includes(String(order.rawStatus || '').toLowerCase()) ||
+                    ['completed', 'paid', 'closed', 'delivered'].includes(String(order.rawOrder?.status || '').toLowerCase());
+                  if (isOrderCompleted) {
+                    alert("This order is already completed and cannot be closed again.");
                     return;
                   }
                   if (!isShiftOpen) {
