@@ -45,6 +45,32 @@ body,
   -webkit-user-select: none;
 }
 
+/* Adaptive root font-size for POS touchscreen monitors (1024x768, 1280x720, 1366x768)
+   Scales all Tailwind rem spacing/fonts cleanly at 100% browser zoom without CSS zoom clipping bugs */
+@media (max-width: 1366px), (max-height: 768px) {
+  html {
+    font-size: 14px;
+  }
+}
+@media (max-width: 1180px), (max-height: 680px) {
+  html {
+    font-size: 13px;
+  }
+}
+@media (max-width: 1024px) and (max-height: 620px) {
+  html {
+    font-size: 12px;
+  }
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
 /* Custom scrollbars for clean light UI */
 ::-webkit-scrollbar {
   width: 6px;

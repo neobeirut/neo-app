@@ -19,8 +19,9 @@ import SOPsScreen from './screens/SOPsScreen';
 import SOPFormScreen from './screens/SOPFormScreen';
 import PrinterManagementScreen from './screens/pos/PrinterManagementScreen';
 import ItemRecipesReportScreen from './screens/ItemRecipesReportScreen';
-import { LayoutDashboard, BarChart3, ChefHat, Users, LogOut, DollarSign, Shield, BookOpen, TrendingUp, MessageSquare, Newspaper, AlertTriangle, Sparkles, Trash2, History, Coins, Truck, ShoppingBag, ShoppingCart, Calendar, ClipboardList, Package, CheckSquare, Receipt, Briefcase, Store, ChevronDown, ChevronRight, Clock, Target, Layers, Download, Sliders, FileText, Gift, Lock, Flame, Settings, Building2, Printer, FileSpreadsheet, Database, Bot } from 'lucide-react';
+import { LayoutDashboard, BarChart3, ChefHat, Users, LogOut, DollarSign, Shield, BookOpen, TrendingUp, MessageSquare, Newspaper, AlertTriangle, Sparkles, Trash2, History, Coins, Truck, ShoppingBag, ShoppingCart, Calendar, ClipboardList, Package, CheckSquare, Receipt, Briefcase, Store, ChevronDown, ChevronRight, Clock, Target, Layers, Download, Sliders, FileText, Gift, Lock, Flame, Settings, Building2, Printer, FileSpreadsheet, Database, Bot, Activity } from 'lucide-react';
 import SalesAnalyticsScreen from './screens/SalesAnalyticsScreen';
+import LiveDailyTransactionsScreen from './screens/LiveDailyTransactionsScreen';
 import { api, hasAdminAccess } from './api/client';
 import { supabase } from './api/supabase';
 import { usePWA } from './hooks/usePWA';
@@ -136,6 +137,7 @@ import ConceptSelector from './components/common/ConceptSelector';
       {
         name: 'Company Finance',
         items: [
+          { to: '/live-daily-report', label: 'Live Daily Transactions', icon: <Activity size={18} />, key: 'live_daily_report' },
           { to: '/finance', label: 'Central Finance Dashboard', icon: <TrendingUp size={18} />, visible: canAccess('finance', !!permissions?.can_view_finance_dashboard), key: 'finance' },
           { to: '/finance/multi-concept?tab=consolidated', label: 'Consolidated Financial Reports', icon: <DollarSign size={18} />, visible: canAccess('finance', !!permissions?.can_view_finance_dashboard), key: 'multi_concept_financial' },
           { to: '/purchasing', label: 'Supplier Invoices & Payments', icon: <Truck size={18} />, visible: canAccess('purchasing', permissions?.can_create_purchasing !== false || permissions?.can_receive_purchasing !== false), key: 'purchasing' },
@@ -179,6 +181,7 @@ import ConceptSelector from './components/common/ConceptSelector';
           { to: '/pos', label: 'Point of Sale (POS)', icon: <Store size={18} />, key: 'pos_terminal', externalHref: '/new/pos' },
           { to: '/86', label: '86 Missing Items', icon: <AlertTriangle size={18} />, visible: canAccess('missing_items', permissions?.can_view_86 !== false || permissions?.can_manage_86 !== false), key: 'missing_items' },
           { to: '/crm/products', label: 'Menu Products', icon: <ShoppingBag size={18} />, key: 'crm_products' },
+          { to: '/live-daily-report', label: 'Live Daily Transactions', icon: <Activity size={18} />, key: 'pos_live_daily_report' },
           { to: '/pos/orders-history', label: 'Order History & Channels', icon: <History size={18} />, key: 'orders_history' },
           { to: '/orders', label: 'Branch Orders', icon: <ShoppingBag size={18} />, visible: canAccess('orders', permissions?.can_create_orders !== false || permissions?.can_receive_orders !== false), key: 'orders' },
           { to: '/client-orders', label: 'Client Orders', icon: <Briefcase size={18} />, visible: canAccess('client_orders', !!permissions?.can_view_client_orders), key: 'client_orders' },
@@ -607,6 +610,7 @@ function MainLayout({ user, onLogout, onUpdateUser }: { user: any; onLogout: () 
                 />
               } 
             />
+            <Route path="/live-daily-report" element={<LiveDailyTransactionsScreen user={user} permissions={permissions} />} />
             <Route path="/concept-performance/sales-analytics" element={<SalesAnalyticsScreen user={user} permissions={permissions} />} />
             <Route path="/pos/orders-history" element={<UnifiedOrderHistoryScreen user={user} permissions={permissions} />} />
             <Route path="/orders/history" element={<UnifiedOrderHistoryScreen user={user} permissions={permissions} />} />

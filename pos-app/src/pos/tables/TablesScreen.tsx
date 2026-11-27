@@ -217,8 +217,31 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
       refreshOrders();
     };
 
+    const handleOrderCreatedOrUpdated = (e: any) => {
+      const { tableCode, tableId, orderId } = e.detail || {};
+      let removedAny = false;
+      if (tableCode) {
+        const upper = String(tableCode).toUpperCase();
+        if (settledKeysRef.current.delete(upper)) removedAny = true;
+        if (settledKeysRef.current.delete(upper.replace(/^T/, ''))) removedAny = true;
+      }
+      if (orderId && settledKeysRef.current.delete(`order-${orderId}`)) removedAny = true;
+      if (tableId && settledKeysRef.current.delete(`table-${tableId}`)) removedAny = true;
+      if (removedAny) {
+        setSettledKeys(new Set(settledKeysRef.current));
+      }
+      fetchState();
+      refreshOrders();
+    };
+
     window.addEventListener('flow:table_settled', handleTableSettled);
-    return () => window.removeEventListener('flow:table_settled', handleTableSettled);
+    window.addEventListener('flow:order_created', handleOrderCreatedOrUpdated);
+    window.addEventListener('flow:table_transferred', handleOrderCreatedOrUpdated);
+    return () => {
+      window.removeEventListener('flow:table_settled', handleTableSettled);
+      window.removeEventListener('flow:order_created', handleOrderCreatedOrUpdated);
+      window.removeEventListener('flow:table_transferred', handleOrderCreatedOrUpdated);
+    };
   }, [branchId, fetchState, refreshOrders]);
 
   const openTableOrders = useMemo(() => {

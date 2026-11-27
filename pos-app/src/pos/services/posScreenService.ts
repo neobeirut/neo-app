@@ -64,33 +64,33 @@ export function calculateDynamicGrid(
 export function getGridButtonDensity(cols: number, rows: number) {
   if (cols >= 7 || rows >= 7) {
     return {
-      padding: 'p-2',
-      fontSize: 'text-xs md:text-sm',
-      minHeight: 'min-h-[60px]',
-      gap: '0.45rem'
+      padding: 'p-1.5',
+      fontSize: 'text-[11px] lg:text-xs xl:text-sm',
+      minHeight: 'min-h-0',
+      gap: '0.35rem'
     };
   }
   if (cols >= 6 || rows >= 6) {
     return {
-      padding: 'p-2.5',
-      fontSize: 'text-sm md:text-base lg:text-[17px]',
-      minHeight: 'min-h-[72px]',
-      gap: '0.55rem'
+      padding: 'p-1.5 sm:p-2',
+      fontSize: 'text-xs lg:text-sm xl:text-[15px]',
+      minHeight: 'min-h-0',
+      gap: '0.4rem'
     };
   }
   if (cols >= 5) {
     return {
-      padding: 'p-3',
-      fontSize: 'text-base md:text-lg lg:text-xl',
-      minHeight: 'min-h-[82px]',
-      gap: '0.65rem'
+      padding: 'p-2',
+      fontSize: 'text-sm lg:text-base xl:text-lg',
+      minHeight: 'min-h-0',
+      gap: '0.45rem'
     };
   }
   return {
-    padding: 'p-3.5',
-    fontSize: 'text-lg md:text-xl lg:text-2xl',
-    minHeight: 'min-h-[92px]',
-    gap: '0.75rem'
+    padding: 'p-2 sm:p-2.5',
+    fontSize: 'text-sm lg:text-lg xl:text-xl',
+    minHeight: 'min-h-0',
+    gap: '0.5rem'
   };
 }
 

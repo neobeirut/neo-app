@@ -102,7 +102,7 @@ import {
   reversePosOrderInventory,
   resolveCanonicalSalesChannel
 } from "../pos/services/posOrderService";
-import { enqueueSyncTask } from "../pos/services/posBackgroundSyncService";
+import { enqueueSyncTask, executeHoldSyncNow } from "../pos/services/posBackgroundSyncService";
 
 
 const FAVORITE_PRODUCT_NAMES = [
@@ -2224,7 +2224,12 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
           undefined,
           workspaceState.activeConcept.id
         );
-        if (!cancelled) setPreparingOrderCount(rows.length);
+        const nonTableOrders = rows.filter((r: any) => {
+          const hasTableLabel = typeof r.table_label === 'string' && r.table_label.trim().length > 0;
+          const status = String(r.status || '').toLowerCase();
+          return !hasTableLabel && status !== 'occupied' && status !== 'bill_requested';
+        });
+        if (!cancelled) setPreparingOrderCount(nonTableOrders.length);
       } catch { if (!cancelled) setPreparingOrderCount(null); }
     };
     void refresh();
@@ -4475,6 +4480,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
   };
 
   const handleHoldOrder = async (scheduleOverrides?: { scheduledDate?: string; scheduledTime?: string; scheduledNote?: string }) => {
+    if (isSubmitting) return;
     if (isOverdueShift) {
       setIsOverdueModalOpen(true);
       return;
@@ -4488,212 +4494,226 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       return;
     }
 
-    if (scheduleOverrides) {
-      if (scheduleOverrides.scheduledDate) setScheduledOrderDate(scheduleOverrides.scheduledDate);
-      if (scheduleOverrides.scheduledTime !== undefined) setScheduledOrderTime(scheduleOverrides.scheduledTime);
-      if (scheduleOverrides.scheduledNote !== undefined) setScheduledOrderNote(scheduleOverrides.scheduledNote);
-    }
-    const effScheduledTime = scheduleOverrides?.scheduledTime !== undefined ? scheduleOverrides.scheduledTime : scheduledOrderTime;
-    const effScheduledDate = scheduleOverrides?.scheduledDate !== undefined ? scheduleOverrides.scheduledDate : scheduledOrderDate;
-    const effScheduledNote = scheduleOverrides?.scheduledNote !== undefined ? scheduleOverrides.scheduledNote : scheduledOrderNote;
-
-    const isDineIn = Boolean(activeTableContext);
-    const isPickup = orderType === "pickup" || (selectedChannel || "").toLowerCase().includes("pick");
-    const defaultCustomer = isDineIn
-      ? `Table ${activeTableContext?.tableCode}`
-      : isPickup
-      ? "Pickup Customer"
-      : "Direct Order";
-    const resolvedCustomerName = customerName.trim() || defaultCustomer;
-    const heldOrderId = activeTableContext?.orderId || editingOrderId;
-    const capturedContext = activeTableContext;
-
-    const orderPayload = {
-      branch_id: COMMERCE_API_BASE ? commerceBranchLink?.external_branch_id : (currentBranchId || commerceBranchLink?.flow_branch_id),
-      restaurant_id: currentRestaurantId,
-      concept_id: workspaceState.activeConcept.id,
-      client_order_token: clientOrderToken,
-      orderType: isDineIn ? "dine_in" : (orderType || "takeout"),
-      service_type: isDineIn ? "dine_in" : undefined,
-      table_label: activeTableContext ? activeTableContext.tableCode : undefined,
-      guest_count: activeTableContext ? (activeTableContext.guestCount || 1) : undefined,
-      waiter_reference: activeTableContext ? (activeTableContext.waiterName || user?.name) : (activeCashier?.name || user?.name),
-      cashierName: activeCashier?.name || user?.name || "Cashier",
-      orderSource: selectedChannel || "POS",
-      paymentMethod: selectedPaymentMethod || "Cash USD",
-      payment_status: "pending",
-      customerName: resolvedCustomerName,
-      customerPhone,
-      deliveryAddress,
-      status: isDineIn ? "held" : "preparing",
-      subtotal,
-      deliveryFee: (!isDineIn && orderType === "delivery") ? (Number(deliveryFee) || 0) : 0,
-      discountAmount,
-      is_vat_subscribed: isVatSubscribed,
-      vat_rate: isVatSubscribed ? vatRate : 0,
-      vat_amount: vatAmount,
-      total,
-      is_scheduled: Boolean(effScheduledTime),
-      scheduled_for: effScheduledTime ? `${effScheduledDate} ${effScheduledTime}` : undefined,
-      scheduled_time_display: effScheduledTime ? formatScheduledTimeDisplay(effScheduledDate, effScheduledTime) : undefined,
-      scheduled_note: effScheduledNote || undefined,
-      scheduled_notes: effScheduledNote || undefined,
-      items: ticketItems.map((item) => ({
-        line_item_id: item.line_item_id,
-        product_id: item.product_id,
-        name: item.name,
-        quantity: item.qty,
-        qty: item.qty,
-        unit_price: item.unit_price,
-        unit_price_usd: item.unit_price,
-        price: item.unit_price,
-        total_price: Number(item.unit_price || 0) * Number(item.qty || 1),
-        customizations: item.selectedCustomizations || [],
-        comment: item.note,
-        is_custom_item: Boolean(item.is_custom_item || String(item.product_id).startsWith('custom_') || String(item.name || '').toUpperCase().startsWith('DIVERS')),
-        item_added_by: item.item_added_by || activeCashier?.name || user?.name || "Cashier",
-        item_added_by_id: item.item_added_by_id || activeCashier?.id || user?.id || null
-      }))
-    };
-
-    // Extract unprinted items for intelligent section printers
-    const unprintedItems: any[] = [];
-    for (const it of ticketItems) {
-      if (isCourseHoldItem(it)) continue;
-      const orig = Number(it.originalQty || 0);
-      if (!it.isOrdered || orig === 0) {
-        unprintedItems.push(it);
-      } else if (it.qty > orig) {
-        unprintedItems.push({
-          ...it,
-          qty: it.qty - orig
-        });
+    setIsSubmitting(true);
+    try {
+      if (scheduleOverrides) {
+        if (scheduleOverrides.scheduledDate) setScheduledOrderDate(scheduleOverrides.scheduledDate);
+        if (scheduleOverrides.scheduledTime !== undefined) setScheduledOrderTime(scheduleOverrides.scheduledTime);
+        if (scheduleOverrides.scheduledNote !== undefined) setScheduledOrderNote(scheduleOverrides.scheduledNote);
       }
-    }
+      const effScheduledTime = scheduleOverrides?.scheduledTime !== undefined ? scheduleOverrides.scheduledTime : scheduledOrderTime;
+      const effScheduledDate = scheduleOverrides?.scheduledDate !== undefined ? scheduleOverrides.scheduledDate : scheduledOrderDate;
+      const effScheduledNote = scheduleOverrides?.scheduledNote !== undefined ? scheduleOverrides.scheduledNote : scheduledOrderNote;
 
-    const scheduledKitchenPayload = effScheduledTime ? {
-      id: heldOrderId || 'SCHEDULED',
-      isKitchenTicket: true,
-      isScheduledOrder: true,
-      concept_name: workspaceState.activeConcept?.name || 'NÉO',
-      title: "*** SCHEDULED ORDER ***",
-      scheduled_for: `${effScheduledDate} ${effScheduledTime}`,
-      scheduled_time_display: formatScheduledTimeDisplay(effScheduledDate, effScheduledTime),
-      scheduled_note: effScheduledNote,
-      order_source: selectedChannel || "POS",
-      order_type: isDineIn ? "dine_in" : orderType,
-      service_type: isDineIn ? "dine_in" : (orderType || "takeout"),
-      table_code: capturedContext?.tableCode,
-      table_label: capturedContext?.tableCode,
-      customer_name: resolvedCustomerName,
-      customer_phone: customerPhone,
-      items: [
-        {
-          name: "*** SCHEDULED ORDER ***",
-          qty: 1,
-          customizations_print_text: [
-            `READY AT: ${formatScheduledTimeDisplay(effScheduledDate, effScheduledTime)}`,
-            ...(effScheduledNote ? [`NOTE: ${effScheduledNote}`] : [])
-          ],
-          note: `READY AT: ${formatScheduledTimeDisplay(effScheduledDate, effScheduledTime)}${effScheduledNote ? ` | ${effScheduledNote}` : ''}`
-        },
-        ...ticketItems.map((it: any) => ({
-          name: it.name,
-          qty: it.qty,
-          note: it.note,
-          modifiers: it.selectedCustomizations || [],
-          customizations_print_text: (it.selectedCustomizations || []).map((c: any) => typeof c === 'string' ? c : c.name || c.ingredient)
+      const isDineIn = Boolean(activeTableContext);
+      const isPickup = orderType === "pickup" || (selectedChannel || "").toLowerCase().includes("pick");
+      const defaultCustomer = isDineIn
+        ? `Table ${activeTableContext?.tableCode}`
+        : isPickup
+        ? "Pickup Customer"
+        : "Direct Order";
+      const resolvedCustomerName = customerName.trim() || defaultCustomer;
+      const heldOrderId = activeTableContext?.orderId || editingOrderId;
+      const capturedContext = activeTableContext;
+
+      const orderPayload = {
+        branch_id: COMMERCE_API_BASE ? commerceBranchLink?.external_branch_id : (currentBranchId || commerceBranchLink?.flow_branch_id),
+        restaurant_id: currentRestaurantId,
+        concept_id: workspaceState.activeConcept.id,
+        client_order_token: clientOrderToken,
+        orderType: isDineIn ? "dine_in" : (orderType || "takeout"),
+        service_type: isDineIn ? "dine_in" : undefined,
+        table_label: activeTableContext ? activeTableContext.tableCode : undefined,
+        guest_count: activeTableContext ? (activeTableContext.guestCount || 1) : undefined,
+        waiter_reference: activeTableContext ? (activeTableContext.waiterName || user?.name) : (activeCashier?.name || user?.name),
+        cashierName: activeCashier?.name || user?.name || "Cashier",
+        orderSource: selectedChannel || "POS",
+        paymentMethod: selectedPaymentMethod || "Cash USD",
+        payment_status: "pending",
+        customerName: resolvedCustomerName,
+        customerPhone,
+        deliveryAddress,
+        status: isDineIn ? "held" : "preparing",
+        subtotal,
+        deliveryFee: (!isDineIn && orderType === "delivery") ? (Number(deliveryFee) || 0) : 0,
+        discountAmount,
+        is_vat_subscribed: isVatSubscribed,
+        vat_rate: isVatSubscribed ? vatRate : 0,
+        vat_amount: vatAmount,
+        total,
+        is_scheduled: Boolean(effScheduledTime),
+        scheduled_for: effScheduledTime ? `${effScheduledDate} ${effScheduledTime}` : undefined,
+        scheduled_time_display: effScheduledTime ? formatScheduledTimeDisplay(effScheduledDate, effScheduledTime) : undefined,
+        scheduled_note: effScheduledNote || undefined,
+        scheduled_notes: effScheduledNote || undefined,
+        items: ticketItems.map((item) => ({
+          line_item_id: item.line_item_id,
+          product_id: item.product_id,
+          name: item.name,
+          quantity: item.qty,
+          qty: item.qty,
+          unit_price: item.unit_price,
+          unit_price_usd: item.unit_price,
+          price: item.unit_price,
+          total_price: Number(item.unit_price || 0) * Number(item.qty || 1),
+          customizations: item.selectedCustomizations || [],
+          comment: item.note,
+          is_custom_item: Boolean(item.is_custom_item || String(item.product_id).startsWith('custom_') || String(item.name || '').toUpperCase().startsWith('DIVERS')),
+          item_added_by: item.item_added_by || activeCashier?.name || user?.name || "Cashier",
+          item_added_by_id: item.item_added_by_id || activeCashier?.id || user?.id || null
         }))
-      ]
-    } : null;
+      };
 
-    // 1. OPTIMISTIC INSTANT UI CLEARANCE AND NAVIGATION (0ms)
-    if (isDineIn) {
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(new CustomEvent('flow:table_occupied', {
-          detail: {
-            tableCode: capturedContext?.tableCode,
-            sessionId: capturedContext?.sessionId,
-            orderId: heldOrderId || ('TMP-' + Date.now())
-          }
-        }));
+      // Extract unprinted items for intelligent section printers
+      const unprintedItems: any[] = [];
+      for (const it of ticketItems) {
+        if (isCourseHoldItem(it)) continue;
+        const orig = Number(it.originalQty || 0);
+        if (!it.isOrdered || orig === 0) {
+          unprintedItems.push(it);
+        } else if (it.qty > orig) {
+          unprintedItems.push({
+            ...it,
+            qty: it.qty - orig
+          });
+        }
       }
-      setPosActiveView('tables');
-    } else {
-      setPosActiveView('sell');
-    }
 
-    resetClientOrderToken();
-    setActiveTableContext(null);
-    setTicketItems([]);
-    setCustomerName("");
-    setCustomerPhone("");
-    setDeliveryAddress("");
-    setSelectedChannel(null);
-    setMarketplaceOrderRef("");
-    setEditingOrderId(null);
-    setEditingOrderVersion(null);
-    setDiscountType("none");
-    setDiscountValInput(10);
-    setDiscountIsPercent(true);
-    setDeliveryFee(0);
-    setOrderType("pickup");
-    setScheduledOrderTime("");
-    setScheduledOrderNote("");
-    handleResetToMainMenu();
-    setIsSubmitting(false);
-    refreshFloorTables().catch(() => {});
+      // 1. PERSIST ORDER TO SERVER FIRST so TablesScreen / Orders immediately see the saved items
+      let savedOrderId: number | string | undefined = heldOrderId || undefined;
+      const syncPayload = {
+        heldOrderId,
+        orderPayload,
+        activeTableContext: capturedContext,
+        isDineIn
+      };
+      try {
+        const syncRes = await executeHoldSyncNow(syncPayload);
+        if (syncRes?.orderId) {
+          savedOrderId = syncRes.orderId;
+        }
+      } catch (syncErr) {
+        console.warn('[handleHoldOrder] Direct save failed, queueing for background retry:', syncErr);
+        enqueueSyncTask('hold', syncPayload);
+      }
 
-    // 2. DISPATCH PRINTER JOBS IN BACKGROUND (Non-blocking)
-    // If the order is scheduled for a future calendar day, do NOT fire tickets to the kitchen today!
-    const isScheduledForFuture = Boolean(
-      effScheduledTime &&
-      effScheduledDate &&
-      effScheduledDate > new Date().toISOString().split('T')[0]
-    );
-
-    if (!isScheduledForFuture) {
-      if (scheduledKitchenPayload) {
-        handlePrint(scheduledKitchenPayload).catch(pe => console.warn("Kitchen print for scheduled order error:", pe));
-      } else if (unprintedItems.length > 0) {
-        const effBranchId = currentBranchId || commerceBranchLink?.flow_branch_id;
-        buildPreparationPrintJobs({
-          orderMetadata: {
-            order_id: heldOrderId || 'Chit',
-            concept_name: workspaceState.activeConcept?.name || 'NÉO',
-            table_label: capturedContext ? capturedContext.tableCode : undefined,
-            table_code: capturedContext?.tableCode,
-            customer_name: !isDineIn ? resolvedCustomerName : (customerName.trim() || undefined),
-            guest_count: capturedContext?.guestCount || 1,
-            waiter_name: capturedContext?.waiterName || activeCashier?.name || user?.name || 'Staff',
-            cashier_name: activeCashier?.name || user?.name || 'Cashier',
-            service_type: isDineIn ? 'dine_in' : (orderType || 'takeout'),
-            fire_round: 1,
-            is_scheduled: Boolean(effScheduledTime),
-            scheduled_for: effScheduledTime ? `${effScheduledDate} ${effScheduledTime}` : undefined,
-            scheduled_time_display: effScheduledTime ? formatScheduledTimeDisplay(effScheduledDate, effScheduledTime) : undefined,
-            scheduled_notes: effScheduledNote || undefined
+      const scheduledKitchenPayload = effScheduledTime ? {
+        id: savedOrderId || heldOrderId || 'SCHEDULED',
+        isKitchenTicket: true,
+        isScheduledOrder: true,
+        concept_name: workspaceState.activeConcept?.name || 'NÉO',
+        title: "*** SCHEDULED ORDER ***",
+        scheduled_for: `${effScheduledDate} ${effScheduledTime}`,
+        scheduled_time_display: formatScheduledTimeDisplay(effScheduledDate, effScheduledTime),
+        scheduled_note: effScheduledNote,
+        order_source: selectedChannel || "POS",
+        order_type: isDineIn ? "dine_in" : orderType,
+        service_type: isDineIn ? "dine_in" : (orderType || "takeout"),
+        table_code: capturedContext?.tableCode,
+        table_label: capturedContext?.tableCode,
+        customer_name: resolvedCustomerName,
+        customer_phone: customerPhone,
+        items: [
+          {
+            name: "*** SCHEDULED ORDER ***",
+            qty: 1,
+            customizations_print_text: [
+              `READY AT: ${formatScheduledTimeDisplay(effScheduledDate, effScheduledTime)}`,
+              ...(effScheduledNote ? [`NOTE: ${effScheduledNote}`] : [])
+            ],
+            note: `READY AT: ${formatScheduledTimeDisplay(effScheduledDate, effScheduledTime)}${effScheduledNote ? ` | ${effScheduledNote}` : ''}`
           },
-          items: unprintedItems,
-          branchId: effBranchId || undefined,
-          restaurantId: currentRestaurantId,
-          productsCatalog: products
-        }).then(({ jobs }) => {
-          if (jobs.length > 0) {
-            dispatchPhysicalPrintJobs(jobs).catch(pe => console.warn("Intelligent ticket routing error on order placement:", pe));
-          }
-        }).catch(pe => console.warn("Build preparation print jobs error:", pe));
-      }
-    }
+          ...ticketItems.map((it: any) => ({
+            name: it.name,
+            qty: it.qty,
+            note: it.note,
+            modifiers: it.selectedCustomizations || [],
+            customizations_print_text: (it.selectedCustomizations || []).map((c: any) => typeof c === 'string' ? c : c.name || c.ingredient)
+          }))
+        ]
+      } : null;
 
-    // 3. BACKGROUND SERVER SYNC VIA PERSISTENT QUEUE
-    enqueueSyncTask('hold', {
-      heldOrderId,
-      orderPayload,
-      activeTableContext: capturedContext,
-      isDineIn
-    });
-    fetchOrdersQueue();
+      // 2. DISPATCH PRINTER JOBS IN BACKGROUND (Non-blocking)
+      // If the order is scheduled for a future calendar day, do NOT fire tickets to the kitchen today!
+      const isScheduledForFuture = Boolean(
+        effScheduledTime &&
+        effScheduledDate &&
+        effScheduledDate > new Date().toISOString().split('T')[0]
+      );
+
+      if (!isScheduledForFuture) {
+        if (scheduledKitchenPayload) {
+          handlePrint(scheduledKitchenPayload).catch(pe => console.warn("Kitchen print for scheduled order error:", pe));
+        } else if (unprintedItems.length > 0) {
+          const effBranchId = currentBranchId || commerceBranchLink?.flow_branch_id;
+          buildPreparationPrintJobs({
+            orderMetadata: {
+              order_id: savedOrderId || heldOrderId || 'Chit',
+              concept_name: workspaceState.activeConcept?.name || 'NÉO',
+              table_label: capturedContext ? capturedContext.tableCode : undefined,
+              table_code: capturedContext?.tableCode,
+              customer_name: !isDineIn ? resolvedCustomerName : (customerName.trim() || undefined),
+              guest_count: capturedContext?.guestCount || 1,
+              waiter_name: capturedContext?.waiterName || activeCashier?.name || user?.name || 'Staff',
+              cashier_name: activeCashier?.name || user?.name || 'Cashier',
+              service_type: isDineIn ? 'dine_in' : (orderType || 'takeout'),
+              fire_round: 1,
+              is_scheduled: Boolean(effScheduledTime),
+              scheduled_for: effScheduledTime ? `${effScheduledDate} ${effScheduledTime}` : undefined,
+              scheduled_time_display: effScheduledTime ? formatScheduledTimeDisplay(effScheduledDate, effScheduledTime) : undefined,
+              scheduled_notes: effScheduledNote || undefined
+            },
+            items: unprintedItems,
+            branchId: effBranchId || undefined,
+            restaurantId: currentRestaurantId,
+            productsCatalog: products
+          }).then(({ jobs }) => {
+            if (jobs.length > 0) {
+              dispatchPhysicalPrintJobs(jobs).catch(pe => console.warn("Intelligent ticket routing error on order placement:", pe));
+            }
+          }).catch(pe => console.warn("Build preparation print jobs error:", pe));
+        }
+      }
+
+      // 3. CLEAR CART STATE AND NAVIGATE AFTER SAVE CONFIRMED
+      if (isDineIn) {
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent('flow:table_occupied', {
+            detail: {
+              tableCode: capturedContext?.tableCode,
+              sessionId: capturedContext?.sessionId,
+              orderId: savedOrderId || heldOrderId || ('TMP-' + Date.now())
+            }
+          }));
+        }
+        setPosActiveView('tables');
+      } else {
+        setPosActiveView('sell');
+      }
+
+      resetClientOrderToken();
+      setActiveTableContext(null);
+      setTicketItems([]);
+      setCustomerName("");
+      setCustomerPhone("");
+      setDeliveryAddress("");
+      setSelectedChannel(null);
+      setMarketplaceOrderRef("");
+      setEditingOrderId(null);
+      setEditingOrderVersion(null);
+      setDiscountType("none");
+      setDiscountValInput(10);
+      setDiscountIsPercent(true);
+      setDeliveryFee(0);
+      setOrderType("pickup");
+      setScheduledOrderTime("");
+      setScheduledOrderNote("");
+      handleResetToMainMenu();
+      refreshFloorTables().catch(() => {});
+      fetchOrdersQueue();
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleFireToKitchen = async () => {
@@ -5437,9 +5457,9 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       {/* UNIFIED TOP POS HEADER: EXACT SAME ACROSS SELL, TABLES, AND ORDERS */}
       <div className="flex items-stretch border-b border-[#E0E3DF] flex-shrink-0 bg-white w-full overflow-hidden">
         {/* LEFT SECTION (65% Width) */}
-        <div className={`${isPortrait ? 'w-[56%]' : 'w-[65%]'} min-w-0 px-1.5 sm:px-3 py-1.5 sm:py-2 bg-white border-r border-[#E0E3DF] flex items-center justify-between gap-1 sm:gap-2 min-h-[50px] sm:min-h-[54px] overflow-hidden`}>
+        <div className={`${isPortrait ? 'w-[56%]' : 'w-[65%]'} min-w-0 px-1.5 sm:px-2 py-1 sm:py-1.5 bg-white border-r border-[#E0E3DF] flex items-center justify-between gap-1 sm:gap-1.5 min-h-[44px] sm:min-h-[48px] overflow-hidden`}>
           {/* LEFT: Concept Switcher THEN Prominently Highlighted Main Menu Breadcrumb */}
-          <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar min-w-0">
+          <div className="flex items-center gap-1 sm:gap-1.5 overflow-x-auto no-scrollbar min-w-0">
             {/* Concept Workspace Switcher (Positioned on the FAR LEFT before Main Menu) */}
             <ConceptWorkspaceSwitcher
               workspaceState={workspaceState}
@@ -5455,7 +5475,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
 
             {/* Breadcrumb Navigation with Prominently Highlighted Main Menu */}
             {posActiveView === 'sell' ? (
-              <div className="flex items-center gap-1.5 min-w-0">
+              <div className="flex items-center gap-1 min-w-0">
                 <button
                   type="button"
                   onClick={() => {
@@ -5465,7 +5485,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                       setCurrentScreenId(root.id);
                     }
                   }}
-                  className={`px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95 shrink-0 ${
+                  className={`px-2 sm:px-2.5 py-1 rounded-xl text-xs font-black transition-all flex items-center gap-1 cursor-pointer shadow-sm active:scale-95 shrink-0 ${
                     activePosScreen?.isRoot
                       ? 'bg-[#1e5c4f] text-white shadow-md ring-2 ring-[#1e5c4f]/30'
                       : 'bg-emerald-50 hover:bg-emerald-100 text-[#1e5c4f] border border-emerald-300'
@@ -5473,62 +5493,65 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                   title="Return to Main Menu Root"
                 >
                   <span>📋</span>
-                  <span>Main Menu</span>
+                  <span className="hidden xl:inline">Main Menu</span>
+                  <span className="xl:hidden">Menu</span>
                 </button>
                 {activePosScreen && !activePosScreen.isRoot && (
                   <>
                     <span className="text-slate-400 font-bold">/</span>
-                    <span className="px-2 py-1 rounded-xl bg-slate-100 border border-slate-300 text-slate-900 font-black text-xs shadow-xs truncate max-w-[120px]">
+                    <span className="px-1.5 py-1 rounded-xl bg-slate-100 border border-slate-300 text-slate-900 font-black text-xs shadow-xs truncate max-w-[100px] xl:max-w-[130px]">
                       {activePosScreen.name}
                     </span>
                   </>
                 )}
               </div>
             ) : posActiveView === 'tables' ? (
-              <div className="flex items-center gap-1.5 min-w-0">
+              <div className="flex items-center gap-1 min-w-0">
                 <button
                   type="button"
                   onClick={() => setPosActiveView('sell')}
-                  className="px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-black bg-emerald-50 hover:bg-emerald-100 text-[#1e5c4f] border border-emerald-300 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95 shrink-0"
+                  className="px-2 sm:px-2.5 py-1 rounded-xl text-xs font-black bg-emerald-50 hover:bg-emerald-100 text-[#1e5c4f] border border-emerald-300 transition-all flex items-center gap-1 cursor-pointer shadow-sm active:scale-95 shrink-0"
                 >
                   <span>📋</span>
-                  <span>Main Menu</span>
+                  <span className="hidden xl:inline">Main Menu</span>
+                  <span className="xl:hidden">Menu</span>
                 </button>
                 <span className="text-slate-400 font-bold">/</span>
-                <span className="px-2 py-1 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 font-black text-xs shadow-xs truncate">
-                  Floor Plan & Tables
+                <span className="px-1.5 py-1 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 font-black text-xs shadow-xs truncate">
+                  Tables
                 </span>
               </div>
             ) : (
-              <div className="flex items-center gap-1.5 min-w-0">
+              <div className="flex items-center gap-1 min-w-0">
                 <button
                   type="button"
                   onClick={() => setPosActiveView('sell')}
-                  className="px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-black bg-emerald-50 hover:bg-emerald-100 text-[#1e5c4f] border border-emerald-300 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95 shrink-0"
+                  className="px-2 sm:px-2.5 py-1 rounded-xl text-xs font-black bg-emerald-50 hover:bg-emerald-100 text-[#1e5c4f] border border-emerald-300 transition-all flex items-center gap-1 cursor-pointer shadow-sm active:scale-95 shrink-0"
                 >
                   <span>📋</span>
-                  <span>Main Menu</span>
+                  <span className="hidden xl:inline">Main Menu</span>
+                  <span className="xl:hidden">Menu</span>
                 </button>
                 <span className="text-slate-400 font-bold">/</span>
-                <span className="px-2 py-1 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 font-black text-xs shadow-xs truncate">
-                  Orders Hub
+                <span className="px-1.5 py-1 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 font-black text-xs shadow-xs truncate">
+                  Orders
                 </span>
               </div>
             )}
           </div>
 
           {/* RIGHT TOOLS IN 65% SECTION */}
-          <div className="flex items-center gap-1 sm:gap-1.5 flex-shrink-0">
+          <div className="flex items-center gap-1 flex-shrink-0">
             {isAdmin && (
               <button
                 type="button"
                 onClick={() => { window.location.hash = `#/pos-screens?concept=${workspaceState.activeConcept.id}`; }}
-                className="px-2 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-800 hover:text-slate-950 text-xs font-bold border border-slate-300 flex items-center gap-1 transition active:scale-95 cursor-pointer shadow-xs shrink-0"
+                className="px-1.5 sm:px-2 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-800 hover:text-slate-950 text-xs font-bold border border-slate-300 flex items-center gap-1 transition active:scale-95 cursor-pointer shadow-xs shrink-0"
                 title={`Open Touch Screens Layout Builder for ${workspaceState.activeConcept.name}`}
               >
                 <span>🎛️</span>
-                <span className="hidden xl:inline">Edit Screens</span>
-                <span className="xl:hidden">Screens</span>
+                <span className="hidden 2xl:inline">Edit Screens</span>
+                <span className="hidden lg:inline 2xl:hidden">Screens</span>
               </button>
             )}
 
@@ -5536,24 +5559,24 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
             <button
               type="button"
               onClick={() => setIsProductSearchModalOpen(true)}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-[#1e5c4f] border border-emerald-300 text-xs font-black transition active:scale-95 cursor-pointer shadow-xs shrink-0"
+              className="flex items-center gap-1 px-2 py-1 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-[#1e5c4f] border border-emerald-300 text-xs font-black transition active:scale-95 cursor-pointer shadow-xs shrink-0"
               title="Search entire menu products (Touch Keyboard & Catalog Search) [Ctrl+K or /]"
             >
               <Search className="w-3.5 h-3.5 text-[#1e5c4f]" />
-              <span>Search</span>
+              <span className="hidden lg:inline">Search</span>
             </button>
 
             <button
               type="button"
               onClick={() => setIs86ModalOpen(true)}
-              className="px-2 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-800 hover:text-slate-950 text-xs font-bold border border-slate-300 flex items-center gap-1 transition active:scale-95 cursor-pointer shadow-xs shrink-0"
+              className="px-1.5 sm:px-2 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-800 hover:text-slate-950 text-xs font-bold border border-slate-300 flex items-center gap-1 transition active:scale-95 cursor-pointer shadow-xs shrink-0"
               title="View Daily 86 Missing Items"
             >
               <span>🚫</span>
-              <span className="hidden sm:inline">86 Items</span>
-              <span className="sm:hidden">86</span>
+              <span className="hidden xl:inline">86 Items</span>
+              <span className="xl:hidden">86</span>
               {combined86Items.length > 0 && (
-                <span className="px-1.5 py-0.5 rounded-full bg-rose-500 text-white text-[10px] font-black leading-none">
+                <span className="px-1 py-0.5 rounded-full bg-rose-500 text-white text-[10px] font-black leading-none">
                   {combined86Items.length}
                 </span>
               )}
@@ -5563,11 +5586,12 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
               <button
                 type="button"
                 onClick={() => setIsManagerHeldShiftsModalOpen(true)}
-                className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 text-xs font-bold transition active:scale-95 cursor-pointer shadow-xs animate-pulse shrink-0"
+                className="flex items-center gap-1 px-2 py-1 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 text-xs font-bold transition active:scale-95 cursor-pointer shadow-xs animate-pulse shrink-0"
                 title="Manager Audit: Shifts on hold waiting for formal reconciliation"
               >
                 <span>⏸️</span>
-                <span className="hidden sm:inline">{heldShiftsCount} Held Shift{heldShiftsCount > 1 ? 's' : ''}</span>
+                <span className="hidden xl:inline">{heldShiftsCount} Held Shift{heldShiftsCount > 1 ? 's' : ''}</span>
+                <span className="xl:hidden">{heldShiftsCount}</span>
               </button>
             )}
 
@@ -5579,7 +5603,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                   fetchBranchStatusAndPrompt();
                   setShowBranchStatusModal(true);
                 }}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-black transition active:scale-95 cursor-pointer shadow-xs shrink-0 border ${
+                className={`flex items-center gap-1 px-2 py-1 rounded-xl text-xs font-black transition active:scale-95 cursor-pointer shadow-xs shrink-0 border ${
                   posOperationalStatus === "closed_hour"
                     ? "bg-amber-100 hover:bg-amber-200 border-amber-400 text-amber-950 animate-pulse"
                     : posOperationalStatus === "closed" || posOperationalStatus === "closed_today"
@@ -5591,20 +5615,20 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                 {posOperationalStatus === "closed_hour" ? (
                   <>
                     <span className="text-amber-600">⏳</span>
-                    <span className="hidden sm:inline">Store: On Hold (60m)</span>
-                    <span className="sm:hidden">Hold 60m</span>
+                    <span className="hidden xl:inline">Store: On Hold (60m)</span>
+                    <span className="xl:hidden">Hold 60m</span>
                   </>
                 ) : posOperationalStatus === "closed" || posOperationalStatus === "closed_today" ? (
                   <>
                     <span className="text-rose-600">🔴</span>
-                    <span className="hidden sm:inline">Store: Closed</span>
-                    <span className="sm:hidden">Closed</span>
+                    <span className="hidden xl:inline">Store: Closed</span>
+                    <span className="xl:hidden">Closed</span>
                   </>
                 ) : (
                   <>
                     <span className="text-emerald-600">🟢</span>
-                    <span className="hidden sm:inline">Store: Open</span>
-                    <span className="sm:hidden">Open</span>
+                    <span className="hidden xl:inline">Store: Open</span>
+                    <span className="xl:hidden">Open</span>
                   </>
                 )}
               </button>
@@ -5618,43 +5642,44 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                 className="px-1.5 sm:px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold transition flex items-center gap-1 border border-slate-300 cursor-pointer shadow-xs active:scale-95"
                 title="Held Orders Queue"
               >
-                <span>⏸️ Held</span>
+                <span>⏸️</span>
+                <span className="hidden lg:inline">Held</span>
                 {heldOrders.length > 0 && (
-                  <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-white text-[10px] font-black">
+                  <span className="px-1 py-0.2 rounded-full bg-amber-500 text-white text-[10px] font-black">
                     {heldOrders.length}
                   </span>
                 )}
               </button>
               <FullscreenToggleButton
                 compact
-                className="px-1.5 sm:px-2 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 text-xs font-bold flex items-center justify-center cursor-pointer transition shadow-xs"
+                className="px-1.5 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 text-xs font-bold flex items-center justify-center cursor-pointer transition shadow-xs"
               />
               {/* User Profile & Switch / Logout Button */}
               <button
                 type="button"
                 onClick={() => setIsSecurityModalOpen(true)}
-                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 text-xs font-bold transition active:scale-95 cursor-pointer shadow-xs shrink-0"
+                className="flex items-center gap-1 px-1.5 sm:px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 text-xs font-bold transition active:scale-95 cursor-pointer shadow-xs shrink-0"
                 title={`Logged in as ${activeCashier?.name || user?.name || 'Cashier'} — Click to Switch User or Log Out (Shift stays open)`}
               >
                 <span>👤</span>
-                <span className="hidden lg:inline font-bold text-slate-700 truncate max-w-[90px]">{activeCashier?.name || user?.name || 'Staff'}</span>
+                <span className="hidden 2xl:inline font-bold text-slate-700 truncate max-w-[90px]">{activeCashier?.name || user?.name || 'Staff'}</span>
                 <span className="text-[10px] text-slate-400">▼</span>
               </button>
             </div>
 
             {/* Background Sync Pill */}
             {backgroundSyncCount > 0 && (
-              <div className="flex items-center gap-1 px-2 py-1 rounded-xl bg-amber-50 border border-amber-300 text-xs font-black text-amber-800 shadow-xs shrink-0 animate-pulse" title="Background transactions syncing to server">
+              <div className="flex items-center gap-1 px-1.5 py-1 rounded-xl bg-amber-50 border border-amber-300 text-xs font-black text-amber-800 shadow-xs shrink-0 animate-pulse" title="Background transactions syncing to server">
                 <span>☁️</span>
-                <span>Syncing ({backgroundSyncCount})</span>
+                <span>{backgroundSyncCount}</span>
               </div>
             )}
           </div>
         </div>
 
         {/* RIGHT SECTION: PRIMARY POS MODE BUTTONS (Aligned exactly with Cart Column 35% / 44%) */}
-        <div className={`${isPortrait ? 'w-[44%]' : 'w-[35%]'} min-w-0 p-2 bg-white flex items-center min-h-[50px] sm:min-h-[54px] border-l border-[#E0E3DF] flex-shrink-0`}>
-          <div className={`grid ${isRestaurantMode ? 'grid-cols-3' : 'grid-cols-4'} gap-1.5 w-full min-w-0`}>
+        <div className={`${isPortrait ? 'w-[44%]' : 'w-[35%]'} min-w-0 p-1.5 bg-white flex items-center min-h-[44px] sm:min-h-[48px] border-l border-[#E0E3DF] flex-shrink-0`}>
+          <div className="grid grid-cols-3 gap-1 sm:gap-1.5 w-full min-w-0">
             {isRestaurantMode && (
               <button
                 type="button"
@@ -5663,7 +5688,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                   backgroundColor: posActiveView === 'tables' ? primaryColor : '#F5F6F4',
                   color: posActiveView === 'tables' ? primaryText : '#242B28'
                 }}
-                className={`h-10 sm:h-11 px-1 sm:px-1.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1 cursor-pointer active:scale-95 shadow-sm border border-[#E0E3DF] min-w-0 ${
+                className={`h-9 sm:h-10 px-1 sm:px-1.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1 cursor-pointer active:scale-95 shadow-sm border border-[#E0E3DF] min-w-0 ${
                   posActiveView === 'tables'
                     ? 'shadow-md ring-1 ring-[#1e5c4f]/30'
                     : 'hover:bg-slate-200'
@@ -5695,7 +5720,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                 backgroundColor: posActiveView === 'sell' ? primaryColor : '#F5F6F4',
                 color: posActiveView === 'sell' ? primaryText : '#242B28'
               }}
-              className={`h-10 sm:h-11 px-1 sm:px-1.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1 cursor-pointer active:scale-95 shadow-sm border border-[#E0E3DF] min-w-0 ${
+              className={`h-9 sm:h-10 px-1 sm:px-1.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1 cursor-pointer active:scale-95 shadow-sm border border-[#E0E3DF] min-w-0 ${
                 posActiveView === 'sell'
                   ? 'shadow-md ring-1 ring-[#1e5c4f]/30'
                   : 'hover:bg-slate-200'
@@ -5713,7 +5738,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                 backgroundColor: posActiveView === 'orders' ? primaryColor : '#F5F6F4',
                 color: posActiveView === 'orders' ? primaryText : '#242B28'
               }}
-              className={`h-10 sm:h-11 px-1 sm:px-1.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1 cursor-pointer active:scale-95 shadow-sm border border-[#E0E3DF] min-w-0 ${
+              className={`h-9 sm:h-10 px-1 sm:px-1.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1 cursor-pointer active:scale-95 shadow-sm border border-[#E0E3DF] min-w-0 ${
                 posActiveView === 'orders'
                   ? 'shadow-md ring-1 ring-[#1e5c4f]/30'
                   : 'hover:bg-slate-200'
@@ -5733,12 +5758,12 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                   backgroundColor: '#F5F6F4',
                   color: '#242B28'
                 }}
-                className="h-10 sm:h-11 px-1.5 sm:px-2 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1 sm:gap-1.5 cursor-pointer active:scale-95 shadow-sm border border-[#E0E3DF] hover:bg-slate-200 min-w-0"
+                className="h-9 sm:h-10 px-1 sm:px-1.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1 cursor-pointer active:scale-95 shadow-sm border border-[#E0E3DF] hover:bg-slate-200 min-w-0"
                 title={`Cash Shift Management (${workspaceState.activeConcept.name})`}
               >
                 <span className="text-sm shrink-0">💵</span>
                 <span className="truncate">Cash</span>
-                <span className={`ml-0.5 min-w-[16px] h-[16px] px-1 rounded text-[10px] font-black flex items-center justify-center leading-none shrink-0 ${
+                <span className={`min-w-[16px] h-[16px] px-1 rounded text-[10px] font-black flex items-center justify-center leading-none shrink-0 ${
                   isShiftOpen ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-rose-100 text-rose-800 border border-rose-300'
                 }`}>
                   {isShiftOpen ? 'OPEN' : 'CLOSED'}
@@ -6088,7 +6113,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
 
 
                 {/* TOUCH SCREEN BUTTONS GRID: Pure Product Names Only with Dynamic 4-7 cols x 5-7 rows */}
-                <div className="flex-1 overflow-y-auto min-h-0 p-2.5 sm:p-4 flex flex-col">
+                <div className="flex-1 overflow-y-auto min-h-0 p-2 sm:p-2.5 flex flex-col">
                   {(!activePosScreen || !activePosScreen.buttons || activePosScreen.buttons.length === 0) ? (
                     <div className="h-full flex flex-col items-center justify-center text-center p-8 border-2 border-dashed border-[#222838] rounded-3xl my-auto">
                       <p className="text-slate-400 font-bold text-sm">No buttons configured on this screen.</p>
@@ -6106,13 +6131,19 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                         Rebuild From Menu Catalog
                       </button>
                     </div>
-                  ) : (
+                  ) : (() => {
+                    const actualRows = Math.max(1, Math.ceil(activePosScreen.buttons.length / activeGridConfig.cols));
+                    const fitAllRowsInViewport = actualRows <= 7;
+                    const rowsTrackCount = Math.max(actualRows, Math.min(activeGridConfig.rows, 6));
+                    return (
                     <div
-                      className="w-full content-start"
+                      className={`w-full ${fitAllRowsInViewport ? 'flex-1 min-h-0' : 'content-start'}`}
                       style={{
                         display: 'grid',
                         gridTemplateColumns: `repeat(${activeGridConfig.cols}, minmax(0, 1fr))`,
-                        gridAutoRows: 'minmax(60px, auto)',
+                        ...(fitAllRowsInViewport
+                          ? { gridTemplateRows: `repeat(${rowsTrackCount}, minmax(0, 1fr))` }
+                          : { gridAutoRows: 'minmax(52px, 72px)' }),
                         gap: activeGridDensity.gap
                       }}
                     >
@@ -6138,18 +6169,18 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                             onClick={() => handleTouchButtonPress(btn)}
                             disabled={isDisabled}
                             title={isUnavailable ? `⚠️ "${btn.label}" is unavailable` : btn.label}
-                            className={`${activeGridDensity.minHeight} max-h-[105px] sm:max-h-[115px] ${activeGridDensity.padding} rounded-2xl border flex flex-col items-center justify-center text-center shadow-xs transition-all active:scale-95 cursor-pointer relative overflow-hidden group select-none ${
+                            className={`${fitAllRowsInViewport ? 'h-full' : 'min-h-[52px]'} ${activeGridDensity.minHeight} max-h-[110px] ${activeGridDensity.padding} rounded-2xl border flex flex-col items-center justify-center text-center shadow-xs transition-all active:scale-95 cursor-pointer relative overflow-hidden group select-none ${
                               isDisabled
                                 ? `bg-slate-100 ${isUnavailable ? 'border-dashed border-rose-300' : 'border-slate-200'} opacity-40 cursor-not-allowed text-slate-400`
                                 : `${colorTheme.bg} ${colorTheme.border} ${colorTheme.hover} ${colorTheme.text || 'text-slate-800'} hover:shadow-md hover:scale-[1.01]`
                             }`}
                           >
                             {/* PURE BUTTON NAME ONLY */}
-                            <span className={`font-black ${activeGridDensity.fontSize} leading-tight tracking-wide line-clamp-3 ${isUnavailable ? 'line-through text-slate-400' : (colorTheme.text || 'text-slate-800')}`}>
+                            <span className={`font-black ${activeGridDensity.fontSize} leading-tight tracking-wide line-clamp-3 break-words w-full ${isUnavailable ? 'line-through text-slate-400' : (colorTheme.text || 'text-slate-800')}`}>
                               {btn.label}
                             </span>
                             {isUnavailable && (
-                              <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 mt-1">
+                              <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 mt-0.5">
                                 Unavailable
                               </span>
                             )}
@@ -6157,20 +6188,21 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                         );
                       })}
                     </div>
-                  )}
+                    );
+                  })()}
                 </div>
 
                 {/* 6 ACTION BUTTONS DOCK (EMBEDDED IN LEFT 65% PANEL) */}
-                <div className="h-[48px] sm:h-[52px] md:h-14 bg-white border-t-2 border-[#E0E3DF] px-1 sm:px-2 py-1 flex items-center gap-1 sm:gap-1.5 flex-shrink-0 z-20 shadow-md overflow-x-auto no-scrollbar">
+                <div className="h-[44px] sm:h-[48px] bg-white border-t-2 border-[#E0E3DF] px-1 sm:px-1.5 py-1 flex items-center gap-1 flex-shrink-0 z-20 shadow-md overflow-hidden">
                   {/* 0 - Quick User Switch / Lock / Log Out */}
                   <button
                     type="button"
                     onClick={() => setIsSecurityModalOpen(true)}
-                    className="h-full px-2 sm:px-2.5 md:px-3 rounded-xl bg-amber-50 hover:bg-amber-100 active:scale-95 text-amber-900 font-black text-xs sm:text-sm tracking-wider flex items-center justify-center gap-1 sm:gap-1.5 border border-amber-300 shadow-sm transition cursor-pointer shrink-0"
+                    className="h-full px-2 rounded-xl bg-amber-50 hover:bg-amber-100 active:scale-95 text-amber-900 font-black text-xs xl:text-sm tracking-wide flex items-center justify-center gap-1 border border-amber-300 shadow-sm transition cursor-pointer shrink-0"
                     title="Switch Staff or Log Out (Shift stays open)"
                   >
-                    <span className="text-sm sm:text-base shrink-0">👤</span>
-                    <span className="hidden md:inline">User</span>
+                    <span className="text-sm shrink-0">👤</span>
+                    <span className="hidden lg:inline">User</span>
                   </button>
 
                   {/* 1 - Features (Protected by POS Permission: access_features) */}
@@ -6178,10 +6210,10 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                     <button
                       type="button"
                       onClick={() => setIsFeaturesModalOpen(true)}
-                      className="flex-1 min-w-[50px] sm:min-w-0 h-full rounded-xl bg-[#F5F6F4] hover:bg-slate-200 active:scale-98 text-[#242B28] font-black text-xs sm:text-sm tracking-wider flex items-center justify-center gap-1 sm:gap-1.5 border border-[#E0E3DF] shadow-sm transition cursor-pointer px-1 shrink-0 sm:shrink"
+                      className="flex-1 min-w-0 h-full rounded-xl bg-[#F5F6F4] hover:bg-slate-200 active:scale-98 text-[#242B28] font-black text-xs xl:text-sm tracking-wide flex items-center justify-center gap-1 border border-[#E0E3DF] shadow-sm transition cursor-pointer px-1"
                       title="Open POS Features: History, Store Control, Shift, Tables, Orders"
                     >
-                      <span className="text-sm sm:text-base shrink-0">⚙️</span>
+                      <span className="text-sm shrink-0">⚙️</span>
                       <span className="truncate">Features</span>
                     </button>
                   )}
@@ -6191,14 +6223,14 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                     type="button"
                     onClick={() => handleOpenOpenItemModal()}
                     disabled={!isShiftOpen}
-                    className={`h-full px-2 sm:px-3 rounded-xl font-black text-xs sm:text-sm tracking-wider flex items-center justify-center gap-1 sm:gap-1.5 border shadow-sm transition shrink-0 cursor-pointer ${
+                    className={`flex-[0.9] min-w-0 h-full px-1.5 rounded-xl font-black text-xs xl:text-sm tracking-wide flex items-center justify-center gap-1 border shadow-sm transition cursor-pointer ${
                       !isShiftOpen
                         ? 'bg-[#F5F6F4] text-slate-400 border-[#E0E3DF] opacity-40 cursor-not-allowed'
                         : 'bg-emerald-50 hover:bg-emerald-100 active:scale-95 text-emerald-900 border-emerald-300'
                     }`}
                     title="Add item without catalog price (Divers / Custom Amount & Qty)"
                   >
-                    <span className="text-sm sm:text-base shrink-0">✨</span>
+                    <span className="text-sm shrink-0">✨</span>
                     <span className="truncate">+ Divers</span>
                   </button>
 
@@ -6207,7 +6239,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                     type="button"
                     onClick={handleInsertHold}
                     disabled={ticketItems.length === 0 || isSubmitting || !isShiftOpen}
-                    className={`flex-1 min-w-[50px] sm:min-w-0 h-full rounded-xl font-black text-xs sm:text-sm tracking-wider flex items-center justify-center gap-1 sm:gap-1.5 border shadow-sm transition px-1 shrink-0 sm:shrink ${
+                    className={`flex-1 min-w-0 h-full rounded-xl font-black text-xs xl:text-sm tracking-wide flex items-center justify-center gap-1 border shadow-sm transition px-1 ${
                       ticketItems.length === 0 || isSubmitting || !isShiftOpen
                         ? 'bg-[#F5F6F4] text-slate-400 border-[#E0E3DF] opacity-40 cursor-not-allowed'
                         : 'bg-purple-50 hover:bg-purple-100 active:scale-98 text-purple-900 border-purple-300 cursor-pointer'
@@ -6220,7 +6252,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                         : "Choose when to prepare this order without taking payment"
                     }
                   >
-                    <span className="text-sm sm:text-base shrink-0">⏳</span>
+                    <span className="text-sm shrink-0">⏳</span>
                     <span className="truncate">{activeTableContext ? "Hold" : "Schedule"}</span>
                   </button>
 
@@ -6230,7 +6262,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                       type="button"
                       onClick={() => handleKitchenFireChit()}
                       disabled={!isFireActive || !isShiftOpen}
-                      className={`flex-[1.05] min-w-[50px] sm:min-w-0 h-full rounded-xl active:scale-98 font-black text-xs sm:text-sm tracking-wider flex items-center justify-center gap-1 sm:gap-1.5 border shadow-sm transition px-1 shrink-0 sm:shrink ${
+                      className={`flex-[0.95] min-w-0 h-full rounded-xl active:scale-98 font-black text-xs xl:text-sm tracking-wide flex items-center justify-center gap-1 border shadow-sm transition px-1 ${
                         isFireActive && isShiftOpen
                           ? 'bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 text-white border-red-400 shadow-red-900/50 animate-pulse cursor-pointer'
                           : 'bg-[#F5F6F4] text-slate-400 border-[#E0E3DF] opacity-40 cursor-not-allowed'
@@ -6245,7 +6277,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                           : `All held courses have been fired (${currentTableFires}/${currentTableHolds})`
                       }
                     >
-                      <span className="text-sm sm:text-lg shrink-0">🔥</span>
+                      <span className="text-sm shrink-0">🔥</span>
                       <span className="truncate">Fire {isFireActive && isShiftOpen ? `(${remainingFires})` : ''}</span>
                     </button>
                   )}
@@ -6290,14 +6322,14 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                     }}
                     disabled={ticketItems.length === 0 || !isShiftOpen}
                     style={{ backgroundColor: primaryColor, color: primaryText }}
-                    className="flex-[1.15] min-w-[65px] sm:min-w-0 h-full rounded-xl hover:opacity-95 active:scale-98 font-black text-xs sm:text-sm tracking-wider flex items-center justify-center gap-1 sm:gap-1.5 border border-black/10 shadow-md transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer px-1 sm:px-1.5 shrink-0 sm:shrink"
+                    className="flex-[1.15] min-w-0 h-full rounded-xl hover:opacity-95 active:scale-98 font-black text-xs xl:text-sm tracking-wide flex items-center justify-center gap-1 border border-black/10 shadow-md transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer px-1"
                     title={!isShiftOpen ? "Shift is closed - settlement disabled" : ticketItems.length === 0 ? "Cart is empty - add items to settle" : "Collect payment and settle order / table"}
                   >
-                    <span className="text-sm sm:text-base shrink-0">💳</span>
+                    <span className="text-sm shrink-0">💳</span>
                     <span className="truncate">
                       {["toters", "noknok"].includes((selectedChannel || "").toLowerCase())
                         ? `${selectedChannel}`
-                        : <>Settle<span className="hidden xl:inline"> & close</span></>}
+                        : <>Settle<span className="hidden 2xl:inline"> & close</span></>}
                     </span>
                   </button>
 
@@ -6321,7 +6353,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                       color: (ticketItems.length > 0 && !isSubmitting && isShiftOpen) ? primaryColor : '#5E6964',
                       borderColor: (ticketItems.length > 0 && !isSubmitting && isShiftOpen) ? `${primaryColor}40` : '#E0E3DF'
                     }}
-                    className={`flex-[1.25] min-w-[65px] sm:min-w-0 h-full rounded-xl font-black text-xs sm:text-sm tracking-wider flex items-center justify-center gap-1 sm:gap-1.5 border shadow-sm transition px-1 hover:opacity-90 cursor-pointer shrink-0 sm:shrink ${
+                    className={`flex-[1.1] min-w-0 h-full rounded-xl font-black text-xs xl:text-sm tracking-wide flex items-center justify-center gap-1 border shadow-sm transition px-1 hover:opacity-90 cursor-pointer ${
                       ticketItems.length === 0 || isSubmitting || !isShiftOpen
                         ? 'opacity-40 cursor-not-allowed'
                         : 'active:scale-98'
@@ -6336,8 +6368,8 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
                         : "Place and send order to kitchen"
                     }
                   >
-                    <span className="text-sm sm:text-base shrink-0">🍽️</span>
-                    <span className="truncate">{isSubmitting ? 'Placing...' : <>Order<span className="hidden xl:inline"> order</span></>}</span>
+                    <span className="text-sm shrink-0">🍽️</span>
+                    <span className="truncate">{isSubmitting ? 'Placing...' : <><span className="hidden 2xl:inline">Place </span>Order</>}</span>
                   </button>
                 </div>
               </div>

@@ -16,7 +16,7 @@ import {
   getGridButtonDensity
 } from '../pos/services/posScreenService';
 import type { PosScreen, PosScreenButton } from '../pos/types/posScreen';
-import { enqueueSyncTask } from '../pos/services/posBackgroundSyncService';
+import { enqueueSyncTask, executeHoldSyncNow } from '../pos/services/posBackgroundSyncService';
 import {
   createDirectOrder,
   updateDirectOrderStatus,
@@ -1218,6 +1218,7 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
 
   // Send Order to Kitchen (KOT)
   const handleSendToKitchen = async () => {
+    if (isSubmitting) return;
     if (ticketItems.length === 0) {
       showNotification('Cart is empty. Add items before sending.', 'error');
       return;
@@ -1233,6 +1234,7 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
       return;
     }
 
+    setIsSubmitting(true);
     try {
       const calculatedSubtotal = ticketItems.reduce((acc, item) => {
         const itemTotal = (Number(item.unit_price) || 0) * (Number(item.qty) || 1);
@@ -1291,12 +1293,23 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
         }
       }
 
-      // 1. Instant optimistic feedback & immediate navigation (0ms)
-      showNotification(`📤 Order sent to kitchen for Table ${capturedContext?.tableCode}!`, 'success');
-      setView('floor');
-      setActiveTableContext(null);
-      setTicketItems([]);
-      setIsSubmitting(false);
+      // 1. Persist order to server first so floor view immediately shows saved items
+      let savedOrderId: number | string | undefined = targetOrderId || undefined;
+      const syncPayload = {
+        heldOrderId: targetOrderId,
+        orderPayload,
+        activeTableContext: capturedContext,
+        isDineIn: true
+      };
+      try {
+        const syncRes = await executeHoldSyncNow(syncPayload);
+        if (syncRes?.orderId) {
+          savedOrderId = syncRes.orderId;
+        }
+      } catch (syncErr) {
+        console.warn('[PosWaiterScreen] Direct save failed, queueing for background retry:', syncErr);
+        enqueueSyncTask('hold', syncPayload);
+      }
 
       // 2. Dispatch printer tickets in background
       if (unprintedItems.length > 0) {
@@ -1306,7 +1319,7 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
           'NÉO';
         buildPreparationPrintJobs({
           orderMetadata: {
-            order_id: targetOrderId || `Table-${capturedContext?.tableCode}`,
+            order_id: savedOrderId || targetOrderId || `Table-${capturedContext?.tableCode}`,
             concept_name: resolvedConceptName,
             table_label: capturedContext?.tableCode,
             table_code: capturedContext?.tableCode,
@@ -1325,13 +1338,11 @@ export default function PosWaiterScreen({ user: initialUser, onExit }: PosWaiter
         }).catch(e => console.warn('Preparation printer ticket dispatch error:', e));
       }
 
-      // 3. Queue background sync to server
-      enqueueSyncTask('hold', {
-        heldOrderId: targetOrderId,
-        orderPayload,
-        activeTableContext: capturedContext,
-        isDineIn: true
-      });
+      // 3. Notify & navigate back to floor after DB save confirmed
+      showNotification(`📤 Order sent to kitchen for Table ${capturedContext?.tableCode}!`, 'success');
+      setView('floor');
+      setActiveTableContext(null);
+      setTicketItems([]);
     } catch (err: any) {
       console.error('Failed to send order to kitchen:', err);
       showNotification(err?.message || 'Error sending order to kitchen.', 'error');

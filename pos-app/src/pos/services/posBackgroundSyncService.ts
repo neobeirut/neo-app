@@ -84,8 +84,22 @@ export function enqueueSyncTask(type: SyncTaskType, payload: any): SyncTask {
   return task;
 }
 
+function updateTaskInQueue(taskId: string, updater: (t: SyncTask) => SyncTask): void {
+  const current = getSyncQueue();
+  const next = current.map(t => (t.id === taskId ? updater(t) : t));
+  saveSyncQueue(next);
+}
+
+function removeTaskFromQueue(taskId: string): void {
+  const current = getSyncQueue();
+  const next = current.filter(t => t.id !== taskId);
+  saveSyncQueue(next);
+}
+
 /**
  * Process all pending background tasks in sequence without blocking UI.
+ * Always reads fresh queue state around every async boundary so tasks
+ * enqueued while syncing are never overwritten or lost.
  */
 export async function processSyncQueue(): Promise<void> {
   if (isProcessing) return;
@@ -93,53 +107,62 @@ export async function processSyncQueue(): Promise<void> {
   notifySyncStatus();
 
   try {
-    const queue = getSyncQueue();
-    const pendingTasks = queue.filter(t => t.status === 'pending' || t.status === 'failed');
+    const processedInThisPass = new Set<string>();
 
-    for (const task of pendingTasks) {
-      task.status = 'syncing';
-      task.attempts = (task.attempts || 0) + 1;
-      saveSyncQueue(queue);
+    while (true) {
+      const queue = getSyncQueue();
+      const nextTask = queue.find(
+        t =>
+          !processedInThisPass.has(t.id) &&
+          (t.status === 'pending' || (t.status === 'failed' && (t.attempts || 0) < 10))
+      );
+      if (!nextTask) break;
+
+      processedInThisPass.add(nextTask.id);
+      updateTaskInQueue(nextTask.id, t => ({
+        ...t,
+        status: 'syncing',
+        attempts: (t.attempts || 0) + 1
+      }));
 
       try {
         let success = false;
-        switch (task.type) {
+        switch (nextTask.type) {
           case 'payment':
-            success = await executePaymentSync(task.payload);
+            success = await executePaymentSync(nextTask.payload);
             break;
           case 'hold':
-            success = await executeHoldSync(task.payload);
+            success = await executeHoldSync(nextTask.payload);
             break;
           case 'fire':
-            success = await executeFireSync(task.payload);
+            success = await executeFireSync(nextTask.payload);
             break;
           case 'table_close':
-            success = await executeTableCloseSync(task.payload);
+            success = await executeTableCloseSync(nextTask.payload);
             break;
           default:
-            console.warn(`[BackgroundSync] Unknown task type: ${task.type}`);
+            console.warn(`[BackgroundSync] Unknown task type: ${nextTask.type}`);
             success = true; // remove unrecognized task
         }
 
         if (success) {
-          task.status = 'completed';
+          removeTaskFromQueue(nextTask.id);
         } else {
-          task.status = 'failed';
-          task.lastError = 'Sync returned unsuccessful status';
+          updateTaskInQueue(nextTask.id, t => ({
+            ...t,
+            status: 'failed',
+            lastError: 'Sync returned unsuccessful status'
+          }));
         }
       } catch (err: any) {
-        console.warn(`[BackgroundSync] Error syncing task ${task.id} (${task.type}):`, err);
-        task.status = 'failed';
-        task.lastError = err?.message || String(err);
+        console.warn(`[BackgroundSync] Error syncing task ${nextTask.id} (${nextTask.type}):`, err);
+        updateTaskInQueue(nextTask.id, t => ({
+          ...t,
+          status: 'failed',
+          lastError: err?.message || String(err)
+        }));
       }
-
-      // If attempts exceed 10, keep it marked failed but do not retry continuously
-      saveSyncQueue(queue);
     }
-
-    // Clean up completed tasks
-    const remaining = queue.filter(t => t.status !== 'completed');
-    saveSyncQueue(remaining);
   } finally {
     isProcessing = false;
     notifySyncStatus();
@@ -259,11 +282,16 @@ async function executePaymentSync(p: any): Promise<boolean> {
   return true;
 }
 
-async function executeHoldSync(p: any): Promise<boolean> {
+export async function executeHoldSyncNow(p: any): Promise<{ success: boolean; orderId?: number | string }> {
   const { heldOrderId, orderPayload, activeTableContext, isDineIn } = p;
   let finalOrderId = heldOrderId;
+  const hasRealHeldId = Boolean(
+    heldOrderId &&
+    !String(heldOrderId).startsWith('TMP-') &&
+    !String(heldOrderId).startsWith('local-')
+  );
 
-  if (heldOrderId && (!String(heldOrderId).startsWith('TMP-') && !String(heldOrderId).startsWith('local-'))) {
+  if (hasRealHeldId) {
     const res = await updateDirectOrderStatus(heldOrderId, {
       subtotal: orderPayload.subtotal,
       total: orderPayload.total,
@@ -273,11 +301,80 @@ async function executeHoldSync(p: any): Promise<boolean> {
       throw new Error(res.error || 'Failed to update held order');
     }
   } else {
-    const res = await createDirectOrder(orderPayload);
-    if (!res.success) {
-      throw new Error(res.error || 'Failed to create held order');
+    // Guard against duplicate open orders for the same dine-in table
+    let existingTableOrder: any = null;
+    if (isDineIn && orderPayload?.table_label) {
+      try {
+        const clean = String(orderPayload.table_label).trim();
+        const numOnly = clean.replace(/^(TABLE\s*|T)/i, '').trim();
+        const variants = Array.from(new Set([
+          clean,
+          clean.toUpperCase(),
+          clean.toLowerCase(),
+          numOnly,
+          `T${numOnly}`,
+          `Table ${numOnly}`,
+          `TABLE ${numOnly}`
+        ].filter(Boolean)));
+        const rid = orderPayload.restaurant_id || getGlobalRestaurantId();
+        let q = supabase
+          .from('pos_orders')
+          .select('id, subtotal_amount, total_amount, pos_order_items(*)')
+          .in('table_label', variants)
+          .in('status', ['held', 'preparing', 'new', 'confirmed', 'ready', 'open', 'occupied', 'bill_requested', 'pending'])
+          .order('id', { ascending: false })
+          .limit(1);
+        if (rid) q = q.eq('restaurant_id', rid);
+        const { data: found } = await q.maybeSingle();
+        if (found?.id) existingTableOrder = found;
+      } catch (lookupErr) {
+        console.warn('[BackgroundSync] Existing table order check warning:', lookupErr);
+      }
     }
-    finalOrderId = res.order?.id || res.orderId;
+
+    if (existingTableOrder) {
+      // Merge newly added items onto the existing open table order instead of creating a duplicate order
+      const existingRows = existingTableOrder.pos_order_items || [];
+      const existingLineIds = new Set(
+        existingRows.map((r: any) => String(r.line_item_id || r.id))
+      );
+      const mergedItems: any[] = existingRows.map((r: any) => ({
+        id: r.id,
+        order_item_id: r.id,
+        line_item_id: r.line_item_id || String(r.id),
+        product_id: r.product_id,
+        name: r.product_name,
+        quantity: Number(r.quantity || 1),
+        unit_price: Number(r.unit_price || 0),
+        customizations: r.customizations_json,
+        comment: r.comment || ''
+      }));
+      for (const incoming of (orderPayload.items || [])) {
+        const incId = incoming.line_item_id ? String(incoming.line_item_id) : '';
+        if (!incId || !existingLineIds.has(incId)) {
+          mergedItems.push(incoming);
+        }
+      }
+      const mergedSubtotal = mergedItems.reduce(
+        (sum, it) => sum + Number(it.unit_price || 0) * Number(it.quantity ?? it.qty ?? 1),
+        0
+      );
+      const res = await updateDirectOrderStatus(existingTableOrder.id, {
+        subtotal: mergedSubtotal,
+        total: mergedSubtotal,
+        items: mergedItems
+      });
+      if (!res.success) {
+        throw new Error(res.error || 'Failed to merge items onto existing table order');
+      }
+      finalOrderId = existingTableOrder.id;
+    } else {
+      const res = await createDirectOrder(orderPayload);
+      if (!res.success) {
+        throw new Error(res.error || 'Failed to create held order');
+      }
+      finalOrderId = res.order?.id || res.orderId;
+    }
   }
 
   // Update pos_table_sessions
@@ -297,7 +394,25 @@ async function executeHoldSync(p: any): Promise<boolean> {
     }
   }
 
-  return true;
+  // Notify TablesScreen, useOrders, and PosTerminalScreen immediately after DB write confirms
+  if (typeof window !== 'undefined' && finalOrderId) {
+    window.dispatchEvent(new CustomEvent('flow:order_created', {
+      detail: {
+        orderId: finalOrderId,
+        tableCode: activeTableContext?.tableCode || orderPayload?.table_label,
+        tableId: activeTableContext?.tableId,
+        sessionId: activeTableContext?.sessionId,
+        isDineIn: Boolean(isDineIn)
+      }
+    }));
+  }
+
+  return { success: true, orderId: finalOrderId };
+}
+
+async function executeHoldSync(p: any): Promise<boolean> {
+  const res = await executeHoldSyncNow(p);
+  return res.success;
 }
 
 async function executeFireSync(p: any): Promise<boolean> {

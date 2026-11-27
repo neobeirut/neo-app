@@ -385,7 +385,9 @@ export async function loadFloorState(branchId: string): Promise<{
           }
         });
       } else {
-        // Table has NO active order or items! Mark table as available and close stale session
+        // Table has NO active order or items yet.
+        // Mark table as available in UI, but only auto-close stale sessions older than 5 minutes
+        // so freshly opened sessions are never closed while the waiter/cashier is placing the first order.
         links.forEach((l: any) => {
           const tbl = tableMap.get(l.table_id);
           if (tbl) {
@@ -394,7 +396,9 @@ export async function loadFloorState(branchId: string): Promise<{
             tbl.commerce_order_id = null;
           }
         });
-        if (session.id) {
+        const openedAtMs = session.opened_at ? new Date(session.opened_at).getTime() : 0;
+        const isStaleSession = !openedAtMs || (Date.now() - openedAtMs > 5 * 60 * 1000);
+        if (session.id && isStaleSession) {
           supabase
             .from('pos_table_sessions')
             .update({ status: 'closed', closed_at: new Date().toISOString() })
@@ -404,9 +408,14 @@ export async function loadFloorState(branchId: string): Promise<{
       }
     });
 
-    // Auto-clean any abandoned sessions that have no commerce order attached
+    // Auto-clean only truly abandoned sessions (no commerce order AND older than 5 minutes)
     if (sessionsData && sessionsData.length > 0) {
-      const abandonedSessions = sessionsData.filter((s: any) => !s.commerce_order_id);
+      const staleCutoffMs = Date.now() - 5 * 60 * 1000;
+      const abandonedSessions = sessionsData.filter((s: any) => {
+        if (s.commerce_order_id) return false;
+        const openedAtMs = s.opened_at ? new Date(s.opened_at).getTime() : 0;
+        return !openedAtMs || openedAtMs < staleCutoffMs;
+      });
       const abandonedIds = abandonedSessions.map((s: any) => s.id);
 
       if (abandonedIds.length > 0) {
