@@ -5042,7 +5042,7 @@ export default function PosTerminalScreen({ user, onExit }: PosTerminalScreenPro
       (completedOrderId && billPrintedKeysRef.current.has(`order:${completedOrderId}`)) ||
       (settledSessionId && billPrintedKeysRef.current.has(`session:${settledSessionId}`)) ||
       (settledTableCode && billPrintedKeysRef.current.has(`table:${settledTableCode}`)) ||
-      ordersQueue.some((o: any) =>
+      [...heldOrders, ...pendingOrders].some((o: any) =>
         String(o.id) === String(completedOrderId) &&
         (o.status === 'bill_requested' || String(o.special_instructions || '').includes('[BILL_PRINTED]'))
       )
