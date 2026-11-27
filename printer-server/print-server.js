@@ -481,7 +481,20 @@ async function formatCustomerBill(json, paperWidth = 80) {
     // Increased prominence/font weight for item line
     out += BOLD_ON + padLine(`${qtyStr} ${nameStr}`, priceStr, W) + BOLD_OFF;
 
-    if (Array.isArray(item.customizations_print_text) && item.customizations_print_text.length > 0) {
+    const rawMods = item.modifiers || item.selectedCustomizations || item.customizations || [];
+    const pricedMods = Array.isArray(rawMods)
+      ? rawMods.filter(m => m && typeof m === 'object' && Number(m.price ?? m.unit_price ?? m.price_delta ?? m.extra_price ?? 0) > 0)
+      : [];
+    if (pricedMods.length > 0) {
+      for (const mod of pricedMods) {
+        const modName = String(mod.name || mod.ingredient || mod.option_name || mod.label || '').trim();
+        if (!modName) continue;
+        const modQty = Number(mod.quantity || mod.qty || 1);
+        const modPrice = Number(mod.price ?? mod.unit_price ?? mod.price_delta ?? mod.extra_price ?? 0) * modQty;
+        const qtyTag = modQty > 1 ? ` x${modQty}` : '';
+        out += padLine(`     + ${modName}${qtyTag}`, `+$${modPrice.toFixed(2)}`, W);
+      }
+    } else if (Array.isArray(item.customizations_print_text) && item.customizations_print_text.length > 0) {
       for (const line of item.customizations_print_text) {
         out += `       ${line}\n`;
       }

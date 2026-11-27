@@ -195,14 +195,14 @@ export function resolveItemPreparationSection(
   is_override: boolean;
 } {
   const pName = String(item.product_name_snapshot || item.product_name || item.name || '').trim();
-  const cName = String(item.category_name || item.category || '').trim();
+  let cName = String(item.category_name || item.category || '').trim();
 
   // 1. Check if item has explicit properties directly
   let section = item.preparation_section || '';
   let override = item.prep_print_override || null;
 
   // 2. Check catalog if not present on item
-  if ((!section || !override) && productsCatalog && productsCatalog.length > 0) {
+  if ((!section || !override || !cName) && productsCatalog && productsCatalog.length > 0) {
     const matched = productsCatalog.find(p => (
       (item.product_id && String(p.id) === String(item.product_id)) ||
       (p.name && p.name.toLowerCase() === pName.toLowerCase())
@@ -210,6 +210,7 @@ export function resolveItemPreparationSection(
     if (matched) {
       if (!section && matched.preparation_section) section = matched.preparation_section;
       if (!override && matched.prep_print_override) override = matched.prep_print_override;
+      if (!cName) cName = String(matched.category_name || matched.category || matched.categories?.name || '').trim();
     }
   }
 
@@ -218,9 +219,9 @@ export function resolveItemPreparationSection(
     const combined = (pName + ' ' + cName).toLowerCase();
     if (cName.toLowerCase() === 'store' || cName.toLowerCase() === 'retail' || /\b(store|retail|merch|packaged|grocery)\b/i.test(combined)) {
       section = 'Store';
-    } else if (/\b(coffee|espresso|latte|cappuccino|tea|teas|juice|juices|drinks|beverage|cocktail|beer|wine|vodka|gin|whisky|mocktail|tonic|water|soda|lemonade|american|americano|regular|decaf|v60|chemex|flat white|cortado|macchiato|matcha|shake|smoothie|hot chocolate|brew|milkshake)\b/i.test(combined)) {
+    } else if (/\b(coffee|espresso|latte|cappuccino|nescafe|nescafé|mocha|frappe|frappé|cocoa|chai|infusion|tea|teas|juice|juices|drinks|beverage|beverages|cocktail|beer|wine|vodka|gin|whisky|mocktail|tonic|water|soda|lemonade|pepsi|cola|7up|perrier|almaza|american|americano|regular|decaf|v60|chemex|flat white|cortado|macchiato|matcha|shake|shakes|smoothie|hot chocolate|brew|milkshake)\b/i.test(combined)) {
       section = 'Bar';
-    } else if (/\b(cake|cakes|pastry|croissant|croissants|cookie|cookies|brownie|eclair|tart|tarte|dessert|bakery)\b/i.test(combined)) {
+    } else if (/\b(cake|cakes|pastry|croissant|croissants|viennoiserie|viennoiseries|cookie|cookies|brownie|eclair|tart|tarte|dessert|desserts|bakery)\b/i.test(combined)) {
       section = 'Pastry';
     } else {
       section = 'Kitchen';
@@ -615,14 +616,28 @@ export async function buildMainBillPrintJob(params: {
 
   const ord = params.order;
   const isPre = params.isPreCheck;
-  const items = (ord.items || []).map((it: any) => ({
-    name: it.name || it.product_name,
-    qty: it.qty || it.quantity || 1,
-    unit_price: Number(it.unit_price || it.price || 0),
-    total_price: Number(it.total_price !== undefined ? it.total_price : (Number(it.unit_price || 0) * Number(it.qty || 1))),
-    modifiers: it.selectedCustomizations || it.customizations || [],
-    note: it.note || it.comment || ''
-  }));
+  const items = (ord.items || []).map((it: any) => {
+    const rawMods = it.selectedCustomizations || it.customizations || it.modifiers || [];
+    const modsArr = Array.isArray(rawMods) ? rawMods : [];
+    const pricedModLines = modsArr
+      .filter((m: any) => m && typeof m === 'object' && Number(m.price ?? m.unit_price ?? m.price_delta ?? m.extra_price ?? 0) > 0)
+      .map((m: any) => {
+        const mName = String(m.name || m.ingredient || m.option_name || m.label || '').trim();
+        const mQty = Number(m.quantity || m.qty || 1);
+        const mPrice = Number(m.price ?? m.unit_price ?? m.price_delta ?? m.extra_price ?? 0) * mQty;
+        return `+ ${mName}${mQty > 1 ? ` x${mQty}` : ''} (+$${mPrice.toFixed(2)})`;
+      })
+      .filter(Boolean);
+    return {
+      name: it.name || it.product_name,
+      qty: it.qty || it.quantity || 1,
+      unit_price: Number(it.unit_price || it.price || 0),
+      total_price: Number(it.total_price !== undefined ? it.total_price : (Number(it.unit_price || 0) * Number(it.qty || 1))),
+      modifiers: modsArr,
+      customizations_print_text: pricedModLines,
+      note: it.note || it.comment || ''
+    };
+  });
 
   const conceptTitle = params.conceptBranding?.conceptName 
     ? `*** ${params.conceptBranding.conceptName.toUpperCase()} ***`
