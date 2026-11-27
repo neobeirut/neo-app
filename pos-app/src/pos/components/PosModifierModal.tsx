@@ -415,7 +415,15 @@ export function PosModifierModal({
       );
 
       if (alreadySelected) {
-        setSelectedCustomizations(filtered.filter((c: any) => c.parent_option_id !== custOption.id));
+        if (custOption.is_required || custOption.is_default) {
+          if (customizationStep < totalSteps - 1) {
+            setTimeout(() => {
+              setCustomizationStep(prev => Math.min(prev + 1, totalSteps - 1));
+            }, 120);
+          }
+        } else {
+          setSelectedCustomizations(filtered.filter((c: any) => c.parent_option_id !== custOption.id));
+        }
       } else {
         const subDefaults = getSubDefaultsForOption(custOption);
         setSelectedCustomizations([...filtered, { ...custOption, quantity: 1 }, ...subDefaults]);
@@ -699,6 +707,13 @@ export function PosModifierModal({
                               <span className={`text-xs font-bold text-left leading-snug break-words ${isOptUnavailable ? 'line-through text-slate-400' : ''}`}>
                                 {displayName}
                               </span>
+                              {opt.is_default && !isOptUnavailable && (
+                                <span className={`text-[9px] uppercase font-extrabold tracking-wider px-1.5 py-0.5 rounded shrink-0 ${
+                                  isSelected ? 'bg-white/25 text-white' : 'bg-blue-50 text-blue-700 border border-blue-200'
+                                }`}>
+                                  Default
+                                </span>
+                              )}
                               {isOptUnavailable && (
                                 <span className="text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 ml-1.5 shrink-0">
                                   Unavailable
